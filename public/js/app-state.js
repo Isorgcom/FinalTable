@@ -17,7 +17,7 @@ const RANK_NAMES = {
   2: 'Two',
 };
 
-// Seat positions (percentages relative to table wrapper) for up to 8 players
+// Seat positions (percentages relative to table wrapper) for up to 10 players
 // Dynamic seat positions: evenly distributed around the ellipse based on player count
 // Position 0 is always bottom center (the viewing player)
 // Other positions are evenly spread around the remaining arc
@@ -36,13 +36,20 @@ function getSeatPositions(playerCount) {
     transform: 'translate(-50%, -20px)',
   });
 
-  // Remaining players: spread evenly around the top arc
-  // Arc goes from bottom-right (roughly 30°) counterclockwise to bottom-left (roughly 150°)
-  // through left (180°), top (270°), right (0°/360°)
-  // In CSS: 0°=right, 90°=bottom, 180°=left, 270°=top
+  // Remaining players: spread evenly around the arc above the viewer.
+  //
+  // Angles below are standard math convention, NOT CSS. `top` is computed as
+  // cy - ry*sin(a), so 0deg=right, 90deg=TOP, 180deg=left, 270deg=bottom, and
+  // an INCREASING angle sweeps counter-clockwise on screen.
+  //
+  // Seat order must run CLOCKWISE, because poker action moves to the left of
+  // the button. table-render.js maps display slot i to engine seat
+  // (myIndex + i), and the engine advances by increasing seat index, so slot
+  // i+1 is always the next player to act. Sweeping the other way makes the
+  // action visibly run backwards around the table.
   const others = playerCount - 1;
-  const arcStart = 315; // bottom-right, going counter-clockwise
-  const arcSpan = 270; // cover 3/4 of the ellipse, leaving bottom free
+  const arcStart = 225; // bottom-left: the seat immediately clockwise of the viewer
+  const arcSpan = -270; // clockwise over 3/4 of the ellipse, leaving the bottom free
 
   const rx = 53; // horizontal radius %
   const ry = 52; // vertical radius %
