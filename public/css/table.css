@@ -931,3 +931,55 @@
   width: 100px;
   accent-color: var(--gold);
 }
+
+/* ── Chip movement ────────────────────────────────────────────────────────
+   Chips fly seat → pot when a player commits chips, and pot → seat when a
+   hand is awarded. A chip spawns at the source centre and is translated to
+   the destination; JS supplies the delta as --fly-dx / --fly-dy. These live
+   inside .poker-table-wrapper so they share the coordinate space of the
+   seats and the pot, which are both positioned against it. */
+.chip-fly {
+  position: absolute;
+  z-index: 30;
+  width: 16px;
+  height: 16px;
+  /* Negative margin centres the chip on the supplied left/top, leaving
+     transform free for the flight itself. */
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f0e6cf 0 38%, var(--gold) 39% 100%);
+  border: 1.5px solid rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5), 0 0 8px var(--gold-glow);
+  pointer-events: none;
+  opacity: 0;
+  animation: chipFly var(--fly-dur, 0.55s) cubic-bezier(0.35, 0.05, 0.2, 1) forwards;
+}
+
+/* Pot → winner reads brighter, so a win is distinguishable from a bet. */
+.chip-fly.chip-win {
+  background: radial-gradient(circle at 35% 30%, #fff6dd 0 38%, #e0c060 39% 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 12px rgba(201, 168, 76, 0.5);
+}
+
+@keyframes chipFly {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--fly-dx, 0), var(--fly-dy, 0)) scale(1);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip-fly {
+    display: none;
+  }
+}

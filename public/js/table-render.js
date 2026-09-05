@@ -7,11 +7,104 @@ function setAnimationDelay(el, delaySeconds) {
   el.style.setProperty('--deal-delay', `${delaySeconds}s`);
 }
 
+// ── Chip movement ─────────────────────────────────────────────────────────
+// Chips fly seat → pot when a player commits chips, and pot → seat when a
+// hand is awarded. Seats, the pot and the chips are all positioned against
+// .poker-table-wrapper, so one coordinate space serves all three.
+
+const CHIP_FLY_MAX = 5; // cap per event, however large the bet
+
+function seatElementForPlayer(playerId) {
+  const container = document.getElementById('playerSeats');
+  if (!container) return null;
+  // Walk the children rather than using an attribute selector: socket ids are
+  // not guaranteed to be safe to interpolate into one.
+  for (const el of container.children) {
+    if (el.dataset && el.dataset.playerId === playerId) return el;
+  }
+  return null;
+}
+
+function chipCountForAmount(amount) {
+  const bb = (gameState && gameState.bigBlind) || 20;
+  return Math.max(1, Math.min(CHIP_FLY_MAX, Math.round(amount / bb) || 1));
+}
+
+function flyChips(fromEl, toEl, count, extraClass) {
+  const wrap = document.querySelector('.poker-table-wrapper');
+  if (!wrap || !fromEl || !toEl) return;
+  const wrapRect = wrap.getBoundingClientRect();
+  const from = fromEl.getBoundingClientRect();
+  const to = toEl.getBoundingClientRect();
+  // Deliberately NOT a width check. #potDisplay collapses to 0x0 at the end of
+  // a hand, because renderTable blanks the pot amount once the hand stops
+  // running, which is the exact moment chips need to fly OUT of it. Its
+  // position stays correct (absolutely centred), so test visibility instead:
+  // offsetParent is null only when the element or an ancestor is display:none.
+  if (!fromEl.isConnected || !toEl.isConnected) return;
+  if (fromEl.offsetParent === null || toEl.offsetParent === null) return;
+
+  const x0 = from.left + from.width / 2 - wrapRect.left;
+  const y0 = from.top + from.height / 2 - wrapRect.top;
+  const dx = to.left + to.width / 2 - wrapRect.left - x0;
+  const dy = to.top + to.height / 2 - wrapRect.top - y0;
+
+  for (let i = 0; i < count; i++) {
+    const chip = document.createElement('div');
+    chip.className = 'chip-fly' + (extraClass ? ' ' + extraClass : '');
+    chip.style.left = x0 + 'px';
+    chip.style.top = y0 + 'px';
+    // Scatter the landing slightly so a stack does not read as a single chip.
+    const scatter = (i % 2 ? 1 : -1) * Math.min(10, i * 3);
+    chip.style.setProperty('--fly-dx', dx + scatter + 'px');
+    chip.style.setProperty('--fly-dy', dy + 'px');
+    chip.style.animationDelay = i * 70 + 'ms';
+    wrap.appendChild(chip);
+    chip.addEventListener('animationend', () => chip.remove(), { once: true });
+    // Under prefers-reduced-motion the chip is display:none, so animationend
+    // never fires and nothing else would ever remove it.
+    setTimeout(() => chip.remove(), 2500);
+  }
+}
+
+function animateChipMovement(prevBets, prevWinnerKey) {
+  if (!gameState) return;
+  const pot = document.getElementById('potDisplay');
+  if (!pot) return;
+
+  // Chips in: any player whose street bet rose, blinds included.
+  if (gameState.isRunning) {
+    gameState.players.forEach((p) => {
+      if (!prevBets.has(p.id)) return; // first time we have seen this player
+      const delta = (p.bet || 0) - prevBets.get(p.id);
+      if (delta <= 0) return; // a between-streets reset, not a bet
+      const seat = seatElementForPlayer(p.id);
+      if (seat) flyChips(seat, pot, chipCountForAmount(delta));
+    });
+  }
+
+  // Chips out: only for a result we have not already animated.
+  const winners = gameState.lastRoundWinnerIds || [];
+  const winnerKey = winners.join(',');
+  if (winnerKey && winnerKey !== prevWinnerKey) {
+    winners.forEach((id) => {
+      const seat = seatElementForPlayer(id);
+      if (seat) flyChips(pot, seat, CHIP_FLY_MAX, 'chip-win');
+    });
+  }
+}
+
 function updateGameState(state) {
   const oldRound = gameState ? gameState.roundCount : -1;
   const oldCommunityLen = gameState ? gameState.communityCards.length : 0;
   const hadGameOver = !!(gameState && gameState.gameOver);
   const previousMe = gameState && myId ? gameState.players.find((p) => p.id === myId) : null;
+  // Snapshot the chip picture before it is overwritten. The animation needs the
+  // delta: a rising bet is chips going in, and a winner id we have not seen
+  // before is a pot being pushed out.
+  const prevBets = new Map();
+  if (gameState) gameState.players.forEach((p) => prevBets.set(p.id, p.bet || 0));
+  const prevWinnerKey = gameState ? (gameState.lastRoundWinnerIds || []).join(',') : '';
   gameState = state;
 
   // Detect new round → force full rebuild + clear equity
@@ -45,6 +138,8 @@ function updateGameState(state) {
   }
 
   renderTable(oldCommunityLen);
+  // After render, so the seat elements the chips fly to and from exist.
+  animateChipMovement(prevBets, prevWinnerKey);
   updateActionsPanel();
   updateTopBar();
   updateTournamentBanner();
@@ -407,6 +502,9 @@ function renderPlayersFull(container) {
     const pos = seatPositions[seatIdx];
     const seat = document.createElement('div');
     seat.className = 'player-seat';
+    // Lets chip animations find a player's seat without depending on display
+    // ordering, which is rotated so the viewer always sits at the bottom.
+    seat.dataset.playerId = player.id;
     if (player.folded) seat.classList.add('folded');
     if (player.autoPlay) seat.classList.add('auto-play');
     if (player.isConnected === false) seat.classList.add('offline');

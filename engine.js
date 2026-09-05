@@ -2216,4 +2216,7 @@ class PokerGame {
   }
 }
 
-module.exports = { PokerGame };
+// NPC_DELAY_* are exported so tests can advance fake timers past the real
+// configured delay instead of hardcoding a literal that silently breaks the
+// next time the pacing is retuned.
+module.exports = { PokerGame, NPC_DELAY_MIN, NPC_DELAY_MAX };

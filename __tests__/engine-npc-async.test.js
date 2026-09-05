@@ -4,7 +4,7 @@ jest.mock('../npc-orchestrator', () => ({
 
 const random = require('../random');
 const { decideNpcAction } = require('../npc-orchestrator');
-const { PokerGame } = require('../engine');
+const { PokerGame, NPC_DELAY_MIN } = require('../engine');
 
 describe('engine async npc integration', () => {
   test('processNPCTurn awaits orchestrator and applies exactly one action', async () => {
@@ -39,7 +39,7 @@ describe('engine async npc integration', () => {
       npc.totalBet = 20;
       game.processNPCTurn();
 
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(NPC_DELAY_MIN + 100);
       await Promise.resolve();
       await Promise.resolve();
 
@@ -105,7 +105,7 @@ describe('engine async npc integration', () => {
       npc.totalBet = 20;
       game.processNPCTurn();
 
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(NPC_DELAY_MIN + 100);
       await Promise.resolve();
       await Promise.resolve();
 

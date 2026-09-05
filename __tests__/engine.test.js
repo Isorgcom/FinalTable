@@ -1,5 +1,5 @@
 // __tests__/engine.test.js
-const { PokerGame: BasePokerGame } = require('../engine');
+const { PokerGame: BasePokerGame, NPC_DELAY_MAX } = require('../engine');
 const { evaluateHand, compareHands } = require('../hand-eval');
 const { NPCPsychology } = require('../npc-psychology');
 const { NPC_PROFILES } = require('../npc');
@@ -1248,7 +1248,7 @@ describe('Equity Billing', () => {
       game.isRunning = true;
 
       game.processNPCTurn();
-      jest.advanceTimersByTime(4000);
+      jest.advanceTimersByTime(NPC_DELAY_MAX + 100);
       await Promise.resolve();
       await Promise.resolve();
 
@@ -1331,7 +1331,7 @@ describe('Equity Billing', () => {
       jest.advanceTimersByTime(35);
       expect(hero.autoPlay).toBe(true);
 
-      jest.advanceTimersByTime(4000);
+      jest.advanceTimersByTime(NPC_DELAY_MAX + 100);
       await Promise.resolve();
       await Promise.resolve();
       expect(hero.lastAction).toBeTruthy();
