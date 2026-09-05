@@ -1,38 +1,39 @@
+# FinalTable - production shape.
+# The FinalTable-dev clone keeps its own copy of this file with a different
+# container name and port; that copy is never mirrored from here.
 services:
-  lonicera:
-    # To use a published image later, replace this with: image: ghcr.io/billwang0101/lonicera:latest
+  finaltable:
     build:
       context: .
       args:
         NPM_REGISTRY: ${NPM_REGISTRY:-}
-    container_name: lonicera
+    container_name: finaltable
+    restart: unless-stopped
     ports:
-      - '2026:2026'
+      # Loopback only. A reverse proxy fronts this; the port is here for
+      # debugging over an SSH tunnel.
+      - "127.0.0.1:${PORT_PUBLISH:-8091}:2026"
     volumes:
-      - lonicera-data:/app/data
-      - ${SOLVER_DATA_DIR:-./data/solver/trees}:/app/data/solver/trees:ro
-      - ${SOLVER_ROOT_CACHE_DIR:-./.cache/solver-root-runtime}:/app/solver-root-cache:ro
+      - finaltable-data:/app/data
     environment:
       - PORT=2026
       - HOST=0.0.0.0
       - SAVE_DIR=/app/data
       - LOG_LEVEL=info
-      - SOLVER_DATA_DIR=/app/data/solver/trees
-      - SOLVER_ROOT_CACHE_DIR=/app/solver-root-cache
-      - NPC_MODEL_ENABLED=${NPC_MODEL_ENABLED:-off}
-      - NPC_MODEL_URL=${NPC_MODEL_URL:-http://127.0.0.1:8900}
-      - NPC_MODEL_TIMEOUT_MS=${NPC_MODEL_TIMEOUT_MS:-800}
-      - NPC_MODEL_MIN_CONFIDENCE=${NPC_MODEL_MIN_CONFIDENCE:-0.18}
-      # Lower this on small NAS devices, or set PREFLOP_TABLE=off to skip startup precompute.
-      - PREFLOP_TABLE=on
-      - PREFLOP_SIMS=10000
-    restart: unless-stopped
+      # Precomputed preflop equity table. Costs startup time and memory;
+      # turn off on a constrained host and the bots fall back to Monte Carlo.
+      - PREFLOP_TABLE=${PREFLOP_TABLE:-on}
+      - PREFLOP_SIMS=${PREFLOP_SIMS:-10000}
+    # This runs as a co-tenant beside other stacks on a 1 vCPU host. Explicit
+    # limits so a runaway tournament process cannot starve its neighbours.
+    mem_limit: 512m
+    cpus: 0.75
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:2026/api/status']
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2026/api/status"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 20s
 
 volumes:
-  lonicera-data:
+  finaltable-data:

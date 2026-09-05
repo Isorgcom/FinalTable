@@ -460,7 +460,7 @@ function startServer(options = {}) {
       structuredLog({
         level: 'info',
         event: 'server_started',
-        message: 'LONICERA server started',
+        message: 'FinalTable server started',
         data: {
           host,
           port: actualPort,

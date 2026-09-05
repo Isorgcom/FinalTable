@@ -62,7 +62,7 @@ class PokerGame {
     this.smallBlind = options.smallBlind || 10;
     this.bigBlind = options.bigBlind || 20;
     this.startChips = options.startChips || 1000;
-    this.maxPlayers = options.maxPlayers || 8;
+    this.maxPlayers = options.maxPlayers || 10;
     this.players = [];
     this.deck = [];
     this.communityCards = [];
