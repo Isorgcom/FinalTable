@@ -734,10 +734,11 @@ function updateTopBar() {
       }
       if (gameState.hostName) text += ` · Host ${gameState.hostName}`;
     }
-  } else if (!gameState.isRunning && gameState.phase === 'showdown') {
-    text = 'Hand complete';
-    if (me) text += ` · ${me.chips}`;
   } else {
+    // Showdown deliberately has no special case: it reads as
+    // "Round N · Showdown · chips" like every other phase. The old
+    // "Hand complete" wording announced a pause that does not exist, since the
+    // server deals the next hand on its own timer.
     text =
       `Round ${gameState.roundCount} · ${phaseNames[gameState.phase] || gameState.phase}` +
       (me ? ` · ${me.chips}` : '');
@@ -889,7 +890,8 @@ function showResult(options = {}) {
     if (!refreshOnly) launchConfetti();
     if (rematchTools) rematchTools.classList.add('hidden');
   } else {
-    title.textContent = 'Hand Complete';
+    // Only reachable at game over now that the between-hands popup is gone.
+    title.textContent = 'Table over';
     title.classList.remove('result-title-winner');
     if (rematchTools) rematchTools.classList.add('hidden');
   }
