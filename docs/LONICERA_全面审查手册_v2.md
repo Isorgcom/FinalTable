@@ -1,5 +1,7 @@
 # LONICERA: A Poker Game · 全面审查手册 v2
 
+> **Inherited from upstream.** Written for [LONICERA](https://github.com/Evostructs/LONICERA) before the FinalTable fork and kept unaltered as a record. It describes LONICERA, not FinalTable: names, commands and image paths in it are upstream's. See [FORK.md](../FORK.md).
+
 > 审查目标：不再被用户反馈牵着走，而是按系统化标准主动审查当前主干代码，优先拦截规则错误、状态串线、前后端不同步和 NAS 部署失真。
 >
 > 适用版本：截至 2026-04-11 的 `main` 分支（已包含 auto-play、spectate、rematch-ready、Equity Oracle、固定房间 lobby、bilingual 房间名、practice 特殊规则、预发牌随机座位等）

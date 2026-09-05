@@ -1,5 +1,9 @@
 # LONICERA: A Poker Game · 主动审查清单 v1
 
+> **Inherited from upstream.** Written for [LONICERA](https://github.com/Evostructs/LONICERA) before the FinalTable fork and kept unaltered as a record. It describes LONICERA, not FinalTable: names, commands and image paths in it are upstream's. See [FORK.md](../FORK.md).
+
+> **Warning: this file is byte-corrupted upstream.** It arrived at the fork point with 152 invalid UTF-8 sequences (multi-byte characters replaced by `?`), so parts of the Chinese text are unrecoverable. Kept for reference only; prefer the v2 manual, which is intact.
+
 > 审查范围：`main` 当前代码基线  
 > 审查方式：静态代码审�?+ 当前测试基线核对  
 > 审查日期�?026-04-11

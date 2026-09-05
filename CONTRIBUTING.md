@@ -1,12 +1,12 @@
-# Contributing to LONICERA: A Poker Game
+# Contributing to FinalTable
 
 Thanks for your interest! Here's how to get started.
 
 ## Development Setup
 
 ```bash
-git clone https://github.com/BillWang0101/LONICERA.git
-cd lonicera
+git clone https://github.com/Isorgcom/FinalTable.git
+cd FinalTable
 npm install
 npm start
 ```
@@ -25,7 +25,7 @@ All checks must pass before submitting a PR.
 
 ## Project Structure
 
-- **Backend logic**: `engine.js`, `npc.js`, `strategy.js`, `veteran.js` — game engine and AI
+- **Backend logic**: `engine.js`, `tournament.js`, `npc.js`, `strategy.js`, `veteran.js` — hand engine, blind clock and bot decisions
 - **Server & networking**: `server.js`, `server/` — Express, Socket.IO, host rules, middleware
 - **Frontend**: `public/index.html`, `public/css/`, `public/js/`
 - **Tests**: `__tests__/`
@@ -52,5 +52,5 @@ Open an issue with:
 - Steps to reproduce
 - Expected vs actual behavior
 - Browser and device info
-- Docker logs if applicable (`docker logs lonicera`)
+- Docker logs if applicable (`docker logs finaltable`)
 - Whether the deployment is local Node, Docker, reverse proxy, or NAS

@@ -8,7 +8,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in LONICERA: A Poker Game, **please do not open a public issue**.
+If you discover a security vulnerability in FinalTable, **please do not open a public issue**.
 
 Instead, please report it privately:
 
@@ -19,7 +19,7 @@ We will acknowledge your report within **48 hours** and aim to provide a fix wit
 
 ## Security Architecture
 
-LONICERA: A Poker Game is designed for **self-hosted, private network** deployment (home NAS, LAN parties). It is **not hardened for public internet exposure** without additional protections.
+FinalTable is designed for **self-hosted, private network** deployment (home NAS, LAN parties). It is **not hardened for public internet exposure** without additional protections.
 
 ### Current Security Measures
 
@@ -45,7 +45,7 @@ LONICERA: A Poker Game is designed for **self-hosted, private network** deployme
 ### Recommended Deployment
 
 ```
-[Internet] → [Reverse Proxy (TLS)] → [LONICERA: A Poker Game container (port 2026)]
+[Internet] → [Reverse Proxy (TLS)] → [FinalTable container (port 2026)]
 ```
 
 For public-facing deployments, always:

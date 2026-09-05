@@ -1,5 +1,7 @@
 # LONICERA: A Poker Game — Development Story
 
+> **Inherited from upstream.** This document was written for [LONICERA](https://github.com/Evostructs/LONICERA) before the FinalTable fork, and is kept unaltered as a record. It describes LONICERA, not FinalTable: names, install commands and image paths in it are upstream's. See [FORK.md](../FORK.md) for what changed.
+
 > **Timeline:** March — April 2026  
 > **Stack:** Node.js + Express + Socket.IO + Vanilla JS  
 > **Built by:** BillWang0101 × Claude
