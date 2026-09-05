@@ -401,7 +401,7 @@ async function joinGame() {
   const playerNameInput = document.getElementById('playerName');
   const playerName = sanitizeLobbyPlayerName(playerNameInput.value);
   playerNameInput.value = playerName;
-  if (playerName) localStorage.setItem('lonicera_player_name', playerName);
+  if (playerName) localStorage.setItem('finaltable_player_name', playerName);
   if (!playerName) {
     playerNameInput.classList.add('input-invalid');
     playerNameInput.focus();
@@ -435,7 +435,7 @@ async function joinGame() {
   const smallBlind = parseInt(document.getElementById('smallBlind').value, 10);
   const startChips = parseInt(document.getElementById('startChips').value, 10);
   const playerAvatar = document.getElementById('playerAvatar').value || '🧑';
-  localStorage.setItem('lonicera_player_avatar', playerAvatar);
+  localStorage.setItem('finaltable_player_avatar', playerAvatar);
   const storedSessionToken = localStorage.getItem(SESSION_STORAGE_PREFIX + roomId);
   if (storedSessionToken) sessionToken = storedSessionToken;
   if (_selectedGameMode !== 'practice') rememberLobbyDraftConfig();

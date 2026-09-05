@@ -98,7 +98,7 @@ let messages = []; // Chat/log message history
 let tournamentTimer = null; // Tournament countdown interval
 let _resultShownThisRound = false; // Debounce: prevent double result popup
 let _resumeInteractionGuardUntil = 0; // Brief guard after leaving auto-play
-const SESSION_STORAGE_PREFIX = 'lonicera:session:';
+const SESSION_STORAGE_PREFIX = 'finaltable:session:';
 
 // ============================================================
 //  SOUND SYSTEM - Web Audio API synthesized sounds
@@ -223,7 +223,7 @@ let _currentEquityContextKey = null; // Board-state key for the currently displa
 let _eqRulesShown = false; // Whether equity rules popup has been shown
 let _eqPaidCount = 0; // Cumulative paid equity uses (for easter egg)
 let _dalioShown = false; // Dalio easter egg shown flag
-const EQ_RULES_NO_SHOW_KEY = 'lonicera:eqRulesNoShow:v2';
+const EQ_RULES_NO_SHOW_KEY = 'finaltable:eqRulesNoShow:v2';
 const MODE_UI_COPY = {
   cash: {
     title: 'Cash Game',

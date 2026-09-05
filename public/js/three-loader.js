@@ -1,5 +1,5 @@
 const assetVersion =
-  document.querySelector('meta[name="lonicera-asset-version"]')?.getAttribute('content') || '';
+  document.querySelector('meta[name="finaltable-asset-version"]')?.getAttribute('content') || '';
 const assetQuery = assetVersion ? `?v=${encodeURIComponent(assetVersion)}` : '';
 
 // Load the 3D room only on desktop-sized viewports.

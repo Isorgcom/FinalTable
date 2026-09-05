@@ -722,15 +722,20 @@ function updateTopBar() {
     if (gameState.gameMode === 'practice') {
       text = 'Practice table ready';
     } else {
-      const humanPlayers = gameState.players.filter((p) => !p.isNPC);
-      if (humanPlayers.length < 2) {
-        const needed = 2 - humanPlayers.length;
+      // Count everyone who can be dealt in, bots included. This mirrors the
+      // server's actual rule in socket-handlers.js ("Need at least 2 players",
+      // counting players with chips). The old check counted humans only, so a
+      // table of one human and five bots reported "Waiting for 1 more player"
+      // while the Deal button sat there enabled and the game was ready to run.
+      const seated = gameState.players.filter((p) => p.chips > 0);
+      if (seated.length < 2) {
+        const needed = 2 - seated.length;
         text = `Waiting for ${needed} more player${needed === 1 ? '' : 's'}`;
       } else if (typeof isReadyCheckEnabled === 'function' && isReadyCheckEnabled()) {
         const summary = getReadySummary();
         text = `${summary.readyHumans}/${summary.totalHumans} guests ready`;
       } else {
-        text = 'Waiting to deal';
+        text = gameState.isHost ? 'Ready to deal' : 'Waiting for the host to deal';
       }
       if (gameState.hostName) text += ` · Host ${gameState.hostName}`;
     }

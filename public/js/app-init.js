@@ -377,8 +377,8 @@ function init() {
   setInterval(() => {
     if (typeof updateTurnTimerBars === 'function') updateTurnTimerBars();
   }, 250);
-  const PLAYER_NAME_STORAGE_KEY = 'lonicera_player_name';
-  const PLAYER_AVATAR_STORAGE_KEY = 'lonicera_player_avatar';
+  const PLAYER_NAME_STORAGE_KEY = 'finaltable_player_name';
+  const PLAYER_AVATAR_STORAGE_KEY = 'finaltable_player_avatar';
 
   function normalizePlayerNameInput(value, maxLength = 16) {
     const cleaned = String(value || '')
