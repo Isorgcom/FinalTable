@@ -757,6 +757,22 @@ function showResult(options = {}) {
 
   if (!gameState) return;
 
+  // No "Hand Complete" popup between hands.
+  //
+  // It interrupted the table after every single hand while doing nothing: the
+  // server has no 'nextRound' handler, so the button's socket.emit('nextRound')
+  // was a no-op, and the next hand is dealt by the server's own _autoTimer
+  // regardless of whether anyone clicked. Everything the popup listed (winner,
+  // split pots, unmatched chips returned) is already emitted to the message log
+  // by engine.js, so nothing is lost by dropping it.
+  //
+  // The modal is still the game-over UI, where its buttons genuinely do
+  // something (Play Again, Exit Table, ready toggle), so only that case shows.
+  if (!gameState.gameOver) {
+    modal.classList.add('hidden');
+    return;
+  }
+
   // v11: clear equity
   _currentEquity = null;
   updateEquityUI(null);
