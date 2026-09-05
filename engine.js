@@ -23,8 +23,18 @@ const LOG_LEVEL = process.env.LOG_LEVEL || 'info'; // 'debug' | 'info' | 'warn' 
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 const GAMEPLAY_TEXT_LOGS = process.env.GAMEPLAY_TEXT_LOGS === '1';
 const EQUITY_SIMS = 3000; // Monte Carlo iterations for equity calculation
-const NPC_DELAY_MIN = 1500; // NPC decision delay range (ms)
-const NPC_DELAY_MAX = 3000;
+// How long a bot appears to "think" before acting, in ms. A random value in
+// this range is picked per decision, then divided by the table's speed
+// multiplier (1x-3x). Tunable without a code change:
+//   NPC_DELAY_MIN=4000 NPC_DELAY_MAX=7000 docker compose up -d
+// Defaults are deliberately unhurried: at a full ring the bots are the only
+// thing moving between your turns, and a fast orbit is hard to follow.
+const envInt = (name, fallback) => {
+  const raw = parseInt(process.env[name], 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
+};
+const NPC_DELAY_MIN = envInt('NPC_DELAY_MIN', 2600);
+const NPC_DELAY_MAX = Math.max(NPC_DELAY_MIN, envInt('NPC_DELAY_MAX', 5200));
 const PRACTICE_NEXT_DELAY = 2500; // Delay before next round in practice mode (ms)
 const CASH_NEXT_DELAY = 5000; // Delay before next round in cash/tournament (ms)
 const PRACTICE_ACTION_TIMEOUT_MS = 18000;

@@ -24,6 +24,11 @@ services:
       # turn off on a constrained host and the bots fall back to Monte Carlo.
       - PREFLOP_TABLE=${PREFLOP_TABLE:-on}
       - PREFLOP_SIMS=${PREFLOP_SIMS:-10000}
+      # Bot "thinking" time before each action, in ms (a random value in this
+      # range, then divided by the table speed multiplier). Raise to slow the
+      # bots down further.
+      - NPC_DELAY_MIN=${NPC_DELAY_MIN:-2600}
+      - NPC_DELAY_MAX=${NPC_DELAY_MAX:-5200}
     # This runs as a co-tenant beside other stacks on a 1 vCPU host. Explicit
     # limits so a runaway tournament process cannot starve its neighbours.
     mem_limit: 512m
