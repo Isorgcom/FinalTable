@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const random = require('../random');
 const { createStructuredLogger } = require('./logger');
+const { DEFAULT_MAX_PLAYERS } = require('../engine');
 
 const socketLog = createStructuredLogger('socket');
 
@@ -165,7 +166,11 @@ function registerSocketHandlers(deps) {
       }
       const VALID_MODES = ['cash', 'tournament', 'practice'];
       const effectiveMode = VALID_MODES.includes(gameMode) ? gameMode : 'cash';
-      const requestedNpcCount = Math.max(0, Math.min(7, parseInt(npcCount) || 0));
+      // Cap is one below a full table: the requester takes a seat too. Was a
+      // hardcoded 7 from the old 8-max default, which silently ignored the
+      // 8th and 9th bot once tables grew to 10 seats.
+      const maxNpcs = Math.max(0, DEFAULT_MAX_PLAYERS - 1);
+      const requestedNpcCount = Math.max(0, Math.min(maxNpcs, parseInt(npcCount) || 0));
       const safeNpcCount =
         effectiveMode === 'practice' ? Math.max(1, requestedNpcCount) : requestedNpcCount;
       const safeSB = [5, 10, 25, 50].includes(parseInt(smallBlind)) ? parseInt(smallBlind) : 10;

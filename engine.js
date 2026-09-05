@@ -33,6 +33,10 @@ const envInt = (name, fallback) => {
   const raw = parseInt(process.env[name], 10);
   return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
 };
+// Seats per table. Exported so the socket layer clamps bot counts against the
+// same number the engine seats, instead of a copy that silently drifts.
+const DEFAULT_MAX_PLAYERS = 10;
+
 const NPC_DELAY_MIN = envInt('NPC_DELAY_MIN', 2600);
 const NPC_DELAY_MAX = Math.max(NPC_DELAY_MIN, envInt('NPC_DELAY_MAX', 5200));
 const PRACTICE_NEXT_DELAY = 2500; // Delay before next round in practice mode (ms)
@@ -72,7 +76,7 @@ class PokerGame {
     this.smallBlind = options.smallBlind || 10;
     this.bigBlind = options.bigBlind || 20;
     this.startChips = options.startChips || 1000;
-    this.maxPlayers = options.maxPlayers || 10;
+    this.maxPlayers = options.maxPlayers || DEFAULT_MAX_PLAYERS;
     this.players = [];
     this.deck = [];
     this.communityCards = [];
@@ -2219,4 +2223,4 @@ class PokerGame {
 // NPC_DELAY_* are exported so tests can advance fake timers past the real
 // configured delay instead of hardcoding a literal that silently breaks the
 // next time the pacing is retuned.
-module.exports = { PokerGame, NPC_DELAY_MIN, NPC_DELAY_MAX };
+module.exports = { PokerGame, DEFAULT_MAX_PLAYERS, NPC_DELAY_MIN, NPC_DELAY_MAX };
