@@ -1,7 +1,7 @@
 // engine.js - Texas Hold'em game engine
 const { createDeck, shuffle } = require('./deck');
 const { evaluateHand, compareHands, HAND_NAMES } = require('./hand-eval');
-const { describeHand } = require('./hand-describe');
+const { describeHand, describeBest } = require('./hand-describe');
 const { getAvailableNPCs, vanillaMC, rangeWeightedMC } = require('./npc');
 const { decideNpcAction } = require('./npc-orchestrator');
 const { estimateRange, boardConnectivity } = require('./range');
@@ -457,7 +457,9 @@ class PokerGame {
         return;
       }
       liveCurrent.autoPlay = true;
-      this.emitMessage(`${this.getPublicName(liveCurrent)} timed out and switched to auto-play`);
+      this.emitMessage(`${this.getPublicName(liveCurrent)} timed out and switched to auto-play`, {
+        kind: 'timebank',
+      });
       this._log(`⏱ ${this.getPublicName(liveCurrent)} timed out -> auto-play`);
       this.emitUpdate();
       this.processNPCTurn();
@@ -480,7 +482,7 @@ class PokerGame {
     const remaining = Math.max(0, this.turnExpiresAt - Date.now());
     const grant = this.timeBankGrantMs;
     this.armActionTimeout(current, remaining + grant, (this.turnDurationMs || remaining) + grant);
-    this.emitMessage(`⏱ ${this.getPublicName(current)} requested time`);
+    this.emitMessage(`⏱ ${this.getPublicName(current)} requested time`, { kind: 'timebank' });
     this.emitUpdate();
     return true;
   }
@@ -623,10 +625,15 @@ class PokerGame {
     const bbPlayer = this.players[bbIdx];
     this.emitMessage(
       `🃏 Hand ${this.roundCount} starts! Dealer: ${this.players[this.dealerIndex].name}` +
-        (this.tournament && this.tournament.isActive
-          ? ` | blinds ${this.smallBlind}/${this.bigBlind}`
-          : '')
+        ` | blinds ${this.smallBlind}/${this.bigBlind}`,
+      { kind: 'handStart', handNum: this.roundCount }
     );
+    this.emitMessage(`${this.getPublicName(sbPlayer)} posts small blind ${sbPlayer.bet}`, {
+      kind: 'blind',
+    });
+    this.emitMessage(`${this.getPublicName(bbPlayer)} posts big blind ${bbPlayer.bet}`, {
+      kind: 'blind',
+    });
     this._logEvent(
       'round_start',
       {
@@ -733,19 +740,19 @@ class PokerGame {
     switch (action) {
       case 'fold':
         player.folded = true;
-        this.emitMessage(`${this.getPublicName(player)} folds`);
+        this.emitMessage(`${this.getPublicName(player)} folds`, { kind: 'action' });
         recordedAmount = 0;
         break;
 
       case 'check':
         if (toCall > 0) return false;
-        this.emitMessage(`${this.getPublicName(player)} checks`);
+        this.emitMessage(`${this.getPublicName(player)} checks`, { kind: 'action' });
         recordedAmount = 0;
         break;
 
       case 'call':
         if (toCall <= 0) {
-          this.emitMessage(`${this.getPublicName(player)} checks`);
+          this.emitMessage(`${this.getPublicName(player)} checks`, { kind: 'action' });
           recordedAmount = 0;
           action = 'check';
           break;
@@ -756,7 +763,7 @@ class PokerGame {
         player.totalBet += callAmount;
         this.pot += callAmount;
         if (player.chips === 0) player.allIn = true;
-        this.emitMessage(`${this.getPublicName(player)} calls ${callAmount}`);
+        this.emitMessage(`${this.getPublicName(player)} calls ${callAmount}`, { kind: 'action' });
         recordedAmount = callAmount;
         break;
 
@@ -772,7 +779,7 @@ class PokerGame {
             this.pot += capCall;
             if (player.chips === 0) player.allIn = true;
           }
-          this.emitMessage(`${this.getPublicName(player)} calls ${capCall} (raise cap)`);
+          this.emitMessage(`${this.getPublicName(player)} calls ${capCall} (raise cap)`, { kind: 'action' });
           recordedAmount = capCall;
           action = 'call';
           break;
@@ -786,7 +793,7 @@ class PokerGame {
           player.totalBet += forcedCall;
           this.pot += forcedCall;
           if (player.chips === 0) player.allIn = true;
-          this.emitMessage(`${this.getPublicName(player)} calls ${forcedCall}`);
+          this.emitMessage(`${this.getPublicName(player)} calls ${forcedCall}`, { kind: 'action' });
           recordedAmount = forcedCall;
           action = forcedCall > 0 ? 'call' : 'check';
           break;
@@ -807,7 +814,7 @@ class PokerGame {
               this.minRaise = Math.max(this.bigBlind, raiseIncrement);
             }
           }
-          this.emitMessage(`${this.getPublicName(player)} all-in ${shortAllInAmount}!`);
+          this.emitMessage(`${this.getPublicName(player)} all-in ${shortAllInAmount}!`, { kind: 'action' });
           recordedAmount = player.bet;
           action = 'allin';
           break;
@@ -825,10 +832,10 @@ class PokerGame {
         this.lastRaiserIndex = playerIdx;
         if (player.chips === 0) {
           player.allIn = true;
-          this.emitMessage(`${this.getPublicName(player)} all-in ${raiseAmount}!`);
+          this.emitMessage(`${this.getPublicName(player)} all-in ${raiseAmount}!`, { kind: 'action' });
           recordedAmount = player.bet;
         } else {
-          this.emitMessage(`${this.getPublicName(player)} raises to ${player.bet}`);
+          this.emitMessage(`${this.getPublicName(player)} raises to ${player.bet}`, { kind: 'action' });
           recordedAmount = player.bet;
         }
         break;
@@ -853,7 +860,7 @@ class PokerGame {
           // but lastRaiserIndex stays unchanged (doesn't reopen action for
           // players who already acted — they only need to match or fold)
         }
-        this.emitMessage(`${this.getPublicName(player)} all-in ${allInAmount}!`);
+        this.emitMessage(`${this.getPublicName(player)} all-in ${allInAmount}!`, { kind: 'action' });
         recordedAmount = player.bet;
         break;
 
@@ -954,7 +961,7 @@ class PokerGame {
         const msg = generateNPCChat(p.name, chatEvent, 0.35);
         if (msg) {
           const avatar = p.npcProfile?.avatar || '';
-          this.emitMessage(`💬 ${avatar} ${this.getPublicName(p)}: ${msg}`);
+          this.emitMessage(`💬 ${avatar} ${this.getPublicName(p)}: ${msg}`, { kind: 'chat' });
         }
       }
     }
@@ -1065,7 +1072,10 @@ class PokerGame {
         this.deck.pop(); // burn
         this.communityCards.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
         this.phase = 'flop';
-        this.emitMessage(`── Flop ──`);
+        this.emitMessage(`── Flop ── ${this._cards(this.communityCards)}`, {
+          kind: 'street',
+          street: 'flop',
+        });
         this._log(`🂠 flop: ${this._cards(this.communityCards)} (pot:${this.pot})`);
         this._logEvent(
           'street_advance',
@@ -1078,7 +1088,10 @@ class PokerGame {
         this.deck.pop();
         this.communityCards.push(this.deck.pop());
         this.phase = 'turn';
-        this.emitMessage(`── Turn ──`);
+        this.emitMessage(`── Turn ── ${this._card(this.communityCards[3])}`, {
+          kind: 'street',
+          street: 'turn',
+        });
         this._log(
           `🂠 turn: ${this._card(this.communityCards[3])} → ${this._cards(this.communityCards)} (pot:${this.pot})`
         );
@@ -1093,7 +1106,10 @@ class PokerGame {
         this.deck.pop();
         this.communityCards.push(this.deck.pop());
         this.phase = 'river';
-        this.emitMessage(`── River ──`);
+        this.emitMessage(`── River ── ${this._card(this.communityCards[4])}`, {
+          kind: 'street',
+          street: 'river',
+        });
         this._log(
           `🂠 river: ${this._card(this.communityCards[4])} → ${this._cards(this.communityCards)} (pot:${this.pot})`
         );
@@ -1152,7 +1168,10 @@ class PokerGame {
 
     // Announce hands
     for (const r of results) {
-      this.emitMessage(`${this.getPublicName(r.player)}: ${r.hand.name}`);
+      this.emitMessage(
+        `${this.getPublicName(r.player)} shows ${this._cards(r.player.holeCards)} · ${describeBest(r.hand)}`,
+        { kind: 'show' }
+      );
     }
 
     // Handle side pots and main pot
@@ -1165,7 +1184,7 @@ class PokerGame {
       const msg = generateNPCChat(r.player.name, won ? 'win' : 'lose', won ? 0.6 : 0.3);
       if (msg) {
         const avatar = r.player.npcProfile?.avatar || '';
-        this.emitMessage(`💬 ${avatar} ${this.getPublicName(r.player)}: ${msg}`);
+        this.emitMessage(`💬 ${avatar} ${this.getPublicName(r.player)}: ${msg}`, { kind: 'chat' });
       }
     }
 
@@ -1286,9 +1305,15 @@ class PokerGame {
           r.player.wins++;
           this.lastRoundWinnerIds.push(r.player.id);
           if (isSplitPot) {
-            this.emitMessage(`🤝 ${this.getPublicName(r.player)} splits pot ${r._awarded} (${r.hand.name})`);
+            this.emitMessage(
+              `🤝 ${this.getPublicName(r.player)} splits pot ${r._awarded} (${r.hand.name})`,
+              { kind: 'win', handNum: this.roundCount, amount: r._awarded, handName: r.hand.name }
+            );
           } else {
-            this.emitMessage(`🏆 ${this.getPublicName(r.player)} wins ${r._awarded}! (${r.hand.name})`);
+            this.emitMessage(
+              `🏆 ${this.getPublicName(r.player)} wins ${r._awarded}! (${r.hand.name})`,
+              { kind: 'win', handNum: this.roundCount, amount: r._awarded, handName: r.hand.name }
+            );
           }
           this._log(
             `💰 ${this.getPublicName(r.player)} wins ${r._awarded} (${r.hand.name}) bal:${r.player.chips}`
@@ -1307,7 +1332,10 @@ class PokerGame {
             amount: r._awarded,
             reason: 'unmatched all-in chips',
           });
-          this.emitMessage(`↩ ${this.getPublicName(r.player)} unmatched chips returned ${r._awarded}`);
+          this.emitMessage(
+            `↩ ${this.getPublicName(r.player)} unmatched chips returned ${r._awarded}`,
+            { kind: 'refund' }
+          );
           this._log(`💰 ${this.getPublicName(r.player)} refund ${r._awarded} bal:${r.player.chips}`);
         }
       }
@@ -1333,7 +1361,10 @@ class PokerGame {
           amount: unawarded,
           reason: 'unmatched all-in chips',
         });
-        this.emitMessage(`↩ ${this.getPublicName(maxBettor)} unmatched chips returned ${unawarded}`);
+        this.emitMessage(
+          `↩ ${this.getPublicName(maxBettor)} unmatched chips returned ${unawarded}`,
+          { kind: 'refund' }
+        );
       }
     }
   }
@@ -1344,7 +1375,11 @@ class PokerGame {
       winner.chips += share;
       winner.wins++;
       this.lastRoundWinnerIds.push(winner.id);
-      this.emitMessage(`🏆 ${this.getPublicName(winner)} wins ${share}!`);
+      this.emitMessage(`🏆 ${this.getPublicName(winner)} wins ${share}!`, {
+        kind: 'win',
+        handNum: this.roundCount,
+        amount: share,
+      });
       this._log(`💰 ${this.getPublicName(winner)} wins ${share} (all folded) bal:${winner.chips}`);
       this.handHistory.recordWinner(
         winner.id,
@@ -1383,11 +1418,11 @@ class PokerGame {
         return sa - sb;
       });
     for (const p of bustedPlayers) {
-      this.emitMessage(`${this.getPublicName(p)} eliminated`);
+      this.emitMessage(`${this.getPublicName(p)} eliminated`, { kind: 'eliminate' });
       this._log(`❌ eliminated ${this.getPublicName(p)}`);
       if (this.tournament && this.tournament.isActive) {
         const place = this.tournament.recordElimination(this.getPublicName(p), this.roundCount);
-        this.emitMessage(`📊 ${this.getPublicName(p)} placed #${place}`);
+        this.emitMessage(`📊 ${this.getPublicName(p)} placed #${place}`, { kind: 'eliminate' });
       }
     }
 
@@ -1412,7 +1447,7 @@ class PokerGame {
     if (this.tournament && this.tournament.isActive) {
       tournamentResult = this.tournament.checkTournamentEnd(this.players);
       if (tournamentResult) {
-        this.emitMessage('🏆 Tournament over!');
+        this.emitMessage('🏆 Tournament over!', { kind: 'system' });
       }
       this.gameOver = null;
     } else {
@@ -1426,9 +1461,9 @@ class PokerGame {
           remainingPlayers: survivors.length,
         };
         if (winner) {
-          this.emitMessage(`🏁 ${this.getPublicName(winner)} wins the table`);
+          this.emitMessage(`🏁 ${this.getPublicName(winner)} wins the table`, { kind: 'system' });
         } else {
-          this.emitMessage('🏁 Table finished');
+          this.emitMessage('🏁 Table finished', { kind: 'system' });
         }
       } else {
         this.gameOver = null;
@@ -2326,8 +2361,11 @@ class PokerGame {
     if (this.onUpdate) this.onUpdate(this);
   }
 
-  emitMessage(msg) {
-    if (this.onMessage) this.onMessage(msg);
+  // meta, when given, tags the line for the client's log ({ kind, ... }).
+  // Every existing string is unchanged: the client picks sounds and the
+  // result modal off substrings of these messages.
+  emitMessage(msg, meta) {
+    if (this.onMessage) this.onMessage(msg, meta);
   }
 }
 

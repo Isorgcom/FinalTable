@@ -18,13 +18,14 @@ function normalizeRuntimeLogMessage(msg) {
 
 // The dealer log lives in the side panel's Chat tab; the ticker over the
 // felt repeats the last line for when the panel is out of view.
-function addLog(msg) {
+function addLog(msg, meta) {
   const body = document.getElementById('panelChatBody');
   const last = document.getElementById('logLast');
   if (!body || !last) return;
   const displayMsg = normalizeRuntimeLogMessage(msg);
   const entry = document.createElement('div');
   entry.className = 'log-entry';
+  if (meta && meta.kind) entry.dataset.kind = meta.kind;
   if (
     displayMsg.includes('wins') ||
     displayMsg.includes('splits pot') ||

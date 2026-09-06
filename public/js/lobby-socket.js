@@ -594,8 +594,8 @@ async function joinGame() {
     if (state.isMyTurn && oldPhase !== null) SFX.play('turn');
   });
 
-  socket.on('gameMessage', (msg) => {
-    addLog(msg);
+  socket.on('gameMessage', (msg, meta) => {
+    addLog(msg, meta);
     if (msg.includes('folds')) SFX.play('fold');
     else if (msg.includes('checks')) SFX.play('check');
     else if (msg.includes('calls')) SFX.play('call');
@@ -649,9 +649,9 @@ async function joinGame() {
     renderNPCPanel(profiles);
   });
 
-  socket.on('tournamentLevelUp', (data) => {
+  socket.on('tournamentLevelUp', () => {
+    // The line itself arrives as a gameMessage from the server.
     SFX.play('turn');
-    addLog(`⬆️ Blinds up! Level ${data.level + 1}: ${data.blinds.sb}/${data.blinds.bb}`);
   });
 
   socket.on('tournamentEnd', (result) => {

@@ -61,11 +61,11 @@ function registerTournamentHandlers(deps) {
         if (sid) io.to(sid).emit('gameState', g.getStateForPlayer(p.id));
       }
     };
-    table.onMessage = (msg) => {
+    table.onMessage = (msg, meta) => {
       for (const p of table.players) {
         if (p.isNPC) continue;
         const sid = socketIdFor(entry, p.uid);
-        if (sid) io.to(sid).emit('gameMessage', msg);
+        if (sid) io.to(sid).emit('gameMessage', msg, meta || null);
       }
     };
   }

@@ -213,8 +213,8 @@ function getOrCreateGame(roomId, options = {}) {
         }
       }
     };
-    game.onMessage = (msg) => {
-      io.to(roomId).emit('gameMessage', msg);
+    game.onMessage = (msg, meta) => {
+      io.to(roomId).emit('gameMessage', msg, meta || null);
     };
     game.onChat = (senderName, message) => {
       io.to(roomId).emit('chatMessage', {

@@ -1315,6 +1315,37 @@
   font-size: 0.76rem;
   padding: 4px 0;
 }
+/* Dealer narration by kind (server meta). Substring classes still apply. */
+.panel-scroll .log-entry[data-kind='handStart'] {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(201, 168, 76, 0.25);
+  color: var(--cream);
+  font-weight: 600;
+}
+.panel-scroll .log-entry[data-kind='blind'] {
+  color: var(--smoke);
+  opacity: 0.75;
+}
+.panel-scroll .log-entry[data-kind='street'] {
+  color: var(--gold);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+.panel-scroll .log-entry[data-kind='show'] {
+  color: var(--cream);
+}
+.panel-scroll .log-entry[data-kind='level'] {
+  color: var(--gold);
+  font-weight: 600;
+}
+.panel-scroll .log-entry[data-kind='eliminate'] {
+  color: #e0a060;
+}
+.panel-scroll .log-entry[data-kind='timebank'] {
+  color: #9fd8b5;
+}
 .panel-composer {
   flex-shrink: 0;
   border-top: 1px solid rgba(92, 61, 26, 0.35);

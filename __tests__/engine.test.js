@@ -1388,6 +1388,46 @@ describe('Equity Billing', () => {
   });
 });
 
+describe('Dealer narration', () => {
+  test('a hand narrates the blinds, the board and the showdown, each line tagged', () => {
+    const game = new PokerGame('narration', { smallBlind: 10, bigBlind: 20 });
+    const lines = [];
+    game.onMessage = (msg, meta) => lines.push({ msg, meta });
+    game.onUpdate = () => {};
+    game.onChat = () => {};
+    game.onRoundEnd = () => {};
+    game.addPlayer({ id: 'p1', name: 'Hero' });
+    game.addPlayer({ id: 'p2', name: 'Villain' });
+    game.startRound();
+    const ofKind = (kind) => lines.filter((l) => l.meta && l.meta.kind === kind);
+
+    expect(ofKind('handStart')[0].msg).toMatch(/^🃏 Hand 1 starts!.*blinds 10\/20$/);
+    expect(ofKind('handStart')[0].meta.handNum).toBe(1);
+    expect(ofKind('blind').map((l) => l.msg)).toEqual([
+      expect.stringMatching(/ posts small blind 10$/),
+      expect.stringMatching(/ posts big blind 20$/),
+    ]);
+
+    game.nextPhase();
+    const flop = ofKind('street')[0];
+    expect(flop.msg).toMatch(/^── Flop ── \S+ \S+ \S+$/);
+    expect(flop.meta.street).toBe('flop');
+    game.nextPhase();
+    game.nextPhase();
+    expect(ofKind('street').map((l) => l.meta.street)).toEqual(['flop', 'turn', 'river']);
+    expect(ofKind('street')[2].msg).toMatch(/^── River ── \S+$/);
+
+    game.nextPhase();
+    const shows = ofKind('show');
+    expect(shows).toHaveLength(2);
+    expect(shows[0].msg).toMatch(/ shows \S+ \S+ · /);
+    expect(ofKind('win').length).toBeGreaterThan(0);
+    expect(ofKind('win')[0].meta.handNum).toBe(1);
+    // The untagged betting strings the client sniffs are still there verbatim.
+    expect(lines.some((l) => /wins \d+!/.test(l.msg))).toBe(true);
+  });
+});
+
 describe('NPC psychology chat text', () => {
   test('folded chat lines no longer emit corrupted placeholder text', () => {
     const psychology = new NPCPsychology();

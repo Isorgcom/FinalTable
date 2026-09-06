@@ -90,6 +90,8 @@ test('a practice table seats every player, deals, and hands the viewer the actio
 
   await expect(page.locator('#logLast')).not.toContainText('joined the table');
   await expect(page.locator('#panelChatBody .log-entry')).not.toHaveCount(0);
+  await expect(page.locator('#panelChatBody .log-entry[data-kind="handStart"]')).not.toHaveCount(0);
+  await expect(page.locator('#panelChatBody .log-entry[data-kind="blind"]')).toHaveCount(2);
   await expect(page.locator('#tabChat')).toHaveAttribute('aria-selected', 'true');
   await page.click('#tabInfo');
   await expect(page.locator('#panelInfo')).toBeVisible();

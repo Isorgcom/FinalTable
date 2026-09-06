@@ -867,17 +867,18 @@ function registerSocketHandlers(deps) {
       game.bigBlind = blinds.bb;
 
       // Level-up callback
+      // The level line goes through the engine so it carries a log kind; the
+      // client no longer adds its own copy on tournamentLevelUp.
       game.tournament.onLevelUp = (level, newBlinds) => {
-        io.to(roomId).emit(
-          'gameMessage',
-          `⬆️ Blinds up! Level ${level + 1}: ${newBlinds.sb}/${newBlinds.bb}`
-        );
+        game.emitMessage(`⬆️ Blinds up! Level ${level + 1}: ${newBlinds.sb}/${newBlinds.bb}`, {
+          kind: 'level',
+        });
         io.to(roomId).emit('tournamentLevelUp', { level, blinds: newBlinds });
       };
 
-      io.to(roomId).emit(
-        'gameMessage',
-        `🏆 Tournament starts! ${game.players.length} players, blinds ${blinds.sb}/${blinds.bb}`
+      game.emitMessage(
+        `🏆 Tournament starts! ${game.players.length} players, blinds ${blinds.sb}/${blinds.bb}`,
+        { kind: 'system' }
       );
       game.startRound();
       logSocketEvent(

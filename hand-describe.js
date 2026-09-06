@@ -40,7 +40,8 @@ function describePreflop(hole) {
   };
 }
 
-function describeMade(best) {
+// The made hand in words, from an evaluateHand() result.
+function describeBest(best) {
   const k = best.kickers;
   switch (best.rank) {
     case HAND_RANKS.ROYAL_FLUSH:
@@ -78,8 +79,8 @@ function describeHand(holeCards, communityCards) {
   }
   const best = evaluateHand([...holeCards, ...board]);
   if (!best) return null;
-  const detail = describeMade(best);
+  const detail = describeBest(best);
   return { name: best.name, detail, text: `You have ${detail}`, rank: best.rank };
 }
 
-module.exports = { describeHand };
+module.exports = { describeHand, describeBest };
