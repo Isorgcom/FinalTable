@@ -239,37 +239,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// ============================================================
-//  v11: SPEED CONTROL
-// ============================================================
 
-function setGameSpeed(speed) {
-  if (!socket) return;
-  socket.emit('setSpeed', { speed });
-  // Update speed button highlight
-  document.querySelectorAll('.speed-btn').forEach((btn) => {
-    btn.classList.toggle('active', parseInt(btn.dataset.speed) === speed);
-  });
-}
-
-// ============================================================
-//  v11: PAUSE
-// ============================================================
-
-function togglePause() {
-  if (!socket || !gameState) return;
-  if (gameState.isPaused) {
-    socket.emit('resumeGame');
-    document.getElementById('pauseOverlay').classList.add('hidden');
-    document.getElementById('btnPause').classList.remove('paused');
-    document.getElementById('btnPause').textContent = 'Pause Practice';
-  } else {
-    socket.emit('pauseGame');
-    document.getElementById('pauseOverlay').classList.remove('hidden');
-    document.getElementById('btnPause').classList.add('paused');
-    document.getElementById('btnPause').textContent = 'Resume Practice';
-  }
-}
 
 // ============================================================
 //  v11: EQUITY SYSTEM
@@ -497,55 +467,6 @@ function closeDalioModal() {
   document.getElementById('dalioModal').classList.add('hidden');
 }
 
-// v11: in-game name change
-async function changeName() {
-  if (!socket) return;
-  const showTextPromptDialog =
-    typeof window.showTextPromptDialog === 'function' ? window.showTextPromptDialog : null;
-  const newName = showTextPromptDialog
-    ? await showTextPromptDialog({
-        title: 'Rename Player',
-        message: 'Enter a new display name for this seat.',
-        hint: 'Up to 12 characters.',
-        confirmLabel: 'Save Name',
-        placeholder: 'Player name',
-        defaultValue: '',
-        maxLength: 12,
-      })
-    : prompt('Enter new name (max 12 chars):');
-  if (!newName || !newName.trim()) return;
-  socket.emit('changeName', { newName: newName.trim() });
-}
-
-function isReadyCheckEnabled() {
-  if (!gameState || gameState.gameMode === 'practice') return false;
-  if (gameState.isRunning || gameState.roundCount > 0) return false;
-  const readyEligiblePlayers = gameState.players.filter(
-    (p) => !p.isNPC && p.uid !== gameState.hostId && !p.autoPlay
-  );
-  return readyEligiblePlayers.length >= 1;
-}
-
-function getReadySummary() {
-  const readyEligiblePlayers = gameState
-    ? gameState.players.filter((p) => !p.isNPC && p.uid !== gameState.hostId && !p.autoPlay)
-    : [];
-  const readyPlayers = readyEligiblePlayers.filter((p) => p.isReady);
-  const me = readyEligiblePlayers.find((p) => p.id === myId);
-  return {
-    totalHumans: readyEligiblePlayers.length,
-    readyHumans: readyPlayers.length,
-    allReady: readyEligiblePlayers.length === 0 || readyPlayers.length === readyEligiblePlayers.length,
-    meReady: !!(me && me.isReady),
-    unreadyNames: readyEligiblePlayers.filter((p) => !p.isReady).map((p) => p.name),
-  };
-}
-
-function toggleReady() {
-  if (!socket || !isReadyCheckEnabled()) return;
-  socket.emit('setReady', { ready: !getReadySummary().meReady });
-}
-
 function toggleAutoPlay() {
   if (!socket || !gameState) return;
   const me = gameState.players.find((p) => p.id === myId && !p.isNPC);
@@ -566,79 +487,14 @@ function hasResumeInteractionGuard() {
 
 function updateModeUI() {
   if (!gameState) return;
-  const mode = gameState.gameMode;
   const badge = document.getElementById('modeBadge');
-  const spg = document.getElementById('speedPauseGroup');
-
-  // Mode badge
-  badge.className = 'mode-badge ' + mode;
-  badge.textContent =
-    mode === 'practice' ? 'Practice' : mode === 'tournament' ? 'Tournament' : 'Cash';
-
-  // Speed/pause only in practice
-  if (mode === 'practice') {
-    spg.classList.remove('hidden');
-    // Sync speed button state
-    const curSpeed = gameState.speedMultiplier || 1;
-    document.querySelectorAll('.speed-btn').forEach((btn) => {
-      btn.classList.toggle('active', parseInt(btn.dataset.speed) === curSpeed);
-    });
-    // Sync pause button state
-    const pauseBtn = document.getElementById('btnPause');
-    if (gameState.isPaused) {
-      pauseBtn.classList.add('paused');
-      pauseBtn.textContent = 'Resume Practice';
-      document.getElementById('pauseOverlay').classList.remove('hidden');
-    } else {
-      pauseBtn.classList.remove('paused');
-      pauseBtn.textContent = 'Pause Practice';
-      document.getElementById('pauseOverlay').classList.add('hidden');
-    }
-  } else {
-    spg.classList.add('hidden');
+  if (badge) {
+    badge.className = 'mode-badge tournament';
+    badge.textContent = 'Tournament';
   }
-
-  // Round overlay buttons: adapt to mode
-  const startBtn = document.getElementById('btnStartGame');
-  const tournBtn = document.getElementById('btnStartTournament');
-  const readyBtn = document.getElementById('btnToggleReady');
-  const readyStatus = document.getElementById('readyStatus');
   const autoBtn = document.getElementById('btnAutoPlay');
+  if (!autoBtn) return;
   const me = gameState.players.find((p) => p.id === myId && !p.isNPC);
-  if (mode === 'practice') {
-    startBtn.textContent = 'Start Practice';
-    tournBtn.classList.add('hidden');
-    readyBtn.classList.add('hidden');
-    readyStatus.classList.add('hidden');
-  } else if (mode === 'tournament') {
-    startBtn.classList.add('hidden');
-    tournBtn.classList.remove('hidden');
-  } else {
-    startBtn.textContent = 'Deal';
-    startBtn.classList.remove('hidden');
-    tournBtn.classList.add('hidden');
-  }
-
-  if (isReadyCheckEnabled()) {
-    const readySummary = getReadySummary();
-    readyStatus.classList.remove('hidden');
-    readyStatus.textContent = `${readySummary.readyHumans}/${readySummary.totalHumans} guests ready`;
-    if (gameState.isHost) {
-      readyBtn.classList.add('hidden');
-    } else {
-      readyBtn.classList.remove('hidden');
-      readyBtn.classList.toggle('ready', readySummary.meReady);
-      readyBtn.textContent = readySummary.meReady ? 'Cancel Ready' : 'Ready';
-    }
-  } else {
-    readyBtn.classList.add('hidden');
-    readyStatus.classList.add('hidden');
-  }
-
-  if (!autoBtn) {
-    updateHostControls();
-    return;
-  }
   if (!me || me.isSpectator || gameState.gameOver || !gameState.isRunning) {
     autoBtn.classList.add('hidden');
     autoBtn.classList.remove('autoplay-active');
@@ -648,59 +504,5 @@ function updateModeUI() {
     autoBtn.textContent = me.autoPlay ? 'resume' : 'auto';
     autoBtn.title = me.autoPlay ? 'Resume manual control' : 'Let the computer play this seat';
   }
-
-  updateHostControls();
 }
 
-function updateHostControls() {
-  if (!gameState) return;
-  const canManageRoom = !!gameState.isHost;
-  [
-    'btnStartGame',
-    'btnStartTournament',
-    'btnNextRoundAction',
-    'btnNPCPanel',
-    'btnSave',
-    'btnDeleteSave',
-    'btnRestart',
-  ].forEach((id) => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.disabled = !canManageRoom;
-    btn.classList.toggle('host-locked', !canManageRoom);
-    btn.title = canManageRoom ? '' : `Room host: ${gameState.hostName || 'waiting'}`;
-  });
-
-  const resultBtn = document.getElementById('btnResultNextHand');
-  const resultExitBtn = document.getElementById('btnResultExit');
-  const rematchTools = document.getElementById('resultRematchTools');
-  const rematchAddBtn = document.getElementById('btnResultAddNpc');
-  const rematchRemoveBtn = document.getElementById('btnResultRemoveNpc');
-  if (!resultBtn) return;
-  resultBtn.disabled = false;
-  resultBtn.classList.remove('host-locked');
-  const me = gameState.players.find((p) => p.id === myId && !p.isNPC);
-  if (gameState.gameOver) {
-    if (canManageRoom) {
-      resultBtn.textContent = 'Play Again';
-      resultBtn.title = '';
-    } else {
-      resultBtn.textContent = me && me.isReady ? 'Cancel Ready' : 'Ready Again';
-      resultBtn.title = 'Stay at the table for the rematch';
-    }
-    if (resultExitBtn) resultExitBtn.classList.remove('hidden');
-    if (rematchTools) rematchTools.classList.toggle('hidden', !canManageRoom);
-    [rematchAddBtn, rematchRemoveBtn].forEach((btn) => {
-      if (!btn) return;
-      btn.disabled = !canManageRoom;
-      btn.classList.toggle('host-locked', !canManageRoom);
-    });
-  } else {
-    resultBtn.textContent = canManageRoom ? 'Next Hand' : 'Close';
-    resultBtn.title = canManageRoom
-      ? ''
-      : `Room host: ${gameState.hostName || 'waiting'} starts the next hand`;
-    if (resultExitBtn) resultExitBtn.classList.add('hidden');
-    if (rematchTools) rematchTools.classList.add('hidden');
-  }
-}

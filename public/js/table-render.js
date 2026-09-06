@@ -199,21 +199,14 @@ function renderTable(oldCommunityLen) {
   renderPlayersIncremental();
 
   // ── Round overlay ──
+  // The director deals on its own clock; the overlay only says so before the
+  // first hand.
   const overlay = document.getElementById('roundOverlay');
-  const isTournament = gameState.tournament && gameState.tournament.isActive;
-  if (!gameState.isRunning && gameState.phase !== 'showdown') {
-    const modeSelect = document.getElementById('modeSelectBtns');
-    const nextBtn = document.getElementById('btnNextRoundAction');
-
-    if (gameState.roundCount === 0 && !isTournament) {
-      overlay.classList.remove('hidden');
-      modeSelect.classList.remove('hidden');
-      nextBtn.classList.add('hidden');
-    } else {
-      overlay.classList.add('hidden');
-    }
-  } else {
-    overlay.classList.add('hidden');
+  if (overlay) {
+    overlay.classList.toggle(
+      'hidden',
+      gameState.isRunning || gameState.roundCount > 0 || gameState.phase === 'showdown'
+    );
   }
 }
 
@@ -955,7 +948,11 @@ function updateTopBar() {
   if (!topInfo) return;
 
   let text = '';
-  if (me && me.isConnected === false) {
+  const field = window.mttField;
+  if (!me && field && field.you && field.you.eliminated) {
+    text = `Watching table ${field.you.watchingTable || ''}`.trim();
+    if (field.you.place) text += ` · out in #${field.you.place}`;
+  } else if (me && me.isConnected === false) {
     text = me.autoPlay ? 'Disconnected · Auto-play active' : 'Disconnected';
   } else if (me && me.isSpectator && !gameState.gameOver) {
     text =
@@ -965,26 +962,8 @@ function updateTopBar() {
           ? 'Spectating · eliminated from tournament'
           : 'Spectating';
   } else if (!gameState.isRunning && gameState.roundCount === 0) {
-    if (gameState.gameMode === 'practice') {
-      text = 'Practice table ready';
-    } else {
-      // Count everyone who can be dealt in, bots included. This mirrors the
-      // server's actual rule in socket-handlers.js ("Need at least 2 players",
-      // counting players with chips). The old check counted humans only, so a
-      // table of one human and five bots reported "Waiting for 1 more player"
-      // while the Deal button sat there enabled and the game was ready to run.
-      const seated = gameState.players.filter((p) => p.chips > 0);
-      if (seated.length < 2) {
-        const needed = 2 - seated.length;
-        text = `Waiting for ${needed} more player${needed === 1 ? '' : 's'}`;
-      } else if (typeof isReadyCheckEnabled === 'function' && isReadyCheckEnabled()) {
-        const summary = getReadySummary();
-        text = `${summary.readyHumans}/${summary.totalHumans} guests ready`;
-      } else {
-        text = gameState.isHost ? 'Ready to deal' : 'Waiting for the host to deal';
-      }
-      if (gameState.hostName) text += ` · Host ${gameState.hostName}`;
-    }
+    text = 'Waiting for the first deal';
+    if (gameState.hostName) text += ` · Host ${gameState.hostName}`;
   } else {
     // Showdown deliberately has no special case: it reads as
     // "Round N · Showdown · chips" like every other phase. The old
@@ -1005,7 +984,6 @@ function showResult(options = {}) {
   const modal = document.getElementById('resultModal');
   const details = document.getElementById('resultDetails');
   const title = document.getElementById('resultTitle');
-  const rematchTools = document.getElementById('resultRematchTools');
 
   if (!gameState) return;
 
@@ -1134,19 +1112,16 @@ function showResult(options = {}) {
         );
       }
     }
-    if (rematchTools) rematchTools.classList.toggle('hidden', !gameState.isHost);
     if (iWon && !refreshOnly) launchConfetti();
   } else if (iWon) {
     title.textContent = 'You won!';
     title.classList.add('result-title-winner');
     // Confetti celebration
     if (!refreshOnly) launchConfetti();
-    if (rematchTools) rematchTools.classList.add('hidden');
   } else {
     // Only reachable at game over now that the between-hands popup is gone.
     title.textContent = 'Table over';
     title.classList.remove('result-title-winner');
-    if (rematchTools) rematchTools.classList.add('hidden');
   }
 
   const latestHand =

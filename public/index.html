@@ -220,13 +220,6 @@
         <div class="top-bar-title">FinalTable <span class="mode-badge" id="modeBadge"></span></div>
         <div class="top-bar-info" id="topInfo">Waiting...</div>
         <div class="top-bar-btns">
-          <!-- Speed/pause (practice only) -->
-          <div class="speed-pause-group hidden" id="speedPauseGroup">
-            <button class="speed-btn active" data-speed="1">1x</button>
-            <button class="speed-btn" data-speed="2">2x</button>
-            <button class="speed-btn" data-speed="3">3x</button>
-            <button class="pause-btn" id="btnPause">Pause Practice</button>
-          </div>
           <button class="top-btn" id="btnLeaderboard" title="Leaderboard">stats</button>
           <button class="top-btn" id="btnReplay" title="Hand Replay">replay</button>
           <button class="top-btn" id="btnAutoPlay" title="Auto-play this seat">auto</button>
@@ -246,12 +239,7 @@
             </button>
             <div class="menu-dropdown" id="menuDropdown" role="menu">
               <button class="menu-item" id="btnHint">hands</button>
-              <button class="menu-item" id="btnNPCPanel">npcs</button>
-              <button class="menu-item" id="btnSave">Save Room</button>
-              <button class="menu-item" id="btnDeleteSave">Delete Room Save</button>
-              <button class="menu-item" id="btnRestart">restart</button>
-              <button class="menu-item" id="btnRename">rename</button>
-              <button class="menu-item" id="btnExit">exit</button>
+              <button class="menu-item" id="btnExit">leave</button>
             </div>
           </div>
         </div>
@@ -285,20 +273,8 @@
           <div id="playerSeats"></div>
         </div>
 
-        <div class="round-overlay" id="roundOverlay">
-          <div id="modeSelectBtns">
-            <button class="btn-start-game" id="btnStartGame">Deal</button>
-            <button class="btn-start-game btn-ready-toggle hidden" id="btnToggleReady">
-              Ready
-            </button>
-            <div class="ready-status hidden" id="readyStatus"></div>
-            <button class="btn-start-game hidden stacked-start-btn" id="btnStartTournament">
-              Start Tournament
-            </button>
-          </div>
-          <button class="btn-start-game hidden stacked-start-btn" id="btnNextRoundAction">
-            Next Hand
-          </button>
+        <div class="round-overlay hidden" id="roundOverlay">
+          <div class="round-overlay-note">Waiting for the first deal…</div>
         </div>
 
         <div class="actions-panel hidden" id="actionsPanel">
@@ -445,20 +421,6 @@
     </div>
 
     <!-- NPC MANAGEMENT PANEL -->
-    <div
-      class="npc-panel hidden"
-      id="npcPanel"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="npcPanelTitle"
-    >
-      <div class="npc-panel-content">
-        <div class="npc-panel-title" id="npcPanelTitle">Characters</div>
-        <div class="npc-panel-subtitle">Tap a character card to add or remove NPCs</div>
-        <div class="npc-grid" id="npcGrid"></div>
-        <button class="npc-panel-close" id="btnCloseNPCPanel">Close</button>
-      </div>
-    </div>
 
     <!-- LEADERBOARD PANEL -->
     <div
@@ -513,21 +475,6 @@
     </div>
 
     <!-- TOURNAMENT RESULT MODAL -->
-    <div
-      class="result-modal hidden"
-      id="tournamentModal"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Tournament Result"
-    >
-      <div class="result-content result-content-wide">
-        <div class="result-title">Tournament Complete</div>
-        <div class="tournament-result" id="tournamentResult"></div>
-        <button class="btn-start-game modal-action-spaced" id="btnCloseTournamentModal">
-          Understood
-        </button>
-      </div>
-    </div>
 
     <!-- HAND TYPES MODAL -->
     <div
@@ -585,17 +532,9 @@
       <div class="result-content">
         <div class="result-title" id="resultTitle">Table over</div>
         <div class="result-details" id="resultDetails"></div>
-        <div class="result-rematch-tools hidden" id="resultRematchTools">
-          <button class="btn-start-game result-side-btn" id="btnResultAddNpc">Add 1 NPC</button>
-          <button class="btn-start-game result-side-btn" id="btnResultRemoveNpc">
-            Remove 1 NPC
-          </button>
-        </div>
         <div class="result-actions">
-          <button class="btn-start-game" id="btnResultNextHand">Next Hand</button>
-          <button class="btn-start-game result-exit-btn hidden" id="btnResultExit">
-            Exit Table
-          </button>
+          <button class="btn-start-game" id="btnResultNextHand">Close</button>
+          <button class="btn-start-game result-exit-btn" id="btnResultExit">Back to lobby</button>
         </div>
       </div>
     </div>
@@ -652,11 +591,6 @@
     </div>
 
     <!-- PAUSE OVERLAY -->
-    <div class="pause-overlay hidden" id="pauseOverlay">
-      <div class="pause-text">Practice Paused</div>
-      <div class="pause-subtext">AI actions and auto-advance are paused.</div>
-      <button class="pause-resume-btn" id="btnPauseResume">Resume Practice</button>
-    </div>
 
     <!-- EQUITY RULES POPUP -->
     <div

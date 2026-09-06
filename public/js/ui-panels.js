@@ -47,16 +47,6 @@ function addLog(msg, meta) {
   while (body.children.length > 50) body.removeChild(body.firstChild);
 }
 
-const STYLE_NAMES = {
-  aggressive: 'Aggressive',
-  tight: 'Tight',
-  maniac: 'Maniac',
-  tricky: 'Tricky',
-  rock: 'Rock',
-  balanced: 'Balanced',
-  passive: 'Passive',
-};
-
 function getReplayPlayerDisplayName(player) {
   if (!player) return '';
   if (player.isNPC && player.npcProfile && player.npcProfile.isWestern) {
@@ -74,88 +64,6 @@ function getReplayNameByPlayerId(hand, playerId, fallbackName) {
 function getReplayWinnerText(hand, winner) {
   const winnerName = getReplayNameByPlayerId(hand, winner.playerId, winner.playerName);
   return winner.handName ? `${winnerName} (${winner.handName})` : winnerName;
-}
-
-function renderNPCPanel(profiles) {
-  const grid = document.getElementById('npcGrid');
-  const currentNPCs = gameState ? gameState.players.filter((p) => p.isNPC).map((p) => p.name) : [];
-  const isRunning = gameState && gameState.isRunning;
-  const canManageNPCs = gameState && gameState.isHost && !isRunning;
-
-  grid.textContent = '';
-  for (const p of profiles) {
-    const atTable = currentNPCs.includes(p.name);
-    const isW = p.isWestern;
-    const card = document.createElement('div');
-    card.className = 'npc-card' + (atTable ? ' at-table' : '');
-
-    const header = document.createElement('div');
-    header.className = 'npc-card-header';
-    header.appendChild(createTextElement('span', 'npc-card-avatar', p.avatar || ''));
-
-    const nameBlock = document.createElement('div');
-    if (isW) {
-      nameBlock.appendChild(createTextElement('div', 'npc-card-name', p.nameEn || p.name));
-      nameBlock.appendChild(createTextElement('div', 'npc-card-title', p.titleEn || p.title));
-    } else {
-      nameBlock.appendChild(createTextElement('div', 'npc-card-name', p.name));
-      nameBlock.appendChild(
-        createTextElement('div', 'npc-card-title npc-card-title-muted', p.nameEn || '')
-      );
-      nameBlock.appendChild(createTextElement('div', 'npc-card-title', p.titleEn || p.title));
-    }
-    header.appendChild(nameBlock);
-    card.appendChild(header);
-    card.appendChild(
-      createTextElement(
-        'div',
-        'npc-card-origin',
-        isW ? p.originEn || p.origin : `${p.origin} · ${p.originEn || ''}`
-      )
-    );
-    if (isW) {
-      card.appendChild(createTextElement('div', 'npc-card-bio', p.bioEn || p.bio));
-    } else {
-      card.appendChild(createTextElement('div', 'npc-card-bio', p.bio));
-      card.appendChild(
-        createTextElement('div', 'npc-card-bio npc-card-bio-secondary', p.bioEn || '')
-      );
-    }
-    card.appendChild(createTextElement('span', 'npc-card-style', STYLE_NAMES[p.style] || p.style));
-
-    if (!canManageNPCs) {
-      card.appendChild(
-        createTextElement('span', 'npc-card-status', isRunning ? 'in game' : 'host only')
-      );
-    } else {
-      const npcBtn = document.createElement('button');
-      npcBtn.className = atTable ? 'npc-card-btn remove' : 'npc-card-btn add';
-      npcBtn.dataset.npcAction = atTable ? 'remove' : 'add';
-      npcBtn.dataset.npcName = p.name;
-      npcBtn.textContent = atTable ? 'remove' : 'join';
-      npcBtn.addEventListener('click', () => {
-        const action = npcBtn.dataset.npcAction;
-        const name = npcBtn.dataset.npcName;
-        if (action === 'add') addNPC(name);
-        else removeNPC(name);
-      });
-      card.appendChild(npcBtn);
-    }
-    grid.appendChild(card);
-  }
-}
-
-function addNPC(name) {
-  if (socket) {
-    socket.emit('addNPC', { npcName: name });
-    setTimeout(() => socket.emit('getNPCList'), 300);
-  }
-}
-function removeNPC(name) {
-  if (socket) {
-    socket.emit('removeNPC', { npcName: name });
-    setTimeout(() => socket.emit('getNPCList'), 300);
-  }
 }
 
 // ============================================================
@@ -637,29 +545,6 @@ function createReplayCardElement(card) {
 // ============================================================
 //  TOURNAMENT RESULT
 // ============================================================
-function renderTournamentResult(result) {
-  const div = document.getElementById('tournamentResult');
-  div.textContent = '';
-  const dur = Math.floor(result.duration / 1000);
-  const durMin = Math.floor(dur / 60);
-  const durSec = dur % 60;
-
-  div.appendChild(
-    createTextElement(
-      'div',
-      'tournament-summary',
-      `${durMin}m ${durSec}s | ${result.totalHands} hands | Final Level ${result.finalLevel + 1}`
-    )
-  );
-  const placeClasses = { 1: 'tr-1st', 2: 'tr-2nd', 3: 'tr-3rd' };
-  for (const e of result.eliminations) {
-    const cls = placeClasses[e.place] || '';
-    const row = createTextElement('div', `tr-place ${cls}`.trim(), `#${e.place}`);
-    row.appendChild(createTextElement('span', '', e.name));
-    div.appendChild(row);
-  }
-}
-
 // The side panel draws these on demand (side-panel.js loads first).
 if (window.SidePanel) {
   SidePanel.register('info', renderInfoTab);

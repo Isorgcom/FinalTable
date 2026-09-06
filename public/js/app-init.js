@@ -117,77 +117,15 @@ function init() {
     return true;
   }
 
-  async function confirmStartWithReadyCheck() {
-    if (!gameState || !isReadyCheckEnabled() || gameState.isHost !== true) return true;
-    const summary = getReadySummary();
-    if (summary.allReady) return true;
-    return window.showConfirmDialog({
-      title: 'Start Without Everyone Ready?',
-      message: `Ready: ${summary.readyHumans}/${summary.totalHumans}.`,
-      hint: `Waiting on: ${summary.unreadyNames.join(', ')}`,
-      confirmLabel: 'Start Anyway',
-      cancelLabel: 'Keep Waiting',
-    });
-  }
-
-  document.getElementById('btnStartGame').addEventListener('click', async () => {
-    if (typeof hasResumeInteractionGuard === 'function' && hasResumeInteractionGuard()) return;
-    const force = await confirmStartWithReadyCheck();
-    if (force || !isReadyCheckEnabled() || gameState.isHost !== true) {
-      socket.emit('startGame', { force });
-    }
-  });
-  document.getElementById('btnToggleReady').addEventListener('click', toggleReady);
-  document.getElementById('btnNextRoundAction').addEventListener('click', () => {
+  // The result modal is the game-over view; in a tournament the standings
+  // live in the Info tab, so its buttons only close it or leave.
+  document.getElementById('btnResultNextHand').addEventListener('click', () => {
     document.getElementById('resultModal').classList.add('hidden');
-    socket.emit('nextRound');
-  });
-  document.getElementById('btnResultNextHand').addEventListener('click', async () => {
-    if (!socket || !gameState) return;
-    if (gameState.gameOver) {
-      if (gameState.isHost) {
-        if (typeof hasResumeInteractionGuard === 'function' && hasResumeInteractionGuard()) return;
-        const confirmed = await window.showConfirmDialog({
-          title:
-            gameState.gameMode === 'practice'
-              ? 'Start a Fresh Practice Table?'
-              : 'Start a New Table?',
-          message:
-            gameState.gameMode === 'practice'
-              ? 'This resets all stacks and starts a fresh practice run.'
-              : 'This resets all stacks and starts a fresh table.',
-          confirmLabel: 'Play Again',
-          cancelLabel: 'Cancel',
-        });
-        if (!confirmed) return;
-        document.getElementById('resultModal').classList.add('hidden');
-        socket.emit('restartGame');
-      } else {
-        const me = gameState.players.find((p) => p.id === myId && !p.isNPC);
-        if (!me) return;
-        socket.emit('setReady', { ready: !me.isReady });
-      }
-      return;
-    }
-    document.getElementById('resultModal').classList.add('hidden');
-    if (gameState.isHost) socket.emit('nextRound');
   });
   document.getElementById('btnResultExit').addEventListener('click', () => {
     document.getElementById('resultModal').classList.add('hidden');
     if (window.Lobby) Lobby.leave();
   });
-  const resultAddNpc = document.getElementById('btnResultAddNpc');
-  if (resultAddNpc) {
-    resultAddNpc.addEventListener('click', () => {
-      if (socket && gameState && gameState.isHost && gameState.gameOver) socket.emit('addNPC');
-    });
-  }
-  const resultRemoveNpc = document.getElementById('btnResultRemoveNpc');
-  if (resultRemoveNpc) {
-    resultRemoveNpc.addEventListener('click', () => {
-      if (socket && gameState && gameState.isHost && gameState.gameOver) socket.emit('removeNPC');
-    });
-  }
   document.getElementById('btnFold').addEventListener('click', () => sendAction('fold'));
   document.getElementById('btnCheck').addEventListener('click', () => sendAction('check'));
   document.getElementById('btnCall').addEventListener('click', () => sendAction('call'));
@@ -204,51 +142,7 @@ function init() {
   document.getElementById('btnRequestTime').addEventListener('click', () => {
     if (socket) socket.emit('requestTime');
   });
-  document.querySelectorAll('.speed-btn[data-speed]').forEach((btn) => {
-    btn.addEventListener('click', () => setGameSpeed(parseInt(btn.dataset.speed, 10)));
-  });
-  document.getElementById('btnPause').addEventListener('click', togglePause);
-  document.getElementById('btnPauseResume').addEventListener('click', togglePause);
   document.getElementById('menuToggle').addEventListener('click', toggleMenu);
-  document.getElementById('btnRename').addEventListener('click', changeName);
-  document.getElementById('btnNPCPanel').addEventListener('click', () => {
-    closeMenu();
-    socket.emit('getNPCList');
-    document.getElementById('npcPanel').classList.remove('hidden');
-  });
-  document.getElementById('btnCloseNPCPanel').addEventListener('click', () => {
-    document.getElementById('npcPanel').classList.add('hidden');
-  });
-  document.getElementById('btnRestart').addEventListener('click', async () => {
-    closeMenu();
-    const confirmed = await window.showConfirmDialog({
-      title: 'Restart Table?',
-      message: 'All stacks will reset to the room starting stack.',
-      confirmLabel: 'Restart',
-      cancelLabel: 'Cancel',
-    });
-    if (confirmed) {
-      socket.emit('restartGame');
-    }
-  });
-  document.getElementById('btnSave').addEventListener('click', () => {
-    closeMenu();
-    socket.emit('saveGame');
-  });
-  document.getElementById('btnDeleteSave').addEventListener('click', async () => {
-    closeMenu();
-    if (!gameState) return;
-    const confirmed = await window.showConfirmDialog({
-      title: 'Delete Saved Room?',
-      message: `Remove the saved state for "${gameState.id}".`,
-      hint: 'This cannot be undone.',
-      confirmLabel: 'Delete Save',
-      cancelLabel: 'Cancel',
-    });
-    if (confirmed) {
-      socket.emit('deleteSave', { roomId: gameState.id });
-    }
-  });
   // Leaving is the lobby's business: unregister before the start, leave the
   // stack under auto-play once running.
   document.getElementById('btnExit').addEventListener('click', () => {
@@ -285,29 +179,8 @@ function init() {
     closeMenu();
     document.getElementById('hintModal').classList.remove('hidden');
   });
-  document.getElementById('btnCloseTournamentModal').addEventListener('click', () => {
-    document.getElementById('tournamentModal').classList.add('hidden');
-  });
   document.getElementById('btnCloseHintModal').addEventListener('click', () => {
     document.getElementById('hintModal').classList.add('hidden');
-  });
-  document.getElementById('btnStartTournament').addEventListener('click', async () => {
-    if (!socket) return;
-    const force = await confirmStartWithReadyCheck();
-    if (!force && isReadyCheckEnabled() && gameState.isHost === true) return;
-    const dur = await window.showTextPromptDialog({
-      title: 'Tournament Setup',
-      message: 'Set the blind level duration in seconds.',
-      hint: '180 seconds = 3 minutes.',
-      confirmLabel: 'Start Tournament',
-      cancelLabel: 'Cancel',
-      placeholder: '180',
-      defaultValue: '180',
-      maxLength: 4,
-    });
-    if (dur === null) return;
-    const levelDuration = parseInt(dur, 10) || 180;
-    socket.emit('startTournament', { levelDuration: Math.max(30, levelDuration), force });
   });
   document.getElementById('eqSide').addEventListener('click', onEqSideClick);
   document.getElementById('eqSideBtn').addEventListener('keydown', (e) => {
@@ -509,10 +382,8 @@ function init() {
       return;
     }
     const modals = [
-      'npcPanel',
       'lbPanel',
       'replayPanel',
-      'tournamentModal',
       'hintModal',
       'resultModal',
       'appDialogModal',
@@ -528,10 +399,8 @@ function init() {
   });
 
   [
-    'npcPanel',
     'lbPanel',
     'replayPanel',
-    'tournamentModal',
     'hintModal',
     'resultModal',
     'appDialogModal',
