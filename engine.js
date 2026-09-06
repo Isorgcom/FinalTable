@@ -296,6 +296,7 @@ class PokerGame {
       allIn: false,
       isNPC: playerData.isNPC || false,
       npcProfile: playerData.npcProfile || null,
+      avatar: playerData.avatar || null,
       seatIndex: this.players.length,
       isConnected: true,
       isReady: false,

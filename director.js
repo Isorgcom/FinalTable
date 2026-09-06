@@ -168,6 +168,7 @@ class TournamentDirector {
         id: entrant.id,
         uid: entrant.uid,
         name: entrant.name,
+        avatar: entrant.avatar || null,
         isNPC: entrant.isNPC || false,
         npcProfile: entrant.npcProfile || null,
         chips: this.startChips,
@@ -210,7 +211,10 @@ class TournamentDirector {
   }
 
   _createTable(index) {
+    // A director table is a tournament table unless the caller says otherwise:
+    // that is what selects the tournament action clock in the engine.
     const table = new PokerGame(`${this.id}_t${index + 1}`, {
+      gameMode: 'tournament',
       ...this.gameOptions,
       maxPlayers: this.tableSize,
       startChips: this.startChips,
@@ -242,9 +246,12 @@ class TournamentDirector {
   // Percentages resolved to whole chips. Floor each share and give the
   // remainder to first place, so the payouts always add back up to the pool
   // exactly rather than losing a unit to rounding.
+  // Before start() the structure is projected from the entrants so far, so a
+  // waiting room can show the ladder instead of the caller blowing up.
   payouts() {
     const pool = this.prizePool();
-    const shares = this.payoutPct.map((pct, i) => ({
+    const pct = this.payoutPct || payoutPercentagesFor(Math.max(2, this.entrants.length));
+    const shares = pct.map((pct, i) => ({
       place: i + 1,
       pct,
       amount: pool > 0 ? Math.floor((pool * pct) / 100) : 0,
@@ -423,6 +430,7 @@ class TournamentDirector {
       id: player.id,
       uid: player.uid,
       name: player.name,
+      avatar: player.avatar || null,
       isNPC: player.isNPC,
       npcProfile: player.npcProfile,
       chips: player.chips,
@@ -546,6 +554,7 @@ class TournamentDirector {
         id: player.id,
         uid: player.uid,
         name: player.name,
+        avatar: player.avatar || null,
         isNPC: player.isNPC,
         npcProfile: player.npcProfile,
         chips: player.chips,

@@ -566,3 +566,55 @@ describe('TournamentDirector money (phase 5)', () => {
     d.stop();
   });
 });
+
+describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
+  test('fieldSummary and payouts are safe before start and project a ladder', () => {
+    const d = makeDirector(3, { buyIn: 100 });
+    expect(() => d.fieldSummary('p0')).not.toThrow();
+    const summary = d.fieldSummary('p0');
+    expect(summary.isRunning).toBe(false);
+    expect(summary.entrants).toBe(3);
+    expect(summary.prizePool).toBe(300);
+    expect(summary.payouts.length).toBeGreaterThan(0);
+    expect(summary.payouts.reduce((sum, p) => sum + p.amount, 0)).toBe(300);
+    expect(() => new TournamentDirector({ id: 'empty' }).fieldSummary()).not.toThrow();
+  });
+
+  test('avatars are carried through seating and a balance move', () => {
+    const d = new TournamentDirector({
+      id: 'avatars',
+      tableSize: 3,
+      startChips: 1000,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    ['🦊', '🐸', '🦁', '🐯'].forEach((avatar, i) =>
+      d.register({ id: `p${i}`, uid: `u${i}`, name: `P${i}`, avatar })
+    );
+    d.start();
+    for (const table of d.tables) {
+      for (const p of table.players) expect(p.avatar).toMatch(/^[🦊🐸🦁🐯]$/u);
+    }
+    const from = d.tables[0];
+    const to = d.tables[1];
+    const mover = from.players[0];
+    expect(d._movePlayer(from, to, mover)).toBe(true);
+    const moved = to.players.find((p) => p.uid === mover.uid);
+    expect(moved.avatar).toBe(mover.avatar);
+    expect(to.getStateForPlayer(moved.id).players.find((p) => p.uid === mover.uid).avatar).toBe(
+      mover.avatar
+    );
+  });
+
+  test('director tables run the tournament action clock', () => {
+    const d = makeDirector(2, { gameOptions: {} });
+    d.start();
+    expect(d.tables[0].gameMode).toBe('tournament');
+    expect(d.tables[0].getHumanActionTimeoutMs()).toBe(25000);
+    // A caller can still override the mode, which is how the tests above keep
+    // their zero action clock.
+    const quiet = makeDirector(2);
+    quiet.start();
+    expect(quiet.tables[0].gameMode).toBe('tournament');
+  });
+});

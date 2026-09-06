@@ -17,7 +17,16 @@ const random = require('../random');
 const TICK_MS = 1200;
 
 function registerTournamentHandlers(deps) {
-  const { io, sanitizeName, sanitizeAvatar, maxTournaments = 8 } = deps;
+  const {
+    io,
+    sanitizeName,
+    sanitizeAvatar,
+    maxTournaments = 8,
+    tableOptions = {},
+    getPreflopTable = () => null,
+    finishedTtlMs = 10 * 60 * 1000,
+    abandonGraceMs = 2 * 60 * 1000,
+  } = deps;
 
   // tournamentId -> { director, hostUid, name, seats: Map(uid -> socketId), timer }
   const tournaments = new Map();
@@ -96,10 +105,44 @@ function registerTournamentHandlers(deps) {
       clearInterval(entry.timer);
       entry.timer = null;
     }
+    if (entry.abandonTimer) {
+      clearTimeout(entry.abandonTimer);
+      entry.abandonTimer = null;
+    }
     entry.director.stop();
   }
 
+  // Nobody connected: give them a chance to come back before the tournament
+  // is torn down. A network blip used to destroy a solo host's field on the
+  // spot, one second before socket.io recovered the very same connection.
+  function scheduleAbandon(entry) {
+    if (entry.abandonTimer) return;
+    entry.abandonTimer = setTimeout(() => {
+      entry.abandonTimer = null;
+      if (entry.seats.size > 0) return;
+      stopTournament(entry);
+      tournaments.delete(entry.director.id);
+      broadcastList();
+    }, abandonGraceMs);
+    if (entry.abandonTimer.unref) entry.abandonTimer.unref();
+  }
+
+  function cancelAbandon(entry) {
+    if (!entry.abandonTimer) return;
+    clearTimeout(entry.abandonTimer);
+    entry.abandonTimer = null;
+  }
+
   io.on('connection', (socket) => {
+    // socket.io recovered this connection (same id, same data) after a short
+    // drop. The disconnect handler dropped the seat mapping; put it back.
+    if (socket.recovered && socket.data.tournamentId && socket.data.tournamentUid) {
+      const entry = tournaments.get(socket.data.tournamentId);
+      if (entry) {
+        entry.seats.set(socket.data.tournamentUid, socket.id);
+        cancelAbandon(entry);
+      }
+    }
     socket.emit('tournamentList', publicList());
 
     socket.on('listTournaments', () => socket.emit('tournamentList', publicList()));
@@ -140,8 +183,16 @@ function registerTournamentHandlers(deps) {
         startChips,
         buyIn,
         levelDuration,
-        gameOptions: {},
-        onTableCreated: (table) => wireTable(entry, table),
+        // Tournament tables run the tournament clock (25s to act, not the
+        // 90s cash idle clock) and get the same bot options as rooms.
+        gameOptions: { gameMode: 'tournament', ...tableOptions },
+        onTableCreated: (table) => {
+          // Display only: the Info tab's Host line. Authority stays with hostUid.
+          table.hostPlayerId = hostUid;
+          const preflop = getPreflopTable();
+          if (preflop) table.preflopTable = preflop;
+          wireTable(entry, table);
+        },
         onMessage: (msg) => {
           for (const sid of entry.seats.values()) io.to(sid).emit('gameMessage', msg);
         },
@@ -159,6 +210,15 @@ function registerTournamentHandlers(deps) {
           }
           stopTournament(entry);
           broadcastList();
+          // Keep the standings around for a while, then free the slot: a
+          // finished entry used to stay forever and exhaust maxTournaments.
+          entry.cleanupTimer = setTimeout(() => {
+            if (tournaments.get(director.id) === entry) {
+              tournaments.delete(director.id);
+              broadcastList();
+            }
+          }, finishedTtlMs);
+          if (entry.cleanupTimer.unref) entry.cleanupTimer.unref();
         },
       });
       entry.director = director;
@@ -303,11 +363,7 @@ function registerTournamentHandlers(deps) {
       // socket id is rebound if they come back. Only drop the mapping.
       const uid = socket.data.tournamentUid;
       if (uid && entry.seats.get(uid) === socket.id) entry.seats.delete(uid);
-      if (entry.seats.size === 0) {
-        stopTournament(entry);
-        tournaments.delete(entry.director.id);
-        broadcastList();
-      }
+      if (entry.seats.size === 0) scheduleAbandon(entry);
     });
   });
 

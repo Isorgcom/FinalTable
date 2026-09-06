@@ -518,6 +518,13 @@ async function joinGame() {
   }, 15000);
 
   socket.on('connect', () => {
+    // A socket that already belongs to a tournament must never fall through
+    // to joinRoom on a reconnect: that put reconnecting players into a phantom
+    // shared room named "mtt" while a bot played their tournament stack.
+    if (window.__tournamentActive && !window.__pendingTournament) {
+      socket.emit('requestTournamentField');
+      return;
+    }
     const effectiveMode =
       _selectedGameMode === 'practice'
         ? 'practice'
@@ -772,6 +779,7 @@ function restoreLobbyUI() {
   if (logBody) logBody.textContent = '';
   window.mttField = null;
   window.mttFinished = null;
+  window.__tournamentActive = false;
   if (window.SidePanel) SidePanel.refresh('info');
   if (tournamentBanner) tournamentBanner.classList.add('hidden');
 

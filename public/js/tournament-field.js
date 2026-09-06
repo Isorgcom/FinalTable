@@ -205,6 +205,7 @@
     socket.on('tournamentJoined', (info) => {
       if (info && info.host) wantsStart = true;
       announced = false;
+      window.__tournamentActive = true;
       window.mttField = null;
       window.mttFinished = null;
       // The table UI identifies "you" by myId, which normally arrives on the

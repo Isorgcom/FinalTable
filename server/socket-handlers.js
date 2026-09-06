@@ -154,6 +154,12 @@ function registerSocketHandlers(deps) {
       const safeRoomId = roomId.trim().substring(0, 20);
       const safeAvatar = sanitizeAvatar(playerAvatar);
       if (!safeName || !safeRoomId) return;
+      // A socket seated in a multi-table tournament must not be dropped into a
+      // room by a stale client reconnect; its tournament seat is authoritative.
+      if (socket.data.tournamentId) {
+        socket.emit('error', { message: 'Leave the tournament first' });
+        return;
+      }
       if (!roomIdRegex.test(safeRoomId)) {
         logSocketEvent(
           'join_rejected',

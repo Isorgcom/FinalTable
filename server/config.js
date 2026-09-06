@@ -45,6 +45,11 @@ function loadConfig() {
     httpRateLimit: intFromEnv('HTTP_RATE_LIMIT', 240, 1, 10000),
     httpRateWindow: intFromEnv('HTTP_RATE_WINDOW_MS', 60000, 1000, 3600000),
     maxRooms: intFromEnv('MAX_ROOMS', 50, 1, 1000),
+    maxTournaments: intFromEnv('MAX_TOURNAMENTS', 8, 1, 100),
+    // How long a finished tournament stays listed with its standings.
+    tournamentFinishedTtlMs: intFromEnv('TOURNAMENT_FINISHED_TTL_MS', 600000, 100, 86400000),
+    // How long a tournament with no connected human survives before teardown.
+    tournamentAbandonGraceMs: intFromEnv('TOURNAMENT_ABANDON_GRACE_MS', 120000, 100, 3600000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),
     preflopSims: intFromEnv('PREFLOP_SIMS', 10000, 0, 100000),
     preflopTableEnabled: !['0', 'false', 'off', 'no'].includes(

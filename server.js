@@ -382,11 +382,21 @@ registerSocketHandlers({
 
 // Multi-table tournaments live in their own handler module; the single-table
 // room handlers above are untouched by them.
-registerTournamentHandlers({
+const tournamentLayer = registerTournamentHandlers({
   io,
   sanitizeName,
   sanitizeAvatar,
-  maxTournaments: config.maxTournaments || 8,
+  maxTournaments: config.maxTournaments,
+  finishedTtlMs: config.tournamentFinishedTtlMs,
+  abandonGraceMs: config.tournamentAbandonGraceMs,
+  // Director tables get the same solver and bot options as rooms, and the
+  // preflop table once it is built (it is assigned after boot, hence a getter).
+  tableOptions: {
+    solverDataDir: config.solverDataDir,
+    solverRootCacheDir: config.solverRootCacheDir,
+    npcModel: config.npcModel,
+  },
+  getPreflopTable: () => preflopTable,
 });
 // Reset room when all human players are gone
 function checkAndResetRoom(roomId) {
@@ -495,6 +505,7 @@ module.exports = {
   server,
   io,
   games,
+  tournaments: tournamentLayer.tournaments,
   sessionTokens,
   startServer,
   config,
