@@ -174,6 +174,10 @@
     if (bound || typeof socket === 'undefined' || !socket) return;
     bound = true;
     socket.on('tournamentField', (state) => {
+      // A reconnect issues a new socket id; keep the UI's idea of "you" in step.
+      if (socket && socket.id && myId !== socket.id && state && state.isRunning) {
+        myId = socket.id;
+      }
       field = state;
       enterTable();
       render();
@@ -185,6 +189,15 @@
     socket.on('tournamentFinished', (payload) => showFinished(payload));
     socket.on('tournamentJoined', (info) => {
       if (info && info.host) wantsStart = true;
+      // The table UI identifies "you" by myId, which normally arrives on the
+      // `joined` reply to joinRoom. A tournament never sends that, so myId
+      // stayed null: the client could not find itself among the players, never
+      // enabled the action buttons, and the seat sat there until the idle
+      // timeout acted for the player. The server seats a tournament entrant
+      // under their socket id, so that is the value to use.
+      if (typeof socket !== 'undefined' && socket && socket.id) {
+        myId = socket.id;
+      }
       enterTable();
     });
   }

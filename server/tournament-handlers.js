@@ -244,7 +244,7 @@ function registerTournamentHandlers(deps) {
     // Actions are routed by uid, never by a cached table: a player's table
     // changes when the field is balanced and their socket id changes on
     // reconnect, so the seat has to be looked up fresh every time.
-    socket.on('tournamentAction', (payload = {}) => {
+    function routeAction(payload = {}) {
       const entry = tournaments.get(socket.data.tournamentId);
       if (!entry) return;
       const VALID = ['fold', 'check', 'call', 'raise', 'allin'];
@@ -256,7 +256,17 @@ function registerTournamentHandlers(deps) {
       const seat = entry.director.playerByUid(socket.data.tournamentUid);
       if (!seat) return;
       seat.table.handleAction(seat.player.id, payload.action, amount);
-    });
+    }
+
+    // The table UI emits 'action' -- it is the same felt, the same buttons, and
+    // it has no idea whether it is showing a cash table or a tournament one.
+    // Listening only for 'tournamentAction' meant every click was swallowed by
+    // the single-table handler (which finds no room and returns), so the seat
+    // sat idle until the 90-second timeout acted for the player. Both names are
+    // accepted; the single-table listener still ignores tournament sockets
+    // because there is no room of that id.
+    socket.on('action', routeAction);
+    socket.on('tournamentAction', routeAction);
 
     socket.on('requestTournamentField', () => {
       const entry = tournaments.get(socket.data.tournamentId);
