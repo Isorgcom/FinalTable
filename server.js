@@ -322,28 +322,6 @@ function getOrCreateGame(roomId, options = {}) {
 }
 
 // API endpoint to list rooms
-app.get('/api/rooms', (req, res) => {
-  const rooms = [];
-  for (const [id, game] of games) {
-    // Practice mode rooms hidden from lobby
-    if (game.gameMode === 'practice') continue;
-    rooms.push({
-      id,
-      players: game.players.length,
-      maxPlayers: game.maxPlayers,
-      humanCount: game.players.filter((player) => !player.isNPC).length,
-      npcCount: game.players.filter((player) => player.isNPC).length,
-      isRunning: game.isRunning,
-      smallBlind: game.smallBlind,
-      bigBlind: game.bigBlind,
-      startChips: game.startChips,
-      gameMode: game.gameMode || 'cash',
-    });
-  }
-  res.json(rooms);
-});
-
-// API endpoint to check server status
 app.get('/api/tournaments', (req, res) => {
   res.json(tournamentLayer.publicList());
 });
@@ -354,12 +332,8 @@ app.get('/api/status', (req, res) => {
     preflopTableEnabled: config.preflopTableEnabled,
     preflopSimulations: config.preflopSims,
     activeRooms: games.size,
+    activeTournaments: tournamentLayer.tournaments.size,
   });
-});
-
-// API endpoint to list saves
-app.get('/api/saves', (req, res) => {
-  res.json(listSaves());
 });
 
 registerSocketHandlers({

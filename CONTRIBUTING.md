@@ -25,10 +25,12 @@ All checks must pass before submitting a PR.
 
 ## Project Structure
 
-- **Backend logic**: `engine.js`, `tournament.js`, `npc.js`, `strategy.js`, `veteran.js` — hand engine, blind clock and bot decisions
-- **Server & networking**: `server.js`, `server/` — Express, Socket.IO, host rules, middleware
-- **Frontend**: `public/index.html`, `public/css/`, `public/js/`
-- **Tests**: `__tests__/`
+- **Poker**: `engine.js` (one table), `director.js` (many tables on one clock), `tournament.js` (blind clock and ledger), `hand-eval.js`, `hand-describe.js`
+- **Tournament lifecycle**: `server/tournament-registry.js` (the state machine), `server/tournament-handlers.js` (socket shim), `server/identity.js` (who a player is), `server/tournament-store.js` (what survives a restart)
+- **Bots**: `npc.js`, `npc-*.js`, `solver-*.js`
+- **Server & networking**: `server.js`, `server/config.js`, `server/http-middleware.js`; `server/socket-handlers.js` and `save-manager.js` are the older single-table room layer, kept for its tests
+- **Frontend**: `public/index.html`, `public/css/`, `public/js/` (`lobby.js` and `socket-client.js` for the lobby; `table-render.js`, `ui-panels.js`, `side-panel.js` for the table)
+- **Tests**: `__tests__/` (Jest) and `e2e/` (Playwright; `npx playwright install chromium` once)
 
 ## Pull Request Guidelines
 

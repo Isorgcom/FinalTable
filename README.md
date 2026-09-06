@@ -8,15 +8,19 @@ tables at once: seating a field, balancing and breaking tables as players bust,
 and merging down to a final table. See [FORK.md](./FORK.md) for lineage, what
 was removed, and an important licence caution.
 
-Status: **phase 1.** The single-table base is stripped, tested and running.
-Multi-table orchestration is not built yet.
+Status: **playable.** Multi-table tournaments run end to end: a lobby where
+friends register by code or link, a scheduled start, tables that balance and
+break as players bust, late registration, payouts and hand-for-hand at the
+bubble, and rejoin after a dropped connection or a page reload. Registrations
+survive a server restart; a running tournament does not.
 
 ## Running it
 
 ```bash
 npm install
 npm start                 # http://localhost:2026
-npm test                  # 139 tests, 15 suites
+npm test                  # Jest: engine, director, registry, sockets
+npx playwright test       # the lobby, a table and a two-browser tournament
 ```
 
 Or with Docker:
@@ -30,29 +34,38 @@ to loopback only, on the assumption a reverse proxy sits in front.
 
 ## Layout
 
-| Path | Purpose |
-|---|---|
-| `server.js` | Express + Socket.IO host; owns the room map and socket events |
-| `engine.js` | `PokerGame`: one table, one hand loop, betting and showdown |
-| `tournament.js` | Blind schedule, level timer, elimination ledger |
-| `npc.js`, `npc-*.js` | Bot decision pipeline (Monte Carlo equity, psychology) |
-| `solver-*.js` | Runtime solver lookups the bots consult |
-| `hand-eval.js` | Hand ranking |
-| `save-manager.js` | Room persistence as JSON |
-| `public/` | Browser client |
-| `__tests__/` | Jest suites |
+| Path                                                         | Purpose                                                                                         |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `server.js`                                                  | Express + Socket.IO host; wires the identity store, the tournament registry and the handlers    |
+| `server/tournament-registry.js`                              | A tournament's life: codes, scheduled start, registrations, host, late entry, rejoin, reaper    |
+| `server/tournament-handlers.js`                              | Socket events for tournaments, a thin shim over the registry                                    |
+| `server/identity.js`                                         | Who a player is: name + avatar behind a device token (a login backend fills the same interface) |
+| `server/tournament-store.js`                                 | Registering tournaments persisted as JSON so a restart keeps them                               |
+| `director.js`                                                | `TournamentDirector`: N tables on one clock, seating, balancing, breaking, payouts              |
+| `engine.js`                                                  | `PokerGame`: one table, one hand loop, betting and showdown                                     |
+| `tournament.js`                                              | Blind schedule, level timer, elimination ledger                                                 |
+| `hand-eval.js`, `hand-describe.js`                           | Hand ranking, and the hand in words for the table's readout                                     |
+| `npc.js`, `npc-*.js`                                         | Bot decision pipeline (Monte Carlo equity, psychology)                                          |
+| `solver-*.js`                                                | Runtime solver lookups the bots consult                                                         |
+| `server/socket-handlers.js`, `save-manager.js`               | The single-table room layer, kept for its tests; the lobby no longer uses it                    |
+| `public/js/lobby.js`, `socket-client.js`                     | The lobby and the one socket for the life of the page                                           |
+| `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Info / Stats / History panel                     |
+| `__tests__/`, `e2e/`                                         | Jest suites and Playwright specs                                                                |
 
 ## Roadmap
 
-Multi-table work is specced in phases. Phase 3 is the first genuinely useful
-milestone, a synchronised multi-table Sit-and-Go.
+Done: the multi-table director (chips carried across tables under a
+conservation invariant, one shared clock, balancing and breaking, payouts and
+hand-for-hand at the bubble), the table redesign, and the tournament lobby
+(identity, scheduled starts, late registration, rejoin, persistence).
 
-1. **Strip and stand up** — done
-2. Carry chips across tables, with a chip-conservation invariant
-3. `TournamentDirector` owning N tables and one shared clock
-4. Balancing and breaking
-5. Payouts and hand-for-hand at the bubble
-6. Field UI
+Not built, in the order they are likely to matter:
+
+- Railbird spectating for people who are not registered
+- Restoring a running tournament after a restart (between hands)
+- Re-entry during late registration; kicking a registrant
+- A GameNight-account login behind `server/identity.js`
+- Player chat in the Chat tab; custom blind schedules; an admin page
 
 ## Licence
 
