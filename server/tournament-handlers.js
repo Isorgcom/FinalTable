@@ -268,6 +268,15 @@ function registerTournamentHandlers(deps) {
     socket.on('action', routeAction);
     socket.on('tournamentAction', routeAction);
 
+    // Same seat lookup as an action: the table can change between requests.
+    socket.on('requestTime', () => {
+      const entry = tournaments.get(socket.data.tournamentId);
+      if (!entry) return;
+      const seat = entry.director.playerByUid(socket.data.tournamentUid);
+      if (!seat) return;
+      seat.table.requestTimeExtension(seat.player.id);
+    });
+
     socket.on('requestTournamentField', () => {
       const entry = tournaments.get(socket.data.tournamentId);
       if (!entry) return;

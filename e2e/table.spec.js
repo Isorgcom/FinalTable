@@ -146,3 +146,27 @@ test('a raise from the action bar reaches the engine', async ({ page }) => {
     .toBe(true);
   expect(pageErrors).toEqual([]);
 });
+
+test('requesting time extends the clock once per hand', async ({ page }) => {
+  const pageErrors = await seatAtPracticeTable(page, 'TimeTester');
+  await deal(page);
+  const game = await gameForPage(page);
+  expect(game).toBeTruthy();
+  const messages = [];
+  const forward = game.onMessage;
+  game.onMessage = (msg, meta) => {
+    messages.push(msg);
+    if (forward) forward(msg, meta);
+  };
+
+  const button = page.locator('#btnRequestTime');
+  await expect(button).toBeVisible();
+  await expect(button).toBeEnabled();
+  const before = game.turnExpiresAt;
+  await button.click();
+  await expect.poll(() => game.turnExpiresAt > before, { timeout: 5000 }).toBe(true);
+  expect(game.turnExpiresAt - before).toBeGreaterThanOrEqual(25000);
+  expect(messages).toContain('⏱ TimeTester requested time');
+  await expect(button).toBeDisabled();
+  expect(pageErrors).toEqual([]);
+});

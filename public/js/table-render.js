@@ -733,6 +733,18 @@ function updateActionsPanel() {
     return;
   }
 
+  // Request Time: shown while a clock is running, disabled once this hand's
+  // allowance is spent.
+  const timeBtn = document.getElementById('btnRequestTime');
+  if (timeBtn) {
+    const bank = gameState.timeBank;
+    const hasClock = !!(bank && gameState.turnExpiresAt);
+    timeBtn.classList.toggle('hidden', !hasClock);
+    timeBtn.disabled = !(hasClock && bank.extensionsLeft > 0);
+    timeBtn.textContent = `+${Math.round(((bank && bank.grantMs) || 30000) / 1000)}s`;
+    timeBtn.title = timeBtn.disabled ? 'No time left to request this hand' : 'Add time to your clock';
+  }
+
   const toCall = gameState.currentBet - me.bet;
   const minRaise = gameState.currentBet + gameState.minRaise;
 

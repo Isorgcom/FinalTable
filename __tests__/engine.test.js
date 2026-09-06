@@ -1339,6 +1339,53 @@ describe('Equity Billing', () => {
       jest.useRealTimers();
     }
   });
+
+  test('requesting time defers the auto-play switch by the grant, once per hand', () => {
+    jest.useFakeTimers();
+    try {
+      const game = new PokerGame('time_bank', {
+        smallBlind: 10,
+        bigBlind: 20,
+        actionTimeoutMs: 100,
+        timeBankGrantMs: 200,
+      });
+      game.onMessage = () => {};
+      game.onUpdate = () => {};
+      game.onChat = () => {};
+      game.onRoundEnd = () => {};
+
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+      const villain = game.addPlayer({ id: 'p2', name: 'Villain' });
+      game.startRound();
+
+      hero.holeCards = [Card('spades', 14), Card('hearts', 12)];
+      villain.holeCards = [Card('clubs', 7), Card('diamonds', 6)];
+      hero.autoPlay = false;
+      hero.folded = false;
+      hero.allIn = false;
+      game.currentPlayerIndex = hero.seatIndex;
+      game.currentBet = 20;
+
+      game.beginCurrentTurn();
+      expect(game.getStateForPlayer('p1').timeBank).toEqual({ extensionsLeft: 1, grantMs: 200 });
+
+      jest.advanceTimersByTime(60);
+      expect(game.requestTimeExtension('p2')).toBe(false); // not their turn
+      expect(game.requestTimeExtension('p1')).toBe(true);
+      expect(game.requestTimeExtension('p1')).toBe(false); // allowance spent
+      expect(game.getStateForPlayer('p1').timeBank.extensionsLeft).toBe(0);
+      expect(game.turnDurationMs).toBe(300);
+
+      // The original deadline passes without a switch...
+      jest.advanceTimersByTime(60);
+      expect(hero.autoPlay).toBe(false);
+      // ...and the extended one triggers it: 40ms remained plus the 200ms grant.
+      jest.advanceTimersByTime(190);
+      expect(hero.autoPlay).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('NPC psychology chat text', () => {

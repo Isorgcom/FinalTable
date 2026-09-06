@@ -205,6 +205,9 @@ function init() {
     if (!btn || btn.disabled) return;
     applyRaisePreset(parseInt(btn.dataset.to, 10) || 0);
   });
+  document.getElementById('btnRequestTime').addEventListener('click', () => {
+    if (socket) socket.emit('requestTime');
+  });
   document.querySelectorAll('.speed-btn[data-speed]').forEach((btn) => {
     btn.addEventListener('click', () => setGameSpeed(parseInt(btn.dataset.speed, 10)));
   });

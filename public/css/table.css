@@ -981,6 +981,19 @@
   opacity: 0.35;
   cursor: default;
 }
+.btn-time {
+  background: rgba(123, 202, 149, 0.1);
+  border: 1px solid rgba(123, 202, 149, 0.35);
+  color: #9fd8b5;
+  font-family: var(--font-mono);
+}
+.btn-time:hover:not(:disabled) {
+  background: rgba(123, 202, 149, 0.2);
+}
+.btn-time:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 .action-btn {
   padding: 10px 20px;

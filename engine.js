@@ -45,6 +45,10 @@ const CASH_NEXT_DELAY = 5000; // Delay before next round in cash/tournament (ms)
 const PRACTICE_ACTION_TIMEOUT_MS = 18000;
 const TOURNAMENT_ACTION_TIMEOUT_MS = 25000;
 const CASH_IDLE_TIMEOUT_MS = 90000;
+// Request Time: each seat may add TIME_BANK_GRANT_MS to its clock this many
+// times per hand.
+const TIME_BANK_GRANT_MS = 30000;
+const TIME_BANK_PER_HAND = 1;
 const RUNTIME_ROLLOUT_LOG_EVERY = Math.max(
   1,
   Number.isFinite(Number(process.env.RUNTIME_ROLLOUT_LOG_EVERY))
@@ -78,6 +82,7 @@ class PokerGame {
     this.bigBlind = options.bigBlind || 20;
     this.startChips = options.startChips || 1000;
     this.maxPlayers = options.maxPlayers || DEFAULT_MAX_PLAYERS;
+    this.timeBankGrantMs = options.timeBankGrantMs || TIME_BANK_GRANT_MS;
     this.players = [];
     this.deck = [];
     this.communityCards = [];
@@ -428,17 +433,23 @@ class PokerGame {
     ) {
       return;
     }
+    this.armActionTimeout(current, this.getHumanActionTimeoutMs());
+  }
 
-    const timeoutMs = this.getHumanActionTimeoutMs();
+  // Arm the human action clock for `player`. durationMs is what the client's
+  // timer bar measures against; when time is added it grows with the timeout
+  // so the bar refills instead of jumping past full.
+  armActionTimeout(player, timeoutMs, durationMs = timeoutMs) {
+    this.clearActionTimeout();
     this.actionTimeoutMs = timeoutMs;
-    this.turnDurationMs = timeoutMs;
+    this.turnDurationMs = durationMs;
     this.turnExpiresAt = Date.now() + timeoutMs;
     this.actionTimeout = setTimeout(() => {
       if (!this.isRunning || this.isPaused) return;
       const liveCurrent = this.players[this.currentPlayerIndex];
       if (
         !liveCurrent ||
-        liveCurrent.id !== current.id ||
+        liveCurrent.id !== player.id ||
         liveCurrent.folded ||
         liveCurrent.allIn ||
         this.isAutomatedPlayer(liveCurrent)
@@ -452,6 +463,26 @@ class PokerGame {
       this.processNPCTurn();
     }, timeoutMs);
     if (this.actionTimeout.unref) this.actionTimeout.unref();
+  }
+
+  // A player asks for more time on their own turn. The per-hand allowance is
+  // the real guard against stalling a table; a spammed request returns false.
+  requestTimeExtension(playerId) {
+    if (!this.isRunning || this.isPaused) return false;
+    const current = this.players[this.currentPlayerIndex];
+    if (!current || current.id !== playerId) return false;
+    if (current.isNPC || current.folded || current.allIn || this.isAutomatedPlayer(current)) {
+      return false;
+    }
+    if (!this.actionTimeout || !this.turnExpiresAt) return false;
+    if ((current.timeExtensionsLeft || 0) <= 0) return false;
+    current.timeExtensionsLeft -= 1;
+    const remaining = Math.max(0, this.turnExpiresAt - Date.now());
+    const grant = this.timeBankGrantMs;
+    this.armActionTimeout(current, remaining + grant, (this.turnDurationMs || remaining) + grant);
+    this.emitMessage(`⏱ ${this.getPublicName(current)} requested time`);
+    this.emitUpdate();
+    return true;
   }
 
   beginCurrentTurn() {
@@ -488,6 +519,7 @@ class PokerGame {
     this.tickEquityStreak();
     for (const p of this.players) {
       this.initEquityState(p.id);
+      p.timeExtensionsLeft = TIME_BANK_PER_HAND;
     }
 
     this.deck = shuffle(createDeck());
@@ -2278,6 +2310,9 @@ class PokerGame {
         (this.isRunning || this.phase === 'showdown')
           ? describeHand(viewer.holeCards, this.communityCards)
           : null,
+      timeBank: viewer
+        ? { extensionsLeft: viewer.timeExtensionsLeft || 0, grantMs: this.timeBankGrantMs }
+        : null,
       // v11
       gameMode: this.gameMode,
       isPaused: this.isPaused,
@@ -2299,4 +2334,11 @@ class PokerGame {
 // NPC_DELAY_* are exported so tests can advance fake timers past the real
 // configured delay instead of hardcoding a literal that silently breaks the
 // next time the pacing is retuned.
-module.exports = { PokerGame, DEFAULT_MAX_PLAYERS, NPC_DELAY_MIN, NPC_DELAY_MAX };
+module.exports = {
+  PokerGame,
+  DEFAULT_MAX_PLAYERS,
+  NPC_DELAY_MIN,
+  NPC_DELAY_MAX,
+  TIME_BANK_GRANT_MS,
+  TIME_BANK_PER_HAND,
+};

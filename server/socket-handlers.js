@@ -472,6 +472,18 @@ function registerSocketHandlers(deps) {
       );
     });
 
+    // A player asks for more time on their own turn. The engine holds the
+    // per-hand allowance, so a repeated request is simply refused.
+    socket.on('requestTime', () => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      const game = games.get(roomId);
+      if (!game) return;
+      if (!game.requestTimeExtension(socket.id)) {
+        socket.emit('error', { message: 'No time left to request this hand' });
+      }
+    });
+
     socket.on('action', (payload = {}) => {
       const { action, amount } = payload;
       // Input validation
