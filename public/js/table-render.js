@@ -146,7 +146,11 @@ function updateGameState(state) {
   updateModeUI(); // v11
   updateEquityButton(); // v11
   const resultModal = document.getElementById('resultModal');
-  if (resultModal && !resultModal.classList.contains('hidden') && (state.gameOver || state.phase === 'showdown')) {
+  if (
+    resultModal &&
+    !resultModal.classList.contains('hidden') &&
+    (state.gameOver || state.phase === 'showdown')
+  ) {
     showResult({ refreshOnly: true });
   }
 }
@@ -209,6 +213,7 @@ function renderTable(oldCommunityLen) {
 // Track what's been built to avoid unnecessary DOM rebuilds
 let _builtRound = -1;
 let _builtPlayerCount = -1;
+let _builtCapacity = -1;
 let _builtPhase = '';
 let _builtHostId = '';
 let _builtIdentityKey = '';
@@ -240,10 +245,12 @@ function getPlayerIdentityKey(players) {
 function renderPlayersIncremental() {
   const container = document.getElementById('playerSeats');
   const playerCount = gameState.players.length;
+  const capacity = seatCapacity(playerCount);
   const identityKey = getPlayerIdentityKey(gameState.players);
   const needsFullRebuild =
     _builtRound !== gameState.roundCount ||
     _builtPlayerCount !== playerCount ||
+    _builtCapacity !== capacity ||
     _builtHostId !== (gameState.hostId || '') ||
     _builtIdentityKey !== identityKey ||
     (_builtPhase === 'showdown' && gameState.phase !== 'showdown') ||
@@ -253,6 +260,7 @@ function renderPlayersIncremental() {
   if (needsFullRebuild) {
     _builtRound = gameState.roundCount;
     _builtPlayerCount = playerCount;
+    _builtCapacity = capacity;
     _builtPhase = gameState.phase;
     _builtHostId = gameState.hostId || '';
     _builtIdentityKey = identityKey;
@@ -261,107 +269,113 @@ function renderPlayersIncremental() {
   }
 
   _builtPhase = gameState.phase;
-  // ── Fast path: only update dynamic data in-place ──
-  const myIndex = gameState.players.findIndex((p) => p.id === myId);
-  const ordered = [];
-  for (let i = 0; i < playerCount; i++) {
-    const idx = (myIndex + i) % playerCount;
-    ordered.push({ ...gameState.players[idx], originalIndex: idx });
-  }
-  const seatPositions = getSeatPositions(ordered.length);
-
-  ordered.forEach((player, seatIdx) => {
-    const seat = container.children[seatIdx];
-    if (!seat) return;
-
-    // Update fold/active classes
-    seat.classList.toggle('folded', !!player.folded);
-    seat.classList.toggle('auto-play', !!player.autoPlay);
-    seat.classList.toggle('offline', player.isConnected === false);
-    seat.classList.toggle('spectating', !!player.isSpectator);
-    seat.classList.toggle(
-      'active-turn',
-      player.originalIndex === gameState.currentPlayerIndex && gameState.isRunning
-    );
-
-    // Update chips text
-    const chipsEl = seat.querySelector('.player-chips');
-    if (chipsEl) chipsEl.textContent = player.chips;
-
-    // Update totalBet (already ) display
-    let totalBetEl = seat.querySelector('.player-totalbet');
-    if (gameState.isRunning && player.totalBet > 0) {
-      if (!totalBetEl) {
-        totalBetEl = document.createElement('div');
-        totalBetEl.className = 'player-totalbet';
-        const info = seat.querySelector('.player-info');
-        if (info) info.appendChild(totalBetEl);
-      }
-      totalBetEl.textContent = 'in ' + player.totalBet;
-    } else if (totalBetEl) {
-      totalBetEl.remove();
-    }
-
-    // Update all-in indicator
-    let allInEl = seat.querySelector('.allin-indicator');
-    if (player.allIn && !allInEl) {
-      allInEl = document.createElement('div');
-      allInEl.className = 'allin-indicator';
-      allInEl.textContent = 'ALL IN';
-      const info = seat.querySelector('.player-info');
-      if (info) info.appendChild(allInEl);
-    } else if (!player.allIn && allInEl) {
-      allInEl.remove();
-    }
-
-    // Update action badge
-    const oldBadge = seat.querySelector('.player-action-badge');
-    if (oldBadge) oldBadge.remove();
-
-    if (player.lastAction && Date.now() - player.lastAction.time < 3000) {
-      const ACTION_LABELS = {
-        fold: 'fold',
-        check: 'check',
-        call: 'call',
-        raise: 'raise',
-        allin: 'ALL IN',
-      };
-      const ACTION_CSS = {
-        fold: 'action-fold',
-        check: 'action-check',
-        call: 'action-call',
-        raise: 'action-raise',
-        allin: 'action-allin',
-      };
-      const badge = document.createElement('div');
-      badge.className = 'player-action-badge ' + (ACTION_CSS[player.lastAction.action] || '');
-      let label = ACTION_LABELS[player.lastAction.action] || player.lastAction.action;
-      if (player.lastAction.amount > 0 && player.lastAction.action !== 'fold')
-        label += ' ' + player.lastAction.amount;
-      badge.textContent = label;
-      badge.title = label;
-      const info = seat.querySelector('.player-info');
-      if (info) {
-        info.appendChild(badge);
-      }
-    }
-
-    // Update bet badge (inside player-info)
-    const info = seat.querySelector('.player-info');
-    let betBadge = info ? info.querySelector('.player-bet-badge') : null;
-    if (player.bet > 0) {
-      if (!betBadge) {
-        betBadge = document.createElement('div');
-        betBadge.className = 'player-bet-badge';
-        if (info) info.appendChild(betBadge);
-      }
-      betBadge.textContent = `bet ${player.bet}`;
-    } else if (betBadge) {
-      betBadge.remove();
-    }
+  // ── Fast path: the skeleton stands, only the per-hand state is rewritten ──
+  const ordered = getOrderedPlayersForView();
+  const ctx = seatRenderContext();
+  ordered.forEach((player) => {
+    const seat = seatElementForPlayer(player.id);
+    if (seat) updateSeatDynamic(seat, player, ctx);
   });
-
   updateTurnTimerBars(ordered);
+}
+
+// Seats are laid out for the larger of the players present and the table's
+// capacity (once the server reports it), so empty seats can be drawn.
+function seatCapacity(playerCount) {
+  return Math.max(playerCount, (gameState && gameState.maxPlayers) || 0);
+}
+
+// ── Seat state ────────────────────────────────────────────────────────────
+// A seat has two layers. The skeleton (hole cards, avatar, name and its
+// badges, D/SB/BB chips, tooltip) is built by buildSeatSkeleton once per hand
+// and only rebuilt when the identity key or the round changes. Everything
+// that moves during a hand (stack, bets, all-in, fold, action badge, whose
+// turn it is) is written by updateSeatDynamic and nowhere else, so the full
+// build and the fast path cannot drift apart.
+
+const SEAT_ACTION_LABELS = {
+  fold: 'fold',
+  check: 'check',
+  call: 'call',
+  raise: 'raise',
+  allin: 'ALL IN',
+};
+const SEAT_ACTION_CSS = {
+  fold: 'action-fold',
+  check: 'action-check',
+  call: 'action-call',
+  raise: 'action-raise',
+  allin: 'action-allin',
+};
+
+function seatRenderContext() {
+  return {
+    isRunning: !!gameState.isRunning,
+    currentPlayerIndex: gameState.currentPlayerIndex,
+    now: Date.now(),
+  };
+}
+
+function actionBadgeLabel(action) {
+  let label = SEAT_ACTION_LABELS[action.action] || action.action;
+  if (action.amount > 0 && action.action !== 'fold') label += ' ' + action.amount;
+  return label;
+}
+
+// Show, fill or hide one of the plate's dynamic nodes. The skeleton creates
+// them as hidden placeholders in layout order; a missing one (a plate built
+// by something else) is appended so the writer still works.
+function setSeatNode(info, className, show, text) {
+  let el = info.querySelector('.' + className);
+  if (!show) {
+    if (el) el.classList.add('hidden');
+    return el;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.className = className;
+    info.appendChild(el);
+  }
+  el.classList.remove('hidden');
+  if (text !== undefined && el.textContent !== String(text)) el.textContent = text;
+  return el;
+}
+
+function updateSeatDynamic(seat, player, ctx) {
+  seat.classList.toggle('folded', !!player.folded);
+  seat.classList.toggle('auto-play', !!player.autoPlay);
+  seat.classList.toggle('offline', player.isConnected === false);
+  seat.classList.toggle('spectating', !!player.isSpectator);
+  seat.classList.toggle(
+    'active-turn',
+    ctx.isRunning && player.originalIndex === ctx.currentPlayerIndex
+  );
+
+  const info = seat.querySelector('.player-info');
+  if (!info) return;
+  setSeatNode(info, 'player-chips', true, player.chips);
+  setSeatNode(
+    info,
+    'player-totalbet',
+    ctx.isRunning && player.totalBet > 0,
+    `in ${player.totalBet}`
+  );
+  setSeatNode(info, 'allin-indicator', !!player.allIn, 'ALL IN');
+
+  const action =
+    player.lastAction && ctx.now - player.lastAction.time < 3000 ? player.lastAction : null;
+  const badge = setSeatNode(
+    info,
+    'player-action-badge',
+    !!action,
+    action ? actionBadgeLabel(action) : undefined
+  );
+  if (action && badge) {
+    badge.className = 'player-action-badge ' + (SEAT_ACTION_CSS[action.action] || '');
+    badge.title = badge.textContent;
+  }
+
+  setSeatNode(info, 'player-bet-badge', player.bet > 0, `bet ${player.bet}`);
 }
 
 function createTextElement(tag, className, text) {
@@ -450,10 +464,7 @@ function appendPlayerIdentity(info, player, pos) {
     hostBadge.title = 'Room host';
     name.appendChild(hostBadge);
   }
-  if (
-    !player.isNPC &&
-    player.autoPlay
-  ) {
+  if (!player.isNPC && player.autoPlay) {
     const autoBadge = createTextElement('span', 'player-auto-badge', 'auto');
     autoBadge.title = 'Computer is playing this seat';
     name.appendChild(autoBadge);
@@ -490,135 +501,104 @@ function appendPlayerIdentity(info, player, pos) {
 function renderPlayersFull(container) {
   container.textContent = '';
   const ordered = getOrderedPlayersForView();
-
-  const seatPositions = getSeatPositions(ordered.length);
+  const seatPositions = getSeatPositions(seatCapacity(ordered.length));
   const animateDeal =
     _dealAnimationRound === gameState.roundCount &&
     gameState.phase === 'preflop' &&
     gameState.communityCards.length === 0;
+  const ctx = seatRenderContext();
 
   ordered.forEach((player, seatIdx) => {
     if (seatIdx >= seatPositions.length) return;
-    const pos = seatPositions[seatIdx];
-    const seat = document.createElement('div');
-    seat.className = 'player-seat';
-    // Lets chip animations find a player's seat without depending on display
-    // ordering, which is rotated so the viewer always sits at the bottom.
-    seat.dataset.playerId = player.id;
-    if (player.folded) seat.classList.add('folded');
-    if (player.autoPlay) seat.classList.add('auto-play');
-    if (player.isConnected === false) seat.classList.add('offline');
-    if (player.isSpectator) seat.classList.add('spectating');
-    if (player.originalIndex === gameState.currentPlayerIndex && gameState.isRunning) {
-      seat.classList.add('active-turn');
-    }
-
-    seat.style.left = pos.left;
-    seat.style.top = pos.top;
-    seat.style.transform = pos.transform;
-
-    // Hole cards
-    const holeCardsDiv = document.createElement('div');
-    holeCardsDiv.className = 'player-hole-cards';
-    if (player.holeCards && player.holeCards.length === 2) {
-      const anim = animateDeal ? 'dealing' : '';
-      const c1 = createCardElement(player.holeCards[0], anim);
-      const c2 = createCardElement(player.holeCards[1], anim);
-      if (anim) {
-        setAnimationDelay(c1, seatIdx * 0.08);
-        setAnimationDelay(c2, seatIdx * 0.08 + 0.15);
-      }
-      holeCardsDiv.appendChild(c1);
-      holeCardsDiv.appendChild(c2);
-    } else if (gameState.isRunning && !player.folded) {
-      const anim = animateDeal ? ' dealing' : '';
-      const b1 = document.createElement('div');
-      b1.className = 'card-back' + anim;
-      const b2 = document.createElement('div');
-      b2.className = 'card-back' + anim;
-      if (anim) {
-        setAnimationDelay(b1, seatIdx * 0.08);
-        setAnimationDelay(b2, seatIdx * 0.08 + 0.15);
-      }
-      holeCardsDiv.appendChild(b1);
-      holeCardsDiv.appendChild(b2);
-    }
-    seat.appendChild(holeCardsDiv);
-
-    // Player info box
-    const info = document.createElement('div');
-    info.className = 'player-info';
-
-    appendPlayerIdentity(info, player, pos);
-    info.appendChild(createTextElement('div', 'player-chips', player.chips));
-    if (gameState && gameState.isRunning && player.totalBet > 0) {
-      info.appendChild(createTextElement('div', 'player-totalbet', `in ${player.totalBet}`));
-    }
-    if (player.allIn) {
-      info.appendChild(createTextElement('div', 'allin-indicator', 'ALL IN'));
-    }
-
-    // Action badge
-    if (player.lastAction && Date.now() - player.lastAction.time < 3000) {
-      const ACTION_LABELS = {
-        fold: 'fold',
-        check: 'check',
-        call: 'call',
-        raise: 'raise',
-        allin: 'ALL IN',
-      };
-      const ACTION_CSS = {
-        fold: 'action-fold',
-        check: 'action-check',
-        call: 'action-call',
-        raise: 'action-raise',
-        allin: 'action-allin',
-      };
-      const badge = document.createElement('div');
-      badge.className = 'player-action-badge ' + (ACTION_CSS[player.lastAction.action] || '');
-      let label = ACTION_LABELS[player.lastAction.action] || player.lastAction.action;
-      if (player.lastAction.amount > 0 && player.lastAction.action !== 'fold')
-        label += ' ' + player.lastAction.amount;
-      badge.textContent = label;
-      badge.title = label;
-      info.appendChild(badge);
-    }
-
-    // D/SB/BB chips
-    if (player.originalIndex === gameState.dealerIndex) {
-      const dc = document.createElement('div');
-      dc.className = 'dealer-chip';
-      dc.textContent = 'D';
-      info.appendChild(dc);
-    }
-    if (gameState.sbIndex !== undefined && player.originalIndex === gameState.sbIndex) {
-      const sc = document.createElement('div');
-      sc.className = 'sb-chip';
-      sc.textContent = 'SB';
-      info.appendChild(sc);
-    }
-    if (gameState.bbIndex !== undefined && player.originalIndex === gameState.bbIndex) {
-      const bc = document.createElement('div');
-      bc.className = 'bb-chip';
-      bc.textContent = 'BB';
-      info.appendChild(bc);
-    }
-
-    // Bet badge (inside player-info)
-    if (player.bet > 0) {
-      const badge = document.createElement('div');
-      badge.className = 'player-bet-badge';
-      badge.textContent = `bet ${player.bet}`;
-      info.appendChild(badge);
-    }
-
-    seat.appendChild(info);
-
+    const seat = buildSeatSkeleton(player, seatIdx, seatPositions[seatIdx], animateDeal);
+    updateSeatDynamic(seat, player, ctx);
     container.appendChild(seat);
   });
 
   if (animateDeal) _dealAnimationRound = -1;
   updateTurnTimerBars(ordered);
+}
+
+// The static part of a seat: hole cards, identity, the D/SB/BB chips, and the
+// hidden placeholders updateSeatDynamic fills. Never touched by the fast path.
+function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
+  const seat = document.createElement('div');
+  seat.className = 'player-seat';
+  // Lets chip animations and the fast path find a player's seat without
+  // depending on display ordering, which is rotated so the viewer always sits
+  // at the bottom.
+  seat.dataset.playerId = player.id;
+  seat.style.left = pos.left;
+  seat.style.top = pos.top;
+  seat.style.transform = pos.transform;
+
+  // Hole cards
+  const holeCardsDiv = document.createElement('div');
+  holeCardsDiv.className = 'player-hole-cards';
+  if (player.holeCards && player.holeCards.length === 2) {
+    const anim = animateDeal ? 'dealing' : '';
+    const c1 = createCardElement(player.holeCards[0], anim);
+    const c2 = createCardElement(player.holeCards[1], anim);
+    if (anim) {
+      setAnimationDelay(c1, seatIdx * 0.08);
+      setAnimationDelay(c2, seatIdx * 0.08 + 0.15);
+    }
+    holeCardsDiv.appendChild(c1);
+    holeCardsDiv.appendChild(c2);
+  } else if (gameState.isRunning && !player.folded) {
+    const anim = animateDeal ? ' dealing' : '';
+    const b1 = document.createElement('div');
+    b1.className = 'card-back' + anim;
+    const b2 = document.createElement('div');
+    b2.className = 'card-back' + anim;
+    if (anim) {
+      setAnimationDelay(b1, seatIdx * 0.08);
+      setAnimationDelay(b2, seatIdx * 0.08 + 0.15);
+    }
+    holeCardsDiv.appendChild(b1);
+    holeCardsDiv.appendChild(b2);
+  }
+  seat.appendChild(holeCardsDiv);
+
+  // Player info box
+  const info = document.createElement('div');
+  info.className = 'player-info';
+  appendPlayerIdentity(info, player, pos);
+
+  // Dynamic placeholders, in layout order. The action badge is absolutely
+  // positioned so its slot only matters for the writer to find it.
+  ['player-chips', 'player-totalbet', 'allin-indicator', 'player-action-badge'].forEach((cls) => {
+    const el = document.createElement('div');
+    el.className = cls + ' hidden';
+    info.appendChild(el);
+  });
+
+  // D/SB/BB chips
+  if (player.originalIndex === gameState.dealerIndex) {
+    const dc = document.createElement('div');
+    dc.className = 'dealer-chip';
+    dc.textContent = 'D';
+    info.appendChild(dc);
+  }
+  if (gameState.sbIndex !== undefined && player.originalIndex === gameState.sbIndex) {
+    const sc = document.createElement('div');
+    sc.className = 'sb-chip';
+    sc.textContent = 'SB';
+    info.appendChild(sc);
+  }
+  if (gameState.bbIndex !== undefined && player.originalIndex === gameState.bbIndex) {
+    const bc = document.createElement('div');
+    bc.className = 'bb-chip';
+    bc.textContent = 'BB';
+    info.appendChild(bc);
+  }
+
+  const bet = document.createElement('div');
+  bet.className = 'player-bet-badge hidden';
+  info.appendChild(bet);
+
+  seat.appendChild(info);
+  return seat;
 }
 
 function getOrderedPlayersForView() {
@@ -745,9 +725,7 @@ function updateTurnTimerBars(orderedPlayers) {
   const ordered = orderedPlayers || getOrderedPlayersForView();
   const currentSeat = ordered.find(
     (player) =>
-      player.originalIndex === gameState.currentPlayerIndex &&
-      !player.folded &&
-      !player.allIn
+      player.originalIndex === gameState.currentPlayerIndex && !player.folded && !player.allIn
   );
   const remainingMs =
     gameState.turnExpiresAt && gameState.turnDurationMs
@@ -759,12 +737,13 @@ function updateTurnTimerBars(orderedPlayers) {
       : 0;
   const secondsLeft = Math.max(1, Math.ceil(remainingMs / 1000));
 
-  Array.from(container.children).forEach((seat, seatIdx) => {
+  ordered.forEach((player) => {
+    const seat = seatElementForPlayer(player.id);
+    if (!seat) return;
     let timer = seat.querySelector('.player-turn-timer');
     const shouldShow =
       !!currentSeat &&
-      ordered[seatIdx] &&
-      ordered[seatIdx].originalIndex === currentSeat.originalIndex &&
+      player.originalIndex === currentSeat.originalIndex &&
       gameState.gameMode !== 'cash' &&
       gameState.isRunning &&
       gameState.turnExpiresAt;
