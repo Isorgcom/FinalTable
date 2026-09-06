@@ -219,11 +219,21 @@
     height: 56px;
   }
   .actions-panel {
-    flex-wrap: wrap;
-    justify-content: center;
     padding: 6px 5px;
     gap: 4px;
     bottom: 5px;
+  }
+  .action-row {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+  }
+  .hand-strength {
+    font-size: 0.6rem;
+  }
+  .preset-btn {
+    padding: 2px 7px;
+    font-size: 0.58rem;
   }
   .action-btn {
     padding: 6px 10px;
@@ -566,15 +576,29 @@
     bottom: 2px;
     width: min(92vw, 640px);
     transform: translateX(-50%);
+    padding: 4px 6px;
+    gap: 3px;
+  }
+  .action-row {
     flex-wrap: nowrap;
     justify-content: flex-start;
     overflow-x: auto;
-    padding: 4px 6px;
     gap: 3px;
     scrollbar-width: none;
   }
-  .actions-panel::-webkit-scrollbar {
+  .action-row::-webkit-scrollbar {
     display: none;
+  }
+  .action-presets {
+    min-height: 18px;
+    gap: 6px;
+  }
+  .hand-strength {
+    font-size: 0.56rem;
+  }
+  .preset-btn {
+    padding: 1px 6px;
+    font-size: 0.54rem;
   }
   .action-btn {
     flex: 0 0 auto;
@@ -636,5 +660,12 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Below this width the preset row has no room for words. */
+@media (max-width: 380px) {
+  .hand-strength {
+    display: none;
   }
 }

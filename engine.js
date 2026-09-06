@@ -1,6 +1,7 @@
 // engine.js - Texas Hold'em game engine
 const { createDeck, shuffle } = require('./deck');
 const { evaluateHand, compareHands, HAND_NAMES } = require('./hand-eval');
+const { describeHand } = require('./hand-describe');
 const { getAvailableNPCs, vanillaMC, rangeWeightedMC } = require('./npc');
 const { decideNpcAction } = require('./npc-orchestrator');
 const { estimateRange, boardConnectivity } = require('./range');
@@ -2268,6 +2269,15 @@ class PokerGame {
       viewerIsSpectator: this.isSpectatorPlayer(viewer),
       turnExpiresAt: this.turnExpiresAt,
       turnDurationMs: this.turnDurationMs,
+      // The viewer's own hand in words, never anyone else's.
+      myHand:
+        viewer &&
+        !viewer.folded &&
+        Array.isArray(viewer.holeCards) &&
+        viewer.holeCards.length === 2 &&
+        (this.isRunning || this.phase === 'showdown')
+          ? describeHand(viewer.holeCards, this.communityCards)
+          : null,
       // v11
       gameMode: this.gameMode,
       isPaused: this.isPaused,

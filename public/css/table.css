@@ -915,8 +915,9 @@
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   z-index: 100;
   padding: 10px 16px;
   background: rgba(13, 31, 18, 0.92);
@@ -926,6 +927,59 @@
 }
 .actions-panel.hidden {
   display: none;
+}
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Hand readout on the left, raise presets on the right. Not a wrapping row,
+   so the auto margin is safe. */
+.action-presets {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-height: 22px;
+}
+.hand-strength {
+  margin-right: auto;
+  font-size: 0.72rem;
+  color: var(--smoke);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.hand-strength strong {
+  color: var(--gold);
+  font-weight: 600;
+}
+.seat-caption.is-hand {
+  color: var(--gold);
+}
+.preset-group {
+  display: flex;
+  gap: 4px;
+}
+.preset-btn {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 168, 76, 0.28);
+  background: rgba(201, 168, 76, 0.08);
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.preset-btn:hover:not(:disabled) {
+  background: rgba(201, 168, 76, 0.18);
+  border-color: rgba(201, 168, 76, 0.5);
+}
+.preset-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .action-btn {

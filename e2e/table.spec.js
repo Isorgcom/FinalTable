@@ -110,6 +110,8 @@ test('a practice table seats every player, deals, and hands the viewer the actio
   await expect(page.locator('#feltBets .felt-bet')).not.toHaveCount(0);
   await expect(page.locator('#playerSeats .seat-plate .seat-avatar')).toHaveCount(4);
   await expect(page.locator('.player-bet-badge')).toHaveCount(0);
+  await expect(page.locator('#handStrength')).toContainText('You have');
+  await expect(page.locator('#presetGroup .preset-btn')).toHaveCount(4);
   await expect(page.locator('#playerSeats .player-seat.active-turn')).toHaveCount(1);
   expect(pageErrors).toEqual([]);
 });
@@ -128,8 +130,13 @@ test('a raise from the action bar reaches the engine', async ({ page }) => {
   };
 
   await expect(page.locator('#btnRaise')).toBeVisible();
-  const amount = Number(await page.inputValue('#raiseInput'));
+  // A preset fills the slider and input; the raise button sends that amount.
+  const preset = page.locator('#presetGroup .preset-btn:enabled').first();
+  await expect(preset).toBeVisible();
+  const amount = Number(await preset.getAttribute('data-to'));
   expect(amount).toBeGreaterThan(0);
+  await preset.click();
+  await expect(page.locator('#raiseInput')).toHaveValue(String(amount));
   await page.click('#btnRaise');
 
   await expect

@@ -200,6 +200,11 @@ function init() {
     sendAction('raise', amount);
   });
   document.getElementById('btnAllIn').addEventListener('click', () => sendAction('allin'));
+  document.getElementById('presetGroup').addEventListener('click', (e) => {
+    const btn = e.target.closest('.preset-btn');
+    if (!btn || btn.disabled) return;
+    applyRaisePreset(parseInt(btn.dataset.to, 10) || 0);
+  });
   document.querySelectorAll('.speed-btn[data-speed]').forEach((btn) => {
     btn.addEventListener('click', () => setGameSpeed(parseInt(btn.dataset.speed, 10)));
   });

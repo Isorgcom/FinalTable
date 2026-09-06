@@ -227,30 +227,41 @@
         </div>
 
         <div class="actions-panel hidden" id="actionsPanel">
-          <button class="action-btn btn-fold" id="btnFold" aria-label="Fold">fold</button>
-          <button class="action-btn btn-check" id="btnCheck" aria-label="Check">check</button>
-          <button class="action-btn btn-call" id="btnCall" aria-label="Call">call</button>
-          <div class="raise-slider-group">
-            <input
-              type="range"
-              class="raise-slider"
-              id="raiseSlider"
-              aria-label="Raise amount"
-              min="0"
-              max="1000"
-              value="0"
-            />
-            <input
-              type="number"
-              class="raise-input"
-              id="raiseInput"
-              aria-label="Raise amount"
-              value="0"
-            />
-            <span class="raise-need-pay" id="raiseNeedPay"></span>
+          <div class="action-presets">
+            <div class="hand-strength hidden" id="handStrength" aria-live="polite"></div>
+            <div class="preset-group" id="presetGroup" role="group" aria-label="Raise presets">
+              <button class="preset-btn" type="button" data-preset="3bb">3bb</button>
+              <button class="preset-btn" type="button" data-preset="4bb">4bb</button>
+              <button class="preset-btn" type="button" data-preset="5bb">5bb</button>
+              <button class="preset-btn" type="button" data-preset="pot">Pot</button>
+            </div>
           </div>
-          <button class="action-btn btn-raise" id="btnRaise" aria-label="Raise">raise</button>
-          <button class="action-btn btn-allin" id="btnAllIn" aria-label="All In">all in</button>
+          <div class="action-row">
+            <button class="action-btn btn-fold" id="btnFold" aria-label="Fold">fold</button>
+            <button class="action-btn btn-check" id="btnCheck" aria-label="Check">check</button>
+            <button class="action-btn btn-call" id="btnCall" aria-label="Call">call</button>
+            <div class="raise-slider-group">
+              <input
+                type="range"
+                class="raise-slider"
+                id="raiseSlider"
+                aria-label="Raise amount"
+                min="0"
+                max="1000"
+                value="0"
+              />
+              <input
+                type="number"
+                class="raise-input"
+                id="raiseInput"
+                aria-label="Raise amount"
+                value="0"
+              />
+              <span class="raise-need-pay" id="raiseNeedPay"></span>
+            </div>
+            <button class="action-btn btn-raise" id="btnRaise" aria-label="Raise">raise</button>
+            <button class="action-btn btn-allin" id="btnAllIn" aria-label="All In">all in</button>
+          </div>
         </div>
 
         <!-- The last dealer line, for when the side panel is out of view

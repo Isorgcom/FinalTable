@@ -142,6 +142,7 @@ function updateGameState(state) {
   // After render, so the seat elements the chips fly to and from exist.
   animateChipMovement(prevBets, prevWinnerKey);
   updateActionsPanel();
+  updateHandStrength();
   updateTopBar();
   updateBlindClock();
   if (window.SidePanel) {
@@ -377,6 +378,11 @@ function updateSeatDynamic(seat, player, ctx) {
     ctx.isRunning && player.totalBet > 0,
     `in ${player.totalBet}`
   );
+  if (player.id === myId && !player.isNPC) {
+    const hand = gameState.myHand;
+    const cap = setSeatNode(info, 'seat-caption', !!hand, hand ? hand.detail : undefined);
+    if (cap && hand) cap.title = hand.text;
+  }
 
   const action =
     player.lastAction && ctx.now - player.lastAction.time < 3000 ? player.lastAction : null;
@@ -538,7 +544,11 @@ function appendPlayerIdentity(info, text, player, pos) {
   }
   text.appendChild(name);
 
-  // One caption line: the English name and the character's title.
+  // A human's caption slot holds the viewer's own hand readout (see
+  // updateSeatDynamic); an NPC's holds the English name and title.
+  if (!profile) {
+    text.appendChild(createTextElement('div', 'seat-caption is-hand hidden', ''));
+  }
   if (profile) {
     const title = profile.titleEn || profile.title || '';
     const caption = isWestern ? title : [profile.nameEn, title].filter(Boolean).join(' · ');
@@ -743,6 +753,8 @@ function updateActionsPanel() {
   document.querySelector('.raise-slider-group').style.display = canRaise ? '' : 'none';
   document.getElementById('btnRaise').style.display = canRaise ? '' : 'none';
   document.getElementById('btnAllIn').style.display = canRaise ? '' : 'none';
+  const presetGroup = document.getElementById('presetGroup');
+  if (presetGroup) presetGroup.style.display = canRaise ? '' : 'none';
 
   // Update raise slider
   if (canRaise) {
@@ -753,6 +765,7 @@ function updateActionsPanel() {
       // Chips below min raise threshold: can only call or all-in, hide raise
       document.querySelector('.raise-slider-group').style.display = 'none';
       document.getElementById('btnRaise').style.display = 'none';
+      if (presetGroup) presetGroup.style.display = 'none';
     } else {
       const raiseInput = document.getElementById('raiseInput');
       const currentValue = parseInt(raiseInput.value, 10);
@@ -784,8 +797,71 @@ function updateActionsPanel() {
       raiseInput.value = raiseTo;
       const npEl = document.getElementById('raiseNeedPay');
       if (npEl) npEl.textContent = `to ${raiseTo} · +${Math.max(0, raiseTo - me.bet)}`;
+      renderRaisePresets(me, minRaise, maxRaiseTo);
     }
   }
+}
+
+// Raise presets are raise-TO amounts, like the slider. One below the table
+// minimum is disabled rather than silently bumped up, and one at or past the
+// stack becomes "All in". Pot: call first, then raise by the pot that makes.
+function computeRaisePresets(me, minRaiseTo, maxRaiseTo) {
+  const toCall = Math.max(0, gameState.currentBet - me.bet);
+  const bb = gameState.bigBlind || 20;
+  const potRaiseTo = gameState.currentBet + toCall + gameState.pot;
+  return [
+    { id: '3bb', label: '3bb', to: 3 * bb },
+    { id: '4bb', label: '4bb', to: 4 * bb },
+    { id: '5bb', label: '5bb', to: 5 * bb },
+    { id: 'pot', label: 'Pot', to: potRaiseTo },
+  ].map((p) => ({
+    ...p,
+    value: Math.min(p.to, maxRaiseTo),
+    isAllIn: p.to >= maxRaiseTo,
+    disabled: p.to < minRaiseTo,
+  }));
+}
+
+function renderRaisePresets(me, minRaiseTo, maxRaiseTo) {
+  const group = document.getElementById('presetGroup');
+  if (!group) return;
+  computeRaisePresets(me, minRaiseTo, maxRaiseTo).forEach((p) => {
+    const btn = group.querySelector(`[data-preset="${p.id}"]`);
+    if (!btn) return;
+    btn.textContent = p.isAllIn ? 'All in' : p.label;
+    btn.disabled = p.disabled;
+    btn.dataset.to = p.value;
+    btn.title = p.disabled ? `Below the minimum raise (${minRaiseTo})` : `Raise to ${p.value}`;
+  });
+}
+
+// A preset fills the slider and the input; the raise button still sends.
+function applyRaisePreset(value) {
+  const slider = document.getElementById('raiseSlider');
+  const input = document.getElementById('raiseInput');
+  const me = gameState && gameState.players.find((p) => p.id === myId);
+  if (!slider || !input || !me) return;
+  const lo = Number(slider.min) || 0;
+  const hi = Number(slider.max) || value;
+  const v = Math.max(lo, Math.min(hi, value));
+  slider.value = v;
+  input.value = v;
+  slider.dataset.userAdjusted = 'true';
+  slider.setAttribute('aria-valuenow', v);
+  const npEl = document.getElementById('raiseNeedPay');
+  if (npEl) npEl.textContent = `to ${v} · +${Math.max(0, v - me.bet)}`;
+}
+
+// "You have ..." in the action bar, from the server's description of the
+// viewer's hand. The viewer's plate caption carries the same words off-turn.
+function updateHandStrength() {
+  const el = document.getElementById('handStrength');
+  if (!el) return;
+  const hand = gameState && gameState.myHand;
+  el.classList.toggle('hidden', !hand);
+  if (!hand) return;
+  el.textContent = 'You have ';
+  el.appendChild(createTextElement('strong', '', hand.detail));
 }
 
 function updateTurnTimerBars(orderedPlayers) {
