@@ -28,6 +28,9 @@
   /* Seat ring radii in % of the felt, read by getSeatPositions(). */
   --seat-rx: 53;
   --seat-ry: 52;
+  /* Felt-bet ring radii, likewise. */
+  --bet-rx: 34;
+  --bet-ry: 30;
 }
 @media (min-width: 1024px) {
   :root {
@@ -56,6 +59,8 @@ body {
   font-family: var(--font-body);
   overflow: hidden;
   height: 100vh;
+  /* Mobile Safari: the visible height, not the toolbar-collapsed one. */
+  height: 100dvh;
   width: 100vw;
 }
 

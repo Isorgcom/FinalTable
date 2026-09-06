@@ -55,6 +55,8 @@ function getSeatPositions(playerCount) {
   const rootStyle = getComputedStyle(document.documentElement);
   const rx = parseFloat(rootStyle.getPropertyValue('--seat-rx')) || 53; // horizontal radius %
   const ry = parseFloat(rootStyle.getPropertyValue('--seat-ry')) || 52; // vertical radius %
+  const betRx = parseFloat(rootStyle.getPropertyValue('--bet-rx')) || 34;
+  const betRy = parseFloat(rootStyle.getPropertyValue('--bet-ry')) || 30;
   const cx = 50; // center x %
   const cy = 44; // center y %
 
@@ -67,8 +69,8 @@ function getSeatPositions(playerCount) {
     const top = cy - ry * Math.sin(rad); // CSS y is inverted
 
     // Same angle, smaller ellipse: clear of the plate and of the board.
-    const betLeft = cx + 34 * Math.cos(rad);
-    const betTop = cy - 30 * Math.sin(rad);
+    const betLeft = cx + betRx * Math.cos(rad);
+    const betTop = cy - betRy * Math.sin(rad);
 
     positions.push({
       left: left + '%',

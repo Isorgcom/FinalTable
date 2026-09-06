@@ -111,6 +111,13 @@
     filter: blur(20px);
     transform: translateX(-50%) scaleY(0.6);
   }
+  /* A 95%-wide felt leaves no margin for a 53% ring: seats at the sides
+     would hang off a portrait tablet or a large phone. Pull the ring and
+     the bet ring in. */
+  :root {
+    --seat-rx: 41;
+    --bet-rx: 29;
+  }
   .player-info {
     padding: 3px 5px;
     gap: 4px;
@@ -345,27 +352,9 @@
     display: block !important;
   }
 }
-@media (max-width: 420px) {
-  .form-row.form-row-3 {
-    grid-template-columns: 1fr;
-  }
-  .form-row.form-row-3 > :last-child {
-    grid-column: auto;
-  }
-  .dealer-ticker {
-    width: min(50vw, 180px);
-  }
-  .npc-chat-area {
-    width: min(40vw, 150px);
-  }
-  .menu-dropdown {
-    min-width: 126px;
-  }
-  /* A 10-seat ring does not fit a phone's width at full radius; pull the
-     sides in and slim the plates so the outer seats stay on screen. */
-  :root {
-    --seat-rx: 41;
-  }
+/* Large phones: even the tighter ring needs slimmer plates to stay on a
+   430px screen. */
+@media (max-width: 480px) {
   .player-info {
     min-width: 72px;
     max-width: 94px;
@@ -387,6 +376,23 @@
     font-size: 0.62rem;
     padding: 9px 2px 8px;
     letter-spacing: 0.04em;
+  }
+}
+@media (max-width: 420px) {
+  .form-row.form-row-3 {
+    grid-template-columns: 1fr;
+  }
+  .form-row.form-row-3 > :last-child {
+    grid-column: auto;
+  }
+  .dealer-ticker {
+    width: min(50vw, 180px);
+  }
+  .npc-chat-area {
+    width: min(40vw, 150px);
+  }
+  .menu-dropdown {
+    min-width: 126px;
   }
 }
 @media (min-width: 1600px) {
