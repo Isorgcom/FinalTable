@@ -250,15 +250,39 @@ class PokerGame {
     );
   }
 
+  // Total chips this table is accountable for. Chips move straight from
+  // player.chips into this.pot (see postBlind), so `bet` and `totalBet` are a
+  // record of the street and are already counted in the pot -- adding them
+  // would double-count. This is the quantity a tournament must hold invariant
+  // across every table move.
+  totalChips() {
+    return this.players.reduce((sum, p) => sum + p.chips, 0) + this.pot;
+  }
+
   addPlayer(playerData) {
     if (this.players.length >= this.maxPlayers) return null;
+
+    // A player moved between tables must arrive with the stack they earned,
+    // not a fresh buy-in. Validated strictly rather than coerced: a NaN or a
+    // negative here would silently mint or destroy chips, and the field's
+    // total is the one number a tournament cannot let drift.
+    let chips = this.startChips;
+    if (playerData.chips !== undefined && playerData.chips !== null) {
+      const requested = playerData.chips;
+      if (typeof requested !== 'number' || !Number.isInteger(requested) || requested < 0) {
+        this._log(`⚠ refused seat for ${playerData.name}: invalid chips ${playerData.chips}`);
+        return null;
+      }
+      chips = requested;
+    }
+
     const player = {
       id: playerData.id,
       // Stable identity for the life of the seat. `id` is the socket id and is
       // reassigned on reconnect, so it cannot carry authority; `uid` can.
       uid: playerData.uid || random.randomId('u_'),
       name: playerData.name,
-      chips: this.startChips,
+      chips,
       holeCards: [],
       bet: 0,
       totalBet: 0,
@@ -273,7 +297,20 @@ class PokerGame {
       wins: 0,
       handsPlayed: 0,
     };
-    if (!this.isRunning && this.roundCount === 0 && this.players.length > 0) {
+    // An explicit seat is how a tournament places an arriving player in a
+    // chosen position (which matters for blind fairness when balancing tables).
+    // Absent one, keep the existing behaviour: random draw before the first
+    // hand, append thereafter.
+    const explicitSeat = Number.isInteger(playerData.seatIndex) ? playerData.seatIndex : null;
+    if (explicitSeat !== null) {
+      const at = Math.max(0, Math.min(this.players.length, explicitSeat));
+      this.players.splice(at, 0, player);
+      // Mirror removePlayer: an insert at or before the button shifts it.
+      if (this.players.length > 1 && at <= this.dealerIndex) {
+        this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
+      }
+      this.players.forEach((p, i) => (p.seatIndex = i));
+    } else if (!this.isRunning && this.roundCount === 0 && this.players.length > 0) {
       const insertAt = random.randomInt(this.players.length + 1);
       this.players.splice(insertAt, 0, player);
       this.players.forEach((p, i) => (p.seatIndex = i));
@@ -1316,6 +1353,14 @@ class PokerGame {
       .map((p) => `${p.name}:${p.chips}`)
       .join(' | ');
     this._log(`📊 Hand ${this.roundCount} end pot:${this.pot} standings: ${standings}`);
+
+    // The pot has been paid out to the winners' stacks by this point, so it is
+    // no longer money in flight. It used to stay populated until the next
+    // startRound, which meant anything summing stacks + pot between hands
+    // double-counted the award. A tournament checks chip conservation at
+    // exactly that moment, so clear it once the hand record and the log above
+    // have taken their copies.
+    this.pot = 0;
 
     // Tournament: check if tournament is over
     let tournamentResult = null;
