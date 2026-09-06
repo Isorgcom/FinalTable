@@ -2194,6 +2194,7 @@ class PokerGame {
       roundCount: this.roundCount,
       smallBlind: this.smallBlind,
       bigBlind: this.bigBlind,
+      maxPlayers: this.maxPlayers,
       hostName: hostPlayer ? hostPlayer.name : null,
       hostId: this.hostPlayerId || null,
       isHost: !!(viewer && viewer.uid && viewer.uid === this.hostPlayerId),

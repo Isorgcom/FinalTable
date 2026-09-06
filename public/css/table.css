@@ -427,14 +427,18 @@
 .player-seat.spectating .player-info {
   border-color: rgba(113, 132, 164, 0.34);
 }
+/* The plate: a square avatar beside a column of name, caption and stack. */
 .player-info {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
   background: rgba(13, 31, 18, 0.85);
   border: 1px solid rgba(92, 61, 26, 0.3);
-  border-radius: 8px;
-  padding: 6px 10px;
-  min-width: 100px;
-  max-width: 132px;
-  text-align: center;
+  border-radius: 6px;
+  padding: 5px 8px 5px 6px;
+  min-width: 118px;
+  max-width: 152px;
   backdrop-filter: blur(8px);
   transition:
     box-shadow 0.3s,
@@ -442,21 +446,45 @@
   position: relative;
   cursor: default;
 }
+.seat-avatar {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(201, 168, 76, 0.1);
+  border: 1px solid rgba(201, 168, 76, 0.22);
+  font-size: 1.05rem;
+  line-height: 1;
+  opacity: 1;
+}
+.seat-plate-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
 .player-name {
   font-family: var(--font-body);
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--cream);
-  margin-bottom: 1px;
   line-height: 1.2;
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   overflow-wrap: anywhere;
   word-break: break-word;
-  max-width: 112px;
-  margin-left: auto;
-  margin-right: auto;
+}
+.seat-caption {
+  font-size: 0.6rem;
+  color: var(--smoke);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .player-host-badge {
   display: inline-flex;
@@ -533,13 +561,6 @@
   text-transform: uppercase;
   vertical-align: middle;
 }
-.player-name-en {
-  font-family: var(--font-body);
-  font-size: 0.65rem;
-  font-weight: 400;
-  color: var(--smoke);
-  margin-bottom: 2px;
-}
 .player-chips {
   font-family: var(--font-mono);
   font-size: 0.9rem;
@@ -552,21 +573,84 @@
   font-size: 0.65rem;
   font-weight: 600;
 }
-.allin-indicator {
-  color: #ff6b6b;
-  font-size: 0.7rem;
-  font-weight: 700;
-}
-.player-bet-badge {
+/* Stands in for the stack while it applies (see seatStatus). */
+.seat-status {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--smoke);
+}
+.seat-status[data-status='allin'] {
+  color: #ff6b6b;
+}
+.seat-status[data-status='offline'] {
+  color: #e0a060;
+}
+.seat-status[data-status='out'] {
+  font-style: italic;
+}
+
+/* An open seat before the first deal. */
+.seat-empty-plate {
+  justify-content: center;
+  min-height: 42px;
+  background: none;
+  border: 1px dashed rgba(201, 168, 76, 0.22);
+  backdrop-filter: none;
+}
+.seat-empty-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(168, 158, 136, 0.55);
+}
+.player-seat.seat-empty:hover {
+  z-index: 20;
+}
+
+/* Street bets on the felt: a chip stack and the amount, per player. */
+.felt-bets {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+}
+.felt-bet {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.felt-bet-chips {
+  position: relative;
+  width: 16px;
+  height: calc(16px + (var(--n, 1) - 1) * 3px);
+}
+.felt-chip {
+  position: absolute;
+  left: 0;
+  bottom: calc(var(--i, 0) * 3px);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f0e6cf 0 38%, var(--gold) 39% 100%);
+  border: 1.5px solid rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+.felt-bet-amount {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
   color: var(--gold);
-  background: rgba(201, 168, 76, 0.1);
+  background: rgba(13, 31, 18, 0.75);
   padding: 1px 6px;
   border-radius: 4px;
   border: 1px solid rgba(201, 168, 76, 0.2);
-  margin-top: 2px;
-  display: inline-block;
+  white-space: nowrap;
 }
 .player-turn-timer {
   position: absolute;
@@ -716,21 +800,6 @@
 }
 
 /* NPC avatar - minimal */
-.npc-avatar {
-  font-size: 0.9rem;
-  opacity: 0.7;
-  display: inline;
-  line-height: 1;
-}
-.human-avatar {
-  opacity: 0.5;
-}
-.npc-badge {
-  font-size: 0.55rem;
-  color: var(--smoke);
-  margin-bottom: 2px;
-  display: block;
-}
 
 /* NPC tooltip */
 .npc-tooltip {

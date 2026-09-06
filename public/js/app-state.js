@@ -22,19 +22,18 @@ const RANK_NAMES = {
 // Position 0 is always bottom center (the viewing player)
 // Other positions are evenly spread around the remaining arc
 function getSeatPositions(playerCount) {
-  if (playerCount <= 1)
-    return [{ left: '50%', top: '105%', betX: 0, betY: -50, transform: 'translate(-50%, -20px)' }];
-
-  const positions = [];
-
-  // Position 0: me at bottom
-  positions.push({
+  // betLeft/betTop: where this seat's street bet sits on the felt, on an
+  // inner ellipse concentric with the seat ring so it scales with the table.
+  const me = {
     left: '50%',
     top: '105%',
-    betX: 0,
-    betY: -50,
+    betLeft: '50%',
+    betTop: '88%',
     transform: 'translate(-50%, -20px)',
-  });
+  };
+  if (playerCount <= 1) return [me];
+
+  const positions = [me];
 
   // Remaining players: spread evenly around the arc above the viewer.
   //
@@ -64,15 +63,15 @@ function getSeatPositions(playerCount) {
     const left = cx + rx * Math.cos(rad);
     const top = cy - ry * Math.sin(rad); // CSS y is inverted
 
-    // Bet badge: offset toward table center
-    const betX = Math.round(-Math.cos(rad) * 55);
-    const betY = Math.round(Math.sin(rad) * 35);
+    // Same angle, smaller ellipse: clear of the plate and of the board.
+    const betLeft = cx + 34 * Math.cos(rad);
+    const betTop = cy - 30 * Math.sin(rad);
 
     positions.push({
       left: left + '%',
       top: top + '%',
-      betX,
-      betY,
+      betLeft: betLeft + '%',
+      betTop: betTop + '%',
       transform: 'translate(-50%, -50%)',
     });
   }

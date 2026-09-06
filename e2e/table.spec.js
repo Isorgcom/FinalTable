@@ -106,6 +106,10 @@ test('a practice table seats every player, deals, and hands the viewer the actio
   await expect(page.locator('#panelHistory')).toBeVisible();
   await expect(page.locator('#replayPanel')).toBeHidden();
   await expect(page.locator('#btnFold')).toBeVisible();
+  // Blinds are on the felt as chip stacks, and every plate carries an avatar
+  await expect(page.locator('#feltBets .felt-bet')).not.toHaveCount(0);
+  await expect(page.locator('#playerSeats .seat-plate .seat-avatar')).toHaveCount(4);
+  await expect(page.locator('.player-bet-badge')).toHaveCount(0);
   await expect(page.locator('#playerSeats .player-seat.active-turn')).toHaveCount(1);
   expect(pageErrors).toEqual([]);
 });

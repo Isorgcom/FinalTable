@@ -79,7 +79,8 @@ function animateChipMovement(prevBets, prevWinnerKey) {
       const delta = (p.bet || 0) - prevBets.get(p.id);
       if (delta <= 0) return; // a between-streets reset, not a bet
       const seat = seatElementForPlayer(p.id);
-      if (seat) flyChips(seat, pot, chipCountForAmount(delta));
+      const stack = document.querySelector(`#feltBets .felt-bet[data-player-id="${CSS.escape(p.id)}"]`);
+      if (seat) flyChips(seat, stack || pot, chipCountForAmount(delta));
     });
   }
 
@@ -281,13 +282,20 @@ function renderPlayersIncremental() {
     const seat = seatElementForPlayer(player.id);
     if (seat) updateSeatDynamic(seat, player, ctx);
   });
+  renderFeltBets(ordered, getSeatPositions(seatCapacity(ordered.length)));
   updateTurnTimerBars(ordered);
 }
 
-// Seats are laid out for the larger of the players present and the table's
-// capacity (once the server reports it), so empty seats can be drawn.
+// How many seats to lay out. Before a room's first deal the table shows its
+// full capacity so open seats read as open. Once play starts the engine
+// compacts seat indices when someone leaves, so an outline could only trail
+// the arc and would lie about where a player sat; the arc is then laid out
+// for the players present. Practice tables are solo and never show outlines.
 function seatCapacity(playerCount) {
-  return Math.max(playerCount, (gameState && gameState.maxPlayers) || 0);
+  if (!gameState) return playerCount;
+  const waiting =
+    !gameState.isRunning && gameState.roundCount === 0 && gameState.gameMode !== 'practice';
+  return waiting ? Math.max(playerCount, gameState.maxPlayers || 0) : playerCount;
 }
 
 // ── Seat state ────────────────────────────────────────────────────────────
@@ -358,14 +366,17 @@ function updateSeatDynamic(seat, player, ctx) {
 
   const info = seat.querySelector('.player-info');
   if (!info) return;
-  setSeatNode(info, 'player-chips', true, player.chips);
+  // A status line takes the stack's place while it applies.
+  const status = seatStatus(player, ctx);
+  setSeatNode(info, 'player-chips', !status, player.chips);
+  const statusEl = setSeatNode(info, 'seat-status', !!status, status ? status.label : undefined);
+  if (status && statusEl) statusEl.dataset.status = status.code;
   setSeatNode(
     info,
     'player-totalbet',
     ctx.isRunning && player.totalBet > 0,
     `in ${player.totalBet}`
   );
-  setSeatNode(info, 'allin-indicator', !!player.allIn, 'ALL IN');
 
   const action =
     player.lastAction && ctx.now - player.lastAction.time < 3000 ? player.lastAction : null;
@@ -379,8 +390,45 @@ function updateSeatDynamic(seat, player, ctx) {
     badge.className = 'player-action-badge ' + (SEAT_ACTION_CSS[action.action] || '');
     badge.title = badge.textContent;
   }
+}
 
-  setSeatNode(info, 'player-bet-badge', player.bet > 0, `bet ${player.bet}`);
+// One status wins, in this order.
+function seatStatus(player, ctx) {
+  if (player.isSpectator) return { code: 'out', label: 'Sitting out' };
+  if (player.isConnected === false) return { code: 'offline', label: 'Disconnected' };
+  if (player.allIn) return { code: 'allin', label: 'All in' };
+  if (player.folded && ctx.isRunning) return { code: 'folded', label: 'Folded' };
+  return null;
+}
+
+// Street bets drawn as chip stacks on the felt, one per player with chips in
+// front of them. Rebuilt on every update, so it needs no cache of its own.
+function renderFeltBets(ordered, seatPositions) {
+  const layer = document.getElementById('feltBets');
+  if (!layer) return;
+  layer.textContent = '';
+  if (!gameState || !gameState.isRunning) return;
+  ordered.forEach((player, seatIdx) => {
+    const pos = seatPositions[seatIdx];
+    if (!pos || !(player.bet > 0)) return;
+    const bet = document.createElement('div');
+    bet.className = 'felt-bet';
+    bet.dataset.playerId = player.id;
+    bet.style.left = pos.betLeft;
+    bet.style.top = pos.betTop;
+    const count = chipCountForAmount(player.bet);
+    const chips = document.createElement('div');
+    chips.className = 'felt-bet-chips';
+    chips.style.setProperty('--n', count);
+    for (let i = 0; i < count; i++) {
+      const chip = document.createElement('span');
+      chip.className = 'felt-chip';
+      chip.style.setProperty('--i', i);
+      chips.appendChild(chip);
+    }
+    bet.append(chips, createTextElement('div', 'felt-bet-amount', player.bet));
+    layer.appendChild(bet);
+  });
 }
 
 function createTextElement(tag, className, text) {
@@ -439,67 +487,66 @@ function appendNpcTooltip(info, player, pos) {
   info.appendChild(tooltip);
 }
 
-function appendPlayerIdentity(info, player, pos) {
-  if (player.isNPC && player.npcProfile) {
-    const p = player.npcProfile;
-    const avatar = createTextElement('span', 'npc-avatar', p.avatar || '');
-    info.appendChild(avatar);
-    info.appendChild(
-      createTextElement(
-        'div',
-        'npc-badge',
-        p.isWestern ? p.titleEn || p.title : p.titleEn || p.title
-      )
-    );
-    appendNpcTooltip(info, player, pos);
-  } else {
-    info.appendChild(createTextElement('span', 'npc-avatar human-avatar', player.avatar || '🧑'));
-  }
+function appendPlayerIdentity(info, text, player, pos) {
+  const profile = player.isNPC && player.npcProfile ? player.npcProfile : null;
+  const isWestern = !!(profile && profile.isWestern);
+  const avatar = createTextElement(
+    'span',
+    'npc-avatar seat-avatar',
+    profile ? profile.avatar || '' : player.avatar || '🧑'
+  );
+  info.appendChild(avatar);
+  if (profile) appendNpcTooltip(info, player, pos);
 
-  if (player.isNPC && player.npcProfile && player.npcProfile.isWestern) {
-    info.appendChild(
-      createTextElement('div', 'player-name', player.npcProfile.nameEn || player.name)
-    );
-    return;
+  const name = createTextElement(
+    'div',
+    'player-name',
+    isWestern ? profile.nameEn || player.name : player.name
+  );
+  if (!player.isNPC) {
+    if (player.uid && player.uid === gameState.hostId) {
+      const hostBadge = createTextElement('span', 'player-host-badge', 'host');
+      hostBadge.title = 'Room host';
+      name.appendChild(hostBadge);
+    }
+    if (player.autoPlay) {
+      const autoBadge = createTextElement('span', 'player-auto-badge', 'auto');
+      autoBadge.title = 'Computer is playing this seat';
+      name.appendChild(autoBadge);
+    }
+    if (player.isSpectator) {
+      const spectatorBadge = createTextElement('span', 'player-spectator-badge', 'watch');
+      spectatorBadge.title = 'Spectating this hand';
+      name.appendChild(spectatorBadge);
+    }
+    if (player.isConnected === false) {
+      const offlineBadge = createTextElement('span', 'player-offline-badge', 'offline');
+      offlineBadge.title = 'Disconnected';
+      name.appendChild(offlineBadge);
+    }
+    if (
+      player.isReady &&
+      gameState &&
+      !gameState.isRunning &&
+      gameState.roundCount === 0 &&
+      gameState.gameMode !== 'practice'
+    ) {
+      const readyBadge = createTextElement('span', 'player-ready-badge', 'ready');
+      readyBadge.title = 'Ready to start';
+      name.appendChild(readyBadge);
+    }
   }
+  text.appendChild(name);
 
-  const name = createTextElement('div', 'player-name', player.name);
-  if (player.uid && player.uid === gameState.hostId && !player.isNPC) {
-    const hostBadge = createTextElement('span', 'player-host-badge', 'host');
-    hostBadge.title = 'Room host';
-    name.appendChild(hostBadge);
-  }
-  if (!player.isNPC && player.autoPlay) {
-    const autoBadge = createTextElement('span', 'player-auto-badge', 'auto');
-    autoBadge.title = 'Computer is playing this seat';
-    name.appendChild(autoBadge);
-  }
-  if (!player.isNPC && player.isSpectator) {
-    const spectatorBadge = createTextElement('span', 'player-spectator-badge', 'watch');
-    spectatorBadge.title = 'Spectating this hand';
-    name.appendChild(spectatorBadge);
-  }
-  if (!player.isNPC && player.isConnected === false) {
-    const offlineBadge = createTextElement('span', 'player-offline-badge', 'offline');
-    offlineBadge.title = 'Disconnected';
-    name.appendChild(offlineBadge);
-  }
-  if (
-    !player.isNPC &&
-    player.isReady &&
-    gameState &&
-    !gameState.isRunning &&
-    gameState.roundCount === 0 &&
-    gameState.gameMode !== 'practice'
-  ) {
-    const readyBadge = createTextElement('span', 'player-ready-badge', 'ready');
-    readyBadge.title = 'Ready to start';
-    name.appendChild(readyBadge);
-  }
-  info.appendChild(name);
-
-  if (player.isNPC && player.npcProfile && player.npcProfile.nameEn) {
-    info.appendChild(createTextElement('div', 'player-name-en', player.npcProfile.nameEn));
+  // One caption line: the English name and the character's title.
+  if (profile) {
+    const title = profile.titleEn || profile.title || '';
+    const caption = isWestern ? title : [profile.nameEn, title].filter(Boolean).join(' · ');
+    if (caption) {
+      const cap = createTextElement('div', 'seat-caption', caption);
+      cap.title = caption;
+      text.appendChild(cap);
+    }
   }
 }
 
@@ -519,9 +566,26 @@ function renderPlayersFull(container) {
     updateSeatDynamic(seat, player, ctx);
     container.appendChild(seat);
   });
+  for (let seatIdx = ordered.length; seatIdx < seatPositions.length; seatIdx++) {
+    container.appendChild(buildEmptySeat(seatPositions[seatIdx]));
+  }
+  renderFeltBets(ordered, seatPositions);
 
   if (animateDeal) _dealAnimationRound = -1;
   updateTurnTimerBars(ordered);
+}
+
+function buildEmptySeat(pos) {
+  const seat = document.createElement('div');
+  seat.className = 'player-seat seat-empty';
+  seat.style.left = pos.left;
+  seat.style.top = pos.top;
+  seat.style.transform = pos.transform;
+  const plate = document.createElement('div');
+  plate.className = 'player-info seat-plate seat-empty-plate';
+  plate.appendChild(createTextElement('span', 'seat-empty-label', 'Empty'));
+  seat.appendChild(plate);
+  return seat;
 }
 
 // The static part of a seat: hole cards, identity, the D/SB/BB chips, and the
@@ -565,18 +629,22 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   }
   seat.appendChild(holeCardsDiv);
 
-  // Player info box
+  // The plate: a square avatar beside a text column of name, caption, and
+  // the stack (or the status line that stands in for it).
   const info = document.createElement('div');
-  info.className = 'player-info';
-  appendPlayerIdentity(info, player, pos);
+  info.className = 'player-info seat-plate';
+  const text = document.createElement('div');
+  text.className = 'seat-plate-text';
+  appendPlayerIdentity(info, text, player, pos);
 
   // Dynamic placeholders, in layout order. The action badge is absolutely
   // positioned so its slot only matters for the writer to find it.
-  ['player-chips', 'player-totalbet', 'allin-indicator', 'player-action-badge'].forEach((cls) => {
+  ['player-chips', 'seat-status', 'player-totalbet', 'player-action-badge'].forEach((cls) => {
     const el = document.createElement('div');
     el.className = cls + ' hidden';
-    info.appendChild(el);
+    text.appendChild(el);
   });
+  info.appendChild(text);
 
   // D/SB/BB chips
   if (player.originalIndex === gameState.dealerIndex) {
@@ -597,10 +665,6 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
     bc.textContent = 'BB';
     info.appendChild(bc);
   }
-
-  const bet = document.createElement('div');
-  bet.className = 'player-bet-badge hidden';
-  info.appendChild(bet);
 
   seat.appendChild(info);
   return seat;

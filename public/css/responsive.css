@@ -1,7 +1,9 @@
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1440px) {
   .poker-table-wrapper {
-    width: min(82%, 780px, var(--table-fit-height));
+    /* The last term keeps a plate at the seat ring's widest point (3% past the
+       felt edge, half a 140px plate, a 10px position chip) inside the stage. */
+    width: min(82%, 780px, var(--table-fit-height), calc(92% - 140px));
   }
   .poker-table-wrapper::after {
     top: 80%;
@@ -27,8 +29,9 @@
     height: 59px;
   }
   .player-info {
-    min-width: 90px;
-    padding: 5px 8px;
+    min-width: 108px;
+    max-width: 140px;
+    padding: 4px 7px 4px 5px;
   }
   .player-name {
     font-size: 0.75rem;
@@ -110,11 +113,20 @@
   }
   .player-info {
     padding: 3px 5px;
-    min-width: 65px;
+    gap: 4px;
+    min-width: 88px;
+    max-width: 110px;
+  }
+  .seat-avatar {
+    width: 22px;
+    height: 22px;
+    font-size: 0.8rem;
+  }
+  .seat-caption {
+    display: none;
   }
   .player-name {
     font-size: 0.65rem;
-    max-width: 60px;
   }
   .player-host-badge {
     font-size: 0.4rem;
@@ -161,9 +173,6 @@
   }
   .player-chips {
     font-size: 0.65rem;
-  }
-  .npc-badge {
-    font-size: 0.45rem;
   }
   .player-hole-cards .card {
     width: 30px;
@@ -265,10 +274,6 @@
   .pot-amount {
     font-size: 0.9rem;
   }
-  .player-bet-badge {
-    font-size: 0.45rem;
-    padding: 1px 3px;
-  }
   .player-action-badge {
     font-size: 0.5rem;
     padding: 2px 6px;
@@ -336,9 +341,6 @@
   }
   .form-row.form-row-3 > :last-child {
     grid-column: auto;
-  }
-  .player-name {
-    max-width: 54px;
   }
   .dealer-ticker {
     width: min(50vw, 180px);
@@ -440,12 +442,21 @@
     font-size: 0.82rem;
   }
   .player-info {
-    min-width: 58px;
+    min-width: 84px;
+    max-width: 104px;
     padding: 2px 5px;
+    gap: 4px;
+  }
+  .seat-avatar {
+    width: 20px;
+    height: 20px;
+    font-size: 0.72rem;
+  }
+  .seat-caption {
+    display: none;
   }
   .player-name {
     font-size: 0.6rem;
-    max-width: 56px;
   }
   .player-chips {
     font-size: 0.58rem;
@@ -455,11 +466,6 @@
   .player-auto-badge,
   .player-spectator-badge,
   .player-offline-badge,
-  .npc-badge {
-    font-size: 0.38rem;
-    margin-left: 2px;
-    padding: 0 2px;
-  }
   .player-hole-cards {
     gap: 1px;
   }
@@ -473,10 +479,6 @@
   }
   .player-hole-cards .card-suit {
     font-size: 0.54rem;
-  }
-  .player-bet-badge {
-    font-size: 0.42rem;
-    padding: 1px 2px;
   }
   .player-action-badge {
     top: -16px;
