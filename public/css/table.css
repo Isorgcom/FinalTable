@@ -983,3 +983,165 @@
     display: none;
   }
 }
+
+/* ── Multi-table tournament field panel ───────────────────────────────────
+   Sits over the felt rather than in it: this is field information a player
+   cannot get from their own table, so it reads as a separate surface. */
+.mtt-panel {
+  position: fixed;
+  top: 52px;
+  left: 12px;
+  z-index: 60;
+  width: 226px;
+  padding: 12px 14px;
+  background: rgba(13, 31, 18, 0.94);
+  border: 1px solid rgba(201, 168, 76, 0.35);
+  border-radius: 4px;
+  color: var(--cream);
+  font-size: 0.78rem;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+.mtt-head {
+  /* Stacked, not a row: the level line ("Level 7 · 300/600") is long enough to
+     wrap against the title and leave a ragged two-line header. */
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-bottom: 1px solid rgba(201, 168, 76, 0.22);
+  padding-bottom: 7px;
+  margin-bottom: 9px;
+}
+.mtt-title {
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+.mtt-level {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--smoke);
+}
+.mtt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px 10px;
+}
+.mtt-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.mtt-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--smoke);
+}
+.mtt-value {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--cream);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mtt-money {
+  margin-top: 10px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  text-align: center;
+  background: rgba(168, 158, 136, 0.12);
+  color: var(--smoke);
+}
+/* Amber for the warning, green for the good news: the bubble is the moment a
+   player is at risk, the money is the moment they are safe. */
+.mtt-money.on-bubble {
+  background: rgba(201, 168, 76, 0.16);
+  border: 1px solid rgba(201, 168, 76, 0.5);
+  color: var(--gold);
+}
+.mtt-money.in-money {
+  background: rgba(74, 122, 90, 0.2);
+  border: 1px solid rgba(74, 122, 90, 0.6);
+  color: #8fd0a4;
+}
+.mtt-ladder {
+  margin-top: 9px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.mtt-rung {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 5px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  border-radius: 2px;
+  color: var(--smoke);
+}
+.mtt-rung.mine {
+  background: rgba(201, 168, 76, 0.18);
+  color: var(--gold);
+}
+.mtt-rung.paid .mtt-prize {
+  color: var(--gold);
+}
+.mtt-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mtt-prize {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Table move: a player needs to be told, not left to notice their seat moved. */
+.mtt-move {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.94);
+  z-index: 200;
+  padding: 16px 30px;
+  background: rgba(13, 31, 18, 0.96);
+  border: 1px solid var(--gold);
+  border-radius: 5px;
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  letter-spacing: 0.03em;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+.mtt-move.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mtt-move {
+    transition: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .mtt-panel {
+    top: auto;
+    bottom: 96px;
+    left: 8px;
+    width: 172px;
+    font-size: 0.72rem;
+  }
+  .mtt-ladder {
+    max-height: 96px;
+  }
+}

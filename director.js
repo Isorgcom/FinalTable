@@ -65,6 +65,11 @@ class TournamentDirector {
     this.onMessage = options.onMessage || null;
     this.onTableCreated = options.onTableCreated || null;
     this.onFinished = options.onFinished || null;
+    // Fired when a player changes table, so a host can tell that player
+    // specifically rather than making them notice their seat changed.
+    this.onPlayerMoved = options.onPlayerMoved || null;
+    // Fired whenever the field summary changes in a way worth pushing.
+    this.onFieldUpdate = options.onFieldUpdate || null;
   }
 
   // ── Field queries ────────────────────────────────────────────────────────
@@ -81,6 +86,53 @@ class TournamentDirector {
   // the life of the tournament; see assertChipConservation.
   totalChips() {
     return this.tables.reduce((sum, t) => sum + t.totalChips(), 0);
+  }
+
+  // The table a player is seated at right now. Their socket id changes on
+  // reconnect and their table changes on a balance move, so callers must look
+  // this up per action rather than caching it.
+  tableForPlayer(uid) {
+    return this.tables.find((t) => t.players.some((p) => p.uid === uid)) || null;
+  }
+
+  playerByUid(uid) {
+    for (const table of this.tables) {
+      const found = table.players.find((p) => p.uid === uid);
+      if (found) return { table, player: found };
+    }
+    return null;
+  }
+
+  // Field summary for the UI: everything a player needs to know about where
+  // they stand without opening another screen.
+  fieldSummary(viewerUid = null) {
+    const alive = this.fieldPlayers().filter((p) => p.chips > 0);
+    const sorted = [...alive].sort((a, b) => b.chips - a.chips);
+    const leader = sorted[0] || null;
+    const me = viewerUid ? alive.find((p) => p.uid === viewerUid) : null;
+    const myRank = me ? sorted.findIndex((p) => p.uid === viewerUid) + 1 : null;
+    const seat = viewerUid ? this.playerByUid(viewerUid) : null;
+    return {
+      id: this.id,
+      isRunning: this.isRunning,
+      finished: this.finished,
+      entrants: this.entrants.length,
+      remaining: alive.length,
+      averageStack: alive.length ? Math.floor(this.totalChips() / alive.length) : 0,
+      chipLeader: leader ? { name: leader.name, chips: leader.chips } : null,
+      myChips: me ? me.chips : null,
+      myRank,
+      myTable: seat ? seat.table.tableNumber : null,
+      tablesLeft: this.activeTables().length,
+      paidPlaces: this.paidPlaces || 0,
+      prizePool: this.prizePool(),
+      payouts: this.payouts(),
+      onBubble: this.isOnBubble(),
+      inTheMoney: this.paidPlaces ? alive.length <= this.paidPlaces : false,
+      blinds: this.tournament.getCurrentBlinds(),
+      level: this.tournament.currentLevel + 1,
+      nextLevelIn: this.tournament.getTimeUntilNextLevel(),
+    };
   }
 
   activeTables() {
@@ -271,6 +323,13 @@ class TournamentDirector {
     return started;
   }
 
+  // Called on a timer by the host. Starts whatever hands can start; the engine
+  // drives bot turns and human actions arrive over sockets.
+  tick() {
+    if (!this.isRunning || this.finished) return 0;
+    return this.startHandsWhereReady();
+  }
+
   holdField(reason = '') {
     this._paused = true;
     if (reason) this._say(`Field held: ${reason}`);
@@ -309,6 +368,7 @@ class TournamentDirector {
     // deal never fires another round end, so only somebody else's round end
     // will ever get its players unstuck.
     this.rebalanceField();
+    if (this.onFieldUpdate) this.onFieldUpdate();
   }
 
   // ── Seat maths ───────────────────────────────────────────────────────────
@@ -371,6 +431,16 @@ class TournamentDirector {
     if (!seated) return false;
     from.removePlayer(player.id);
     this._say(`${player.name} moves to table ${to.tableNumber}`);
+    if (this.onPlayerMoved) {
+      this.onPlayerMoved({
+        uid: player.uid,
+        id: player.id,
+        name: player.name,
+        fromTable: from.tableNumber,
+        toTable: to.tableNumber,
+        chips: seated.chips,
+      });
+    }
     return true;
   }
 

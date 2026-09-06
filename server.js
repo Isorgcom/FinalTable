@@ -13,6 +13,7 @@ const { loadConfig } = require('./server/config');
 const { applySecurityHeaders, createRateLimiter } = require('./server/http-middleware');
 const { createHostManager } = require('./server/host-manager');
 const { registerSocketHandlers } = require('./server/socket-handlers');
+const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
 const { createStructuredLogger } = require('./server/logger');
 
@@ -377,6 +378,15 @@ registerSocketHandlers({
   requireHost,
   scheduleHostTransfer,
   checkAndResetRoom,
+});
+
+// Multi-table tournaments live in their own handler module; the single-table
+// room handlers above are untouched by them.
+registerTournamentHandlers({
+  io,
+  sanitizeName,
+  sanitizeAvatar,
+  maxTournaments: config.maxTournaments || 8,
 });
 // Reset room when all human players are gone
 function checkAndResetRoom(roomId) {

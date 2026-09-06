@@ -417,6 +417,11 @@ async function joinGame() {
       roomId = generatePracticeRoomName();
       document.getElementById('roomId').value = roomId;
     }
+  } else if (window.__pendingTournament) {
+    // A tournament is not a room: the director creates and owns its tables, so
+    // there is nothing for the player to pick from the room list. Skip the
+    // room requirement and let the server name the tables.
+    roomId = 'mtt';
   } else {
     roomId = getSelectedRoomId();
     if (!roomId || !selectedRoomMeta) {
@@ -503,7 +508,20 @@ async function joinGame() {
       sessionToken: sessionToken,
     };
     _joinData = joinPayload;
-    socket.emit('joinRoom', joinPayload);
+    // A multi-table tournament reuses this whole connect path -- the socket,
+    // the gameState handler and the table renderer are all identical -- and
+    // only differs in what it asks the server for.
+    if (window.__pendingTournament) {
+      const cfg = window.__pendingTournament;
+      window.__pendingTournament = null;
+      socket.emit('createTournament', {
+        ...cfg,
+        playerName,
+        playerAvatar,
+      });
+    } else {
+      socket.emit('joinRoom', joinPayload);
+    }
   });
 
   socket.on('disconnect', () => {
