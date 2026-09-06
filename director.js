@@ -65,6 +65,11 @@ class TournamentDirector {
     return this.tables.filter((t) => t.players.length > 0);
   }
 
+  // Tables still in play: not broken, and therefore valid move destinations.
+  openTables() {
+    return this.tables.filter((t) => !t._broken);
+  }
+
   // ── Registration and seating ─────────────────────────────────────────────
 
   register(entrant) {
@@ -94,6 +99,11 @@ class TournamentDirector {
         chips: this.startChips,
       });
     });
+
+    // Fixed at start: a table's break priority must not depend on the state of
+    // the moment, or debugging a finish becomes guesswork. Highest table number
+    // breaks first.
+    this.breakOrder = [...this.tables].reverse().map((t) => t.tableNumber);
 
     this.isRunning = true;
     this._expectedChips = this.totalChips();
@@ -198,20 +208,159 @@ class TournamentDirector {
       return;
     }
 
-    // Not balancing: only rescuing tables that can no longer deal. Without
-    // this the field ends as one lone survivor per table and never resolves.
-    //
-    // Every stalled table is swept, not just the one that finished. A table
-    // that cannot deal never fires another round end, so if a survivor could
-    // not be moved when their table stalled (everywhere else was full), only
-    // somebody else's round end will ever get them unstuck.
+    // Break a table when the field fits on fewer, keep the rest within one
+    // seat of each other, and rescue anything that still cannot deal. Every
+    // table is considered, not just the one that finished: a table unable to
+    // deal never fires another round end, so only somebody else's round end
+    // will ever get its players unstuck.
+    this.rebalanceField();
+  }
+
+  // ── Seat maths ───────────────────────────────────────────────────────────
+
+  // Index of the seat that will post the big blind on the next hand.
+  //
+  // Deliberately counts only players with chips, and does NOT use
+  // getNextActiveIndex: that helper also skips folded and all-in players, and
+  // `folded` is only cleared inside startRound, so between hands it still holds
+  // the previous hand's values. endRound has already advanced dealerIndex by
+  // the time this is called, so this mirrors what startRound will decide.
+  _nextBigBlindIndex(table) {
+    const n = table.players.length;
+    if (n === 0) return 0;
+    const hasChips = (i) => table.players[i].chips > 0;
+    const step = (from) => {
+      let j = (from + 1) % n;
+      for (let guard = 0; guard < n && !hasChips(j); guard++) j = (j + 1) % n;
+      return j;
+    };
+    const dealer = table.dealerIndex % n;
+    const active = table.players.filter((p) => p.chips > 0).length;
+    // Heads-up inverts it: the button is the small blind.
+    if (active === 2) return step(dealer);
+    return step(step(dealer));
+  }
+
+  // The player a balance move should take. Standard practice is to move the
+  // player who is about to post the big blind and seat them where they will
+  // post it again, so the move costs them exactly one blind: pick anyone else
+  // and they either get a free orbit or pay twice, which players notice
+  // immediately and which quietly changes who wins.
+  _playerToMove(table) {
+    const seated = table.players.filter((p) => p.chips > 0);
+    if (seated.length === 0) return null;
+    const idx = this._nextBigBlindIndex(table);
+    return table.players[idx] && table.players[idx].chips > 0 ? table.players[idx] : seated[0];
+  }
+
+  // Move one player, seating them in the destination's big-blind seat.
+  // Seat before remove, always: a rejected seat must not destroy a stack.
+  //
+  // Never touches a table with a hand in progress. Inserting a seat mid-hand
+  // shifts every index the hand is built on, including the button, and drops in
+  // a player who holds no cards but is not folded. It loses chips: an observed
+  // run drifted by exactly one big blind. Deferring is safe, because a running
+  // table fires its own round end when it finishes and the rebalance runs again.
+  _movePlayer(from, to, player) {
+    if (from.isRunning || to.isRunning) return false;
+    const seatIndex = this._nextBigBlindIndex(to);
+    const seated = to.addPlayer({
+      id: player.id,
+      uid: player.uid,
+      name: player.name,
+      isNPC: player.isNPC,
+      npcProfile: player.npcProfile,
+      chips: player.chips,
+      seatIndex,
+    });
+    if (!seated) return false;
+    from.removePlayer(player.id);
+    this._say(`${player.name} moves to table ${to.tableNumber}`);
+    return true;
+  }
+
+  // ── Balancing and breaking ───────────────────────────────────────────────
+
+  // Break a table when the field fits on one fewer, then balance what is left.
+  // Balance keeps every table within one seat of every other, which is the
+  // standard rule and the thing that stops one table playing five-handed while
+  // another plays nine.
+  rebalanceField() {
+    if (!this.isRunning || this.finished) return;
+    this._breakIfPossible();
+    this._balanceTables();
+    // Anything still unable to deal gets rescued the phase 3 way.
     this._collapseStalledTables();
+
+    // Any empty table is out of play, however it emptied: broken deliberately,
+    // or simply everyone seated at it busting on the same hand. Marking both
+    // the same way is what stops it being handed players again later.
+    for (const table of this.tables) {
+      if (table.players.length === 0) this._announceBreak(table);
+    }
+
     this.assertChipConservation();
+  }
+
+  _breakIfPossible() {
+    for (let pass = 0; pass < this.tables.length; pass++) {
+      // A hand in progress makes a table untouchable, so wait for it.
+      if (this.tables.some((t) => t.isRunning)) return;
+      const active = this.activeTables();
+      if (active.length <= 1) return;
+      const capacityWithoutOne = (active.length - 1) * this.tableSize;
+      if (this.playersRemaining() > capacityWithoutOne) return;
+
+      // The first table in break order that still has anyone.
+      const doomed = this.breakOrder
+        .map((num) => this.tables.find((t) => t.tableNumber === num))
+        .find((t) => t && t.players.length > 0);
+      if (!doomed) return;
+
+      for (const player of [...doomed.players]) {
+        const target = this._emptiestTableExcept(doomed);
+        if (!target) break;
+        if (!this._movePlayer(doomed, target, player)) break;
+      }
+      if (doomed.players.length === 0) {
+        this._announceBreak(doomed);
+      } else {
+        return; // could not fully empty it; stop rather than loop
+      }
+    }
+  }
+
+  _balanceTables() {
+    for (let pass = 0; pass < 50; pass++) {
+      if (this.tables.some((t) => t.isRunning)) return;
+      const active = this.activeTables();
+      if (active.length < 2) return;
+      const sorted = [...active]
+        .filter((t) => !t._broken)
+        .sort((a, b) => a.players.length - b.players.length);
+      if (sorted.length < 2) return;
+      const smallest = sorted[0];
+      const largest = sorted[sorted.length - 1];
+      if (largest.players.length - smallest.players.length <= 1) return;
+
+      const mover = this._playerToMove(largest);
+      if (!mover) return;
+      if (!this._movePlayer(largest, smallest, mover)) return;
+    }
+  }
+
+  // A broken table stays broken. Without this an emptied table is still just
+  // "a table with free seats" and players get moved back onto it, which no
+  // tournament does and which reads as a bug from the seat.
+  _emptiestTableExcept(exclude) {
+    return this.tables
+      .filter((t) => t !== exclude && !t._broken && t.players.length < this.tableSize)
+      .sort((a, b) => a.players.length - b.players.length)[0];
   }
 
   _collapseStalledTables() {
     for (const table of [...this.tables]) {
-      if (table.isRunning) continue;
+      if (table.isRunning || table.players.length === 0) continue;
       this._collapseIfStalled(table);
     }
   }
@@ -242,8 +391,16 @@ class TournamentDirector {
     }
 
     if (table.players.length === 0) {
-      this._say(`Table ${table.tableNumber} is broken`);
+      this._announceBreak(table);
     }
+  }
+
+  // A table is broken once. Without the flag an emptied table re-announces
+  // itself on every subsequent sweep, which floods the message log.
+  _announceBreak(table) {
+    if (table._broken) return;
+    table._broken = true;
+    this._say(`Table ${table.tableNumber} is broken`);
   }
 
   assertChipConservation() {

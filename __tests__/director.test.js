@@ -21,13 +21,13 @@ function makeDirector(entrants, opts = {}) {
 
 // Drives one hand on a table to completion with deterministic-ish aggression,
 // so stacks actually collide and players bust rather than limping forever.
-function playHand(table, rng) {
+function playHand(table, rng, aggression = 0.55) {
   let guard = 0;
   while (table.isRunning && guard++ < 400) {
     const cur = table.players[table.currentPlayerIndex];
     if (!cur || cur.chips <= 0) break;
     const roll = rng();
-    const action = roll < 0.55 ? 'allin' : roll < 0.9 ? 'call' : 'fold';
+    const action = roll < aggression ? 'allin' : roll < 0.9 ? 'call' : 'fold';
     if (!table.handleAction(cur.id, action)) {
       // Fall back to something always legal so the hand cannot wedge.
       if (!table.handleAction(cur.id, 'call')) table.handleAction(cur.id, 'fold');
@@ -35,7 +35,11 @@ function playHand(table, rng) {
   }
 }
 
-function runToCompletion(director, maxHands = 3000) {
+// `aggression` is the chance a player shoves. High values bust the field in a
+// handful of hands, which is fine for "does it finish" but useless for anything
+// that needs several tables alive at once; lower it to keep the field spread
+// across tables for longer.
+function runToCompletion(director, maxHands = 3000, aggression = 0.55) {
   let seed = 12345;
   const rng = () => {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
@@ -47,7 +51,7 @@ function runToCompletion(director, maxHands = 3000) {
     if (started === 0) break;
     for (const table of director.tables) {
       if (table.isRunning) {
-        playHand(table, rng);
+        playHand(table, rng, aggression);
         hands++;
       }
     }
@@ -228,6 +232,180 @@ describe('TournamentDirector', () => {
     const d = makeDirector(6);
     d.start();
     expect(() => d.register({ id: 'late', name: 'Late' })).toThrow();
+    d.stop();
+  });
+});
+
+describe('TournamentDirector balancing (phase 4)', () => {
+  test('keeps every table within one seat of every other', () => {
+    const d = makeDirector(20, { tableSize: 9 });
+    d.start();
+    // Force a lopsided field: pile everyone onto table 1 that will fit.
+    const [a, b] = d.tables;
+    while (b.players.length > 1 && a.players.length < 9) {
+      const p = b.players[b.players.length - 1];
+      a.addPlayer({ id: p.id, uid: p.uid, name: p.name, chips: p.chips });
+      b.removePlayer(p.id);
+    }
+    d._expectedChips = d.totalChips();
+    d.rebalanceField();
+
+    const counts = d.activeTables().map((t) => t.players.length);
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+    expect(d.totalChips()).toBe(d._expectedChips);
+    d.stop();
+  });
+
+  test('breaks a table once the field fits on fewer', () => {
+    const d = makeDirector(18, { tableSize: 9 }); // 2 tables of 9
+    d.start();
+    expect(d.activeTables()).toHaveLength(2);
+
+    // Bust down to 9, which fits on a single table.
+    const doomed = d.fieldPlayers().slice(0, 9);
+    for (const p of doomed) p.chips = 0;
+    for (const table of d.tables) {
+      for (const p of table.players.filter((x) => x.chips <= 0)) table.removePlayer(p.id);
+    }
+    d._expectedChips = d.totalChips();
+    d.rebalanceField();
+
+    expect(d.activeTables()).toHaveLength(1);
+    expect(d.playersRemaining()).toBe(9);
+    expect(d.totalChips()).toBe(d._expectedChips);
+    d.stop();
+  });
+
+  test('break order is fixed at start, not chosen on the fly', () => {
+    const d = makeDirector(27, { tableSize: 9 });
+    d.start();
+    expect(d.breakOrder).toEqual([3, 2, 1]); // highest table number breaks first
+    const snapshot = [...d.breakOrder];
+    d.rebalanceField();
+    expect(d.breakOrder).toEqual(snapshot);
+    d.stop();
+  });
+
+  test('a moved player is seated to post the big blind, not to skip it', () => {
+    // 12 at tableSize 9 leaves room at the destination; 18 would fill both
+    // tables and every move would correctly be refused.
+    const d = makeDirector(12, { tableSize: 9 });
+    d.start();
+    const [a, b] = d.tables;
+    // Advance table B's button by playing a hand, so this is not the trivial case.
+    b.startRound();
+    let guard = 0;
+    while (b.isRunning && guard++ < 200) {
+      const cur = b.players[b.currentPlayerIndex];
+      if (!cur) break;
+      b.handleAction(cur.id, 'call');
+    }
+
+    for (let i = 0; i < 5; i++) {
+      const mover = d._playerToMove(a);
+      if (!mover) break;
+      const uid = mover.uid;
+      expect(d._movePlayer(a, b, mover)).toBe(true);
+      b.startRound();
+      expect(b.players[b.bbIndex].uid).toBe(uid);
+      let g2 = 0;
+      while (b.isRunning && g2++ < 200) {
+        const cur = b.players[b.currentPlayerIndex];
+        if (!cur) break;
+        b.handleAction(cur.id, 'call');
+      }
+    }
+    d.stop();
+  });
+
+  test('balance holds and chips are conserved across a whole tournament', () => {
+    const d = makeDirector(27, { tableSize: 9, startChips: 1500 });
+    d.start();
+    const expected = 27 * 1500;
+
+    // Wrap rebalanceField so the seat-count rule is checked every time it can
+    // actually act. It deliberately defers while any table has a hand in
+    // progress, so measuring then would be measuring the deferral, not the
+    // rule: assert only once the field is idle and balancing has had its say.
+    const original = d.rebalanceField.bind(d);
+    let worstSpread = 0;
+    let assertedAt = 0;
+    d.rebalanceField = () => {
+      original();
+      if (d.tables.some((t) => t.isRunning)) return;
+      const counts = d.activeTables().map((t) => t.players.length);
+      if (counts.length > 1) {
+        worstSpread = Math.max(worstSpread, Math.max(...counts) - Math.min(...counts));
+        assertedAt++;
+      }
+    };
+
+    // Gentle aggression so the field stays spread over several tables long
+    // enough for balancing to have something to do.
+    runToCompletion(d, 3000, 0.06);
+
+    expect(d.finished).not.toBeNull();
+    expect(d.totalChips()).toBe(expected);
+    expect(assertedAt).toBeGreaterThan(0); // the rule was actually exercised
+    expect(worstSpread).toBeLessThanOrEqual(1);
+    d.stop();
+  });
+
+  test('the final table is not broken out from under the last players', () => {
+    const d = makeDirector(6, { tableSize: 9 });
+    d.start();
+    expect(d.activeTables()).toHaveLength(1);
+    d._expectedChips = d.totalChips();
+    d.rebalanceField();
+    expect(d.activeTables()).toHaveLength(1);
+    expect(d.playersRemaining()).toBe(6);
+    d.stop();
+  });
+
+  // Shrinks the field to `keep` survivors and runs the rebalance, which is the
+  // only honest way to trigger a break: a table can only be emptied into others
+  // once the field actually fits on fewer tables.
+  function breakDownTo(d, keep) {
+    const doomed = d.fieldPlayers().slice(keep);
+    for (const p of doomed) p.chips = 0;
+    for (const table of d.tables) {
+      for (const p of table.players.filter((x) => x.chips <= 0)) table.removePlayer(p.id);
+    }
+    d._expectedChips = d.totalChips();
+    d.rebalanceField();
+  }
+
+  test('a broken table is never reopened', () => {
+    const d = makeDirector(18, { tableSize: 9 });
+    d.start();
+    breakDownTo(d, 9); // 9 survivors fit one table, so one table breaks
+
+    const broken = d.tables.filter((t) => t._broken);
+    expect(broken.length).toBe(1);
+    expect(d.activeTables()).toHaveLength(1);
+
+    // Even with seats free elsewhere, the broken table is not a destination.
+    const survivor = d.activeTables()[0];
+    expect(d._emptiestTableExcept(survivor)).toBeUndefined();
+
+    d.rebalanceField();
+    expect(broken[0].players).toHaveLength(0);
+    expect(d.totalChips()).toBe(d._expectedChips);
+    d.stop();
+  });
+
+  test('a break is announced once, not on every later sweep', () => {
+    const said = [];
+    const d = makeDirector(18, { tableSize: 9, onMessage: (m) => said.push(m) });
+    d.start();
+    breakDownTo(d, 9);
+
+    d.rebalanceField();
+    d.rebalanceField();
+    d._collapseStalledTables();
+
+    const announcements = said.filter((m) => /is broken/.test(m));
+    expect(announcements).toHaveLength(1);
     d.stop();
   });
 });
