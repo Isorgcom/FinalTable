@@ -254,6 +254,9 @@ class PokerGame {
     if (this.players.length >= this.maxPlayers) return null;
     const player = {
       id: playerData.id,
+      // Stable identity for the life of the seat. `id` is the socket id and is
+      // reassigned on reconnect, so it cannot carry authority; `uid` can.
+      uid: playerData.uid || random.randomId('u_'),
       name: playerData.name,
       chips: this.startChips,
       holeCards: [],
@@ -2117,6 +2120,9 @@ class PokerGame {
 
   getStateForPlayer(playerId) {
     const viewer = this.players.find((p) => p.id === playerId);
+    const hostPlayer = this.hostPlayerId
+      ? this.players.find((p) => p.uid === this.hostPlayerId)
+      : null;
     return {
       id: this.id,
       phase: this.phase,
@@ -2131,10 +2137,12 @@ class PokerGame {
       roundCount: this.roundCount,
       smallBlind: this.smallBlind,
       bigBlind: this.bigBlind,
-      hostName: this.hostPlayerName || null,
-      isHost: !!(viewer && viewer.name === this.hostPlayerName),
+      hostName: hostPlayer ? hostPlayer.name : null,
+      hostId: this.hostPlayerId || null,
+      isHost: !!(viewer && viewer.uid && viewer.uid === this.hostPlayerId),
       players: this.players.map((p) => ({
         id: p.id,
+        uid: p.uid,
         name: p.name,
         chips: p.chips,
         bet: p.bet,

@@ -14,12 +14,12 @@ function createHostManager({ games, io, graceMs }) {
     const respectGrace = options.respectGrace !== false;
     const humans = getHumanPlayers(game);
     if (humans.length === 0) {
-      game.hostPlayerName = null;
+      game.hostPlayerId = null;
       clearHostTransferTimer(game);
       return null;
     }
 
-    const currentHost = humans.find((p) => p.name === game.hostPlayerName);
+    const currentHost = humans.find((p) => p.uid === game.hostPlayerId);
     if (currentHost) {
       if (currentHost.isConnected !== false) {
         clearHostTransferTimer(game);
@@ -30,7 +30,7 @@ function createHostManager({ games, io, graceMs }) {
     }
 
     const nextHost = humans.find((p) => p.isConnected !== false) || currentHost || humans[0];
-    game.hostPlayerName = nextHost.name;
+    game.hostPlayerId = nextHost.uid;
     if (nextHost.isConnected !== false) clearHostTransferTimer(game);
     return nextHost;
   }
@@ -38,9 +38,9 @@ function createHostManager({ games, io, graceMs }) {
   function transferHostIfStale(roomId) {
     const game = games.get(roomId);
     if (!game) return;
-    const previousHost = game.hostPlayerName;
+    const previousHostId = game.hostPlayerId;
     const nextHost = assignHost(game, { respectGrace: false });
-    if (nextHost && nextHost.name !== previousHost && nextHost.isConnected !== false) {
+    if (nextHost && nextHost.uid !== previousHostId && nextHost.isConnected !== false) {
       io.to(roomId).emit('gameMessage', `${nextHost.name} is now the room host`);
       game.emitUpdate(game);
     }
@@ -48,10 +48,10 @@ function createHostManager({ games, io, graceMs }) {
 
   function scheduleHostTransfer(roomId, game) {
     clearHostTransferTimer(game);
-    const currentHost = getHumanPlayers(game).find((p) => p.name === game.hostPlayerName);
+    const currentHost = getHumanPlayers(game).find((p) => p.uid === game.hostPlayerId);
     if (!currentHost || currentHost.isConnected !== false) return;
     if (
-      !getHumanPlayers(game).some((p) => p.name !== currentHost.name && p.isConnected !== false)
+      !getHumanPlayers(game).some((p) => p.uid !== currentHost.uid && p.isConnected !== false)
     ) {
       return;
     }
@@ -64,7 +64,11 @@ function createHostManager({ games, io, graceMs }) {
   function requireHost(socket, game) {
     const host = assignHost(game);
     const player = game.players.find((p) => p.id === socket.id && !p.isNPC);
-    if (host && player && player.name === host.name) return true;
+    // Compared by uid, never by display name. A name is user-chosen, so
+    // matching on it makes host authority depend on a uniqueness invariant
+    // enforced elsewhere; any path that ever admits a duplicate name would
+    // become privilege escalation.
+    if (host && player && player.uid && player.uid === host.uid) return true;
     socket.emit('error', { message: 'Only the room host can do that' });
     return false;
   }

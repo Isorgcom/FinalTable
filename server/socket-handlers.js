@@ -65,7 +65,7 @@ function registerSocketHandlers(deps) {
 
   function getReadyPlayers(game) {
     return getHumanPlayers(game).filter(
-      (player) => player.name !== game.hostPlayerName && !player.autoPlay
+      (player) => player.uid !== game.hostPlayerId && !player.autoPlay
     );
   }
 
@@ -364,7 +364,7 @@ function registerSocketHandlers(deps) {
 
       const player = game.players.find((p) => p.id === socket.id && !p.isNPC);
       if (!player) return;
-      if (player.name === game.hostPlayerName) return;
+      if (player.uid === game.hostPlayerId) return;
       if (player.autoPlay) return;
 
       player.isReady = payload.ready !== false;
@@ -722,7 +722,7 @@ function registerSocketHandlers(deps) {
 
       const player = game.players.find((p) => p.id === socket.id);
       if (player) {
-        const wasHost = player.name === game.hostPlayerName;
+        const wasHost = player.uid === game.hostPlayerId;
         if (
           game.isRunning &&
           game.currentPlayerIndex === player.seatIndex &&
@@ -798,7 +798,7 @@ function registerSocketHandlers(deps) {
         p.folded = false;
         p.allIn = false;
         p.isReady =
-          preserveRematchReady && !p.isNPC && p.name !== game.hostPlayerName ? !!p.isReady : false;
+          preserveRematchReady && !p.isNPC && p.uid !== game.hostPlayerId ? !!p.isReady : false;
         p.autoPlay = false;
         p.wins = 0;
         p.handsPlayed = 0;
@@ -989,7 +989,6 @@ function registerSocketHandlers(deps) {
       if (!player || player.isNPC) return;
       const oldName = player.name;
       player.name = name;
-      if (game.hostPlayerName === oldName) game.hostPlayerName = name;
       if (socket.data.sessionToken && sessionTokens.has(socket.data.sessionToken)) {
         const session = sessionTokens.get(socket.data.sessionToken);
         session.playerName = name;
@@ -1108,7 +1107,7 @@ function registerSocketHandlers(deps) {
         io.to(roomId).emit('gameMessage', `${player.name} disconnected`);
         logSocketEvent(
           'socket_disconnected',
-          { socketId: socket.id, roomId, playerName: player.name, wasHost: player.name === game.hostPlayerName },
+          { socketId: socket.id, roomId, playerName: player.name, wasHost: player.uid === game.hostPlayerId },
           'info',
           'Socket disconnected'
         );
@@ -1128,7 +1127,7 @@ function registerSocketHandlers(deps) {
         }
 
         if (!refreshedTurnState) game.emitUpdate(game);
-        if (player.name === game.hostPlayerName) {
+        if (player.uid === game.hostPlayerId) {
           scheduleHostTransfer(roomId, game);
         }
 

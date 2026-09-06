@@ -651,14 +651,14 @@ function isReadyCheckEnabled() {
   if (!gameState || gameState.gameMode === 'practice') return false;
   if (gameState.isRunning || gameState.roundCount > 0) return false;
   const readyEligiblePlayers = gameState.players.filter(
-    (p) => !p.isNPC && p.name !== gameState.hostName && !p.autoPlay
+    (p) => !p.isNPC && p.uid !== gameState.hostId && !p.autoPlay
   );
   return readyEligiblePlayers.length >= 1;
 }
 
 function getReadySummary() {
   const readyEligiblePlayers = gameState
-    ? gameState.players.filter((p) => !p.isNPC && p.name !== gameState.hostName && !p.autoPlay)
+    ? gameState.players.filter((p) => !p.isNPC && p.uid !== gameState.hostId && !p.autoPlay)
     : [];
   const readyPlayers = readyEligiblePlayers.filter((p) => p.isReady);
   const me = readyEligiblePlayers.find((p) => p.id === myId);

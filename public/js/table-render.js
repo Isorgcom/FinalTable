@@ -210,7 +210,7 @@ function renderTable(oldCommunityLen) {
 let _builtRound = -1;
 let _builtPlayerCount = -1;
 let _builtPhase = '';
-let _builtHostName = '';
+let _builtHostId = '';
 let _builtIdentityKey = '';
 let _dealAnimationRound = -1;
 
@@ -244,7 +244,7 @@ function renderPlayersIncremental() {
   const needsFullRebuild =
     _builtRound !== gameState.roundCount ||
     _builtPlayerCount !== playerCount ||
-    _builtHostName !== (gameState.hostName || '') ||
+    _builtHostId !== (gameState.hostId || '') ||
     _builtIdentityKey !== identityKey ||
     (_builtPhase === 'showdown' && gameState.phase !== 'showdown') ||
     (_builtPhase !== 'showdown' && gameState.phase === 'showdown') ||
@@ -254,7 +254,7 @@ function renderPlayersIncremental() {
     _builtRound = gameState.roundCount;
     _builtPlayerCount = playerCount;
     _builtPhase = gameState.phase;
-    _builtHostName = gameState.hostName || '';
+    _builtHostId = gameState.hostId || '';
     _builtIdentityKey = identityKey;
     renderPlayersFull(container);
     return;
@@ -445,7 +445,7 @@ function appendPlayerIdentity(info, player, pos) {
   }
 
   const name = createTextElement('div', 'player-name', player.name);
-  if (gameState.hostName === player.name && !player.isNPC) {
+  if (player.uid && player.uid === gameState.hostId && !player.isNPC) {
     const hostBadge = createTextElement('span', 'player-host-badge', 'host');
     hostBadge.title = 'Room host';
     name.appendChild(hostBadge);
@@ -947,7 +947,9 @@ function showResult(options = {}) {
     title.textContent = iWon ? 'You cleared the table!' : `${winnerName} cleared the table`;
     title.classList.add('result-title-winner');
     details.appendChild(document.createElement('hr')).className = 'result-separator';
-    const rematchGuests = gameState.players.filter((player) => !player.isNPC && player.name !== gameState.hostName);
+    const rematchGuests = gameState.players.filter(
+      (player) => !player.isNPC && player.uid !== gameState.hostId
+    );
     const readyGuests = rematchGuests.filter((player) => player.isReady);
     details.appendChild(
       createTextElement(
