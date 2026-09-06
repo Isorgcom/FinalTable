@@ -285,6 +285,11 @@ function init() {
   });
   document.getElementById('btnLeaderboard').addEventListener('click', () => {
     closeMenu();
+    // Docked panel: the Stats tab. Phones keep the modal until the drawer lands.
+    if (window.SidePanel && SidePanel.isDocked()) {
+      SidePanel.reveal('stats');
+      return;
+    }
     renderLeaderboard();
     document.getElementById('lbPanel').classList.remove('hidden');
   });
@@ -293,6 +298,10 @@ function init() {
   });
   document.getElementById('btnReplay').addEventListener('click', () => {
     closeMenu();
+    if (window.SidePanel && SidePanel.isDocked()) {
+      SidePanel.reveal('history');
+      return;
+    }
     renderReplayList();
     document.getElementById('replayPanel').classList.remove('hidden');
   });

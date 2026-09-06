@@ -96,6 +96,15 @@ test('a practice table seats every player, deals, and hands the viewer the actio
   await expect(page.locator('#panelChat')).toBeHidden();
   await page.keyboard.press('Home');
   await expect(page.locator('#panelChat')).toBeVisible();
+  await expect(page.locator('#panelInfoBody')).toContainText('Practice');
+  await expect(page.locator('#panelInfoBody')).toContainText('Blinds');
+  await page.click('#btnLeaderboard');
+  await expect(page.locator('#panelStats')).toBeVisible();
+  await expect(page.locator('#panelStatsBody')).toContainText('Leaderboard');
+  await expect(page.locator('#lbPanel')).toBeHidden();
+  await page.click('#btnReplay');
+  await expect(page.locator('#panelHistory')).toBeVisible();
+  await expect(page.locator('#replayPanel')).toBeHidden();
   await expect(page.locator('#btnFold')).toBeVisible();
   await expect(page.locator('#playerSeats .player-seat.active-turn')).toHaveCount(1);
   expect(pageErrors).toEqual([]);

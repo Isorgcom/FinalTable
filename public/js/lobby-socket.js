@@ -770,6 +770,9 @@ function restoreLobbyUI() {
   }
   if (logLast) logLast.textContent = 'Waiting...';
   if (logBody) logBody.textContent = '';
+  window.mttField = null;
+  window.mttFinished = null;
+  if (window.SidePanel) SidePanel.refresh('info');
   if (tournamentBanner) tournamentBanner.classList.add('hidden');
 
   if (shouldClearStaleRoom) {

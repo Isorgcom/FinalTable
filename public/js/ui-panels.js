@@ -158,9 +158,26 @@ function removeNPC(name) {
 }
 
 // ============================================================
-//  TOURNAMENT BANNER
+//  BLIND CLOCK (tournament banner + Info tab)
 // ============================================================
-function updateTournamentBanner() {
+// One interval drives both the banner over the felt and the Info tab's
+// countdown, so the two can never disagree by a second.
+let _blindClockRemaining = 0;
+
+function formatClock(seconds) {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function paintBlindClock() {
+  const text = formatClock(_blindClockRemaining);
+  const timerEl = document.getElementById('tbTimer');
+  if (timerEl) timerEl.textContent = text;
+  const infoEl = document.getElementById('infoNextLevel');
+  if (infoEl) infoEl.textContent = text;
+}
+
+function updateBlindClock() {
   const banner = document.getElementById('tournamentBanner');
   if (!gameState || !gameState.tournament || !gameState.tournament.isActive) {
     banner.classList.add('hidden');
@@ -177,24 +194,252 @@ function updateTournamentBanner() {
   document.getElementById('tbAlive').textContent =
     gameState.players.filter((p) => p.chips > 0).length + '/' + t.startingPlayers;
 
-  // Live countdown timer
+  // Live countdown, re-seeded from the server on every state update.
   if (tournamentTimer) clearInterval(tournamentTimer);
-  let remaining = t.timeUntilNextLevel;
-  const timerEl = document.getElementById('tbTimer');
-  timerEl.textContent = Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0');
+  _blindClockRemaining = t.timeUntilNextLevel;
+  paintBlindClock();
   tournamentTimer = setInterval(() => {
-    remaining--;
-    if (remaining < 0) remaining = 0;
-    timerEl.textContent =
-      Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0');
+    _blindClockRemaining = Math.max(0, _blindClockRemaining - 1);
+    paintBlindClock();
   }, 1000);
+}
+
+// ============================================================
+//  INFO TAB
+// ============================================================
+const INFO_MODE_LABELS = { cash: 'Cash Game', tournament: 'Tournament', practice: 'Practice' };
+
+function infoSection(title) {
+  const section = document.createElement('div');
+  section.className = 'info-section';
+  section.appendChild(createTextElement('div', 'info-section-title', title));
+  return section;
+}
+
+// rows: [label, value, optional id for a value something else keeps live]
+function infoGrid(rows) {
+  const grid = document.createElement('div');
+  grid.className = 'mtt-grid';
+  rows.forEach(([label, value, id]) => {
+    const cell = document.createElement('div');
+    cell.className = 'mtt-cell';
+    cell.appendChild(createTextElement('span', 'mtt-label', label));
+    const v = createTextElement('span', 'mtt-value', value);
+    if (id) v.id = id;
+    v.title = String(value);
+    cell.appendChild(v);
+    grid.appendChild(cell);
+  });
+  return grid;
+}
+
+function fmtNum(n) {
+  return typeof n === 'number' ? n.toLocaleString() : '-';
+}
+
+function renderInfoTab() {
+  const body = document.getElementById('panelInfoBody');
+  if (!body) return;
+  body.textContent = '';
+  const field = window.mttField || null;
+  const finished = window.mttFinished || null;
+  if (!gameState && !field) {
+    body.appendChild(createTextElement('div', 'panel-empty', 'Take a seat to see the table'));
+    return;
+  }
+
+  if (gameState) {
+    const me = gameState.players.find((p) => p.id === myId);
+    const t = gameState.tournament && gameState.tournament.isActive ? gameState.tournament : null;
+    const alive = gameState.players.filter((p) => p.chips > 0).length;
+    let room = gameState.id;
+    if (field) room = field.myTable ? `Table ${field.myTable}` : 'Tournament';
+    else if (gameState.gameMode === 'practice') room = 'Practice table';
+
+    const table = infoSection('Table');
+    table.appendChild(
+      infoGrid([
+        ['Room', room],
+        [
+          'Mode',
+          field ? 'Multi-table' : INFO_MODE_LABELS[gameState.gameMode] || gameState.gameMode || '-',
+        ],
+        ['Host', gameState.hostName || '-'],
+        ['Hand', gameState.roundCount ? `#${gameState.roundCount}` : '-'],
+        ['Players', `${alive} / ${gameState.players.length}`],
+      ])
+    );
+    body.appendChild(table);
+
+    const bb = gameState.bigBlind || 0;
+    const rows = [['Blinds', `${gameState.smallBlind} / ${gameState.bigBlind}`]];
+    if (me && bb)
+      rows.push(['Your stack', `${fmtNum(me.chips)} · ${(me.chips / bb).toFixed(1)} bb`]);
+    if (t) {
+      rows.push(['Level', String(t.currentLevel + 1)]);
+      rows.push(['Next level', formatClock(_blindClockRemaining), 'infoNextLevel']);
+      // A multi-table field shares one clock across tables; its head count
+      // belongs to the Field section, not this table's roster.
+      if (!field) rows.push(['Alive', `${alive} / ${t.startingPlayers}`]);
+    } else if (field) {
+      rows.push(['Level', String(field.level)]);
+      rows.push(['Next level', formatClock(field.nextLevelIn)]);
+    }
+    const blinds = infoSection('Blinds');
+    blinds.appendChild(infoGrid(rows));
+    body.appendChild(blinds);
+  }
+
+  if (finished) {
+    const section = infoSection('Final standings');
+    section.appendChild(
+      createTextElement(
+        'div',
+        'mtt-money in-money',
+        finished.winner ? `${finished.winner} wins` : 'Tournament over'
+      )
+    );
+    const ladder = document.createElement('div');
+    ladder.className = 'mtt-ladder';
+    (finished.results || []).slice(0, 10).forEach((r) => {
+      const line = document.createElement('div');
+      line.className = 'mtt-rung' + (r.inTheMoney ? ' paid' : '');
+      line.appendChild(createTextElement('span', 'mtt-place', `#${r.place}`));
+      line.appendChild(createTextElement('span', 'mtt-name', r.name));
+      line.appendChild(createTextElement('span', 'mtt-prize', r.prize ? fmtNum(r.prize) : ''));
+      ladder.appendChild(line);
+    });
+    section.appendChild(ladder);
+    body.appendChild(section);
+    return;
+  }
+
+  if (field) {
+    const section = infoSection('Field');
+    section.appendChild(
+      infoGrid([
+        ['Left', `${field.remaining} / ${field.entrants}`],
+        ['Your rank', field.myRank ? `#${field.myRank}` : '-'],
+        ['Average', fmtNum(field.averageStack)],
+        [
+          'Chip leader',
+          field.chipLeader ? `${field.chipLeader.name} ${fmtNum(field.chipLeader.chips)}` : '-',
+        ],
+        ['Tables', `${field.tablesLeft}${field.myTable ? ` · you: ${field.myTable}` : ''}`],
+      ])
+    );
+    // Money status reads differently on the bubble, which is the one moment a
+    // player most wants to know exactly where they are.
+    if (field.paidPlaces) {
+      const money = document.createElement('div');
+      money.className = 'mtt-money';
+      if (field.inTheMoney) {
+        money.classList.add('in-money');
+        money.textContent = `In the money · ${field.paidPlaces} paid`;
+      } else if (field.onBubble) {
+        money.classList.add('on-bubble');
+        money.textContent = `Bubble · ${field.remaining} left, ${field.paidPlaces} paid · hand for hand`;
+      } else {
+        money.textContent = `${field.paidPlaces} paid · ${field.remaining - field.paidPlaces} from the money`;
+      }
+      section.appendChild(money);
+    }
+    if (field.prizePool > 0) {
+      const ladder = document.createElement('div');
+      ladder.className = 'mtt-ladder';
+      for (const row of field.payouts) {
+        const line = document.createElement('div');
+        // Highlight the rung the player would currently finish on.
+        line.className = 'mtt-rung' + (field.myRank === row.place ? ' mine' : '');
+        line.appendChild(createTextElement('span', 'mtt-place', `#${row.place}`));
+        line.appendChild(createTextElement('span', 'mtt-prize', fmtNum(row.amount)));
+        ladder.appendChild(line);
+      }
+      section.appendChild(ladder);
+    }
+    body.appendChild(section);
+  }
+}
+
+// ============================================================
+//  STATS TAB
+// ============================================================
+function renderStatsTab() {
+  const body = document.getElementById('panelStatsBody');
+  if (!body) return;
+  body.textContent = '';
+
+  const board = infoSection('Leaderboard');
+  const table = document.createElement('table');
+  table.className = 'lb-table';
+  const thead = document.createElement('thead');
+  const head = document.createElement('tr');
+  ['#', 'Player', 'Wins', 'Hands', 'Rate', 'Max Pot'].forEach((label) =>
+    head.appendChild(createTextElement('th', '', label))
+  );
+  thead.appendChild(head);
+  const tbody = document.createElement('tbody');
+  table.append(thead, tbody);
+  renderLeaderboard(tbody);
+  board.appendChild(table);
+  body.appendChild(board);
+
+  // The server keeps ten hands, so this is a ten-hand window, not a lifetime rate.
+  const hands =
+    gameState && Array.isArray(gameState.recentHands)
+      ? gameState.recentHands.filter((h) => (h.players || []).some((p) => p.id === myId))
+      : [];
+  const recent = infoSection('Your last 10 hands');
+  if (!hands.length) {
+    recent.appendChild(createTextElement('div', 'panel-empty', 'No hands yet'));
+  } else {
+    const mine = (h) =>
+      (h.actions || []).filter((a) => a.playerId === myId && a.phase === 'preflop');
+    const vpip = hands.filter((h) =>
+      mine(h).some((a) => ['call', 'raise', 'allin'].includes(a.action))
+    ).length;
+    const pfr = hands.filter((h) =>
+      mine(h).some((a) => ['raise', 'allin'].includes(a.action))
+    ).length;
+    const won = hands.filter((h) => (h.winners || []).some((w) => w.playerId === myId));
+    const biggest = won.reduce((m, h) => Math.max(m, h.pot || 0), 0);
+    const pct = (n) => `${n} · ${Math.round((n / hands.length) * 100)}%`;
+    recent.appendChild(
+      infoGrid([
+        ['Hands', String(hands.length)],
+        ['Won', pct(won.length)],
+        ['Chips in preflop', pct(vpip)],
+        ['Raised preflop', pct(pfr)],
+        ['Biggest pot won', biggest ? fmtNum(biggest) : '-'],
+      ])
+    );
+  }
+  body.appendChild(recent);
+}
+
+// ============================================================
+//  HISTORY TAB
+// ============================================================
+function renderHistoryTab() {
+  const body = document.getElementById('panelHistoryBody');
+  if (!body) return;
+  renderReplayHandList(body, (handNum) => {
+    // The detail view is the existing replay modal, opened straight on the hand.
+    const list = document.getElementById('replayHandList');
+    const detail = document.getElementById('replayDetail');
+    if (list) list.classList.add('hidden');
+    if (detail) detail.classList.add('hidden');
+    document.getElementById('replayPanel').classList.remove('hidden');
+    loadReplay(handNum);
+  });
 }
 
 // ============================================================
 //  LEADERBOARD
 // ============================================================
-function renderLeaderboard() {
-  const body = document.getElementById('lbBody');
+function renderLeaderboard(target) {
+  const body = target || document.getElementById('lbBody');
+  if (!body) return;
   body.textContent = '';
   const appendEmptyRow = (text) => {
     const row = document.createElement('tr');
@@ -231,11 +476,17 @@ function renderLeaderboard() {
 // ============================================================
 const PHASE_NAMES = { preflop: 'Preflop', flop: 'Flop', turn: 'Turn', river: 'River' };
 
+// The modal's list view. The History tab renders the same list into its own
+// container with its own pick handler.
 function renderReplayList() {
   const list = document.getElementById('replayHandList');
   const detail = document.getElementById('replayDetail');
   list.classList.remove('hidden');
   detail.classList.add('hidden');
+  renderReplayHandList(list, loadReplay);
+}
+
+function renderReplayHandList(list, onPick) {
   list.textContent = '';
   if (!gameState || !gameState.recentHands || gameState.recentHands.length === 0) {
     list.appendChild(createTextElement('div', 'panel-empty', 'No hand history yet'));
@@ -252,7 +503,7 @@ function renderReplayList() {
         `Hand ${h.handNum} | Pot ${h.pot} | Winner: ${winnerNames}`
       );
       btn.dataset.handNum = h.handNum;
-      btn.addEventListener('click', () => loadReplay(h.handNum));
+      btn.addEventListener('click', () => onPick(h.handNum));
       list.appendChild(btn);
     });
 }
@@ -406,4 +657,11 @@ function renderTournamentResult(result) {
     row.appendChild(createTextElement('span', '', e.name));
     div.appendChild(row);
   }
+}
+
+// The side panel draws these on demand (side-panel.js loads first).
+if (window.SidePanel) {
+  SidePanel.register('info', renderInfoTab);
+  SidePanel.register('stats', renderStatsTab);
+  SidePanel.register('history', renderHistoryTab);
 }

@@ -13,6 +13,8 @@
   let bound = false;
   let started = false;
   let wantsStart = false;
+  // Whether the Info tab has been brought forward for this tournament.
+  let announced = false;
 
   function el(tag, cls, text) {
     const node = document.createElement(tag);
@@ -71,6 +73,17 @@
 
   function render() {
     if (!field) return;
+    // The side panel's Info tab is the field's home; the floating panel below
+    // remains for screens where the side panel is not docked.
+    window.mttField = field;
+    if (window.SidePanel) {
+      if (!announced && field.isRunning) {
+        announced = true;
+        SidePanel.select('info');
+      } else {
+        SidePanel.refresh('info');
+      }
+    }
     const p = panel();
     p.classList.remove('hidden');
 
@@ -148,6 +161,8 @@
   }
 
   function showFinished(payload) {
+    window.mttFinished = payload;
+    if (window.SidePanel) SidePanel.reveal('info');
     const p = panel();
     p.classList.remove('hidden');
     const ladder = document.getElementById('mttLadder');
@@ -189,6 +204,9 @@
     socket.on('tournamentFinished', (payload) => showFinished(payload));
     socket.on('tournamentJoined', (info) => {
       if (info && info.host) wantsStart = true;
+      announced = false;
+      window.mttField = null;
+      window.mttFinished = null;
       // The table UI identifies "you" by myId, which normally arrives on the
       // `joined` reply to joinRoom. A tournament never sends that, so myId
       // stayed null: the client could not find itself among the players, never

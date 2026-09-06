@@ -69,6 +69,7 @@
 
   function register(name, fn) {
     renderers[name] = fn;
+    if (current === name) fn();
   }
 
   // Re-run a tab's renderer, but only while that tab is the one showing.
@@ -118,6 +119,22 @@
     }
   }
 
+  function isDocked() {
+    return !isDrawer();
+  }
+
+  // Select a tab and make sure the viewer can see it: open the drawer on a
+  // phone, un-hide the rail on a desktop.
+  function reveal(name) {
+    select(name);
+    if (isDrawer()) {
+      open();
+    } else if (document.body.classList.contains('rail-hidden')) {
+      document.body.classList.remove('rail-hidden');
+      if (typeof window.roomThreeRefit === 'function') window.roomThreeRefit();
+    }
+  }
+
   function onTabKey(e) {
     const list = tabs();
     const idx = list.indexOf(document.activeElement);
@@ -157,6 +174,8 @@
     open,
     close,
     toggle,
+    reveal,
+    isDocked,
     isOpen: isShowing,
     current: () => current,
   };

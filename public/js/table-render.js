@@ -142,7 +142,12 @@ function updateGameState(state) {
   animateChipMovement(prevBets, prevWinnerKey);
   updateActionsPanel();
   updateTopBar();
-  updateTournamentBanner();
+  updateBlindClock();
+  if (window.SidePanel) {
+    SidePanel.refresh('info');
+    SidePanel.refresh('stats');
+    SidePanel.refresh('history');
+  }
   updateModeUI(); // v11
   updateEquityButton(); // v11
   const resultModal = document.getElementById('resultModal');

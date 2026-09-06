@@ -1343,9 +1343,46 @@
   pointer-events: none;
 }
 
+/* Info and Stats tabs reuse the field panel's grid (.mtt-grid) under a
+   section title. */
+.info-section {
+  padding: 8px 0 10px;
+  border-bottom: 1px solid rgba(92, 61, 26, 0.25);
+}
+.info-section:last-child {
+  border-bottom: 0;
+}
+.info-section-title {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 7px;
+}
+.panel-scroll .lb-table {
+  width: 100%;
+}
+.panel-scroll .lb-table th,
+.panel-scroll .lb-table td {
+  font-size: 0.68rem;
+  padding: 4px 3px;
+}
+.panel-scroll .replay-hand-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 4px;
+}
+
 @media (min-width: 1024px) {
   .side-panel {
     display: flex;
+  }
+  /* The field lives in the Info tab while the panel is docked. */
+  .mtt-panel {
+    display: none;
   }
   body.rail-hidden .side-panel {
     display: none;
