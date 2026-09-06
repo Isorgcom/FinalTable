@@ -1,4 +1,4 @@
-const { TournamentDirector, ChipConservationError } = require('../director');
+const { TournamentDirector, ChipConservationError, payoutPercentagesFor } = require('../director');
 
 // Phase 3: several tables on one shared blind clock, run to completion.
 // Balancing is not implemented yet, so these tests assert the properties that
@@ -406,6 +406,163 @@ describe('TournamentDirector balancing (phase 4)', () => {
 
     const announcements = said.filter((m) => /is broken/.test(m));
     expect(announcements).toHaveLength(1);
+    d.stop();
+  });
+});
+
+describe('TournamentDirector money (phase 5)', () => {
+  test('every payout structure sums to exactly 100 percent', () => {
+    for (const field of [2, 5, 6, 9, 10, 17, 18, 29, 30, 49, 50, 200]) {
+      const pct = payoutPercentagesFor(field);
+      expect(pct.reduce((a, b) => a + b, 0)).toBe(100);
+      expect(pct.length).toBeGreaterThan(0);
+      // Monotonic: no place pays more than the one above it.
+      for (let i = 1; i < pct.length; i++) expect(pct[i]).toBeLessThanOrEqual(pct[i - 1]);
+    }
+  });
+
+  test('places paid grow with the field but stay a minority of it', () => {
+    let previous = 0;
+    for (const field of [4, 8, 15, 25, 40, 80]) {
+      const paid = payoutPercentagesFor(field).length;
+      expect(paid).toBeGreaterThanOrEqual(previous);
+      expect(paid).toBeLessThan(field); // never pay the whole field
+      previous = paid;
+    }
+  });
+
+  test('payouts add back up to the pool exactly, losing nothing to rounding', () => {
+    // 7 is deliberately awkward: 33% of 7 does not divide evenly.
+    for (const [entrants, buyIn] of [
+      [25, 20],
+      [9, 7],
+      [50, 33],
+      [3, 1],
+    ]) {
+      const d = makeDirector(entrants, { buyIn, tableSize: 9 });
+      d.start();
+      const pool = d.prizePool();
+      expect(pool).toBe(entrants * buyIn);
+      const total = d.payouts().reduce((sum, s) => sum + s.amount, 0);
+      expect(total).toBe(pool);
+      d.stop();
+    }
+  });
+
+  test('a free tournament pays zero without breaking the structure', () => {
+    const d = makeDirector(20, { tableSize: 9 }); // no buyIn
+    d.start();
+    expect(d.prizePool()).toBe(0);
+    expect(d.payouts().every((s) => s.amount === 0)).toBe(true);
+    expect(d.paidPlaces).toBeGreaterThan(0);
+    d.stop();
+  });
+
+  test('the bubble is one player from the money', () => {
+    const d = makeDirector(20, { tableSize: 9, buyIn: 10 });
+    d.start();
+    expect(d.paidPlaces).toBe(4); // 20 players
+    expect(d.isOnBubble()).toBe(false);
+
+    // Bust down to exactly paidPlaces + 1.
+    const doomed = d.fieldPlayers().slice(0, 20 - (d.paidPlaces + 1));
+    for (const p of doomed) p.chips = 0;
+    for (const table of d.tables) {
+      for (const p of table.players.filter((x) => x.chips <= 0)) table.removePlayer(p.id);
+    }
+    expect(d.playersRemaining()).toBe(5);
+    expect(d.isOnBubble()).toBe(true);
+
+    // One more out and the bubble has burst.
+    const next = d.fieldPlayers().find((p) => p.chips > 0);
+    next.chips = 0;
+    expect(d.isOnBubble()).toBe(false);
+    d.stop();
+  });
+
+  test('hand for hand: on the bubble a table waits for the others', () => {
+    const d = makeDirector(20, { tableSize: 9, buyIn: 10 });
+    d.start();
+    const doomed = d.fieldPlayers().slice(0, 15);
+    for (const p of doomed) p.chips = 0;
+    for (const table of d.tables) {
+      for (const p of table.players.filter((x) => x.chips <= 0)) table.removePlayer(p.id);
+    }
+    d._expectedChips = d.totalChips();
+    expect(d.isOnBubble()).toBe(true);
+
+    const playable = d.tables.filter((t) => t.players.filter((p) => p.chips > 0).length >= 2);
+    if (playable.length >= 2) {
+      playable[0].isRunning = true; // one table still mid-hand
+      expect(d.canStartHand(playable[1])).toBe(false); // the other must wait
+      playable[0].isRunning = false;
+      expect(d.canStartHand(playable[1])).toBe(true);
+    }
+    d.stop();
+  });
+
+  test('off the bubble, tables do not wait for each other', () => {
+    const d = makeDirector(20, { tableSize: 9, buyIn: 10 });
+    d.start();
+    expect(d.isOnBubble()).toBe(false);
+    d.tables[0].isRunning = true;
+    expect(d.canStartHand(d.tables[1])).toBe(true);
+    d.tables[0].isRunning = false;
+    d.stop();
+  });
+
+  test('simultaneous bustouts are placed by hand-start stack, not by seat', () => {
+    const d = makeDirector(12, { tableSize: 9, buyIn: 5 });
+    d.start();
+    const table = d.tables[0];
+    const [a, b, c, winner] = table.players;
+    // Seat order a, b, c but stacks say otherwise.
+    table.handStartStacks = { [a.id]: 50, [b.id]: 900, [c.id]: 400 };
+    table.roundCount = 3;
+    // Their chips go to the winner, as a real hand would move them. Simply
+    // zeroing three stacks destroys 6,000 chips and the conservation guard
+    // rightly refuses to let the tournament continue.
+    const pot = a.chips + b.chips + c.chips;
+    a.chips = 0;
+    b.chips = 0;
+    c.chips = 0;
+    winner.chips += pot;
+    table.endRound();
+
+    const byName = Object.fromEntries(d.tournament.eliminations.map((e) => [e.name, e.place]));
+    // Bigger starting stack finishes higher, i.e. a lower place number.
+    expect(byName[b.name]).toBeLessThan(byName[c.name]);
+    expect(byName[c.name]).toBeLessThan(byName[a.name]);
+    d.stop();
+  });
+
+  test('final results pair every place with its prize', () => {
+    const d = makeDirector(12, { tableSize: 6, buyIn: 10 });
+    d.start();
+    const paid = d.paidPlaces;
+    runToCompletion(d);
+    expect(d.finished).not.toBeNull();
+
+    const results = d.finalResults();
+    expect(results).toHaveLength(12);
+    expect(results[0].place).toBe(1);
+    expect(results[0].inTheMoney).toBe(true);
+    expect(results[paid - 1].inTheMoney).toBe(true);
+    expect(results[paid].inTheMoney).toBe(false); // first out of the money
+    expect(results[paid].prize).toBe(0);
+
+    const paidOut = results.reduce((sum, r) => sum + r.prize, 0);
+    expect(paidOut).toBe(d.prizePool());
+    d.stop();
+  });
+
+  test('bubble and in-the-money are each announced once', () => {
+    const said = [];
+    const d = makeDirector(12, { tableSize: 6, buyIn: 10, onMessage: (m) => said.push(m) });
+    d.start();
+    runToCompletion(d, 3000, 0.12);
+    expect(said.filter((m) => /Bubble:/.test(m)).length).toBeLessThanOrEqual(1);
+    expect(said.filter((m) => /In the money/.test(m)).length).toBeLessThanOrEqual(1);
     d.stop();
   });
 });

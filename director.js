@@ -15,12 +15,34 @@ const random = require('./random');
 
 class ChipConservationError extends Error {}
 
+// Prize distribution by field size. Percentages, first place first, each row
+// summing to exactly 100. Roughly the top 10-15% of the field is paid, which is
+// the usual shape for a home tournament: enough places that finishing near the
+// bubble still means something, few enough that a min-cash is not a rounding
+// error.
+const PAYOUT_STRUCTURES = [
+  { upTo: 5, pct: [100] },
+  { upTo: 9, pct: [65, 35] },
+  { upTo: 17, pct: [50, 30, 20] },
+  { upTo: 29, pct: [40, 27, 20, 13] },
+  { upTo: 49, pct: [35, 22, 16, 12, 9, 6] },
+  { upTo: Infinity, pct: [30, 20, 14, 10, 8, 7, 5, 4, 2] },
+];
+
+function payoutPercentagesFor(fieldSize) {
+  return PAYOUT_STRUCTURES.find((s) => fieldSize <= s.upTo).pct;
+}
+
 class TournamentDirector {
   constructor(options = {}) {
     this.id = options.id || random.randomId('t_');
     this.tableSize = options.tableSize || DEFAULT_MAX_PLAYERS;
     this.startChips = options.startChips || 5000;
+    this.buyIn = options.buyIn || 0;
     this.gameOptions = options.gameOptions || {};
+    this.payoutPct = options.payoutPct || null; // override the default structure
+    this._bubbleAnnounced = false;
+    this._inTheMoneyAnnounced = false;
 
     // One Tournament instance is shared by every table, which is what gives a
     // synchronised blind clock and a single elimination ledger. The field
@@ -100,6 +122,9 @@ class TournamentDirector {
       });
     });
 
+    this.payoutPct = this.payoutPct || payoutPercentagesFor(this.entrants.length);
+    this.paidPlaces = this.payoutPct.length;
+
     // Fixed at start: a table's break priority must not depend on the state of
     // the moment, or debugging a finish becomes guesswork. Highest table number
     // breaks first.
@@ -126,7 +151,8 @@ class TournamentDirector {
     }
 
     this._say(
-      `Tournament started: ${this.entrants.length} players across ${tableCount} table${tableCount === 1 ? '' : 's'}`
+      `Tournament started: ${this.entrants.length} players across ${tableCount} table${tableCount === 1 ? '' : 's'}` +
+        ` · ${this.paidPlaces} paid`
     );
     return true;
   }
@@ -155,6 +181,69 @@ class TournamentDirector {
     return out;
   }
 
+  // ── Money ────────────────────────────────────────────────────────────────
+
+  prizePool() {
+    return this.buyIn * this.entrants.length;
+  }
+
+  // Percentages resolved to whole chips. Floor each share and give the
+  // remainder to first place, so the payouts always add back up to the pool
+  // exactly rather than losing a unit to rounding.
+  payouts() {
+    const pool = this.prizePool();
+    const shares = this.payoutPct.map((pct, i) => ({
+      place: i + 1,
+      pct,
+      amount: pool > 0 ? Math.floor((pool * pct) / 100) : 0,
+    }));
+    if (pool > 0 && shares.length > 0) {
+      const allocated = shares.reduce((sum, s) => sum + s.amount, 0);
+      shares[0].amount += pool - allocated;
+    }
+    return shares;
+  }
+
+  // One player away from the money.
+  isOnBubble() {
+    if (!this.isRunning || this.finished || !this.paidPlaces) return false;
+    return this.playersRemaining() === this.paidPlaces + 1;
+  }
+
+  // Places, names and prizes together. Eliminations are stored worst-first, so
+  // reverse to read as a finishing order.
+  finalResults() {
+    const prizes = new Map(this.payouts().map((s) => [s.place, s]));
+    return [...this.tournament.eliminations]
+      .sort((a, b) => a.place - b.place)
+      .map((e) => {
+        const prize = prizes.get(e.place);
+        return {
+          place: e.place,
+          name: e.name,
+          prize: prize ? prize.amount : 0,
+          pct: prize ? prize.pct : 0,
+          inTheMoney: !!prize,
+        };
+      });
+  }
+
+  _checkMoneyMilestones() {
+    if (!this.paidPlaces) return;
+    if (this.isOnBubble() && !this._bubbleAnnounced) {
+      this._bubbleAnnounced = true;
+      this._say(`Bubble: ${this.playersRemaining()} left, ${this.paidPlaces} paid. Hand for hand.`);
+    }
+    if (
+      !this._inTheMoneyAnnounced &&
+      this.playersRemaining() <= this.paidPlaces &&
+      this.playersRemaining() > 0
+    ) {
+      this._inTheMoneyAnnounced = true;
+      this._say(`In the money: everyone left is guaranteed a payout.`);
+    }
+  }
+
   // ── Running hands ────────────────────────────────────────────────────────
 
   // A table may deal when it is not already running, has two players with
@@ -164,6 +253,10 @@ class TournamentDirector {
   canStartHand(table) {
     if (!this.isRunning || this.finished || this._paused) return false;
     if (table.isRunning) return false;
+    // Hand for hand on the bubble: a table that finishes early waits for the
+    // rest, so no table can stall its way past the money while another plays
+    // on. Without it a big stack simply slows down and folds into a payout.
+    if (this.isOnBubble() && this.tables.some((t) => t.isRunning)) return false;
     return table.players.filter((p) => p.chips > 0).length >= 2;
   }
 
@@ -202,6 +295,8 @@ class TournamentDirector {
     // missing. A failure means the tournament is minting or destroying money
     // and must not continue.
     this.assertChipConservation();
+
+    this._checkMoneyMilestones();
 
     if (tournamentResult || this.playersRemaining() <= 1) {
       this._finish(tournamentResult);
@@ -450,6 +545,10 @@ class TournamentDirector {
         isRunning: t.isRunning,
         chips: t.totalChips(),
       })),
+      paidPlaces: this.paidPlaces || 0,
+      prizePool: this.prizePool(),
+      onBubble: this.isOnBubble(),
+      inTheMoney: this.paidPlaces ? this.playersRemaining() <= this.paidPlaces : false,
       tournament: this.tournament.getState(),
     };
   }
@@ -459,4 +558,4 @@ class TournamentDirector {
   }
 }
 
-module.exports = { TournamentDirector, ChipConservationError };
+module.exports = { TournamentDirector, ChipConservationError, payoutPercentagesFor };

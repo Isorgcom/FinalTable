@@ -1336,7 +1336,19 @@ class PokerGame {
     }
 
     // Handle busted players
-    const bustedPlayers = this.players.filter((p) => p.chips <= 0);
+    // When several players bust on the same hand, the one who STARTED the hand
+    // with more chips finishes higher. Recording them in seat order instead
+    // hands out places by where someone happened to sit, which decides real
+    // money on the bubble. handStartStacks is snapshotted in startRound.
+    // Eliminations are recorded worst place first, so sort ascending by the
+    // stack they brought into the hand.
+    const bustedPlayers = this.players
+      .filter((p) => p.chips <= 0)
+      .sort((a, b) => {
+        const sa = this.handStartStacks[a.id] ?? 0;
+        const sb = this.handStartStacks[b.id] ?? 0;
+        return sa - sb;
+      });
     for (const p of bustedPlayers) {
       this.emitMessage(`${this.getPublicName(p)} eliminated`);
       this._log(`❌ eliminated ${this.getPublicName(p)}`);
