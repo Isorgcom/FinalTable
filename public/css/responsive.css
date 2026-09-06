@@ -1,7 +1,7 @@
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1440px) {
   .poker-table-wrapper {
-    width: min(82vw, 780px, var(--table-fit-height));
+    width: min(82%, 780px, var(--table-fit-height));
   }
   .poker-table-wrapper::after {
     top: 80%;
@@ -99,7 +99,7 @@
   .poker-table-wrapper {
     --table-fit-height: 84vh;
     top: 47%;
-    width: min(95vw, var(--table-fit-height));
+    width: min(95%, var(--table-fit-height));
   }
   .poker-table-wrapper::after {
     top: 82%;
@@ -386,7 +386,7 @@
 @media (max-height: 500px) and (orientation: landscape) {
   .poker-table-wrapper {
     --table-fit-height: 96.25vh;
-    width: min(86vw, var(--table-fit-height));
+    width: min(86%, var(--table-fit-height));
     top: 46%;
   }
   .top-bar {
@@ -418,7 +418,7 @@
 @media (max-width: 932px) and (max-height: 560px) and (orientation: landscape) {
   .poker-table-wrapper {
     --table-fit-height: 92vh;
-    width: min(70vw, calc(var(--table-fit-height) * 1.68));
+    width: min(70%, calc(var(--table-fit-height) * 1.68));
     top: 47.5%;
   }
   .poker-table-wrapper::after {

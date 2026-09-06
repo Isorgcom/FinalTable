@@ -45,7 +45,8 @@
           <div class="mode-feedback-bar" id="modeFeedbackBar" aria-live="polite">
             <div class="mode-feedback-title" id="modeFeedbackTitle">Cash Game</div>
             <div class="mode-feedback-text" id="modeFeedbackText">
-              Classic hold’em with deep stacks, room to maneuver, and a full table story hand after hand.
+              Classic hold’em with deep stacks, room to maneuver, and a full table story hand after
+              hand.
             </div>
             <div class="mode-feedback-meta">
               <span class="mode-feedback-pill" id="modeFeedbackPillA">Deep-stack battles</span>
@@ -181,76 +182,87 @@
         </div>
       </div>
 
-      <div class="tournament-banner hidden" id="tournamentBanner">
-        <div class="tb-level">Tournament Level <span id="tbLevel">1</span></div>
-        <div>
-          Blinds <span id="tbBlinds">10/20</span> |
-          <span class="tb-timer">Next: <span id="tbTimer">3:00</span></span> |
-          <span class="tb-alive">Alive: <span id="tbAlive">0</span></span>
+      <!-- Everything the felt owns lives in the stage: the game screen minus the
+           docked side panel (--rail-w). Absolute positions inside resolve against
+           it, so the felt centres beside the panel rather than under it. -->
+      <div class="table-stage" id="tableStage">
+        <div class="tournament-banner hidden" id="tournamentBanner">
+          <div class="tb-level">Tournament Level <span id="tbLevel">1</span></div>
+          <div>
+            Blinds <span id="tbBlinds">10/20</span> |
+            <span class="tb-timer">Next: <span id="tbTimer">3:00</span></span> |
+            <span class="tb-alive">Alive: <span id="tbAlive">0</span></span>
+          </div>
         </div>
-      </div>
 
-      <div class="poker-table-wrapper">
-        <div class="poker-table">
-          <div class="table-brand">FinalTable</div>
-        </div>
-        <div class="community-cards" id="communityCards"></div>
-        <div class="pot-display" id="potDisplay">
-          <div class="pot-amount"></div>
-        </div>
-        <div id="playerSeats"></div>
-      </div>
+        <!-- NPC chat bubbles, top-left of the stage over the felt -->
+        <div class="npc-chat-area" id="npcChatArea"></div>
 
-      <div class="round-overlay" id="roundOverlay">
-        <div id="modeSelectBtns">
-          <button class="btn-start-game" id="btnStartGame">Deal</button>
-          <button class="btn-start-game btn-ready-toggle hidden" id="btnToggleReady">Ready</button>
-          <div class="ready-status hidden" id="readyStatus"></div>
-          <button class="btn-start-game hidden stacked-start-btn" id="btnStartTournament">
-            Start Tournament
+        <div class="poker-table-wrapper">
+          <div class="poker-table">
+            <div class="table-brand">FinalTable</div>
+          </div>
+          <div class="community-cards" id="communityCards"></div>
+          <div class="pot-display" id="potDisplay">
+            <div class="pot-amount"></div>
+          </div>
+          <div id="playerSeats"></div>
+        </div>
+
+        <div class="round-overlay" id="roundOverlay">
+          <div id="modeSelectBtns">
+            <button class="btn-start-game" id="btnStartGame">Deal</button>
+            <button class="btn-start-game btn-ready-toggle hidden" id="btnToggleReady">
+              Ready
+            </button>
+            <div class="ready-status hidden" id="readyStatus"></div>
+            <button class="btn-start-game hidden stacked-start-btn" id="btnStartTournament">
+              Start Tournament
+            </button>
+          </div>
+          <button class="btn-start-game hidden stacked-start-btn" id="btnNextRoundAction">
+            Next Hand
           </button>
         </div>
-        <button class="btn-start-game hidden stacked-start-btn" id="btnNextRoundAction">
-          Next Hand
-        </button>
+
+        <div class="actions-panel hidden" id="actionsPanel">
+          <button class="action-btn btn-fold" id="btnFold" aria-label="Fold">fold</button>
+          <button class="action-btn btn-check" id="btnCheck" aria-label="Check">check</button>
+          <button class="action-btn btn-call" id="btnCall" aria-label="Call">call</button>
+          <div class="raise-slider-group">
+            <input
+              type="range"
+              class="raise-slider"
+              id="raiseSlider"
+              aria-label="Raise amount"
+              min="0"
+              max="1000"
+              value="0"
+            />
+            <input
+              type="number"
+              class="raise-input"
+              id="raiseInput"
+              aria-label="Raise amount"
+              value="0"
+            />
+            <span class="raise-need-pay" id="raiseNeedPay"></span>
+          </div>
+          <button class="action-btn btn-raise" id="btnRaise" aria-label="Raise">raise</button>
+          <button class="action-btn btn-allin" id="btnAllIn" aria-label="All In">all in</button>
+        </div>
+
+        <div class="game-log collapsed" id="gameLog" role="log" aria-label="Game log">
+          <div class="log-toggle">
+            <span class="log-last" id="logLast">Waiting...</span>
+            <span class="log-toggle-arrow">▲</span>
+          </div>
+          <div class="log-body" id="logBody"></div>
+        </div>
       </div>
 
-      <div class="actions-panel hidden" id="actionsPanel">
-        <button class="action-btn btn-fold" id="btnFold" aria-label="Fold">fold</button>
-        <button class="action-btn btn-check" id="btnCheck" aria-label="Check">check</button>
-        <button class="action-btn btn-call" id="btnCall" aria-label="Call">call</button>
-        <div class="raise-slider-group">
-          <input
-            type="range"
-            class="raise-slider"
-            id="raiseSlider"
-            aria-label="Raise amount"
-            min="0"
-            max="1000"
-            value="0"
-          />
-          <input
-            type="number"
-            class="raise-input"
-            id="raiseInput"
-            aria-label="Raise amount"
-            value="0"
-          />
-          <span class="raise-need-pay" id="raiseNeedPay"></span>
-        </div>
-        <button class="action-btn btn-raise" id="btnRaise" aria-label="Raise">raise</button>
-        <button class="action-btn btn-allin" id="btnAllIn" aria-label="All In">all in</button>
-      </div>
-
-      <div class="game-log collapsed" id="gameLog" role="log" aria-label="Game log">
-        <!-- NPC Chat Bubbles (left side) -->
-        <div class="npc-chat-area" id="npcChatArea"></div>
-        <div class="log-toggle">
-          <span class="log-last" id="logLast">Waiting...</span>
-          <span class="log-toggle-arrow">▲</span>
-        </div>
-        <div class="log-body" id="logBody"></div>
-      </div>
+      <!-- Docked at >=1024px, a slide-in drawer below. Filled in by side-panel.js. -->
+      <aside class="side-panel" id="sidePanel" aria-label="Table panel"></aside>
     </div>
 
     <!-- NPC MANAGEMENT PANEL -->
@@ -396,11 +408,15 @@
         <div class="result-details" id="resultDetails"></div>
         <div class="result-rematch-tools hidden" id="resultRematchTools">
           <button class="btn-start-game result-side-btn" id="btnResultAddNpc">Add 1 NPC</button>
-          <button class="btn-start-game result-side-btn" id="btnResultRemoveNpc">Remove 1 NPC</button>
+          <button class="btn-start-game result-side-btn" id="btnResultRemoveNpc">
+            Remove 1 NPC
+          </button>
         </div>
         <div class="result-actions">
           <button class="btn-start-game" id="btnResultNextHand">Next Hand</button>
-          <button class="btn-start-game result-exit-btn hidden" id="btnResultExit">Exit Table</button>
+          <button class="btn-start-game result-exit-btn hidden" id="btnResultExit">
+            Exit Table
+          </button>
         </div>
       </div>
     </div>

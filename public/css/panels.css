@@ -1080,7 +1080,7 @@ body.log-expanded .eq-side {
 /* ═══ EQUITY WIDGET ═══ */
 .eq-side {
   position: fixed;
-  right: 0;
+  right: var(--rail-w);
   top: 50%;
   transform: translateY(-50%);
   z-index: 500;
@@ -1301,5 +1301,44 @@ body.log-expanded .eq-side {
   100% {
     opacity: 0;
     transform: translateX(-50%) translateY(-30px);
+  }
+}
+
+/* ═══ SIDE PANEL ═══ */
+/* Docked beside the felt from 1024px up; below that it becomes a drawer
+   (see side-panel.js). Tab strip and bodies are filled in by the script. */
+.side-panel {
+  position: absolute;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  width: var(--panel-w);
+  z-index: 45;
+  display: none;
+  flex-direction: column;
+  background: rgba(13, 31, 18, 0.92);
+  border-left: 1px solid rgba(92, 61, 26, 0.3);
+  backdrop-filter: blur(12px);
+}
+@media (min-width: 1024px) {
+  .side-panel {
+    display: flex;
+  }
+  body.rail-hidden .side-panel {
+    display: none;
+  }
+  /* With the panel docked the felt hugs the rail, so a mid-height equity
+     widget lands on the right-hand seat. The stage's bottom-right corner is
+     clear of every seat on the arc at any table size. */
+  .eq-side,
+  body.log-expanded .eq-side {
+    top: auto;
+    bottom: 28px;
+    transform: none;
+  }
+  body.rail-hidden .eq-side {
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
   }
 }

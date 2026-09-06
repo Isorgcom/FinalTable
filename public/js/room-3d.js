@@ -29,12 +29,20 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0f06);
 
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 50);
+    // The felt lives in the table stage: the window minus the docked side
+    // panel (--rail-w). Size the view to the stage so the spotlight pool sits
+    // under the felt rather than under the middle of the window.
+    function viewSize() {
+      const rail = parseFloat(getComputedStyle(document.body).getPropertyValue('--rail-w')) || 0;
+      return { width: Math.max(1, window.innerWidth - rail), height: window.innerHeight };
+    }
+    const view = viewSize();
+    const camera = new THREE.PerspectiveCamera(45, view.width / view.height, 0.1, 50);
     camera.position.set(0, 5, 4);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(view.width, view.height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.8;
@@ -109,13 +117,17 @@
     // ── Render once (static scene) ──
     renderer.render(scene, camera);
 
-    // Handle resize
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+    // Refit on resize, and on demand when the side panel docks or hides
+    // (the rail changes without a window resize).
+    function fitView() {
+      const next = viewSize();
+      camera.aspect = next.width / next.height;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(next.width, next.height);
       renderer.render(scene, camera);
-    });
+    }
+    window.addEventListener('resize', fitView);
+    window.roomThreeRefit = fitView;
 
     // Cleanup on page unload (best practice)
     window.addEventListener('beforeunload', () => {

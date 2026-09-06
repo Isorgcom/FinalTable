@@ -23,7 +23,7 @@
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
+  width: calc(100% - var(--rail-w));
   height: 100%;
   z-index: 1;
   pointer-events: none;
@@ -59,13 +59,22 @@
     /* Base wall color — uniform dark walnut */ #0d1f12;
 }
 
+/* ═══ TABLE STAGE ═══ */
+/* The felt and everything anchored to it. Sized as the game screen minus the
+   docked side panel, with no z-index of its own so the children keep their
+   existing stacking order against the top bar and modals. */
+.table-stage {
+  position: absolute;
+  inset: 0 var(--rail-w) 0 0;
+}
+
 /* ═══ POKER TABLE ═══ */
 .poker-table-wrapper {
   position: absolute;
   top: 48%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(82vw, 840px, var(--table-fit-height));
+  width: min(82%, 840px, var(--table-fit-height));
   aspect-ratio: var(--table-ratio);
   height: auto;
   overflow: visible;
@@ -215,8 +224,7 @@
   width: 100%;
   height: 100%;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 233, 223, 0.98)),
-    var(--card-white);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 233, 223, 0.98)), var(--card-white);
   border-radius: 6px;
   border: 1px solid rgba(72, 51, 18, 0.12);
   position: relative;
@@ -573,8 +581,7 @@
   border-radius: 999px;
   border: 1px solid rgba(201, 168, 76, 0.3);
   background:
-    linear-gradient(180deg, rgba(23, 42, 30, 0.97), rgba(12, 24, 18, 0.95)),
-    rgba(0, 0, 0, 0.24);
+    linear-gradient(180deg, rgba(23, 42, 30, 0.97), rgba(12, 24, 18, 0.95)), rgba(0, 0, 0, 0.24);
   pointer-events: none;
   z-index: 34;
   box-shadow:
@@ -949,7 +956,9 @@
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #f0e6cf 0 38%, var(--gold) 39% 100%);
   border: 1.5px solid rgba(0, 0, 0, 0.45);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5), 0 0 8px var(--gold-glow);
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.5),
+    0 0 8px var(--gold-glow);
   pointer-events: none;
   opacity: 0;
   animation: chipFly var(--fly-dur, 0.55s) cubic-bezier(0.35, 0.05, 0.2, 1) forwards;
@@ -958,7 +967,9 @@
 /* Pot → winner reads brighter, so a win is distinguishable from a bet. */
 .chip-fly.chip-win {
   background: radial-gradient(circle at 35% 30%, #fff6dd 0 38%, #e0c060 39% 100%);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 12px rgba(201, 168, 76, 0.5);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.55),
+    0 0 12px rgba(201, 168, 76, 0.5);
 }
 
 @keyframes chipFly {

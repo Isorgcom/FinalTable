@@ -17,6 +17,28 @@
   --font-mono: 'JetBrains Mono', monospace;
   --table-ratio: 1.75;
   --table-fit-height: 87.5vh;
+  /* Side panel. --rail-w is how much of the game screen the docked panel
+     takes from the felt: the panel width when docked, 0 when it is hidden
+     or riding as a drawer over the table. --bet-scale shrinks the felt-bet
+     offsets on small screens. */
+  --panel-w: min(86vw, 340px);
+  --rail-w: 0px;
+  --topbar-h: 44px;
+  --bet-scale: 1;
+}
+@media (min-width: 1024px) {
+  :root {
+    --panel-w: 320px;
+    --rail-w: var(--panel-w);
+  }
+  body.rail-hidden {
+    --rail-w: 0px;
+  }
+}
+@media (min-width: 1280px) {
+  :root {
+    --panel-w: 344px;
+  }
 }
 
 * {
