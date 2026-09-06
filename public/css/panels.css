@@ -201,76 +201,6 @@
 }
 
 /* ═══ GAME LOG ═══ */
-.game-log {
-  position: absolute;
-  top: 98px;
-  right: 10px;
-  width: 200px;
-  z-index: 40;
-  border-radius: 6px;
-  border: 1px solid rgba(92, 61, 26, 0.15);
-  overflow: hidden;
-  transition: max-height 0.3s ease;
-}
-.game-log.collapsed {
-  max-height: 72px;
-  cursor: pointer;
-}
-.game-log.collapsed:hover {
-  border-color: rgba(201, 168, 76, 0.2);
-}
-.game-log.expanded {
-  max-height: 40vh;
-}
-body.log-expanded .eq-side {
-  top: calc(50% + 118px);
-}
-.log-toggle {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 7px 10px;
-  background: rgba(13, 31, 18, 0.8);
-  font-size: 0.56rem;
-  color: var(--smoke);
-  cursor: pointer;
-  user-select: none;
-}
-.log-last {
-  display: -webkit-box;
-  overflow: hidden;
-  min-width: 0;
-  font-size: 0.72rem;
-  line-height: 1.32;
-  color: var(--cream);
-  text-overflow: ellipsis;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-.log-toggle-arrow {
-  align-self: center;
-  font-size: 0.42rem;
-  color: var(--smoke);
-  transition: transform 0.3s;
-}
-.game-log.expanded .log-toggle-arrow {
-  transform: rotate(180deg);
-}
-.log-body {
-  max-height: 170px;
-  overflow-y: auto;
-  padding: 4px 8px;
-  background: rgba(13, 31, 18, 0.7);
-}
-.log-body::-webkit-scrollbar {
-  width: 3px;
-}
-.log-body::-webkit-scrollbar-thumb {
-  background: rgba(201, 168, 76, 0.2);
-  border-radius: 2px;
-}
 .log-entry {
   font-size: 0.7rem;
   color: var(--smoke);
@@ -298,9 +228,6 @@ body.log-expanded .eq-side {
   opacity: 0.8;
   padding-left: 8px;
   border-left: 2px solid var(--gold-glow);
-}
-.log-last {
-  font-size: 0.6rem;
 }
 @keyframes logFade {
   from {
@@ -1306,7 +1233,7 @@ body.log-expanded .eq-side {
 
 /* ═══ SIDE PANEL ═══ */
 /* Docked beside the felt from 1024px up; below that it becomes a drawer
-   (see side-panel.js). Tab strip and bodies are filled in by the script. */
+   (see side-panel.js). */
 .side-panel {
   position: absolute;
   top: var(--topbar-h);
@@ -1320,6 +1247,102 @@ body.log-expanded .eq-side {
   border-left: 1px solid rgba(92, 61, 26, 0.3);
   backdrop-filter: blur(12px);
 }
+.side-panel-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(92, 61, 26, 0.35);
+  background: rgba(13, 31, 18, 0.6);
+}
+.side-tab {
+  flex: 1;
+  position: relative;
+  padding: 10px 4px 9px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--smoke);
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+.side-tab:hover {
+  color: var(--cream);
+}
+.side-tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+.side-tab:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: -3px;
+}
+.side-tab.unread::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+.side-panel-bodies,
+.side-tabpanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 10px;
+}
+.panel-scroll::-webkit-scrollbar {
+  width: 3px;
+}
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(201, 168, 76, 0.2);
+  border-radius: 2px;
+}
+.panel-scroll .log-entry {
+  font-size: 0.76rem;
+  padding: 4px 0;
+}
+.panel-composer {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(92, 61, 26, 0.35);
+  padding: 8px 10px;
+}
+
+/* The last dealer line over the felt, in the corner the floating log used to
+   occupy. Only shown while the panel is out of view. */
+.dealer-ticker {
+  position: absolute;
+  top: 98px;
+  right: 10px;
+  width: 200px;
+  z-index: 40;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(92, 61, 26, 0.15);
+  background: rgba(13, 31, 18, 0.8);
+  color: var(--cream);
+  font-size: 0.72rem;
+  line-height: 1.32;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 @media (min-width: 1024px) {
   .side-panel {
     display: flex;
@@ -1327,11 +1350,16 @@ body.log-expanded .eq-side {
   body.rail-hidden .side-panel {
     display: none;
   }
+  .dealer-ticker {
+    display: none;
+  }
+  body.rail-hidden .dealer-ticker {
+    display: -webkit-box;
+  }
   /* With the panel docked the felt hugs the rail, so a mid-height equity
      widget lands on the right-hand seat. The stage's bottom-right corner is
      clear of every seat on the arc at any table size. */
-  .eq-side,
-  body.log-expanded .eq-side {
+  .eq-side {
     top: auto;
     bottom: 28px;
     transform: none;

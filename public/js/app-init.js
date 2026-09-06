@@ -152,7 +152,10 @@ function init() {
       if (gameState.isHost) {
         if (typeof hasResumeInteractionGuard === 'function' && hasResumeInteractionGuard()) return;
         const confirmed = await window.showConfirmDialog({
-          title: gameState.gameMode === 'practice' ? 'Start a Fresh Practice Table?' : 'Start a New Table?',
+          title:
+            gameState.gameMode === 'practice'
+              ? 'Start a Fresh Practice Table?'
+              : 'Start a New Table?',
           message:
             gameState.gameMode === 'practice'
               ? 'This resets all stacks and starts a fresh practice run.'
@@ -325,7 +328,6 @@ function init() {
     const levelDuration = parseInt(dur, 10) || 180;
     socket.emit('startTournament', { levelDuration: Math.max(30, levelDuration), force });
   });
-  document.getElementById('gameLog').addEventListener('click', toggleLog);
   document.getElementById('eqSide').addEventListener('click', onEqSideClick);
   document.getElementById('eqSideBtn').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -556,21 +558,27 @@ function init() {
       'dalioModal',
     ];
     for (const id of modals) {
-      if (closeOverlayById(id)) {
-        break;
-      }
+      if (closeOverlayById(id)) return;
     }
+    // Nothing modal was open: a phone's panel drawer is next in line.
+    if (window.SidePanel) SidePanel.close();
   });
 
-  ['npcPanel', 'lbPanel', 'replayPanel', 'tournamentModal', 'hintModal', 'resultModal', 'appDialogModal'].forEach(
-    (id) => {
-      const overlay = document.getElementById(id);
-      if (!overlay) return;
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeOverlayById(id);
-      });
-    }
-  );
+  [
+    'npcPanel',
+    'lbPanel',
+    'replayPanel',
+    'tournamentModal',
+    'hintModal',
+    'resultModal',
+    'appDialogModal',
+  ].forEach((id) => {
+    const overlay = document.getElementById(id);
+    if (!overlay) return;
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeOverlayById(id);
+    });
+  });
 
   ['eqRulesModal', 'eqConfirmModal', 'dalioModal'].forEach((id) => {
     const overlay = document.getElementById(id);

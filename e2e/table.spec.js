@@ -89,6 +89,13 @@ test('a practice table seats every player, deals, and hands the viewer the actio
   await deal(page);
 
   await expect(page.locator('#logLast')).not.toContainText('joined the table');
+  await expect(page.locator('#panelChatBody .log-entry')).not.toHaveCount(0);
+  await expect(page.locator('#tabChat')).toHaveAttribute('aria-selected', 'true');
+  await page.click('#tabInfo');
+  await expect(page.locator('#panelInfo')).toBeVisible();
+  await expect(page.locator('#panelChat')).toBeHidden();
+  await page.keyboard.press('Home');
+  await expect(page.locator('#panelChat')).toBeVisible();
   await expect(page.locator('#btnFold')).toBeVisible();
   await expect(page.locator('#playerSeats .player-seat.active-turn')).toHaveCount(1);
   expect(pageErrors).toEqual([]);

@@ -220,30 +220,17 @@
     padding: 6px 10px;
     font-size: 0.7rem;
   }
-  .game-log {
+  .dealer-ticker {
     width: min(48vw, 190px);
     right: 3px;
     top: 116px;
+    font-size: 0.64rem;
+    line-height: 1.28;
   }
   .npc-chat-area {
     width: min(42vw, 170px);
     left: 3px;
     top: 116px;
-  }
-  .game-log.collapsed {
-    max-height: 62px;
-  }
-  .game-log.expanded {
-    max-height: 34vh;
-  }
-  .log-toggle {
-    padding: 5px 8px;
-    font-size: 0.5rem;
-    gap: 5px;
-  }
-  .log-last {
-    font-size: 0.64rem;
-    line-height: 1.28;
   }
   .top-bar {
     display: grid;
@@ -307,11 +294,6 @@
     bottom: 160px;
     transform: none;
   }
-  body.log-expanded .eq-side {
-    top: auto;
-    bottom: 220px;
-    transform: none;
-  }
   .result-content,
   .npc-panel-content,
   .lb-content,
@@ -358,7 +340,7 @@
   .player-name {
     max-width: 54px;
   }
-  .game-log {
+  .dealer-ticker {
     width: min(50vw, 180px);
   }
   .npc-chat-area {
@@ -404,7 +386,7 @@
   .tournament-banner {
     top: 32px;
   }
-  .game-log {
+  .dealer-ticker {
     top: 62px;
   }
   .npc-chat-area {
@@ -546,31 +528,19 @@
     padding: 2px 8px;
     max-width: min(58vw, 340px);
   }
-  .game-log {
+  .dealer-ticker {
     width: min(28vw, 150px);
     top: 62px;
     right: 4px;
+    font-size: 0.58rem;
+    line-height: 1.22;
+    -webkit-line-clamp: 2;
   }
   .npc-chat-area {
     width: min(24vw, 136px);
     top: 62px;
     left: 4px;
     gap: 4px;
-  }
-  .game-log.collapsed {
-    max-height: 52px;
-  }
-  .game-log.expanded {
-    max-height: 44vh;
-  }
-  .log-toggle {
-    padding: 4px 6px;
-    gap: 4px;
-  }
-  .log-last {
-    font-size: 0.58rem;
-    line-height: 1.22;
-    -webkit-line-clamp: 2;
   }
   .round-overlay {
     top: 50%;
@@ -629,11 +599,6 @@
   .eq-side {
     bottom: 86px;
     right: 2px;
-  }
-  body.log-expanded .eq-side {
-    top: auto;
-    bottom: 142px;
-    transform: none;
   }
   .eq-side-btn {
     min-width: 42px;

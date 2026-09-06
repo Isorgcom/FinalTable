@@ -754,9 +754,8 @@ function restoreLobbyUI() {
   const shouldClearStaleRoom = _selectedGameMode === 'practice' || !getSelectedRoomMeta();
   const topInfo = document.getElementById('topInfo');
   const modeBadge = document.getElementById('modeBadge');
-  const gameLog = document.getElementById('gameLog');
   const logLast = document.getElementById('logLast');
-  const logBody = document.getElementById('logBody');
+  const logBody = document.getElementById('panelChatBody');
   const tournamentBanner = document.getElementById('tournamentBanner');
 
   document.getElementById('gameScreen').classList.remove('active');
@@ -769,14 +768,9 @@ function restoreLobbyUI() {
     modeBadge.className = 'mode-badge';
     modeBadge.textContent = '';
   }
-  if (gameLog) {
-    gameLog.classList.add('collapsed');
-    gameLog.classList.remove('expanded');
-  }
   if (logLast) logLast.textContent = 'Waiting...';
   if (logBody) logBody.textContent = '';
   if (tournamentBanner) tournamentBanner.classList.add('hidden');
-  document.body.classList.remove('log-expanded');
 
   if (shouldClearStaleRoom) {
     if (roomId) roomId.value = '';

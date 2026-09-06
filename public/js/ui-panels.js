@@ -16,13 +16,12 @@ function normalizeRuntimeLogMessage(msg) {
   return normalized;
 }
 
-function setLogExpandedState(isExpanded) {
-  document.body.classList.toggle('log-expanded', isExpanded);
-}
-
+// The dealer log lives in the side panel's Chat tab; the ticker over the
+// felt repeats the last line for when the panel is out of view.
 function addLog(msg) {
-  const body = document.getElementById('logBody');
+  const body = document.getElementById('panelChatBody');
   const last = document.getElementById('logLast');
+  if (!body || !last) return;
   const displayMsg = normalizeRuntimeLogMessage(msg);
   const entry = document.createElement('div');
   entry.className = 'log-entry';
@@ -39,32 +38,12 @@ function addLog(msg) {
   body.appendChild(entry);
   body.scrollTop = body.scrollHeight;
 
-  // Update ticker with last message; CSS clamps the collapsed view to 3 lines.
+  // The ticker shows the last line; CSS clamps it to a few lines.
   last.textContent = displayMsg.replace(/💬\s*/, '');
+  if (window.SidePanel) SidePanel.notify('chat');
 
   // Keep only last 50
   while (body.children.length > 50) body.removeChild(body.firstChild);
-}
-
-let _logUserExpanded = false; // Track if user manually opened the log
-
-function toggleLog(e) {
-  if (e) e.stopPropagation();
-  const log = document.getElementById('gameLog');
-  const isCollapsed = log.classList.contains('collapsed');
-  if (isCollapsed) {
-    log.classList.remove('collapsed');
-    log.classList.add('expanded');
-    _logUserExpanded = true;
-    setLogExpandedState(true);
-    const body = document.getElementById('logBody');
-    body.scrollTop = body.scrollHeight;
-  } else {
-    log.classList.add('collapsed');
-    log.classList.remove('expanded');
-    _logUserExpanded = false;
-    setLogExpandedState(false);
-  }
 }
 
 const STYLE_NAMES = {

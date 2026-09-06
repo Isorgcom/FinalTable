@@ -252,17 +252,90 @@
           <button class="action-btn btn-allin" id="btnAllIn" aria-label="All In">all in</button>
         </div>
 
-        <div class="game-log collapsed" id="gameLog" role="log" aria-label="Game log">
-          <div class="log-toggle">
-            <span class="log-last" id="logLast">Waiting...</span>
-            <span class="log-toggle-arrow">▲</span>
-          </div>
-          <div class="log-body" id="logBody"></div>
-        </div>
+        <!-- The last dealer line, for when the side panel is out of view
+           (hidden rail, or a closed drawer on a phone) -->
+        <div class="dealer-ticker" id="logLast" aria-live="polite">Waiting...</div>
       </div>
 
       <!-- Docked at >=1024px, a slide-in drawer below. Filled in by side-panel.js. -->
-      <aside class="side-panel" id="sidePanel" aria-label="Table panel"></aside>
+      <aside class="side-panel" id="sidePanel" aria-label="Table panel">
+        <div class="side-panel-tabs" role="tablist" aria-label="Table panel">
+          <button
+            class="side-tab active"
+            id="tabChat"
+            role="tab"
+            aria-selected="true"
+            aria-controls="panelChat"
+            data-tab="chat"
+          >
+            Chat
+          </button>
+          <button
+            class="side-tab"
+            id="tabInfo"
+            role="tab"
+            aria-selected="false"
+            tabindex="-1"
+            aria-controls="panelInfo"
+            data-tab="info"
+          >
+            Info
+          </button>
+          <button
+            class="side-tab"
+            id="tabStats"
+            role="tab"
+            aria-selected="false"
+            tabindex="-1"
+            aria-controls="panelStats"
+            data-tab="stats"
+          >
+            Stats
+          </button>
+          <button
+            class="side-tab"
+            id="tabHistory"
+            role="tab"
+            aria-selected="false"
+            tabindex="-1"
+            aria-controls="panelHistory"
+            data-tab="history"
+          >
+            History
+          </button>
+        </div>
+        <div class="side-panel-bodies">
+          <section class="side-tabpanel" id="panelChat" role="tabpanel" aria-labelledby="tabChat">
+            <div class="panel-scroll" id="panelChatBody" role="log" aria-label="Dealer log"></div>
+            <!-- Reserved for a player chat composer -->
+            <div class="panel-composer hidden" id="panelComposer"></div>
+          </section>
+          <section
+            class="side-tabpanel hidden"
+            id="panelInfo"
+            role="tabpanel"
+            aria-labelledby="tabInfo"
+          >
+            <div class="panel-scroll" id="panelInfoBody"></div>
+          </section>
+          <section
+            class="side-tabpanel hidden"
+            id="panelStats"
+            role="tabpanel"
+            aria-labelledby="tabStats"
+          >
+            <div class="panel-scroll" id="panelStatsBody"></div>
+          </section>
+          <section
+            class="side-tabpanel hidden"
+            id="panelHistory"
+            role="tabpanel"
+            aria-labelledby="tabHistory"
+          >
+            <div class="panel-scroll" id="panelHistoryBody"></div>
+          </section>
+        </div>
+      </aside>
     </div>
 
     <!-- NPC MANAGEMENT PANEL -->
@@ -453,6 +526,7 @@
     <script defer src="/js/lobby-socket.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/table-render.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/ui-panels.js?v=__ASSET_VERSION__"></script>
+    <script defer src="/js/side-panel.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/tournament-field.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/app.js?v=__ASSET_VERSION__"></script>
 
