@@ -21,3 +21,7 @@ final-single-script/
 
 # graphify build output (regenerate with /graphify)
 graphify-out/
+
+# Playwright output
+test-results/
+playwright-report/
