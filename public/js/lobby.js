@@ -21,6 +21,7 @@
   let currentId = null;
   let pendingJoinCode = null;
   let pendingCreate = null;
+  let pendingLastCheck = null; // a tournament we were in before this page load
   let view = 'home';
 
   const $ = (id) => document.getElementById(id);
@@ -77,7 +78,16 @@
     if (ident.name && !nameValue()) $('playerName').value = ident.name;
     $('identityStatus').textContent = `Playing as ${ident.name}`;
     setConnection(true);
-    if (ident.resume) return; // the server rebinds and sends tournamentJoined
+    if (ident.resume) {
+      store.set(LAST_KEY, null);
+      return; // the server rebinds and sends tournamentJoined
+    }
+    // We were in a tournament before this page load and it did not resume:
+    // it finished, was cancelled, or the server restarted. The list says which.
+    if (!window.__tournamentActive && store.get(LAST_KEY)) {
+      pendingLastCheck = store.get(LAST_KEY);
+      store.set(LAST_KEY, null);
+    }
     if (pendingCreate) {
       const payload = pendingCreate;
       pendingCreate = null;
@@ -112,6 +122,18 @@
   function onList(items) {
     list = Array.isArray(items) ? items : [];
     renderList();
+    if (pendingLastCheck) {
+      const id = pendingLastCheck;
+      pendingLastCheck = null;
+      if (!list.some((t) => t.id === id) && typeof window.showNoticeDialog === 'function') {
+        window.showNoticeDialog({
+          title: 'Lobby',
+          message:
+            'The tournament you were in is over: it finished, was cancelled, or the server restarted while it was running.',
+          confirmLabel: 'OK',
+        });
+      }
+    }
   }
 
   function onJoined(info) {

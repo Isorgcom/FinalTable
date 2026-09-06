@@ -17,6 +17,18 @@ function makeIdentity(names) {
   };
 }
 
+function makeStore() {
+  let saved = [];
+  return {
+    saves: 0,
+    load: () => saved,
+    save(list) {
+      saved = JSON.parse(JSON.stringify(list));
+      this.saves++;
+    },
+  };
+}
+
 function makeSocket(id) {
   const emitted = [];
   return { id, data: {}, emitted, emit: (event, payload) => emitted.push({ event, payload }) };
@@ -194,5 +206,62 @@ describe('tournament registry', () => {
       event: 'tournamentJoined',
       payload: { resumed: true, host: true },
     });
+  });
+
+  test('registering tournaments persist and are restored; running ones are not written', () => {
+    const store = makeStore();
+    const first = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    const { entry } = first.create(
+      'h',
+      { name: 'Persisted', botCount: 2, startsAt: Date.now() + 8000 },
+      makeSocket('sh')
+    );
+    first.join('g', { code: entry.code }, makeSocket('sg'));
+    first.flush();
+    expect(store.load()).toHaveLength(1);
+    expect(store.load()[0]).toMatchObject({ id: entry.id, code: entry.code, hostUid: 'h' });
+    expect(store.load()[0].entrants.filter((e) => e.isNPC)).toHaveLength(2);
+    expect(
+      store
+        .load()[0]
+        .registrations.map((r) => r.uid)
+        .sort()
+    ).toEqual(['g', 'h']);
+    first.stop();
+
+    const second = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back).toBeTruthy();
+    expect(back.code).toBe(entry.code);
+    expect(back.name).toBe('Persisted');
+    expect(back.hostUid).toBe('h');
+    expect(back.settings.botCount).toBe(2);
+    expect(back.director.entrants).toHaveLength(4);
+    expect(back.director.entrants.filter((e) => e.isNPC).every((e) => e.npcProfile)).toBe(true);
+    expect(back.registrations.size).toBe(2);
+    expect(back.registrations.get('g').socketId).toBeNull();
+    // A returning human is rebound to their registration...
+    expect(second.findByUid('g')).toBe(back);
+    second.bind(back, 'g', makeSocket('sg2'), { resumed: true });
+    expect(back.registrations.get('g').socketId).toBe('sg2');
+    // ...and the sweep starts it at its time, after which it leaves the file.
+    jest.advanceTimersByTime(9000);
+    expect(back.status).toBe('running');
+    second.flush();
+    expect(store.load()).toHaveLength(0);
+    second.stop();
   });
 });

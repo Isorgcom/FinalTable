@@ -12,7 +12,7 @@
 // need the same loop anyway. `now` and `timers` are injectable for tests.
 
 const { TournamentDirector } = require('../director');
-const { getAvailableNPCs } = require('../npc');
+const { getAvailableNPCs, getNPCByName } = require('../npc');
 const random = require('../random');
 
 const TICK_MS = 1200;
@@ -41,6 +41,7 @@ function createTournamentRegistry(deps = {}) {
     overdueAbandonMs = 30 * 60 * 1000,
     sweepMs = 1000,
     now = () => Date.now(),
+    store = null,
   } = deps;
   const timers = deps.timers || {
     setInterval: (...a) => setInterval(...a),
@@ -51,6 +52,54 @@ function createTournamentRegistry(deps = {}) {
   const tournaments = new Map();
   let sweepTimer = null;
   let sweeps = 0;
+  let persistTimer = null;
+
+  // ── Persistence ──────────────────────────────────────────────────────────
+  // Registering tournaments are written on every change (debounced); once one
+  // starts it drops out of the file, because a running one cannot be rebuilt.
+
+  function serialize(entry) {
+    return {
+      id: entry.id,
+      code: entry.code,
+      name: entry.name,
+      createdAt: entry.createdAt,
+      startsAt: entry.startsAt,
+      hostUid: entry.hostUid,
+      settings: { ...entry.settings },
+      entrants: entry.director.entrants.map((e) => ({
+        uid: e.uid,
+        name: e.name,
+        avatar: e.avatar || null,
+        isNPC: !!e.isNPC,
+        npcProfileName: e.isNPC && e.npcProfile ? e.npcProfile.name : null,
+      })),
+      registrations: [...entry.registrations.entries()].map(([uid, r]) => ({
+        uid,
+        joinedAt: r.joinedAt,
+      })),
+    };
+  }
+
+  function flush() {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    if (!store) return;
+    const list = [...tournaments.values()].filter((e) => e.status === 'registering').map(serialize);
+    try {
+      store.save(list);
+    } catch (_err) {
+      /* the next change tries again */
+    }
+  }
+
+  function persist() {
+    if (!store || persistTimer) return;
+    persistTimer = setTimeout(flush, 250);
+    if (persistTimer.unref) persistTimer.unref();
+  }
 
   // ── Small helpers ────────────────────────────────────────────────────────
 
@@ -302,16 +351,40 @@ function createTournamentRegistry(deps = {}) {
 
     const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
     const { startsAt, settings } = clampSettings(payload);
+    const entry = buildEntry({ name, startsAt, hostUid: uid, settings });
+    entry.director.register({
+      id: socket ? socket.id : null,
+      uid,
+      name: who.name,
+      avatar: who.avatar,
+    });
+    for (const bot of makeBotEntrants(settings.botCount)) entry.director.register(bot);
+    entry.registrations.set(uid, {
+      socketId: null,
+      disconnectedAt: null,
+      joinedAt: now(),
+      left: false,
+    });
+    tournaments.set(entry.id, entry);
+    if (socket) bind(entry, uid, socket);
+    persist();
+    emitList();
+    return { entry };
+  }
+
+  // The entry and its director, with every callback wired. Shared by create()
+  // and restore().
+  function buildEntry({ id = null, code = null, name, startsAt, hostUid, settings, createdAt }) {
     const entry = {
-      id: null,
-      code: makeCode(),
+      id,
+      code: code || makeCode(),
       name,
       status: 'registering',
-      createdAt: now(),
+      createdAt: createdAt || now(),
       startsAt,
       startedAt: null,
       finishedAt: null,
-      hostUid: uid,
+      hostUid,
       settings,
       director: null,
       registrations: new Map(),
@@ -321,6 +394,7 @@ function createTournamentRegistry(deps = {}) {
       noHumansSince: null,
     };
     const director = new TournamentDirector({
+      id: id || undefined,
       tableSize: settings.tableSize,
       startChips: settings.startChips,
       buyIn: settings.buyIn,
@@ -370,19 +444,7 @@ function createTournamentRegistry(deps = {}) {
     });
     entry.id = director.id;
     entry.director = director;
-
-    director.register({ id: socket ? socket.id : null, uid, name: who.name, avatar: who.avatar });
-    for (const bot of makeBotEntrants(settings.botCount)) director.register(bot);
-    entry.registrations.set(uid, {
-      socketId: null,
-      disconnectedAt: null,
-      joinedAt: now(),
-      left: false,
-    });
-    tournaments.set(entry.id, entry);
-    if (socket) bind(entry, uid, socket);
-    emitList();
-    return { entry };
+    return entry;
   }
 
   function join(uid, { code, tournamentId } = {}, socket) {
@@ -424,6 +486,7 @@ function createTournamentRegistry(deps = {}) {
       left: false,
     });
     if (socket) bind(entry, uid, socket);
+    persist();
     emitState(entry);
     emitList();
     return { entry };
@@ -520,6 +583,7 @@ function createTournamentRegistry(deps = {}) {
       return { entry };
     }
     if (uid === entry.hostUid) transferHost(entry, { force: true });
+    persist();
     emitState(entry);
     emitList();
     return { entry };
@@ -572,6 +636,7 @@ function createTournamentRegistry(deps = {}) {
     const n = Math.max(0, Math.min(60, parseInt(count, 10) || 0));
     entry.director.replaceBots(makeBotEntrants(n));
     entry.settings.botCount = n;
+    persist();
     emitState(entry);
     emitList();
     return { entry };
@@ -592,6 +657,7 @@ function createTournamentRegistry(deps = {}) {
       }
     }, TICK_MS);
     if (entry.timer && entry.timer.unref) entry.timer.unref();
+    persist();
     emitState(entry);
     emitList();
   }
@@ -608,6 +674,7 @@ function createTournamentRegistry(deps = {}) {
     }
     entry.director.stop();
     tournaments.delete(entry.id);
+    persist();
     emitList();
   }
 
@@ -629,6 +696,7 @@ function createTournamentRegistry(deps = {}) {
     for (const table of entry.director.tables) table.hostPlayerId = entry.hostUid;
     const who = identity.get(entry.hostUid);
     entry.director._say(`${who ? who.name : 'Someone'} is now the host`);
+    persist();
     emitState(entry);
     emitList();
     return true;
@@ -691,6 +759,7 @@ function createTournamentRegistry(deps = {}) {
   }
 
   function stop() {
+    flush();
     if (sweepTimer) {
       timers.clearInterval(sweepTimer);
       sweepTimer = null;
@@ -702,9 +771,57 @@ function createTournamentRegistry(deps = {}) {
     }
   }
 
-  // Persistence arrives in a later phase.
+  // Rebuild registering tournaments from the store at boot. Humans come back
+  // unbound (they identify and are rebound); bots come back by profile name.
+  // The first sweep starts anything that is overdue.
   function restore() {
-    return 0;
+    if (!store) return 0;
+    let restored = 0;
+    for (const saved of store.load()) {
+      if (!saved || !saved.id || tournaments.has(saved.id)) continue;
+      const { settings } = clampSettings({ ...saved.settings, startsAt: saved.startsAt });
+      const entry = buildEntry({
+        id: saved.id,
+        code: saved.code,
+        name: saved.name,
+        startsAt: Number(saved.startsAt) || now(),
+        hostUid: saved.hostUid,
+        settings: { ...settings, botCount: saved.settings ? saved.settings.botCount || 0 : 0 },
+        createdAt: saved.createdAt,
+      });
+      for (const e of saved.entrants || []) {
+        if (e.isNPC) {
+          const profile = e.npcProfileName ? getNPCByName(e.npcProfileName) : null;
+          if (!profile) continue;
+          entry.director.register({
+            id: random.randomId('npc_'),
+            uid: e.uid || random.randomId('u_'),
+            name: e.name || profile.name,
+            isNPC: true,
+            npcProfile: profile,
+          });
+        } else {
+          entry.director.register({ id: null, uid: e.uid, name: e.name, avatar: e.avatar || null });
+        }
+      }
+      for (const r of saved.registrations || []) {
+        if (!r || !r.uid) continue;
+        entry.registrations.set(r.uid, {
+          socketId: null,
+          disconnectedAt: null,
+          joinedAt: r.joinedAt || entry.createdAt,
+          left: false,
+        });
+      }
+      if (entry.registrations.size === 0) continue;
+      if (!entry.registrations.has(entry.hostUid)) {
+        entry.hostUid = [...entry.registrations.keys()][0];
+      }
+      tournaments.set(entry.id, entry);
+      restored++;
+    }
+    if (restored) emitList();
+    return restored;
   }
 
   startSweep();
@@ -728,6 +845,7 @@ function createTournamentRegistry(deps = {}) {
     requireHost,
     sweep,
     restore,
+    flush,
     stop,
   };
 }

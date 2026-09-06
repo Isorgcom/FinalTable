@@ -7,6 +7,7 @@ const random = require('./random');
 const { PokerGame } = require('./engine');
 const { saveGame, loadGame, deleteSave, listSaves } = require('./save-manager');
 const { createIdentityStore } = require('./server/identity');
+const { createTournamentStore } = require('./server/tournament-store');
 const { getNPCByName, NPC_PROFILES } = require('./npc');
 const { Tournament } = require('./tournament');
 const { loadLocalEnv } = require('./server/load-env');
@@ -395,9 +396,14 @@ const identity = createIdentityStore({
   sanitizeAvatar,
 });
 
+const tournamentStore = createTournamentStore({
+  saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+});
+
 const tournamentLayer = registerTournamentHandlers({
   io,
   identity,
+  store: tournamentStore,
   sanitizeName,
   normalizeNameKey,
   sanitizeAvatar,
@@ -415,6 +421,31 @@ const tournamentLayer = registerTournamentHandlers({
   },
   getPreflopTable: () => preflopTable,
 });
+// Registrations survive a restart; a running tournament does not.
+const restoredTournaments = tournamentLayer.registry.restore();
+
+// Flush both stores on the way out. Installed only when run directly, so the
+// test harness (which requires this module many times) never stacks handlers.
+function flushStores() {
+  try {
+    identity.flush();
+  } catch (_err) {
+    /* nothing better to do on the way out */
+  }
+  try {
+    tournamentLayer.registry.flush();
+  } catch (_err) {
+    /* as above */
+  }
+}
+if (require.main === module) {
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.on(signal, () => {
+      flushStores();
+      process.exit(0);
+    });
+  }
+}
 // Reset room when all human players are gone
 function checkAndResetRoom(roomId) {
   if (!games.has(roomId)) return;
@@ -481,6 +512,9 @@ function startServer(options = {}) {
 
   return new Promise((resolve) => {
     server.listen(port, host, () => {
+      if (restoredTournaments) {
+        console.log(`Restored ${restoredTournaments} scheduled tournament(s) from ${tournamentStore.file}`);
+      }
       if (unrefServer && typeof server.unref === 'function') server.unref();
       const address = server.address();
       const actualPort = typeof address === 'object' && address ? address.port : port;
@@ -525,6 +559,7 @@ module.exports = {
   tournaments: tournamentLayer.tournaments,
   registry: tournamentLayer.registry,
   identity,
+  flushStores,
   sessionTokens,
   startServer,
   config,
