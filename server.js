@@ -6,6 +6,7 @@ const path = require('path');
 const random = require('./random');
 const { PokerGame } = require('./engine');
 const { saveGame, loadGame, deleteSave, listSaves } = require('./save-manager');
+const { createIdentityStore } = require('./server/identity');
 const { getNPCByName, NPC_PROFILES } = require('./npc');
 const { Tournament } = require('./tournament');
 const { loadLocalEnv } = require('./server/load-env');
@@ -382,8 +383,17 @@ registerSocketHandlers({
 
 // Multi-table tournaments live in their own handler module; the single-table
 // room handlers above are untouched by them.
+// Who a player is: name + avatar behind a device token, persisted beside the
+// saves. See server/identity.js for the interface a login backend would fill.
+const identity = createIdentityStore({
+  saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+  sanitizeName,
+  sanitizeAvatar,
+});
+
 const tournamentLayer = registerTournamentHandlers({
   io,
+  identity,
   sanitizeName,
   sanitizeAvatar,
   maxTournaments: config.maxTournaments,
@@ -506,6 +516,7 @@ module.exports = {
   io,
   games,
   tournaments: tournamentLayer.tournaments,
+  identity,
   sessionTokens,
   startServer,
   config,

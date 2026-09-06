@@ -518,6 +518,27 @@ async function joinGame() {
   }, 15000);
 
   socket.on('connect', () => {
+    // Say who we are before anything else, on every connect. The server
+    // answers with `identified`, which is where the join proper happens; when
+    // this identity has a live tournament registration the server rebinds it
+    // and sends tournamentJoined itself.
+    let identityToken = null;
+    try {
+      identityToken = localStorage.getItem('finaltable_identity_token');
+    } catch (_err) {
+      /* private mode */
+    }
+    socket.emit('identify', { token: identityToken, name: playerName, avatar: playerAvatar });
+  });
+
+  socket.on('identified', (ident) => {
+    try {
+      if (ident && ident.token) localStorage.setItem('finaltable_identity_token', ident.token);
+    } catch (_err) {
+      /* private mode */
+    }
+    window.__identity = ident || null;
+    if (ident && ident.resume) return; // the server already rebound our seat
     // A socket that already belongs to a tournament must never fall through
     // to joinRoom on a reconnect: that put reconnecting players into a phantom
     // shared room named "mtt" while a bot played their tournament stack.

@@ -103,17 +103,25 @@ describe('Tournament socket layer', () => {
     });
   }
 
-  function createTournament(socket, payload = {}) {
+  function identify(socket, { token = null, name = 'Host', avatar = '🦊' } = {}) {
+    const reply = waitFor(socket, 'identified');
+    socket.emit('identify', { token, name, avatar });
+    return reply;
+  }
+
+  async function createTournament(socket, payload = {}) {
+    const { playerName = 'Host', playerAvatar = '🦊', ...rest } = payload;
+    if (!socket.__identity) {
+      socket.__identity = await identify(socket, { name: playerName, avatar: playerAvatar });
+    }
     const joined = waitFor(socket, 'tournamentJoined');
     socket.emit('createTournament', {
       name: 'Test Night',
-      playerName: 'Host',
-      playerAvatar: '🦊',
       tableSize: 6,
       botCount: 2,
       startChips: 1000,
       levelDuration: 600,
-      ...payload,
+      ...rest,
     });
     return joined;
   }
@@ -171,5 +179,59 @@ describe('Tournament socket layer', () => {
     expect(serverModule.tournaments.has(joined.id)).toBe(true); // within the grace
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(serverModule.tournaments.has(joined.id)).toBe(false); // grace expired
+  });
+
+  test('creating needs an identity, and the token is not the uid', async () => {
+    const anon = await connectClient();
+    const refused = waitFor(anon, 'error', (e) => /Identify first/.test(e.message));
+    anon.emit('createTournament', { name: 'Nope' });
+    await refused;
+
+    const me = await identify(anon, { name: 'Ann', avatar: '🐸' });
+    expect(me.uid).toMatch(/^u_/);
+    expect(me.token).not.toBe(me.uid);
+    expect(me.resume).toBeNull();
+    const again = await identify(anon, { token: me.token, name: 'Ann' });
+    expect(again.uid).toBe(me.uid);
+    expect(again.isNew).toBe(false);
+  });
+
+  test('a fresh socket with the same token rejoins the seat and the table follows', async () => {
+    const first = await connectClient();
+    const joined = await createTournament(first, { botCount: 1 });
+    const token = first.__identity.token;
+    const running = waitFor(first, 'gameState', (s) => s.isRunning);
+    first.emit('startTournament');
+    await running;
+    const entry = serverModule.tournaments.get(joined.id);
+    const seatBefore = entry.director.playerByUid(joined.uid);
+    expect(seatBefore.player.id).toBe(first.id);
+
+    first.close();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    const second = await connectClient();
+    const rejoined = waitFor(second, 'tournamentJoined');
+    const state = waitFor(second, 'gameState');
+    const ident = await identify(second, { token, name: 'Host' });
+    expect(ident.uid).toBe(joined.uid);
+    expect(ident.resume).toMatchObject({ id: joined.id, status: 'running' });
+    const info = await rejoined;
+    expect(info.resumed).toBe(true);
+    expect(info.you.playerId).toBe(second.id);
+    const seatAfter = entry.director.playerByUid(joined.uid);
+    expect(seatAfter.player.id).toBe(second.id);
+    expect(seatAfter.player.isConnected).toBe(true);
+    const seen = await state;
+    expect(seen.players.some((p) => p.id === second.id && !p.isNPC)).toBe(true);
+    expect(serverModule.tournaments.has(joined.id)).toBe(true);
+  });
+
+  test('one live registration per identity', async () => {
+    const host = await connectClient();
+    await createTournament(host);
+    const refused = waitFor(host, 'error', (e) => /already in a tournament/.test(e.message));
+    host.emit('createTournament', { name: 'Second' });
+    await refused;
   });
 });

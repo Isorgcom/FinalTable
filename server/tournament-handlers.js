@@ -19,6 +19,7 @@ const TICK_MS = 1200;
 function registerTournamentHandlers(deps) {
   const {
     io,
+    identity,
     sanitizeName,
     sanitizeAvatar,
     maxTournaments = 8,
@@ -133,6 +134,51 @@ function registerTournamentHandlers(deps) {
     entry.abandonTimer = null;
   }
 
+  // The live tournament a human is registered in, if any. Finished ones do
+  // not count: their standings linger, but they hold nobody.
+  function findByUid(uid) {
+    if (!uid) return null;
+    for (const entry of tournaments.values()) {
+      if (entry.director.finished) continue;
+      if (entry.director.entrants.some((e) => e.uid === uid && !e.isNPC)) return entry;
+    }
+    return null;
+  }
+
+  // Bind a socket to its registration. On a rejoin the seated player's id is
+  // rebound to the new socket, exactly as the room layer does on reconnect,
+  // so every socket-id-keyed path in the engine and the client keeps working.
+  function bind(entry, uid, socket, { resumed = false } = {}) {
+    entry.seats.set(uid, socket.id);
+    cancelAbandon(entry);
+    socket.data.tournamentId = entry.director.id;
+    socket.data.tournamentUid = uid;
+    const entrant = entry.director.entrants.find((e) => e.uid === uid);
+    if (entrant) entrant.id = socket.id;
+    const seat = entry.director.playerByUid(uid);
+    if (seat) {
+      seat.player.id = socket.id;
+      seat.player.isConnected = true;
+      seat.player.disconnectedAt = null;
+    }
+    socket.emit('tournamentJoined', {
+      id: entry.director.id,
+      uid,
+      host: uid === entry.hostUid,
+      name: entry.name,
+      you: { uid, playerId: socket.id },
+      resumed,
+    });
+    if (resumed) {
+      socket.emit('tournamentField', entry.director.fieldSummary(uid));
+      if (seat) seat.table.emitUpdate();
+    }
+  }
+
+  // Identities idle for a month are dropped.
+  const expiryTimer = setInterval(() => identity.expireIdle(), 60 * 1000);
+  if (expiryTimer.unref) expiryTimer.unref();
+
   io.on('connection', (socket) => {
     // socket.io recovered this connection (same id, same data) after a short
     // drop. The disconnect handler dropped the seat mapping; put it back.
@@ -147,15 +193,45 @@ function registerTournamentHandlers(deps) {
 
     socket.on('listTournaments', () => socket.emit('tournamentList', publicList()));
 
+    // First thing on every connect, reconnects included. Establishes who the
+    // socket is and, when that person has a live registration, rebinds it.
+    socket.on('identify', (payload = {}) => {
+      const ident = identity.identify({
+        token: payload.token,
+        name: payload.name,
+        avatar: payload.avatar,
+      });
+      if (!ident) {
+        socket.emit('error', { message: 'Enter a name first' });
+        return;
+      }
+      socket.data.uid = ident.uid;
+      const entry = findByUid(ident.uid);
+      let resume = null;
+      if (entry) {
+        bind(entry, ident.uid, socket, { resumed: true });
+        resume = {
+          id: entry.director.id,
+          name: entry.name,
+          status: entry.director.isRunning ? 'running' : 'registering',
+        };
+      }
+      socket.emit('identified', { ...ident, resume });
+    });
+
     socket.on('createTournament', (payload = {}) => {
       if (tournaments.size >= maxTournaments) {
         socket.emit('error', { message: 'Too many tournaments running' });
         return;
       }
       const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
-      const playerName = sanitizeName(payload.playerName);
-      if (!playerName) {
-        socket.emit('error', { message: 'Enter a name first' });
+      const who = identity.get(socket.data.uid);
+      if (!who) {
+        socket.emit('error', { message: 'Identify first' });
+        return;
+      }
+      if (findByUid(who.uid)) {
+        socket.emit('error', { message: 'You are already in a tournament' });
         return;
       }
       const tableSize = Math.max(2, Math.min(10, parseInt(payload.tableSize, 10) || 9));
@@ -169,11 +245,11 @@ function registerTournamentHandlers(deps) {
         Math.min(3600, parseInt(payload.levelDuration, 10) || 300)
       );
 
-      const hostUid = random.randomId('u_');
+      const hostUid = who.uid;
       const entry = {
         name,
         hostUid,
-        seats: new Map([[hostUid, socket.id]]),
+        seats: new Map(),
         timer: null,
         director: null,
       };
@@ -223,18 +299,11 @@ function registerTournamentHandlers(deps) {
       });
       entry.director = director;
 
-      director.register({
-        id: socket.id,
-        uid: hostUid,
-        name: playerName,
-        avatar: sanitizeAvatar(payload.playerAvatar),
-      });
+      director.register({ id: socket.id, uid: hostUid, name: who.name, avatar: who.avatar });
       for (const bot of makeBotEntrants(botCount)) director.register(bot);
 
       tournaments.set(director.id, entry);
-      socket.data.tournamentId = director.id;
-      socket.data.tournamentUid = hostUid;
-      socket.emit('tournamentJoined', { id: director.id, uid: hostUid, host: true, name });
+      bind(entry, hostUid, socket);
       broadcastList();
     });
 
@@ -248,27 +317,17 @@ function registerTournamentHandlers(deps) {
         socket.emit('error', { message: 'Tournament already started' });
         return;
       }
-      const playerName = sanitizeName(payload.playerName);
-      if (!playerName) {
-        socket.emit('error', { message: 'Enter a name first' });
+      const who = identity.get(socket.data.uid);
+      if (!who) {
+        socket.emit('error', { message: 'Identify first' });
         return;
       }
-      const uid = random.randomId('u_');
-      entry.seats.set(uid, socket.id);
-      entry.director.register({
-        id: socket.id,
-        uid,
-        name: playerName,
-        avatar: sanitizeAvatar(payload.playerAvatar),
-      });
-      socket.data.tournamentId = entry.director.id;
-      socket.data.tournamentUid = uid;
-      socket.emit('tournamentJoined', {
-        id: entry.director.id,
-        uid,
-        host: false,
-        name: entry.name,
-      });
+      if (findByUid(who.uid)) {
+        socket.emit('error', { message: 'You are already in a tournament' });
+        return;
+      }
+      entry.director.register({ id: socket.id, uid: who.uid, name: who.name, avatar: who.avatar });
+      bind(entry, who.uid, socket);
       broadcastList();
     });
 

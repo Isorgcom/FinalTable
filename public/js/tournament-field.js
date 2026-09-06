@@ -214,7 +214,9 @@
       // enabled the action buttons, and the seat sat there until the idle
       // timeout acted for the player. The server seats a tournament entrant
       // under their socket id, so that is the value to use.
-      if (typeof socket !== 'undefined' && socket && socket.id) {
+      if (info && info.you && info.you.playerId) {
+        myId = info.you.playerId;
+      } else if (typeof socket !== 'undefined' && socket && socket.id) {
         myId = socket.id;
       }
       enterTable();
