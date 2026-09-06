@@ -35,17 +35,17 @@ describe('UI smoke', () => {
     process.env = originalEnv;
   });
 
-  test('served lobby html contains current mode feedback shell and rendered asset version', async () => {
+  test('served lobby html contains the tournament lobby shell and rendered asset version', async () => {
     const response = await fetch(`${baseUrl}/`);
     const html = await response.text();
 
     expect(response.status).toBe(200);
-    expect(html).toContain('id="modeFeedbackBar"');
-    expect(html).toContain('id="modeFeedbackTitle"');
-    expect(html).toContain('id="modeFeedbackText"');
-    expect(html).toContain('Cash Game');
-    expect(html).toContain('Tournament');
-    expect(html).toContain('Practice');
+    expect(html).toContain('id="identityCard"');
+    expect(html).toContain('id="sectionRegistering"');
+    expect(html).toContain('id="btnCreateTournament"');
+    expect(html).toContain('Create a tournament');
+    expect(html).toMatch(/\/js\/lobby\.js\?v=[a-f0-9]{10}/);
+    expect(html).toMatch(/\/js\/socket-client\.js\?v=[a-f0-9]{10}/);
     expect(html).not.toContain('__ASSET_VERSION__');
     expect(html).toMatch(/\/css\/style\.css\?v=[a-f0-9]{10}/);
     expect(html).toMatch(/\/js\/app-state\.js\?v=[a-f0-9]{10}/);

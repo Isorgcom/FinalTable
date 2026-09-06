@@ -27,6 +27,8 @@ test.beforeAll(async () => {
   // second instead of the human-paced 2.6-5.2s per bot.
   process.env.NPC_DELAY_MIN = '40';
   process.env.NPC_DELAY_MAX = '90';
+  // A tournament created to start now deals on the next sweep.
+  process.env.TOURNAMENT_SWEEP_MS = '100';
   // engine.js reads NPC_DELAY_* at load, and another spec in this worker may
   // already have loaded it. Drop every repo module so the env takes effect.
   for (const key of Object.keys(require.cache)) {
@@ -53,36 +55,40 @@ test.afterAll(async () => {
   process.env = originalEnv;
 });
 
-// Practice rooms outlive the page that made them, so an earlier test's room
-// is still in the map. Ask the page which room it joined.
+// The table a page is seated at, through the registry: the page knows its
+// identity uid, and the registry knows where that uid sits right now.
 async function gameForPage(page) {
-  const roomId = await page.inputValue('#roomId');
-  return serverModule.games.get(roomId) || null;
+  const uid = await page.evaluate(() => window.__identity && window.__identity.uid);
+  const entry = serverModule.registry.findByUid(uid);
+  const seat = entry ? entry.director.playerByUid(uid) : null;
+  return seat ? seat.table : null;
 }
 
-async function seatAtPracticeTable(page, name) {
+// Create a tournament that starts now with a few bots; the sweep deals it.
+async function seatAtTournamentTable(page, name, { bots = 3 } = {}) {
   const pageErrors = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
   await page.goto(baseUrl);
   await page.fill('#playerName', name);
-  await page.click('#modeBtn_practice');
-  await page.selectOption('#npcCount', '3');
-  await page.click('#btnTakeASeat');
-  await expect(page.locator('#gameScreen')).toHaveClass(/active/);
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', `${name} table`);
+  await page.click('#tStartQuick button[data-min="0"]');
+  await page.fill('#tBots', String(bots));
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 15000 });
   return pageErrors;
 }
 
 async function deal(page) {
-  const dealButton = page.locator('#btnStartGame');
-  await expect(dealButton).toBeVisible();
-  await dealButton.click();
-  await expect(page.locator('#actionsPanel')).not.toHaveClass(/hidden/, { timeout: 15000 });
+  await expect(page.locator('#actionsPanel')).not.toHaveClass(/hidden/, { timeout: 20000 });
 }
 
-test('a practice table seats every player, deals, and hands the viewer the action bar', async ({
+test('a tournament table seats every player, deals, and hands the viewer the action bar', async ({
   page,
 }) => {
-  const pageErrors = await seatAtPracticeTable(page, 'TableTester');
+  const pageErrors = await seatAtTournamentTable(page, 'TableTester');
 
   await expect(page.locator('#playerSeats .player-seat')).toHaveCount(4);
 
@@ -98,7 +104,7 @@ test('a practice table seats every player, deals, and hands the viewer the actio
   await expect(page.locator('#panelChat')).toBeHidden();
   await page.keyboard.press('Home');
   await expect(page.locator('#panelChat')).toBeVisible();
-  await expect(page.locator('#panelInfoBody')).toContainText('Practice');
+  await expect(page.locator('#panelInfoBody')).toContainText('Multi-table');
   await expect(page.locator('#panelInfoBody')).toContainText('Blinds');
   await page.click('#btnLeaderboard');
   await expect(page.locator('#panelStats')).toBeVisible();
@@ -119,7 +125,7 @@ test('a practice table seats every player, deals, and hands the viewer the actio
 });
 
 test('a raise from the action bar reaches the engine', async ({ page }) => {
-  const pageErrors = await seatAtPracticeTable(page, 'RaiseTester');
+  const pageErrors = await seatAtTournamentTable(page, 'RaiseTester');
   await deal(page);
 
   const game = await gameForPage(page);
@@ -150,7 +156,7 @@ test('a raise from the action bar reaches the engine', async ({ page }) => {
 });
 
 test('requesting time extends the clock once per hand', async ({ page }) => {
-  const pageErrors = await seatAtPracticeTable(page, 'TimeTester');
+  const pageErrors = await seatAtTournamentTable(page, 'TimeTester');
   await deal(page);
   const game = await gameForPage(page);
   expect(game).toBeTruthy();
@@ -179,7 +185,7 @@ test.describe('phone', () => {
   test('the side panel is a drawer: toggle, Escape, scrim, and the stats button', async ({
     page,
   }) => {
-    const pageErrors = await seatAtPracticeTable(page, 'PhoneTester');
+    const pageErrors = await seatAtTournamentTable(page, 'PhoneTester');
     const panel = page.locator('#sidePanel');
     await expect(panel).toBeHidden();
     await expect(page.locator('#btnPanelToggle')).toHaveAttribute('aria-expanded', 'false');

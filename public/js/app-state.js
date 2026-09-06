@@ -93,7 +93,6 @@ function getSeatPositions(playerCount) {
 
 let socket = null; // Socket.IO connection
 let myId = null; // Current player's socket ID
-let sessionToken = null; // Session token for secure reconnection
 let _heartbeatTimer = null; // Mobile keep-alive interval
 let _visibilityHandler = null; // Mobile foreground resume handler
 let gameState = null; // Latest game state from server
@@ -102,7 +101,6 @@ let messages = []; // Chat/log message history
 let tournamentTimer = null; // Tournament countdown interval
 let _resultShownThisRound = false; // Debounce: prevent double result popup
 let _resumeInteractionGuardUntil = 0; // Brief guard after leaving auto-play
-const SESSION_STORAGE_PREFIX = 'finaltable:session:';
 
 // ============================================================
 //  SOUND SYSTEM - Web Audio API synthesized sounds
@@ -221,173 +219,12 @@ const SFX = {
 // ============================================================
 
 // ── Mode & Equity State ──
-let _selectedGameMode = 'cash'; // Selected mode before joining
 let _currentEquity = null; // Currently displayed equity data
 let _currentEquityContextKey = null; // Board-state key for the currently displayed oracle result
 let _eqRulesShown = false; // Whether equity rules popup has been shown
 let _eqPaidCount = 0; // Cumulative paid equity uses (for easter egg)
 let _dalioShown = false; // Dalio easter egg shown flag
 const EQ_RULES_NO_SHOW_KEY = 'finaltable:eqRulesNoShow:v2';
-const MODE_UI_COPY = {
-  cash: {
-    title: 'Cash Game',
-    text: 'Classic hold’em with deep stacks, room to maneuver, and a full table story hand after hand.',
-    pillA: 'Deep-stack battles',
-    pillB: 'Best for long sessions',
-    npcLabel: 'NPC',
-    chipsLabel: 'Chips',
-    blindLabel: 'Blind',
-    seatButton: 'Select Cash Room',
-    practiceNote: '',
-  },
-  tournament: {
-    title: 'Tournament',
-    text: 'One life, rising pressure, and a shrinking field until someone claims the whole table.',
-    pillA: 'Knockout survival',
-    pillB: 'Blinds keep climbing',
-    npcLabel: 'NPC',
-    chipsLabel: 'Starting Stack',
-    blindLabel: 'Opening Blind',
-    seatButton: 'Select Tournament Room',
-    practiceNote: '',
-  },
-  multi: {
-    title: 'Multi-Table Tournament',
-    text: 'One field across as many tables as it takes. Tables balance and break as players bust, down to a single final table.',
-    pillA: 'More than one table',
-    pillB: 'Plays down to a winner',
-    npcLabel: 'Field size',
-    chipsLabel: 'Starting Stack',
-    blindLabel: 'Opening Blind',
-    seatButton: 'Start Tournament',
-    practiceNote: 'A full field across several tables. You plus the bots you picked above.',
-  },
-  practice: {
-    title: 'Practice',
-    text: 'A solo table for testing lines, feeling spots out, and playing fast hands against AI.',
-    pillA: 'Solo vs AI',
-    pillB: 'Fast reps and resets',
-    npcLabel: 'AI Opponents',
-    chipsLabel: 'Starting Stack',
-    blindLabel: 'Practice Blind',
-    seatButton: 'Start Practice',
-    practiceNote: 'A solo table for quick reps against AI opponents.',
-  },
-};
-
-const MULTI_FIELD_SIZES = [5, 8, 11, 17, 23, 29, 35, 47, 59];
-let _npcOptionsBackup = null;
-
-// The stock NPC selector tops out at 9, which is a single table. Multi-table
-// needs a field, so swap in tournament-sized counts while that mode is
-// selected and restore the original list on the way out.
-function syncFieldSizeOptions(mode) {
-  const npcSel = document.getElementById('npcCount');
-  if (!npcSel) return;
-  if (mode === 'multi') {
-    if (_npcOptionsBackup === null) _npcOptionsBackup = npcSel.innerHTML;
-    if (npcSel.dataset.multi === '1') return;
-    npcSel.textContent = '';
-    for (const n of MULTI_FIELD_SIZES) {
-      const opt = document.createElement('option');
-      opt.value = String(n);
-      opt.textContent = `${n} bots (${n + 1} players)`;
-      if (n === 17) opt.selected = true;
-      npcSel.appendChild(opt);
-    }
-    npcSel.dataset.multi = '1';
-  } else if (npcSel.dataset.multi === '1') {
-    if (_npcOptionsBackup !== null) npcSel.innerHTML = _npcOptionsBackup;
-    delete npcSel.dataset.multi;
-  }
-}
-
-function syncNpcOptionsForMode(mode) {
-  syncFieldSizeOptions(mode);
-  const npcSel = document.getElementById('npcCount');
-  if (!npcSel) return;
-  if (mode === 'multi') return; // field sizes have no zero option to manage
-  const zeroOption = npcSel.querySelector('option[value="0"]');
-  if (!zeroOption) return;
-
-  const practiceMode = mode === 'practice';
-  zeroOption.disabled = practiceMode;
-  zeroOption.hidden = practiceMode;
-  zeroOption.style.display = practiceMode ? 'none' : '';
-  if (practiceMode && npcSel.value === '0') {
-    npcSel.value = '3';
-  }
-}
-
-function updateModeFeedback(mode) {
-  const copy = MODE_UI_COPY[mode] || MODE_UI_COPY.cash;
-  const bar = document.getElementById('modeFeedbackBar');
-  const title = document.getElementById('modeFeedbackTitle');
-  const text = document.getElementById('modeFeedbackText');
-  const pillA = document.getElementById('modeFeedbackPillA');
-  const pillB = document.getElementById('modeFeedbackPillB');
-  const npcLabel = document.getElementById('labelNpcCount');
-  const chipsLabel = document.getElementById('labelStartChips');
-  const blindLabel = document.getElementById('labelSmallBlind');
-  const seatBtn = document.getElementById('btnTakeASeat');
-  if (bar) bar.dataset.mode = mode;
-  if (title) title.textContent = copy.title;
-  if (text) text.textContent = copy.text;
-  if (pillA) pillA.textContent = copy.pillA;
-  if (pillB) pillB.textContent = copy.pillB;
-  if (npcLabel) npcLabel.textContent = copy.npcLabel;
-  if (chipsLabel) chipsLabel.textContent = copy.chipsLabel;
-  if (blindLabel) blindLabel.textContent = copy.blindLabel;
-  if (seatBtn) seatBtn.textContent = copy.seatButton;
-}
-
-function selectMode(mode, options = {}) {
-  const { preserveRoomSelection = false } = options;
-  _selectedGameMode = mode;
-  document.getElementById('selectedMode').value = mode;
-  syncNpcOptionsForMode(mode);
-  updateModeFeedback(mode);
-
-  // Update inline mode links
-  document.querySelectorAll('.mode-link').forEach((btn) => btn.classList.remove('active'));
-  const activeBtn = document.getElementById('modeBtn_' + mode);
-  if (activeBtn) activeBtn.classList.add('active');
-
-  // Practice mode: hide room list & room input, change button text; NPC min 1
-  const roomSection = document.getElementById('roomListSection');
-  const practiceStart = document.getElementById('practiceDirectStart');
-  const roomSelectionGroup = document.getElementById('roomSelectionGroup');
-  const seatBtn = document.getElementById('btnTakeASeat');
-  const copy = MODE_UI_COPY[mode] || MODE_UI_COPY.cash;
-  const roomIdField = document.getElementById('roomId');
-  const npcSel = document.getElementById('npcCount');
-  const chipSel = document.getElementById('startChips');
-  const blindSel = document.getElementById('smallBlind');
-  if (mode === 'practice' || mode === 'multi') {
-    roomSection.style.display = 'none';
-    practiceStart.classList.remove('hidden');
-    practiceStart.textContent = copy.practiceNote;
-    if (roomSelectionGroup) roomSelectionGroup.style.display = 'none';
-    if (roomIdField) roomIdField.value = '';
-    [npcSel, chipSel, blindSel].forEach((el) => {
-      if (!el) return;
-      el.disabled = false;
-      el.removeAttribute('disabled');
-      el.closest('.form-group')?.classList.remove('form-group-locked');
-    });
-    if (parseInt(npcSel.value) < 1) npcSel.value = '3';
-  } else {
-    roomSection.style.display = '';
-    practiceStart.classList.add('hidden');
-    practiceStart.textContent = '';
-    if (roomSelectionGroup) roomSelectionGroup.style.display = '';
-  }
-
-  if (typeof handleLobbyModeChange === 'function') {
-    handleLobbyModeChange(mode, { preserveRoomSelection });
-  }
-}
-
 // Hamburger menu toggle
 function toggleMenu() {
   const dd = document.getElementById('menuDropdown');
@@ -401,17 +238,6 @@ document.addEventListener('click', (e) => {
     dd.classList.remove('open');
   }
 });
-
-function backToModeSelect() {
-  // No-op in new inline layout
-}
-
-async function startPractice() {
-  // Practice mode: create unique room and join
-  const practiceRoom = 'practice_' + Date.now().toString(36);
-  document.getElementById('roomId').value = practiceRoom;
-  await joinGame();
-}
 
 // ============================================================
 //  v11: SPEED CONTROL

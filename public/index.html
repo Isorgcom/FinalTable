@@ -25,120 +25,186 @@
 
   <body>
     <a class="skip-link" href="#gameScreen">Skip to game</a>
-    <!-- LOGIN SCREEN -->
-    <div class="login-screen" id="loginScreen" role="region" aria-label="Login">
+    <!-- Connection state, shown over either screen -->
+    <div class="conn-status hidden" id="connStatus" role="status">Reconnecting...</div>
+
+    <!-- LOBBY -->
+    <div class="login-screen" id="loginScreen" role="region" aria-label="Lobby">
       <div class="login-container">
         <div class="login-logo">FINALTABLE</div>
         <div class="login-subtitle">Play down to one table.</div>
         <div class="login-divider"></div>
 
-        <!-- STEP 1: MODE SELECTION (now inline) -->
-        <div class="mode-select-step active" id="modeSelectStep">
-          <div class="mode-select-inline">
-            <button class="mode-link active" data-mode="cash" id="modeBtn_cash">Cash Game</button>
-            <button class="mode-link" data-mode="tournament" id="modeBtn_tournament">
-              Tournament
-            </button>
-            <button class="mode-link" data-mode="multi" id="modeBtn_multi">Multi-Table</button>
-            <button class="mode-link" data-mode="practice" id="modeBtn_practice">Practice</button>
+        <!-- Who you are -->
+        <section class="lobby-card" id="identityCard" aria-label="Your name and avatar">
+          <div class="form-group">
+            <label for="playerName">Name</label>
+            <input
+              type="text"
+              id="playerName"
+              placeholder="Enter your name"
+              maxlength="16"
+              autocomplete="nickname"
+            />
           </div>
-          <div class="mode-feedback-bar" id="modeFeedbackBar" aria-live="polite">
-            <div class="mode-feedback-title" id="modeFeedbackTitle">Cash Game</div>
-            <div class="mode-feedback-text" id="modeFeedbackText">
-              Classic hold’em with deep stacks, room to maneuver, and a full table story hand after
-              hand.
-            </div>
-            <div class="mode-feedback-meta">
-              <span class="mode-feedback-pill" id="modeFeedbackPillA">Deep-stack battles</span>
-              <span class="mode-feedback-pill" id="modeFeedbackPillB">Best for long sessions</span>
-            </div>
+          <div class="form-group">
+            <label>Avatar</label>
+            <div class="avatar-picker" id="avatarPicker"></div>
+            <input type="hidden" id="playerAvatar" value="🧑" />
           </div>
-        </div>
+          <div class="identity-status" id="identityStatus" aria-live="polite"></div>
+        </section>
 
-        <!-- STEP 2: SETTINGS (shown inline, no step transition) -->
-        <div class="settings-step active" id="settingsStep">
-          <div class="login-card">
-            <div class="form-group">
-              <label>Name</label>
+        <!-- The list -->
+        <section class="lobby-view" id="lobbyHome">
+          <div class="lobby-toolbar">
+            <button class="btn-enter" id="btnCreateTournament" type="button">
+              Create a tournament
+            </button>
+            <form class="join-code" id="joinCodeForm">
               <input
                 type="text"
-                id="playerName"
-                placeholder="Enter your name"
-                maxlength="16"
-                value=""
+                id="joinCodeInput"
+                maxlength="5"
+                placeholder="Code"
+                autocapitalize="characters"
+                autocomplete="off"
+                aria-label="Tournament code"
               />
+              <button class="btn-secondary" id="btnJoinCode" type="submit">Join</button>
+            </form>
+          </div>
+          <section class="lobby-section hidden" id="sectionYours">
+            <div class="lobby-title">Your tournaments</div>
+            <div class="t-list" id="listYours"></div>
+          </section>
+          <section class="lobby-section hidden" id="sectionRegistering">
+            <div class="lobby-title">Registering</div>
+            <div class="t-list" id="listRegistering"></div>
+          </section>
+          <section class="lobby-section hidden" id="sectionRunning">
+            <div class="lobby-title">Running</div>
+            <div class="t-list" id="listRunning"></div>
+          </section>
+          <section class="lobby-section hidden" id="sectionFinished">
+            <div class="lobby-title">Finished</div>
+            <div class="t-list" id="listFinished"></div>
+          </section>
+          <div class="lobby-empty" id="lobbyEmpty">
+            No tournaments yet. Create one and share the code.
+          </div>
+        </section>
+
+        <!-- Create -->
+        <section class="lobby-view lobby-card hidden" id="lobbyCreate" aria-label="New tournament">
+          <div class="lobby-title">New tournament</div>
+          <div class="form-group">
+            <label for="tName">Name</label>
+            <input type="text" id="tName" maxlength="24" value="Game Night" />
+          </div>
+          <div class="form-group">
+            <label for="tStartAt">Starts</label>
+            <div class="seg" id="tStartQuick" role="group" aria-label="Start time">
+              <button type="button" data-min="0">Now</button>
+              <button type="button" data-min="5">+5 min</button>
+              <button type="button" data-min="15">+15</button>
+              <button type="button" data-min="30">+30</button>
+              <button type="button" data-min="60">+60</button>
+            </div>
+            <input type="datetime-local" id="tStartAt" />
+          </div>
+          <div class="form-row form-row-3">
+            <div class="form-group">
+              <label for="tTableSize">Table size</label>
+              <select id="tTableSize">
+                <option value="6">6-max</option>
+                <option value="9" selected>9-max</option>
+                <option value="10">10-max</option>
+              </select>
             </div>
             <div class="form-group">
-              <label>Avatar</label>
-              <div class="avatar-picker" id="avatarPicker"></div>
-              <input type="hidden" id="playerAvatar" value="🧑" />
+              <label for="tStartChips">Starting stack</label>
+              <select id="tStartChips">
+                <option value="1000">1,000</option>
+                <option value="2000">2,000</option>
+                <option value="5000" selected>5,000</option>
+                <option value="10000">10,000</option>
+              </select>
             </div>
-            <div class="form-row form-row-3">
-              <div class="form-group">
-                <label id="labelNpcCount">NPC</label>
-                <select id="npcCount" aria-label="NPC count">
-                  <option value="0">0</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3" selected>3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                  <option value="6">6</option>
-                  <option value="7">7</option>
-                  <option value="8">8</option>
-                  <option value="9">9</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label id="labelStartChips">Chips</label>
-                <select id="startChips" aria-label="Starting chips">
-                  <option value="500">500</option>
-                  <option value="1000" selected>1000</option>
-                  <option value="2000">2000</option>
-                  <option value="5000">5000</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label id="labelSmallBlind">Blind</label>
-                <select id="smallBlind" aria-label="Small blind">
-                  <option value="5">5</option>
-                  <option value="10" selected>10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                </select>
-              </div>
+            <div class="form-group">
+              <label for="tLevelDuration">Level length</label>
+              <select id="tLevelDuration">
+                <option value="120">2 min</option>
+                <option value="180">3 min</option>
+                <option value="300" selected>5 min</option>
+                <option value="600">10 min</option>
+                <option value="900">15 min</option>
+              </select>
             </div>
-            <input type="hidden" id="roomId" value="" />
-            <input type="hidden" id="selectedMode" value="cash" />
-
-            <div class="form-group room-selection-group" id="roomSelectionGroup">
-              <label>Room</label>
-              <div class="room-selection-summary" id="roomSelectionSummary" aria-live="polite">
-                <div class="room-selection-name" id="roomSelectionName">Select a room below</div>
-                <div class="room-selection-meta" id="roomSelectionMeta">
-                  Empty preset rooms create a new table. Active or saved rooms keep their own
-                  settings.
-                </div>
-              </div>
-            </div>
-
-            <!-- Room list (hidden in practice) -->
-            <div id="roomListSection">
-              <div class="lobby-section lobby-section-compact">
-                <div class="lobby-title">Rooms</div>
-                <div class="lobby-rooms-shell">
-                  <div class="lobby-rooms" id="lobbyRooms">
-                    <div class="lobby-empty">Loading...</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="hidden" id="practiceDirectStart"></div>
-
-            <!-- Take a Seat button -->
-            <button class="btn-enter" id="btnTakeASeat">Take a Seat</button>
           </div>
-        </div>
+          <div class="form-row form-row-3">
+            <div class="form-group">
+              <label for="tLateRegLevels">Late registration</label>
+              <select id="tLateRegLevels">
+                <option value="0">Closes at start</option>
+                <option value="1">Through level 1</option>
+                <option value="2">Through level 2</option>
+                <option value="3" selected>Through level 3</option>
+                <option value="4">Through level 4</option>
+                <option value="6">Through level 6</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="tBots">Bots to add</label>
+              <input type="number" id="tBots" min="0" max="60" value="0" inputmode="numeric" />
+            </div>
+            <div class="form-group">
+              <label for="tBuyIn">Buy-in (play chips)</label>
+              <input type="number" id="tBuyIn" min="0" max="10000" value="0" inputmode="numeric" />
+            </div>
+          </div>
+          <div class="lobby-actions">
+            <button class="btn-enter" id="btnCreateSubmit" type="button">Create</button>
+            <button class="btn-secondary" id="btnCreateCancel" type="button">Back</button>
+          </div>
+        </section>
+
+        <!-- Waiting room -->
+        <section class="lobby-view lobby-card hidden" id="lobbyWaiting" aria-label="Waiting room">
+          <div class="wr-head">
+            <div class="wr-title" id="wrName"></div>
+            <div class="wr-status" id="wrStatus" aria-live="polite"></div>
+          </div>
+          <div class="wr-code-row">
+            <span class="wr-code-label">Code</span>
+            <span class="wr-code" id="wrCode"></span>
+            <button class="btn-secondary" id="btnCopyLink" type="button">Copy link</button>
+          </div>
+          <div class="wr-roster" id="wrRoster" aria-label="Registered players"></div>
+          <div class="wr-settings" id="wrSettings"></div>
+          <div class="wr-host hidden" id="wrHostControls">
+            <button class="btn-enter" id="btnStartNow" type="button">Start now</button>
+            <div class="wr-bots" aria-label="Bots">
+              <button class="btn-secondary" id="btnBotsMinus" type="button" aria-label="Fewer bots">
+                −
+              </button>
+              <span><span id="wrBotCount">0</span> bots</span>
+              <button class="btn-secondary" id="btnBotsPlus" type="button" aria-label="More bots">
+                +
+              </button>
+            </div>
+            <button class="btn-danger" id="btnCancelTournament" type="button">
+              Cancel tournament
+            </button>
+          </div>
+          <div class="lobby-actions">
+            <button class="btn-enter hidden" id="btnEnterTable" type="button">Go to table</button>
+            <button class="btn-secondary" id="btnUnregister" type="button">Unregister</button>
+            <button class="btn-secondary hidden" id="btnLeaveTournament" type="button">
+              Leave
+            </button>
+          </div>
+        </section>
 
         <div class="login-disclaimer">For entertainment and educational purposes only.</div>
       </div>
@@ -564,10 +630,11 @@
     <script defer src="/js/app-state.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/side-panel.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/app-init.js?v=__ASSET_VERSION__"></script>
-    <script defer src="/js/lobby-socket.js?v=__ASSET_VERSION__"></script>
+    <script defer src="/js/socket-client.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/table-render.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/ui-panels.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/tournament-field.js?v=__ASSET_VERSION__"></script>
+    <script defer src="/js/lobby.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/app.js?v=__ASSET_VERSION__"></script>
 
     <!-- SIDE EQUITY WIDGET -->

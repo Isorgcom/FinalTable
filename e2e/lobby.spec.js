@@ -1,3 +1,5 @@
+// lobby.spec.js - the tournament lobby in a real browser: identity, creating,
+// joining by link from a second browser, the host starting, unregistering.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -7,13 +9,21 @@ let serverModule;
 let baseUrl;
 let tempDir;
 const originalEnv = { ...process.env };
+const repoRoot = path.join(__dirname, '..');
 
 test.beforeAll(async () => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lonicera-pw-'));
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-lobby-pw-'));
   process.env.PREFLOP_TABLE = 'off';
   process.env.SAVE_DIR = tempDir;
   process.env.HOST = '127.0.0.1';
-  delete require.cache[require.resolve('../server')];
+  process.env.NPC_DELAY_MIN = '40';
+  process.env.NPC_DELAY_MAX = '90';
+  process.env.TOURNAMENT_SWEEP_MS = '100';
+  for (const key of Object.keys(require.cache)) {
+    if (key.startsWith(repoRoot) && !key.includes(`${path.sep}node_modules${path.sep}`)) {
+      delete require.cache[key];
+    }
+  }
   serverModule = require('../server');
   await serverModule.startServer({
     port: 0,
@@ -25,6 +35,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  serverModule.registry.stop();
   await new Promise((resolve) => serverModule.io.close(resolve));
   if (serverModule.server.listening) {
     await new Promise((resolve) => serverModule.server.close(resolve));
@@ -33,182 +44,110 @@ test.afterAll(async () => {
   process.env = originalEnv;
 });
 
-test('mode switch updates feedback copy and practice unlocks local settings', async ({ page }) => {
+async function identifyAs(page, name) {
   await page.goto(baseUrl);
+  await page.fill('#playerName', name);
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
+}
 
-  await expect(page.locator('#modeFeedbackTitle')).toHaveText('Cash Game');
-  await expect(page.locator('#modeFeedbackText')).toContainText('deep stacks');
+async function createTournament(page, { name = 'Friday Night', minutes = 15, bots = 0 } = {}) {
+  await page.click('#btnCreateTournament');
+  await expect(page.locator('#lobbyCreate')).toBeVisible();
+  await page.fill('#tName', name);
+  await page.click(`#tStartQuick button[data-min="${minutes}"]`);
+  await page.fill('#tBots', String(bots));
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+  expect(code).toMatch(/^[A-Z2-9]{5}$/);
+  return code;
+}
 
-  await page.click('#modeBtn_tournament');
-  await expect(page.locator('#modeFeedbackTitle')).toHaveText('Tournament');
-  await expect(page.locator('#modeFeedbackText')).toContainText('rising pressure');
-  await expect(page.locator('#labelStartChips')).toHaveText('Starting Stack');
-  await expect(page.locator('#btnTakeASeat')).toHaveText('Select Tournament Room');
+test('a name and avatar become an identity that survives a reload', async ({ page }) => {
+  await identifyAs(page, 'Ann');
+  const uid = await page.evaluate(() => window.__identity.uid);
+  const token = await page.evaluate(() => localStorage.getItem('finaltable_identity_token'));
+  expect(uid).toMatch(/^u_/);
+  expect(token).toBeTruthy();
+  expect(token).not.toBe(uid);
 
-  await page.click('#modeBtn_practice');
-  await expect(page.locator('#modeFeedbackTitle')).toHaveText('Practice');
-  await expect(page.locator('#practiceDirectStart')).toBeVisible();
-  await expect(page.locator('#practiceDirectStart')).toContainText('quick reps');
-  await expect(page.locator('#roomListSection')).toBeHidden();
-  await expect(page.locator('#btnTakeASeat')).toHaveText('Start Practice');
-  await expect(page.locator('#labelNpcCount')).toHaveText('AI Opponents');
-
-  const zeroNpcOption = page.locator('#npcCount option[value="0"]');
-  await expect(zeroNpcOption).toBeHidden();
+  await page.reload();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Ann');
+  expect(await page.evaluate(() => window.__identity.uid)).toBe(uid);
+  await expect(page.locator('#lobbyEmpty')).toBeVisible();
 });
 
-test('preset rooms render and update the selection summary', async ({ page }) => {
-  await page.goto(baseUrl);
-
-  const roomCards = page.locator('.room-card');
-  await expect(roomCards.first()).toBeVisible();
-  await expect(roomCards).toHaveCount(8);
-
-  await roomCards.first().click();
-  await expect(page.locator('#roomSelectionName')).not.toHaveText('Select a room below');
-  await expect(page.locator('#roomSelectionMeta')).toContainText(/Cash Game|Tournament|Empty preset room/i);
-});
-
-test('practice join enters the table and does not require a room selection', async ({ page }) => {
-  await page.goto(baseUrl);
-
-  await page.fill('#playerName', 'Practice Tester');
-  await page.click('#modeBtn_practice');
-  await page.click('#btnTakeASeat');
-
-  await expect(page.locator('#gameScreen')).toHaveClass(/active/);
-  await expect(page.locator('#modeBadge')).toHaveText('Practice');
-  await expect(page.locator('#topInfo')).toContainText(/Practice|Waiting|ready/i);
-});
-
-test('equity widget reuses the current street result and only advances on new board states', async ({
+test('creating a tournament lands in the waiting room with roster, code and settings', async ({
   page,
 }) => {
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Equity Tester');
-  const roomCard = page.locator('.room-card[data-room="岳阳楼"]').first();
-  const roomId = await roomCard.getAttribute('data-room');
-  await roomCard.click();
-  await page.click('#btnTakeASeat');
-  await expect(page.locator('#gameScreen')).toHaveClass(/active/);
-
-  const game = serverModule.games.get(roomId);
-  const hero = game.players.find((player) => !player.isNPC);
-  const villain = game.players.find((player) => player.isNPC);
-
-  game.isRunning = true;
-  game.phase = 'flop';
-  game.communityCards = [
-    { suit: 'hearts', value: 10, rank: '10' },
-    { suit: 'spades', value: 9, rank: '9' },
-    { suit: 'diamonds', value: 8, rank: '8' },
-  ];
-  hero.folded = false;
-  hero.holeCards = [
-    { suit: 'spades', value: 14, rank: 'A' },
-    { suit: 'clubs', value: 14, rank: 'A' },
-  ];
-  hero.chips = 200;
-  villain.folded = false;
-  villain.holeCards = [
-    { suit: 'diamonds', value: 13, rank: 'K' },
-    { suit: 'hearts', value: 13, rank: 'K' },
-  ];
-  game.equityState[hero.id] = { freeLeft: 1, priceLevel: 0, unusedStreak: 0 };
-  game.emitUpdate(game);
-
-  const badge = page.locator('#eqSideBadge');
-  const eqButton = page.locator('#eqSideBtn');
-
-  await expect(page.locator('#eqSide')).toBeVisible();
-  await expect(badge).toHaveText('free×1');
-
-  await eqButton.click();
-  await expect(page.locator('#eqRulesModal')).toBeVisible();
-  await page.click('#btnCloseEqRules');
-  await expect(badge).toHaveText('20');
-
-  await eqButton.click();
-  await expect(badge).toHaveText('20');
-  await expect(page.locator('#eqConfirmModal')).toBeHidden();
-
-  game.phase = 'turn';
-  game.communityCards.push({ suit: 'clubs', value: 7, rank: '7' });
-  game.emitUpdate(game);
-
-  await eqButton.click();
-  await expect(page.locator('#eqConfirmModal')).toBeVisible();
-  await expect(page.locator('#eqConfirmPrice')).toHaveText('20');
-  await page.click('#btnConfirmEqPurchase');
-  await expect(badge).toHaveText('40');
-
-  game.phase = 'river';
-  game.communityCards.push({ suit: 'hearts', value: 2, rank: '2' });
-  game.emitUpdate(game);
-
-  await eqButton.click();
-  await expect(page.locator('#eqConfirmModal')).toBeVisible();
-  await expect(page.locator('#eqConfirmPrice')).toHaveText('40');
-  await page.click('#btnConfirmEqPurchase');
-  await expect(badge).toHaveText('80');
-
-  expect(roomId).toBeTruthy();
+  await identifyAs(page, 'Host');
+  const code = await createTournament(page, { name: 'Sunday Deepstack', minutes: 15, bots: 2 });
+  await expect(page.locator('#wrName')).toHaveText('Sunday Deepstack');
+  await expect(page.locator('#wrStatus')).toContainText('Starts in');
+  await expect(page.locator('#wrRoster .wr-row')).toHaveCount(3);
+  await expect(page.locator('#wrRoster .wr-row').first()).toContainText('Host');
+  await expect(page.locator('#wrRoster .wr-badge').first()).toHaveText('host');
+  await expect(page.locator('#wrRoster .wr-row-bot')).toHaveCount(2);
+  await expect(page.locator('#wrSettings')).toContainText('9-max');
+  await expect(page.locator('#wrSettings')).toContainText('late registration through level 3');
+  await expect(page.locator('#wrHostControls')).toBeVisible();
+  await expect(page.locator('#btnStartNow')).toBeEnabled();
+  const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+  expect(list.find((t) => t.code === code)).toMatchObject({
+    status: 'registering',
+    hostName: 'Host',
+  });
 });
 
-test('equity widget does not advance when only action state changes', async ({ page }) => {
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Equity Freeze');
-  const roomCard = page.locator('.room-card[data-room="洛阳"]').first();
-  const roomId = await roomCard.getAttribute('data-room');
-  await roomCard.click();
-  await page.click('#btnTakeASeat');
-  await expect(page.locator('#gameScreen')).toHaveClass(/active/);
+test('a second player joins by link, both see each other, and the host starts for both', async ({
+  browser,
+  page,
+}) => {
+  await identifyAs(page, 'Host');
+  const code = await createTournament(page, { name: 'Two Up', minutes: 15, bots: 1 });
 
-  const game = serverModule.games.get(roomId);
-  const hero = game.players.find((player) => !player.isNPC);
-  const villain = game.players.find((player) => player.isNPC);
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  const guestErrors = [];
+  guest.on('pageerror', (err) => guestErrors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
+  await expect(guest.locator('#joinCodeInput')).toHaveValue(code);
+  await guest.fill('#playerName', 'Guest');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await expect(guest.locator('#wrName')).toHaveText('Two Up');
+  await expect(guest.locator('#wrHostControls')).toBeHidden();
 
-  game.isRunning = true;
-  game.phase = 'turn';
-  game.communityCards = [
-    { suit: 'hearts', value: 10, rank: '10' },
-    { suit: 'spades', value: 9, rank: '9' },
-    { suit: 'diamonds', value: 8, rank: '8' },
-    { suit: 'clubs', value: 7, rank: '7' },
-  ];
-  hero.folded = false;
-  hero.holeCards = [
-    { suit: 'spades', value: 14, rank: 'A' },
-    { suit: 'clubs', value: 14, rank: 'A' },
-  ];
-  hero.chips = 200;
-  villain.folded = false;
-  villain.holeCards = [
-    { suit: 'diamonds', value: 13, rank: 'K' },
-    { suit: 'hearts', value: 13, rank: 'K' },
-  ];
-  game.equityState[hero.id] = { freeLeft: 0, priceLevel: 0, unusedStreak: 0 };
-  game.emitUpdate(game);
+  // Both rosters show both humans, connected.
+  for (const p of [page, guest]) {
+    await expect(p.locator('#wrRoster .wr-row:not(.wr-row-bot)')).toHaveCount(2);
+    await expect(p.locator('#wrRoster')).toContainText('Host');
+    await expect(p.locator('#wrRoster')).toContainText('Guest');
+    await expect(p.locator('#wrRoster .wr-row:not(.wr-row-bot) .wr-dot.on')).toHaveCount(2);
+  }
 
-  const badge = page.locator('#eqSideBadge');
-  const eqButton = page.locator('#eqSideBtn');
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(3);
+  await guest.click('#tabInfo');
+  await expect(guest.locator('#panelInfoBody')).toContainText('Multi-table');
+  await expect(guest.locator('#panelInfoBody')).toContainText('Host');
+  expect(guestErrors).toEqual([]);
+  await guestContext.close();
+});
 
-  await expect(badge).toHaveText('20');
-  await eqButton.click();
-  await expect(page.locator('#eqRulesModal')).toBeVisible();
-  await page.click('#btnCloseEqRules');
-  await expect(page.locator('#eqConfirmModal')).toBeVisible();
-  await expect(page.locator('#eqConfirmPrice')).toHaveText('20');
-  await page.click('#btnConfirmEqPurchase');
-  await expect(badge).toHaveText('40');
-
-  game.currentBet = 80;
-  villain.bet = 80;
-  villain.totalBet = 120;
-  game.handActionHistory[villain.id] = [{ action: 'raise', amount: 80 }];
-  game.emitUpdate(game);
-
-  await eqButton.click();
-  await expect(badge).toHaveText('40');
-  await expect(page.locator('#eqConfirmModal')).toBeHidden();
+test('unregistering before the start returns to the lobby', async ({ page }) => {
+  await identifyAs(page, 'Solo');
+  const code = await createTournament(page, { name: 'Changed My Mind', minutes: 30 });
+  await page.click('#btnUnregister');
+  await expect(page.locator('#lobbyHome')).toBeVisible();
+  await expect(page.locator('#lobbyWaiting')).toBeHidden();
+  await expect
+    .poll(async () => {
+      const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+      return list.some((t) => t.code === code);
+    })
+    .toBe(false);
 });

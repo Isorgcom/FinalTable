@@ -130,10 +130,6 @@ function init() {
     });
   }
 
-  document.querySelectorAll('.mode-link[data-mode]').forEach((btn) => {
-    btn.addEventListener('click', () => selectMode(btn.dataset.mode));
-  });
-  document.getElementById('btnTakeASeat').addEventListener('click', takeASeat);
   document.getElementById('btnStartGame').addEventListener('click', async () => {
     if (typeof hasResumeInteractionGuard === 'function' && hasResumeInteractionGuard()) return;
     const force = await confirmStartWithReadyCheck();
@@ -178,7 +174,7 @@ function init() {
   });
   document.getElementById('btnResultExit').addEventListener('click', () => {
     document.getElementById('resultModal').classList.add('hidden');
-    if (socket) socket.emit('exitGame');
+    if (window.Lobby) Lobby.leave();
   });
   const resultAddNpc = document.getElementById('btnResultAddNpc');
   if (resultAddNpc) {
@@ -253,43 +249,11 @@ function init() {
       socket.emit('deleteSave', { roomId: gameState.id });
     }
   });
-  document.getElementById('btnExit').addEventListener('click', async () => {
-    if (!gameState) {
-      socket.emit('exitGame');
-      return;
-    }
-
-    const me = gameState.players.find((p) => p.id === myId);
-    const otherHumans = gameState.players.filter((p) => !p.isNPC && p.id !== myId);
-
-    if (me && me.chips > 0 && otherHumans.length > 0) {
-      const names = otherHumans.map((p) => p.name).join('、');
-      const choice = await window.showTextPromptDialog({
-        title: 'Leave Table',
-        message: `You still have ${me.chips} chips.`,
-        hint: `Enter a player name to gift your stack before leaving, or leave this blank to exit. Online: ${names}`,
-        confirmLabel: 'Leave Table',
-        cancelLabel: 'Stay Seated',
-        placeholder: 'Player name',
-        defaultValue: '',
-        maxLength: 12,
-      });
-      if (choice === null) return; // cancelled
-      if (choice.trim() && otherHumans.some((p) => p.name === choice.trim())) {
-        socket.emit('giftChips', { targetName: choice.trim() });
-        socket.once('giftDone', () => socket.emit('exitGame'));
-        return;
-      }
-      if (choice.trim()) {
-        await window.showNoticeDialog({
-          title: 'Player Not Found',
-          message: `No active human player matches "${choice.trim()}".`,
-          confirmLabel: 'Understood',
-        });
-        return;
-      }
-    }
-    socket.emit('exitGame');
+  // Leaving is the lobby's business: unregister before the start, leave the
+  // stack under auto-play once running.
+  document.getElementById('btnExit').addEventListener('click', () => {
+    closeMenu();
+    if (window.Lobby) Lobby.leave();
   });
   document.getElementById('btnLeaderboard').addEventListener('click', () => {
     closeMenu();
@@ -463,24 +427,6 @@ function init() {
     if (e.target.value) localStorage.setItem(PLAYER_NAME_STORAGE_KEY, e.target.value);
     else localStorage.removeItem(PLAYER_NAME_STORAGE_KEY);
   });
-  playerNameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.target.value = normalizePlayerNameInput(e.target.value);
-      if (e.target.value) localStorage.setItem(PLAYER_NAME_STORAGE_KEY, e.target.value);
-      const firstRoom = document.querySelector('.room-card');
-      if (firstRoom) firstRoom.click();
-    }
-  });
-
-  function refreshRoomListIfVisible() {
-    const loginScreen = document.getElementById('loginScreen');
-    if (!loginScreen || loginScreen.classList.contains('hidden')) return;
-    if (document.visibilityState === 'hidden') return;
-    loadRoomList();
-  }
-
-  loadRoomList();
-  setInterval(refreshRoomListIfVisible, 5000);
 
   dialogCancel?.addEventListener('click', () => {
     closeAppDialogAsCancel();
