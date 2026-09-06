@@ -25,6 +25,12 @@ class Tournament {
       { sb: 1000, bb: 2000 },
     ];
 
+    // When a TournamentDirector runs several tables on one clock, it supplies
+    // a provider returning every player in the field. Without it the class
+    // behaves exactly as before and judges the tournament by one table, which
+    // would declare a winner the moment any single table emptied.
+    this.fieldProvider = options.fieldProvider || null;
+
     this.eliminations = []; // [{name, place, handNum, time}]
     this.startingPlayers = 0;
     this.timer = null;
@@ -43,6 +49,9 @@ class Tournament {
     this.timer = setInterval(() => {
       this.checkLevelUp();
     }, 1000);
+    // Do not hold the process open just for the blind clock. Matches the
+    // treatment of the host-transfer and rate-limit timers elsewhere.
+    if (this.timer.unref) this.timer.unref();
 
     return this.getCurrentBlinds();
   }
@@ -93,15 +102,21 @@ class Tournament {
     return place;
   }
 
+  // The field, when one is supplied; otherwise just the table that asked.
+  _scope(players) {
+    return this.fieldProvider ? this.fieldProvider() : players;
+  }
+
   getAliveCount(players) {
-    return players.filter((p) => p.chips > 0).length;
+    return this._scope(players).filter((p) => p.chips > 0).length;
   }
 
   checkTournamentEnd(players) {
+    const scope = this._scope(players);
     const alive = this.getAliveCount(players);
     if (alive <= 1 && this.isActive) {
       this.stop();
-      const winner = players.find((p) => p.chips > 0);
+      const winner = scope.find((p) => p.chips > 0);
       if (winner) {
         this.eliminations.push({
           name: winner.name,
