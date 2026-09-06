@@ -149,6 +149,27 @@ function updateLobbySelectionUI() {
   const seatBtn = document.getElementById('btnTakeASeat');
   if (!summary || !nameEl || !metaEl || !seatBtn) return;
 
+  // A multi-table tournament has no room to select: the director creates and
+  // owns its tables. Without this branch the room-selection updater runs after
+  // selectMode and puts back a disabled "Select Cash Room" button.
+  if (_selectedGameMode === 'multi') {
+    unlockLobbySettings(
+      {
+        npcCount: parseInt(document.getElementById('npcCount').value, 10) || 17,
+        startChips: _lobbyDraftConfig.startChips,
+        smallBlind: _lobbyDraftConfig.smallBlind,
+      },
+      false
+    );
+    summary.dataset.state = 'practice';
+    nameEl.textContent = 'Multi-Table Tournament';
+    metaEl.textContent =
+      'One field across several tables. Tables balance and break as players bust, down to a final table.';
+    seatBtn.textContent = 'Start Tournament';
+    seatBtn.disabled = false;
+    return;
+  }
+
   if (_selectedGameMode === 'practice') {
     unlockLobbySettings(
       {
@@ -392,6 +413,20 @@ function selectRoom(roomId) {
 async function takeASeat() {
   if (_selectedGameMode === 'practice') {
     await startPractice();
+  } else if (_selectedGameMode === 'multi') {
+    const bots = parseInt(document.getElementById('npcCount').value, 10) || 17;
+    const chips = parseInt(document.getElementById('startChips').value, 10) || 5000;
+    const blind = parseInt(document.getElementById('smallBlind').value, 10) || 10;
+    // Nine-max unless the field is small enough that it would leave one table
+    // nearly empty; the director still balances from there.
+    const tableSize = bots + 1 <= 12 ? 6 : 9;
+    window.startMultiTableTournament({
+      botCount: bots,
+      tableSize,
+      startChips: chips,
+      smallBlind: blind,
+      buyIn: 0,
+    });
   } else {
     await joinGame();
   }

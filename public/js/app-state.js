@@ -247,6 +247,17 @@ const MODE_UI_COPY = {
     seatButton: 'Select Tournament Room',
     practiceNote: '',
   },
+  multi: {
+    title: 'Multi-Table Tournament',
+    text: 'One field across as many tables as it takes. Tables balance and break as players bust, down to a single final table.',
+    pillA: 'More than one table',
+    pillB: 'Plays down to a winner',
+    npcLabel: 'Field size',
+    chipsLabel: 'Starting Stack',
+    blindLabel: 'Opening Blind',
+    seatButton: 'Start Tournament',
+    practiceNote: 'A full field across several tables. You plus the bots you picked above.',
+  },
   practice: {
     title: 'Practice',
     text: 'A solo table for testing lines, feeling spots out, and playing fast hands against AI.',
@@ -260,9 +271,38 @@ const MODE_UI_COPY = {
   },
 };
 
-function syncNpcOptionsForMode(mode) {
+const MULTI_FIELD_SIZES = [5, 8, 11, 17, 23, 29, 35, 47, 59];
+let _npcOptionsBackup = null;
+
+// The stock NPC selector tops out at 9, which is a single table. Multi-table
+// needs a field, so swap in tournament-sized counts while that mode is
+// selected and restore the original list on the way out.
+function syncFieldSizeOptions(mode) {
   const npcSel = document.getElementById('npcCount');
   if (!npcSel) return;
+  if (mode === 'multi') {
+    if (_npcOptionsBackup === null) _npcOptionsBackup = npcSel.innerHTML;
+    if (npcSel.dataset.multi === '1') return;
+    npcSel.textContent = '';
+    for (const n of MULTI_FIELD_SIZES) {
+      const opt = document.createElement('option');
+      opt.value = String(n);
+      opt.textContent = `${n} bots (${n + 1} players)`;
+      if (n === 17) opt.selected = true;
+      npcSel.appendChild(opt);
+    }
+    npcSel.dataset.multi = '1';
+  } else if (npcSel.dataset.multi === '1') {
+    if (_npcOptionsBackup !== null) npcSel.innerHTML = _npcOptionsBackup;
+    delete npcSel.dataset.multi;
+  }
+}
+
+function syncNpcOptionsForMode(mode) {
+  syncFieldSizeOptions(mode);
+  const npcSel = document.getElementById('npcCount');
+  if (!npcSel) return;
+  if (mode === 'multi') return; // field sizes have no zero option to manage
   const zeroOption = npcSel.querySelector('option[value="0"]');
   if (!zeroOption) return;
 
@@ -319,7 +359,7 @@ function selectMode(mode, options = {}) {
   const npcSel = document.getElementById('npcCount');
   const chipSel = document.getElementById('startChips');
   const blindSel = document.getElementById('smallBlind');
-  if (mode === 'practice') {
+  if (mode === 'practice' || mode === 'multi') {
     roomSection.style.display = 'none';
     practiceStart.classList.remove('hidden');
     practiceStart.textContent = copy.practiceNote;
