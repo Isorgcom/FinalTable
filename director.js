@@ -41,6 +41,10 @@ class TournamentDirector {
     this.buyIn = options.buyIn || 0;
     this.gameOptions = options.gameOptions || {};
     this.payoutPct = options.payoutPct || null; // override the default structure
+    this._payoutOverride = !!options.payoutPct;
+    // Late registration stays open through this many levels (0 = closes at start).
+    this.lateRegLevels = Number.isInteger(options.lateRegLevels) ? options.lateRegLevels : 3;
+    this._lateRegClosedAnnounced = false;
     this._bubbleAnnounced = false;
     this._inTheMoneyAnnounced = false;
 
@@ -70,6 +74,9 @@ class TournamentDirector {
     this.onPlayerMoved = options.onPlayerMoved || null;
     // Fired whenever the field summary changes in a way worth pushing.
     this.onFieldUpdate = options.onFieldUpdate || null;
+    // Fired for a human who busts, with their place, before they leave the
+    // table, so a host can keep sending them that table as a spectator.
+    this.onPlayerEliminated = options.onPlayerEliminated || null;
   }
 
   // ── Field queries ────────────────────────────────────────────────────────
@@ -117,7 +124,13 @@ class TournamentDirector {
       isRunning: this.isRunning,
       finished: this.finished,
       entrants: this.entrants.length,
-      remaining: alive.length,
+      remaining: this.isRunning || this.finished ? alive.length : this.entrants.length,
+      tableSize: this.tableSize,
+      startChips: this.startChips,
+      levelDuration: this.tournament.levelDuration,
+      buyIn: this.buyIn,
+      lateRegLevels: this.lateRegLevels,
+      lateRegOpen: this.lateRegOpen(),
       averageStack: alive.length ? Math.floor(this.totalChips() / alive.length) : 0,
       chipLeader: leader ? { name: leader.name, chips: leader.chips } : null,
       myChips: me ? me.chips : null,
@@ -148,8 +161,101 @@ class TournamentDirector {
 
   register(entrant) {
     if (this.isRunning) throw new Error('Cannot register after the tournament has started');
+    // The uid is the entrant's identity for the life of the tournament; the
+    // roster and the seats must agree on it, so mint it here if it is missing.
+    if (!entrant.uid) entrant.uid = random.randomId('u_');
     this.entrants.push(entrant);
     return this.entrants.length;
+  }
+
+  // Before the start only; a seated stack cannot leave a tournament.
+  unregister(uid) {
+    if (this.isRunning) return false;
+    const before = this.entrants.length;
+    this.entrants = this.entrants.filter((e) => e.uid !== uid);
+    return this.entrants.length < before;
+  }
+
+  // Swap the bot entrants for a new set, keeping every human in place.
+  replaceBots(bots) {
+    if (this.isRunning) return false;
+    this.entrants = [...this.entrants.filter((e) => !e.isNPC), ...bots];
+    return true;
+  }
+
+  lateRegOpen() {
+    return this.isRunning && !this.finished && this.tournament.currentLevel < this.lateRegLevels;
+  }
+
+  // Late registration: a newcomer sits down with the starting stack at the
+  // table with the fewest players. A table mid-hand takes them as a folded
+  // spectator until its next deal (the same trick the room layer uses for a
+  // mid-hand join), because splicing a seat into a running hand is exactly
+  // what _movePlayer refuses to do. The chip ledger grows before the seat is
+  // taken and shrinks back if seating fails, so conservation never sees a
+  // half-registered stack.
+  registerLate(entrant) {
+    if (!this.lateRegOpen()) throw new Error('Late registration is closed');
+    let table = this.tables
+      .filter((t) => !t._broken && t.players.length > 0 && t.players.length < this.tableSize)
+      .sort((a, b) => a.players.length - b.players.length)[0];
+    if (!table) {
+      table = this._createTable(this.tables.length);
+      // A late table breaks first: break order is otherwise fixed at start.
+      this.breakOrder.unshift(table.tableNumber);
+      const blinds = this.tournament.getCurrentBlinds();
+      table.smallBlind = blinds.sb;
+      table.bigBlind = blinds.bb;
+    }
+    this._expectedChips += this.startChips;
+    const seated = table.addPlayer({
+      id: entrant.id,
+      uid: entrant.uid,
+      name: entrant.name,
+      avatar: entrant.avatar || null,
+      isNPC: entrant.isNPC || false,
+      npcProfile: entrant.npcProfile || null,
+      chips: this.startChips,
+    });
+    if (!seated) {
+      this._expectedChips -= this.startChips;
+      throw new Error('No seat available');
+    }
+    if (table.isRunning) {
+      seated.folded = true;
+      seated.holeCards = [];
+    }
+    this.entrants.push(entrant);
+    this.tournament.setFieldSize(this.entrants.length);
+    if (!this._payoutOverride) {
+      this.payoutPct = payoutPercentagesFor(this.entrants.length);
+      this.paidPlaces = this.payoutPct.length;
+    }
+    this._say(
+      `${entrant.name} registers late and sits at table ${table.tableNumber} · ${this.entrants.length} entrants, ${this.paidPlaces} paid`
+    );
+    if (this.onFieldUpdate) this.onFieldUpdate();
+    return { table, player: seated };
+  }
+
+  // Everyone who registered, with where they stand now. Connection status is
+  // the socket layer's business and is added there.
+  roster() {
+    const placeByUid = new Map();
+    for (const e of this.tournament.eliminations) if (e.uid) placeByUid.set(e.uid, e.place);
+    return this.entrants.map((e) => {
+      const seat = this.playerByUid(e.uid);
+      return {
+        uid: e.uid,
+        name: e.name,
+        avatar: e.avatar || null,
+        isNPC: !!e.isNPC,
+        chips: seat ? seat.player.chips : null,
+        table: seat ? seat.table.tableNumber : null,
+        place: placeByUid.get(e.uid) || null,
+        autoPlay: seat ? !!seat.player.autoPlay : false,
+      };
+    });
   }
 
   start() {
@@ -195,6 +301,12 @@ class TournamentDirector {
         table.bigBlind = blinds.bb;
       }
       this._say(`Blinds up: ${blinds.sb}/${blinds.bb} (level ${level + 1})`);
+      if (this.lateRegLevels > 0 && !this._lateRegClosedAnnounced && !this.lateRegOpen()) {
+        this._lateRegClosedAnnounced = true;
+        this._say(
+          `Late registration closed: ${this.entrants.length} entrants, ${this.paidPlaces} paid`
+        );
+      }
     };
 
     const blinds = this.tournament.getCurrentBlinds();
@@ -354,6 +466,18 @@ class TournamentDirector {
     // Busted players leave their seat. The engine has already recorded their
     // finishing place in the shared ledger by this point.
     const busted = table.players.filter((p) => p.chips <= 0);
+    if (this.onPlayerEliminated) {
+      for (const p of busted) {
+        if (p.isNPC) continue;
+        const record = [...this.tournament.eliminations].reverse().find((e) => e.uid === p.uid);
+        this.onPlayerEliminated({
+          uid: p.uid,
+          name: p.name,
+          place: record ? record.place : null,
+          tableId: table.id,
+        });
+      }
+    }
     for (const p of busted) table.removePlayer(p.id);
 
     // The invariant from phase 2. Checked here because this is the only moment

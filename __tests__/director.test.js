@@ -14,7 +14,7 @@ function makeDirector(entrants, opts = {}) {
     ...opts,
   });
   for (let i = 0; i < entrants; i++) {
-    d.register({ id: `p${i}`, name: `P${i}`, isNPC: false });
+    d.register({ id: `p${i}`, uid: `p${i}`, name: `P${i}`, isNPC: false });
   }
   return d;
 }
@@ -616,5 +616,143 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     const quiet = makeDirector(2);
     quiet.start();
     expect(quiet.tables[0].gameMode).toBe('tournament');
+  });
+});
+
+describe('Lobby phase 2: late registration, unregister, roster, placements', () => {
+  function seededRng(seed = 4242) {
+    return () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+  }
+
+  test('unregister and replaceBots only work before the start', () => {
+    const d = makeDirector(3);
+    d.register({ id: 'b1', uid: 'bot1', name: 'Bot', isNPC: true });
+    expect(d.unregister('p1')).toBe(true);
+    expect(d.entrants.map((e) => e.id)).toEqual(['p0', 'p2', 'b1']);
+    d.replaceBots([
+      { id: 'b2', uid: 'bot2', name: 'Bot2', isNPC: true },
+      { id: 'b3', uid: 'bot3', name: 'Bot3', isNPC: true },
+    ]);
+    expect(d.entrants.filter((e) => e.isNPC).map((e) => e.uid)).toEqual(['bot2', 'bot3']);
+    expect(d.entrants.filter((e) => !e.isNPC)).toHaveLength(2);
+    d.start();
+    expect(d.unregister('p0')).toBe(false);
+    expect(d.replaceBots([])).toBe(false);
+  });
+
+  test('a late entrant sits at the smallest table with the starting stack, conserving chips', () => {
+    const d = makeDirector(7, { tableSize: 4, lateRegLevels: 3 });
+    d.start();
+    expect(d.lateRegOpen()).toBe(true);
+    const expected = d.totalChips() + 2000;
+    const { table, player } = d.registerLate({
+      id: 'late',
+      uid: 'late',
+      name: 'Late',
+      avatar: '🦊',
+    });
+    expect(player.chips).toBe(2000);
+    expect(player.avatar).toBe('🦊');
+    expect(table.players.length).toBe(4); // the 3-seat table, now full
+    expect(d.entrants).toHaveLength(8);
+    expect(d.tournament.startingPlayers).toBe(8);
+    expect(d.totalChips()).toBe(expected);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    expect(d.roster().find((r) => r.uid === 'late')).toMatchObject({
+      table: table.tableNumber,
+      chips: 2000,
+    });
+  });
+
+  test('a late entrant onto a running table waits out the hand, then plays', () => {
+    const d = makeDirector(4, { tableSize: 6, lateRegLevels: 3 });
+    d.start();
+    const table = d.tables[0];
+    expect(d.startHandsWhereReady()).toBe(1);
+    expect(table.isRunning).toBe(true);
+    const dealer = table.dealerIndex;
+    const current = table.currentPlayerIndex;
+    const { player } = d.registerLate({ id: 'late', uid: 'late', name: 'Late' });
+    expect(player.folded).toBe(true);
+    expect(table.dealerIndex).toBe(dealer);
+    expect(table.currentPlayerIndex).toBe(current);
+    const rng = seededRng();
+    playHand(table, rng, 0.2);
+    expect(table.isRunning).toBe(false);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    // Next deal includes them.
+    d.startHandsWhereReady();
+    const late = table.players.find((p) => p.uid === 'late');
+    expect(late).toBeTruthy();
+    expect(late.folded).toBe(false);
+    expect(late.holeCards).toHaveLength(2);
+  });
+
+  test('when every table is full a late entrant opens a table that breaks first', () => {
+    const d = makeDirector(4, { tableSize: 2, lateRegLevels: 3 });
+    d.start();
+    expect(d.tables).toHaveLength(2);
+    const before = [...d.breakOrder];
+    const { table } = d.registerLate({ id: 'late', uid: 'late', name: 'Late' });
+    expect(d.tables).toHaveLength(3);
+    expect(table.tableNumber).toBe(3);
+    expect(d.breakOrder[0]).toBe(3);
+    expect(d.breakOrder.slice(1)).toEqual(before);
+    expect(table.smallBlind).toBe(d.tables[0].smallBlind);
+    expect(() => d.assertChipConservation()).not.toThrow();
+  });
+
+  test('late registration recomputes the payout ladder and renumbers earlier bust-outs', () => {
+    const d = makeDirector(5, { tableSize: 6, lateRegLevels: 3 });
+    d.start();
+    expect(d.paidPlaces).toBe(1); // 5 entrants: winner takes all
+    // Two bust-outs recorded before anyone registers late.
+    d.tournament.recordElimination('P4', 1, 'p4');
+    d.tournament.recordElimination('P3', 2, 'p3');
+    expect(d.tournament.eliminations.map((e) => e.place)).toEqual([5, 4]);
+    d.registerLate({ id: 'l1', uid: 'l1', name: 'L1' });
+    expect(d.paidPlaces).toBe(2); // 6 entrants: two paid
+    expect(d.tournament.eliminations.map((e) => e.place)).toEqual([6, 5]);
+    d.tournament.recordElimination('P2', 3, 'p2');
+    expect(d.tournament.eliminations.map((e) => e.place)).toEqual([6, 5, 4]);
+    const places = d.tournament.eliminations.map((e) => e.place);
+    expect(new Set(places).size).toBe(places.length);
+  });
+
+  test('late registration closes once the level passes and the close is announced once', () => {
+    const d = makeDirector(3, { tableSize: 6, lateRegLevels: 1 });
+    const said = [];
+    d.onMessage = (m) => said.push(m);
+    d.start();
+    expect(d.lateRegOpen()).toBe(true);
+    d.tournament.currentLevel = 1;
+    d.tournament.onLevelUp(1, d.tournament.getCurrentBlinds());
+    expect(d.lateRegOpen()).toBe(false);
+    expect(() => d.registerLate({ id: 'x', uid: 'x', name: 'X' })).toThrow(/closed/);
+    d.tournament.onLevelUp(2, d.tournament.getCurrentBlinds());
+    expect(said.filter((m) => /Late registration closed/.test(m))).toHaveLength(1);
+    const none = makeDirector(2, { lateRegLevels: 0 });
+    none.start();
+    expect(none.lateRegOpen()).toBe(false);
+  });
+
+  test('onPlayerEliminated fires for a busted human with their place', () => {
+    const fired = [];
+    const d = makeDirector(3, { tableSize: 6, onPlayerEliminated: (e) => fired.push(e) });
+    d.start();
+    const table = d.tables[0];
+    const victim = table.players[0];
+    victim.chips = 0;
+    d.tournament.recordElimination(victim.name, 1, victim.uid);
+    const expectedChips = d._expectedChips;
+    d._expectedChips = null; // this test moves chips by hand
+    d._handleRoundEnd(table, null);
+    d._expectedChips = expectedChips;
+    expect(fired).toEqual([{ uid: victim.uid, name: victim.name, place: 3, tableId: table.id }]);
+    expect(table.players.some((p) => p.uid === victim.uid)).toBe(false);
+    expect(d.roster().find((r) => r.uid === victim.uid)).toMatchObject({ place: 3, table: null });
   });
 });

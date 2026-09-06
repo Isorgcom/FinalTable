@@ -1,0 +1,735 @@
+// tournament-registry.js - the life of a tournament, from creation to teardown.
+//
+// Everything about a tournament that is not the poker itself lives here:
+// who registered, who is connected, when it starts, who hosts, what happens
+// when the last human drops, and when a finished one is forgotten. The
+// director owns the tables and the chips; the socket handlers are a thin
+// shim over this module; and everything here is keyed by identity uid.
+//
+// Time is one sweep on a short interval rather than a timeout per entry. A
+// sweep survives clock jumps, restores trivially after a restart (an overdue
+// entry simply starts on the first pass), and the reaper and host transfer
+// need the same loop anyway. `now` and `timers` are injectable for tests.
+
+const { TournamentDirector } = require('../director');
+const { getAvailableNPCs } = require('../npc');
+const random = require('../random');
+
+const TICK_MS = 1200;
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const START_CHIPS = [1000, 2000, 5000, 10000];
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function createTournamentRegistry(deps = {}) {
+  const {
+    io,
+    identity,
+    sanitizeName = (v, max = 16) =>
+      String(v || '')
+        .trim()
+        .slice(0, max),
+    normalizeNameKey = (v) =>
+      String(v || '')
+        .trim()
+        .toLowerCase(),
+    maxTournaments = 8,
+    tableOptions = {},
+    getPreflopTable = () => null,
+    finishedTtlMs = 10 * 60 * 1000,
+    abandonGraceMs = 2 * 60 * 1000,
+    hostTransferGraceMs = 2 * 60 * 1000,
+    overdueAbandonMs = 30 * 60 * 1000,
+    sweepMs = 1000,
+    now = () => Date.now(),
+  } = deps;
+  const timers = deps.timers || {
+    setInterval: (...a) => setInterval(...a),
+    clearInterval: (...a) => clearInterval(...a),
+  };
+
+  // id -> entry
+  const tournaments = new Map();
+  let sweepTimer = null;
+  let sweeps = 0;
+
+  // ── Small helpers ────────────────────────────────────────────────────────
+
+  function makeCode() {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      let code = '';
+      for (let i = 0; i < 5; i++) code += CODE_ALPHABET[random.randomInt(CODE_ALPHABET.length)];
+      if (![...tournaments.values()].some((t) => t.code === code)) return code;
+    }
+    return random.randomId('').slice(0, 5).toUpperCase();
+  }
+
+  function byCode(code) {
+    const key = String(code || '')
+      .trim()
+      .toUpperCase();
+    return [...tournaments.values()].find((t) => t.code === key) || null;
+  }
+
+  function connectedHumans(entry) {
+    return [...entry.registrations.values()].filter((r) => r.socketId).length;
+  }
+
+  function hostName(entry) {
+    const who = identity.get(entry.hostUid);
+    return who ? who.name : null;
+  }
+
+  function emitTo(entry, uid, event, payload) {
+    const reg = entry.registrations.get(uid);
+    if (reg && reg.socketId) io.to(reg.socketId).emit(event, payload);
+  }
+
+  function emitAll(entry, event, payload) {
+    for (const reg of entry.registrations.values()) {
+      if (reg.socketId) io.to(reg.socketId).emit(event, payload);
+    }
+  }
+
+  function emitList() {
+    io.emit('tournamentList', publicList());
+  }
+
+  // Everyone connected gets the state from their own point of view. The
+  // legacy `tournamentField` event carries the same payload until the client
+  // has moved to `tournamentState`.
+  function emitState(entry) {
+    for (const [uid, reg] of entry.registrations) {
+      if (!reg.socketId) continue;
+      const state = stateFor(entry, uid);
+      io.to(reg.socketId).emit('tournamentState', state);
+      io.to(reg.socketId).emit('tournamentField', state);
+    }
+  }
+
+  function requireHost(entry, uid) {
+    return !!uid && uid === entry.hostUid;
+  }
+
+  // ── Views ────────────────────────────────────────────────────────────────
+
+  function summarize(entry) {
+    const d = entry.director;
+    const humans = entry.registrations.size;
+    const total = d.entrants.length;
+    return {
+      id: entry.id,
+      code: entry.code,
+      name: entry.name,
+      status: entry.status,
+      createdAt: entry.createdAt,
+      startsAt: entry.startsAt,
+      startedAt: entry.startedAt,
+      finishedAt: entry.finishedAt,
+      hostName: hostName(entry),
+      entrants: { humans, bots: total - humans, total },
+      tableSize: d.tableSize,
+      startChips: d.startChips,
+      levelDuration: d.tournament.levelDuration,
+      lateRegLevels: d.lateRegLevels,
+      lateRegOpen: d.lateRegOpen(),
+      level: d.tournament.currentLevel + 1,
+      remaining: entry.status === 'registering' ? total : d.playersRemaining(),
+      buyIn: d.buyIn,
+      prizePool: d.prizePool(),
+      winner: d.finished ? d.finished.winner : null,
+      // Kept for the pre-lobby client's list shape.
+      running: entry.status === 'running',
+      finished: entry.status === 'finished',
+    };
+  }
+
+  function publicList() {
+    return [...tournaments.values()].map(summarize);
+  }
+
+  function listFor(uid) {
+    return [...tournaments.values()].map((entry) => ({
+      ...summarize(entry),
+      you: {
+        registered: entry.registrations.has(uid) && !entry.registrations.get(uid).left,
+        eliminated: entry.watching.has(uid),
+      },
+    }));
+  }
+
+  function stateFor(entry, uid) {
+    const d = entry.director;
+    const reg = entry.registrations.get(uid) || null;
+    const seat = d.playerByUid(uid);
+    const place = d.tournament.eliminations.find((e) => e.uid === uid);
+    const roster = d.roster().map((row) => {
+      const r = entry.registrations.get(row.uid);
+      return {
+        ...row,
+        isHost: row.uid === entry.hostUid,
+        connected: row.isNPC ? true : !!(r && r.socketId),
+      };
+    });
+    return {
+      ...d.fieldSummary(uid),
+      id: entry.id,
+      code: entry.code,
+      name: entry.name,
+      status: entry.status,
+      startsAt: entry.startsAt,
+      startedAt: entry.startedAt,
+      finishedAt: entry.finishedAt,
+      waitingReason: entry.waitingReason,
+      host: { uid: entry.hostUid, name: hostName(entry) },
+      isHost: requireHost(entry, uid),
+      settings: { ...entry.settings },
+      you: {
+        uid,
+        playerId: seat ? seat.player.id : reg && reg.socketId ? reg.socketId : null,
+        registered: !!reg && !reg.left,
+        seated: !!seat,
+        eliminated: entry.watching.has(uid),
+        place: place ? place.place : null,
+        watchingTable: entry.watching.has(uid)
+          ? (d.tables.find((t) => t.id === entry.watching.get(uid)) || {}).tableNumber || null
+          : null,
+      },
+      roster,
+    };
+  }
+
+  // ── Bots ─────────────────────────────────────────────────────────────────
+
+  // There are ~22 distinct profiles and getAvailableNPCs caps two per source,
+  // so a large field reuses them with a numeric suffix rather than silently
+  // seating fewer bots than asked for.
+  function makeBotEntrants(count) {
+    const pool = getAvailableNPCs(Math.min(count, 22));
+    const bots = [];
+    for (let i = 0; i < count; i++) {
+      const profile = pool[i % pool.length];
+      if (!profile) break;
+      const round = Math.floor(i / pool.length);
+      bots.push({
+        id: random.randomId('npc_'),
+        uid: random.randomId('u_'),
+        name: round === 0 ? profile.name : `${profile.name} ${round + 1}`,
+        isNPC: true,
+        npcProfile: profile,
+      });
+    }
+    return bots;
+  }
+
+  // ── Tables ───────────────────────────────────────────────────────────────
+
+  // Seated humans get their table's state; so does anyone watching that table
+  // after busting. An unseated viewer already yields a spectator view from
+  // getStateForPlayer (no hole cards, no turn).
+  function recipientsFor(entry, table) {
+    const out = [];
+    for (const p of table.players) {
+      if (p.isNPC) continue;
+      const reg = entry.registrations.get(p.uid);
+      if (reg && reg.socketId) out.push({ socketId: reg.socketId, playerId: p.id });
+    }
+    for (const [uid, tableId] of entry.watching) {
+      if (tableId !== table.id) continue;
+      const reg = entry.registrations.get(uid);
+      if (reg && reg.socketId) out.push({ socketId: reg.socketId, playerId: reg.socketId });
+    }
+    return out;
+  }
+
+  function wireTable(entry, table) {
+    table.hostPlayerId = entry.hostUid;
+    const preflop = getPreflopTable();
+    if (preflop) table.preflopTable = preflop;
+    table.onUpdate = (g) => {
+      for (const r of recipientsFor(entry, g)) {
+        io.to(r.socketId).emit('gameState', g.getStateForPlayer(r.playerId));
+      }
+    };
+    table.onMessage = (msg, meta) => {
+      for (const r of recipientsFor(entry, table)) {
+        io.to(r.socketId).emit('gameMessage', msg, meta || null);
+      }
+    };
+  }
+
+  // A watcher whose table emptied moves to the biggest table left.
+  function repointWatchers(entry) {
+    const d = entry.director;
+    for (const [uid, tableId] of entry.watching) {
+      const table = d.tables.find((t) => t.id === tableId);
+      if (table && table.players.length > 0) continue;
+      const biggest = [...d.tables]
+        .filter((t) => t.players.length > 0)
+        .sort((a, b) => b.players.length - a.players.length)[0];
+      if (biggest) entry.watching.set(uid, biggest.id);
+    }
+  }
+
+  // ── Lifecycle ────────────────────────────────────────────────────────────
+
+  function clampSettings(payload = {}) {
+    const int = (v, fallback) => {
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const t = now();
+    let startsAt = int(payload.startsAt, t);
+    if (startsAt < t - 60 * 1000 || startsAt > t + WEEK_MS) startsAt = t;
+    const startChips = int(payload.startChips, 5000);
+    return {
+      startsAt,
+      settings: {
+        tableSize: Math.max(2, Math.min(10, int(payload.tableSize, 9))),
+        startChips: START_CHIPS.includes(startChips) ? startChips : 5000,
+        levelDuration: Math.max(30, Math.min(3600, int(payload.levelDuration, 300))),
+        lateRegLevels: Math.max(0, Math.min(8, int(payload.lateRegLevels, 3))),
+        buyIn: Math.max(0, Math.min(10000, int(payload.buyIn, 0))),
+        botCount: Math.max(0, Math.min(60, int(payload.botCount, 0))),
+      },
+    };
+  }
+
+  function create(uid, payload = {}, socket) {
+    const who = identity.get(uid);
+    if (!who) return { error: 'Identify first' };
+    if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
+    if (tournaments.size >= maxTournaments) return { error: 'Too many tournaments running' };
+
+    const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
+    const { startsAt, settings } = clampSettings(payload);
+    const entry = {
+      id: null,
+      code: makeCode(),
+      name,
+      status: 'registering',
+      createdAt: now(),
+      startsAt,
+      startedAt: null,
+      finishedAt: null,
+      hostUid: uid,
+      settings,
+      director: null,
+      registrations: new Map(),
+      watching: new Map(),
+      timer: null,
+      waitingReason: null,
+      noHumansSince: null,
+    };
+    const director = new TournamentDirector({
+      tableSize: settings.tableSize,
+      startChips: settings.startChips,
+      buyIn: settings.buyIn,
+      levelDuration: settings.levelDuration,
+      lateRegLevels: settings.lateRegLevels,
+      // Tournament tables run the tournament clock and get the same bot
+      // options as rooms.
+      gameOptions: { gameMode: 'tournament', ...tableOptions },
+      onTableCreated: (table) => wireTable(entry, table),
+      onMessage: (msg) => emitAll(entry, 'gameMessage', msg),
+      onPlayerMoved: (move) => emitTo(entry, move.uid, 'tableMoved', move),
+      onFieldUpdate: () => {
+        repointWatchers(entry);
+        emitState(entry);
+      },
+      onPlayerEliminated: ({ uid: outUid, place, tableId }) => {
+        entry.watching.set(outUid, tableId);
+        const prize = director.payouts().find((p) => p.place === place);
+        emitTo(entry, outUid, 'tournamentEliminated', {
+          place,
+          entrants: director.entrants.length,
+          prize: prize ? prize.amount : 0,
+          inTheMoney: !!prize,
+          lateRegOpen: director.lateRegOpen(),
+        });
+      },
+      onFinished: (result) => {
+        entry.status = 'finished';
+        entry.finishedAt = now();
+        if (entry.timer) {
+          timers.clearInterval(entry.timer);
+          entry.timer = null;
+        }
+        const results = director.finalResults();
+        for (const [regUid, reg] of entry.registrations) {
+          if (!reg.socketId) continue;
+          const mine = results.find((r) => r.name === (identity.get(regUid) || {}).name) || null;
+          io.to(reg.socketId).emit('tournamentFinished', {
+            ...result,
+            results,
+            you: mine ? { place: mine.place, prize: mine.prize } : null,
+          });
+        }
+        emitState(entry);
+        emitList();
+      },
+    });
+    entry.id = director.id;
+    entry.director = director;
+
+    director.register({ id: socket ? socket.id : null, uid, name: who.name, avatar: who.avatar });
+    for (const bot of makeBotEntrants(settings.botCount)) director.register(bot);
+    entry.registrations.set(uid, {
+      socketId: null,
+      disconnectedAt: null,
+      joinedAt: now(),
+      left: false,
+    });
+    tournaments.set(entry.id, entry);
+    if (socket) bind(entry, uid, socket);
+    emitList();
+    return { entry };
+  }
+
+  function join(uid, { code, tournamentId } = {}, socket) {
+    const who = identity.get(uid);
+    if (!who) return { error: 'Identify first' };
+    const entry = (code ? byCode(code) : null) || tournaments.get(tournamentId) || null;
+    if (!entry) return { error: 'Tournament not found' };
+
+    const existing = entry.registrations.get(uid);
+    if (existing) {
+      // Back for more: a left player rejoins their own seat.
+      existing.left = false;
+      if (socket) bind(entry, uid, socket, { resumed: true });
+      emitState(entry);
+      return { entry };
+    }
+    if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
+    if (entry.status === 'finished') return { error: 'That tournament is over' };
+    const key = normalizeNameKey(who.name);
+    if (entry.director.entrants.some((e) => !e.isNPC && normalizeNameKey(e.name) === key)) {
+      return { error: 'Name already taken in this tournament' };
+    }
+    const entrant = { id: socket ? socket.id : null, uid, name: who.name, avatar: who.avatar };
+    if (entry.status === 'registering') {
+      entry.director.register(entrant);
+    } else if (entry.director.lateRegOpen()) {
+      try {
+        entry.director.registerLate(entrant);
+      } catch (err) {
+        return { error: err.message };
+      }
+    } else {
+      return { error: 'Late registration is closed' };
+    }
+    entry.registrations.set(uid, {
+      socketId: null,
+      disconnectedAt: null,
+      joinedAt: now(),
+      left: false,
+    });
+    if (socket) bind(entry, uid, socket);
+    emitState(entry);
+    emitList();
+    return { entry };
+  }
+
+  // Bind a socket to its registration. On a rejoin the seated player's id is
+  // rebound to the new socket, exactly as the room layer does on reconnect,
+  // so every socket-id-keyed path in the engine and the client keeps working.
+  function bind(entry, uid, socket, { resumed = false } = {}) {
+    const reg = entry.registrations.get(uid);
+    if (!reg) return false;
+    reg.socketId = socket.id;
+    reg.disconnectedAt = null;
+    reg.left = false;
+    entry.noHumansSince = null;
+    socket.data.tournamentId = entry.id;
+    socket.data.tournamentUid = uid;
+    const entrant = entry.director.entrants.find((e) => e.uid === uid);
+    if (entrant) entrant.id = socket.id;
+    const seat = entry.director.playerByUid(uid);
+    if (seat) {
+      seat.player.id = socket.id;
+      seat.player.isConnected = true;
+      seat.player.disconnectedAt = null;
+    }
+    socket.emit('tournamentJoined', {
+      id: entry.id,
+      code: entry.code,
+      uid,
+      host: requireHost(entry, uid),
+      name: entry.name,
+      status: entry.status,
+      you: { uid, playerId: socket.id },
+      resumed,
+    });
+    const state = stateFor(entry, uid);
+    socket.emit('tournamentState', state);
+    socket.emit('tournamentField', state);
+    if (seat) seat.table.emitUpdate();
+    else if (entry.watching.has(uid)) {
+      const table = entry.director.tables.find((t) => t.id === entry.watching.get(uid));
+      if (table) socket.emit('gameState', table.getStateForPlayer(socket.id));
+    }
+    if (resumed) emitState(entry);
+    return true;
+  }
+
+  // The socket went away. The registration stays; the sweep decides later
+  // whether anyone is coming back. Lifted from the room layer's disconnect.
+  function unbind(entry, uid, socket) {
+    const reg = entry.registrations.get(uid);
+    if (!reg || reg.socketId !== socket.id) return;
+    reg.socketId = null;
+    reg.disconnectedAt = now();
+    const seat = entry.director.playerByUid(uid);
+    if (seat) {
+      const { table, player } = seat;
+      player.isConnected = false;
+      player.disconnectedAt = now();
+      let refreshed = false;
+      if (table.isRunning && !player.folded && !player.allIn) {
+        if (!player.autoPlay) {
+          player.autoPlay = true;
+          player.isReady = false;
+          table.emitMessage(`${player.name} switched to auto-play after disconnect`, {
+            kind: 'system',
+          });
+        }
+        const idx = table.players.findIndex((p) => p.id === player.id);
+        if (idx === table.currentPlayerIndex && table.isAutomatedPlayer(player)) {
+          table.beginCurrentTurn();
+          refreshed = true;
+        }
+      }
+      if (!refreshed) table.emitUpdate();
+    }
+    if (connectedHumans(entry) === 0) entry.noHumansSince = now();
+    emitState(entry);
+  }
+
+  function unregister(entry, uid, socket) {
+    if (entry.status !== 'registering') return { error: 'The tournament has started' };
+    const reg = entry.registrations.get(uid);
+    if (!reg) return { error: 'You are not registered' };
+    entry.director.unregister(uid);
+    entry.registrations.delete(uid);
+    if (socket) {
+      socket.data.tournamentId = null;
+      socket.data.tournamentUid = null;
+      socket.emit('leftTournament', { id: entry.id, reason: 'unregistered' });
+    }
+    if (entry.registrations.size === 0) {
+      remove(entry, 'empty');
+      return { entry };
+    }
+    if (uid === entry.hostUid) transferHost(entry, { force: true });
+    emitState(entry);
+    emitList();
+    return { entry };
+  }
+
+  // Leaving a running tournament: the stack cannot leave, so the seat stays
+  // under auto-play and the registration is marked as left. Auto-return will
+  // not pull them back in; joining by code rebinds their own seat.
+  function leave(entry, uid, socket) {
+    if (entry.status === 'registering') return unregister(entry, uid, socket);
+    const reg = entry.registrations.get(uid);
+    if (!reg) return { error: 'You are not registered' };
+    if (socket && reg.socketId === socket.id) unbind(entry, uid, socket);
+    reg.left = true;
+    const seat = entry.director.playerByUid(uid);
+    if (seat && !seat.player.autoPlay) {
+      seat.player.autoPlay = true;
+      seat.table.emitMessage(`${seat.player.name} left the table; auto-play takes over`, {
+        kind: 'system',
+      });
+      seat.table.emitUpdate();
+    }
+    if (socket) {
+      socket.data.tournamentId = null;
+      socket.data.tournamentUid = null;
+      socket.emit('leftTournament', { id: entry.id, reason: 'left' });
+    }
+    emitState(entry);
+    return { entry };
+  }
+
+  function startNow(entry, uid) {
+    if (!requireHost(entry, uid)) return { error: 'Only the host can start the tournament' };
+    if (entry.status !== 'registering') return { error: 'Already started' };
+    if (entry.director.entrants.length < 2) return { error: 'Need at least 2 entrants' };
+    start(entry);
+    return { entry };
+  }
+
+  function cancel(entry, uid) {
+    if (!requireHost(entry, uid)) return { error: 'Only the host can cancel the tournament' };
+    if (entry.status === 'finished') return { error: 'Already finished' };
+    cancelEntry(entry, 'cancelled by the host');
+    return { entry };
+  }
+
+  function setBots(entry, uid, count) {
+    if (!requireHost(entry, uid)) return { error: 'Only the host can change the bots' };
+    if (entry.status !== 'registering') return { error: 'The tournament has started' };
+    const n = Math.max(0, Math.min(60, parseInt(count, 10) || 0));
+    entry.director.replaceBots(makeBotEntrants(n));
+    entry.settings.botCount = n;
+    emitState(entry);
+    emitList();
+    return { entry };
+  }
+
+  function start(entry) {
+    entry.director.start();
+    entry.status = 'running';
+    entry.startedAt = now();
+    entry.waitingReason = null;
+    entry.timer = timers.setInterval(() => {
+      try {
+        entry.director.tick();
+        emitState(entry);
+      } catch (err) {
+        emitAll(entry, 'gameMessage', `Tournament halted: ${err.message}`);
+        remove(entry, 'halted');
+      }
+    }, TICK_MS);
+    if (entry.timer && entry.timer.unref) entry.timer.unref();
+    emitState(entry);
+    emitList();
+  }
+
+  function cancelEntry(entry, reason) {
+    emitAll(entry, 'tournamentCancelled', { id: entry.id, name: entry.name, reason });
+    remove(entry, reason);
+  }
+
+  function remove(entry) {
+    if (entry.timer) {
+      timers.clearInterval(entry.timer);
+      entry.timer = null;
+    }
+    entry.director.stop();
+    tournaments.delete(entry.id);
+    emitList();
+  }
+
+  // Host goes to the earliest-registered connected human when the host has
+  // been gone past the grace, or at once when the host leaves. Compared by
+  // uid, never by name.
+  function transferHost(entry, { force = false } = {}) {
+    const current = entry.registrations.get(entry.hostUid);
+    if (!force && current && current.socketId && !current.left) return false;
+    if (!force && current && !current.left) {
+      const gone = now() - (current.disconnectedAt || now());
+      if (gone < hostTransferGraceMs) return false;
+    }
+    const next = [...entry.registrations.entries()]
+      .filter(([uid, r]) => uid !== entry.hostUid && !r.left && r.socketId)
+      .sort((a, b) => a[1].joinedAt - b[1].joinedAt)[0];
+    if (!next) return false;
+    entry.hostUid = next[0];
+    for (const table of entry.director.tables) table.hostPlayerId = entry.hostUid;
+    const who = identity.get(entry.hostUid);
+    entry.director._say(`${who ? who.name : 'Someone'} is now the host`);
+    emitState(entry);
+    emitList();
+    return true;
+  }
+
+  function findByUid(uid, { includeLeft = false } = {}) {
+    if (!uid) return null;
+    for (const entry of tournaments.values()) {
+      if (entry.status === 'finished') continue;
+      const reg = entry.registrations.get(uid);
+      if (reg && (includeLeft || !reg.left)) return entry;
+    }
+    return null;
+  }
+
+  // ── The sweep ────────────────────────────────────────────────────────────
+
+  function sweep() {
+    const t = now();
+    for (const entry of [...tournaments.values()]) {
+      if (entry.status === 'registering') {
+        if (entry.registrations.size === 0) {
+          remove(entry, 'empty');
+          continue;
+        }
+        if (t >= entry.startsAt) {
+          if (entry.director.entrants.length >= 2) {
+            start(entry);
+          } else if (t - entry.startsAt > overdueAbandonMs) {
+            cancelEntry(entry, 'nobody else came');
+          } else if (!entry.waitingReason) {
+            entry.waitingReason = 'Waiting for one more entrant';
+            emitState(entry);
+          }
+        }
+        transferHost(entry);
+      } else if (entry.status === 'running') {
+        transferHost(entry);
+        if (
+          connectedHumans(entry) === 0 &&
+          entry.noHumansSince !== null &&
+          t - entry.noHumansSince > abandonGraceMs
+        ) {
+          remove(entry, 'abandoned');
+        }
+      } else if (entry.status === 'finished') {
+        if (t - entry.finishedAt > finishedTtlMs) remove(entry, 'expired');
+      }
+    }
+    sweeps++;
+    if (sweeps % Math.max(1, Math.round(60000 / sweepMs)) === 0 && identity.expireIdle) {
+      identity.expireIdle();
+    }
+  }
+
+  function startSweep() {
+    if (sweepTimer) return;
+    sweepTimer = timers.setInterval(sweep, sweepMs);
+    if (sweepTimer && sweepTimer.unref) sweepTimer.unref();
+  }
+
+  function stop() {
+    if (sweepTimer) {
+      timers.clearInterval(sweepTimer);
+      sweepTimer = null;
+    }
+    for (const entry of tournaments.values()) {
+      if (entry.timer) timers.clearInterval(entry.timer);
+      entry.timer = null;
+      entry.director.stop();
+    }
+  }
+
+  // Persistence arrives in a later phase.
+  function restore() {
+    return 0;
+  }
+
+  startSweep();
+
+  return {
+    tournaments,
+    create,
+    join,
+    bind,
+    unbind,
+    unregister,
+    leave,
+    startNow,
+    cancel,
+    setBots,
+    stateFor,
+    listFor,
+    publicList,
+    findByUid,
+    byCode,
+    requireHost,
+    sweep,
+    restore,
+    stop,
+  };
+}
+
+module.exports = { createTournamentRegistry, TICK_MS };

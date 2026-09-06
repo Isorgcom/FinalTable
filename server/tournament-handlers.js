@@ -1,197 +1,44 @@
-// tournament-handlers.js - socket layer for multi-table tournaments.
+// tournament-handlers.js - socket events for multi-table tournaments.
 //
-// Deliberately separate from socket-handlers.js. The single-table game works
-// and is untouched by any of this; a tournament is a different object with a
-// different lifecycle, and folding it into the existing room handlers would
-// have put the working game at risk for no benefit.
+// A thin shim: every event resolves the socket's identity and tournament,
+// then hands off to server/tournament-registry.js, which owns the lifecycle.
+// Deliberately separate from socket-handlers.js: the single-table room code
+// remains for its tests and is not touched by any of this.
 //
-// The one thing that makes this tractable: table state already reaches players
-// by socket id (io.to(player.id)), not by socket.io room. So when the director
-// moves someone to another table, their socket simply starts receiving state
-// from the new table. There is no room membership to migrate.
+// Table state reaches players by socket id (io.to(player.id)), not by
+// socket.io room, so a player moved between tables simply starts receiving
+// state from the new table. There is no room membership to migrate.
 
-const { TournamentDirector } = require('../director');
-const { getAvailableNPCs } = require('../npc');
-const random = require('../random');
-
-const TICK_MS = 1200;
+const { createTournamentRegistry } = require('./tournament-registry');
 
 function registerTournamentHandlers(deps) {
-  const {
-    io,
-    identity,
-    sanitizeName,
-    sanitizeAvatar,
-    maxTournaments = 8,
-    tableOptions = {},
-    getPreflopTable = () => null,
-    finishedTtlMs = 10 * 60 * 1000,
-    abandonGraceMs = 2 * 60 * 1000,
-  } = deps;
+  const { io, identity } = deps;
+  const registry = createTournamentRegistry(deps);
 
-  // tournamentId -> { director, hostUid, name, seats: Map(uid -> socketId), timer }
-  const tournaments = new Map();
-
-  function publicList() {
-    return [...tournaments.values()].map((t) => ({
-      id: t.director.id,
-      name: t.name,
-      entrants: t.director.entrants.length,
-      running: t.director.isRunning,
-      finished: !!t.director.finished,
-      tableSize: t.director.tableSize,
-      buyIn: t.director.buyIn,
-    }));
+  function fail(socket, error) {
+    socket.emit('error', { message: error });
   }
 
-  function broadcastList() {
-    io.emit('tournamentList', publicList());
+  function entryFor(socket) {
+    return registry.tournaments.get(socket.data.tournamentId) || null;
   }
 
-  // Every seated human gets the field summary from their own point of view:
-  // their rank, their table, their stack. One broadcast, personalised.
-  function broadcastField(entry) {
-    for (const [uid, socketId] of entry.seats) {
-      io.to(socketId).emit('tournamentField', entry.director.fieldSummary(uid));
-    }
+  function seatFor(socket) {
+    const entry = entryFor(socket);
+    if (!entry) return null;
+    return entry.director.playerByUid(socket.data.tournamentUid);
   }
-
-  function socketIdFor(entry, uid) {
-    return entry.seats.get(uid) || null;
-  }
-
-  // Wire a table so its state reaches the humans sitting at it. Same shape as
-  // the single-table server uses, which is what lets a moved player keep
-  // receiving updates with no resubscription.
-  function wireTable(entry, table) {
-    table.onUpdate = (g) => {
-      for (const p of g.players) {
-        if (p.isNPC) continue;
-        const sid = socketIdFor(entry, p.uid);
-        if (sid) io.to(sid).emit('gameState', g.getStateForPlayer(p.id));
-      }
-    };
-    table.onMessage = (msg, meta) => {
-      for (const p of table.players) {
-        if (p.isNPC) continue;
-        const sid = socketIdFor(entry, p.uid);
-        if (sid) io.to(sid).emit('gameMessage', msg, meta || null);
-      }
-    };
-  }
-
-  // Bot entrants. There are only ~22 distinct profiles and getAvailableNPCs
-  // caps two per source, so a large field reuses them with a numeric suffix
-  // rather than silently seating fewer bots than asked for.
-  function makeBotEntrants(count) {
-    const pool = getAvailableNPCs(Math.min(count, 22));
-    const bots = [];
-    for (let i = 0; i < count; i++) {
-      const profile = pool[i % pool.length];
-      if (!profile) break;
-      const round = Math.floor(i / pool.length);
-      bots.push({
-        id: random.randomId('npc_'),
-        uid: random.randomId('u_'),
-        name: round === 0 ? profile.name : `${profile.name} ${round + 1}`,
-        isNPC: true,
-        npcProfile: profile,
-      });
-    }
-    return bots;
-  }
-
-  function stopTournament(entry) {
-    if (entry.timer) {
-      clearInterval(entry.timer);
-      entry.timer = null;
-    }
-    if (entry.abandonTimer) {
-      clearTimeout(entry.abandonTimer);
-      entry.abandonTimer = null;
-    }
-    entry.director.stop();
-  }
-
-  // Nobody connected: give them a chance to come back before the tournament
-  // is torn down. A network blip used to destroy a solo host's field on the
-  // spot, one second before socket.io recovered the very same connection.
-  function scheduleAbandon(entry) {
-    if (entry.abandonTimer) return;
-    entry.abandonTimer = setTimeout(() => {
-      entry.abandonTimer = null;
-      if (entry.seats.size > 0) return;
-      stopTournament(entry);
-      tournaments.delete(entry.director.id);
-      broadcastList();
-    }, abandonGraceMs);
-    if (entry.abandonTimer.unref) entry.abandonTimer.unref();
-  }
-
-  function cancelAbandon(entry) {
-    if (!entry.abandonTimer) return;
-    clearTimeout(entry.abandonTimer);
-    entry.abandonTimer = null;
-  }
-
-  // The live tournament a human is registered in, if any. Finished ones do
-  // not count: their standings linger, but they hold nobody.
-  function findByUid(uid) {
-    if (!uid) return null;
-    for (const entry of tournaments.values()) {
-      if (entry.director.finished) continue;
-      if (entry.director.entrants.some((e) => e.uid === uid && !e.isNPC)) return entry;
-    }
-    return null;
-  }
-
-  // Bind a socket to its registration. On a rejoin the seated player's id is
-  // rebound to the new socket, exactly as the room layer does on reconnect,
-  // so every socket-id-keyed path in the engine and the client keeps working.
-  function bind(entry, uid, socket, { resumed = false } = {}) {
-    entry.seats.set(uid, socket.id);
-    cancelAbandon(entry);
-    socket.data.tournamentId = entry.director.id;
-    socket.data.tournamentUid = uid;
-    const entrant = entry.director.entrants.find((e) => e.uid === uid);
-    if (entrant) entrant.id = socket.id;
-    const seat = entry.director.playerByUid(uid);
-    if (seat) {
-      seat.player.id = socket.id;
-      seat.player.isConnected = true;
-      seat.player.disconnectedAt = null;
-    }
-    socket.emit('tournamentJoined', {
-      id: entry.director.id,
-      uid,
-      host: uid === entry.hostUid,
-      name: entry.name,
-      you: { uid, playerId: socket.id },
-      resumed,
-    });
-    if (resumed) {
-      socket.emit('tournamentField', entry.director.fieldSummary(uid));
-      if (seat) seat.table.emitUpdate();
-    }
-  }
-
-  // Identities idle for a month are dropped.
-  const expiryTimer = setInterval(() => identity.expireIdle(), 60 * 1000);
-  if (expiryTimer.unref) expiryTimer.unref();
 
   io.on('connection', (socket) => {
     // socket.io recovered this connection (same id, same data) after a short
-    // drop. The disconnect handler dropped the seat mapping; put it back.
+    // drop: rebind the seat the disconnect handler released.
     if (socket.recovered && socket.data.tournamentId && socket.data.tournamentUid) {
-      const entry = tournaments.get(socket.data.tournamentId);
-      if (entry) {
-        entry.seats.set(socket.data.tournamentUid, socket.id);
-        cancelAbandon(entry);
-      }
+      const entry = entryFor(socket);
+      if (entry) registry.bind(entry, socket.data.tournamentUid, socket, { resumed: true });
     }
-    socket.emit('tournamentList', publicList());
+    socket.emit('tournamentList', registry.publicList());
 
-    socket.on('listTournaments', () => socket.emit('tournamentList', publicList()));
+    socket.on('listTournaments', () => socket.emit('tournamentList', registry.publicList()));
 
     // First thing on every connect, reconnects included. Establishes who the
     // socket is and, when that person has a live registration, rebinds it.
@@ -201,232 +48,144 @@ function registerTournamentHandlers(deps) {
         name: payload.name,
         avatar: payload.avatar,
       });
-      if (!ident) {
-        socket.emit('error', { message: 'Enter a name first' });
-        return;
-      }
+      if (!ident) return fail(socket, 'Enter a name first');
       socket.data.uid = ident.uid;
-      const entry = findByUid(ident.uid);
+      const entry = registry.findByUid(ident.uid);
       let resume = null;
       if (entry) {
-        bind(entry, ident.uid, socket, { resumed: true });
-        resume = {
-          id: entry.director.id,
-          name: entry.name,
-          status: entry.director.isRunning ? 'running' : 'registering',
-        };
+        registry.bind(entry, ident.uid, socket, { resumed: true });
+        resume = { id: entry.id, code: entry.code, name: entry.name, status: entry.status };
       }
       socket.emit('identified', { ...ident, resume });
     });
 
     socket.on('createTournament', (payload = {}) => {
-      if (tournaments.size >= maxTournaments) {
-        socket.emit('error', { message: 'Too many tournaments running' });
-        return;
-      }
-      const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
-      const who = identity.get(socket.data.uid);
-      if (!who) {
-        socket.emit('error', { message: 'Identify first' });
-        return;
-      }
-      if (findByUid(who.uid)) {
-        socket.emit('error', { message: 'You are already in a tournament' });
-        return;
-      }
-      const tableSize = Math.max(2, Math.min(10, parseInt(payload.tableSize, 10) || 9));
-      const botCount = Math.max(0, Math.min(60, parseInt(payload.botCount, 10) || 0));
-      const buyIn = Math.max(0, Math.min(10000, parseInt(payload.buyIn, 10) || 0));
-      const startChips = [1000, 2000, 5000, 10000].includes(parseInt(payload.startChips, 10))
-        ? parseInt(payload.startChips, 10)
-        : 5000;
-      const levelDuration = Math.max(
-        30,
-        Math.min(3600, parseInt(payload.levelDuration, 10) || 300)
-      );
-
-      const hostUid = who.uid;
-      const entry = {
-        name,
-        hostUid,
-        seats: new Map(),
-        timer: null,
-        director: null,
-      };
-
-      const director = new TournamentDirector({
-        tableSize,
-        startChips,
-        buyIn,
-        levelDuration,
-        // Tournament tables run the tournament clock (25s to act, not the
-        // 90s cash idle clock) and get the same bot options as rooms.
-        gameOptions: { gameMode: 'tournament', ...tableOptions },
-        onTableCreated: (table) => {
-          // Display only: the Info tab's Host line. Authority stays with hostUid.
-          table.hostPlayerId = hostUid;
-          const preflop = getPreflopTable();
-          if (preflop) table.preflopTable = preflop;
-          wireTable(entry, table);
-        },
-        onMessage: (msg) => {
-          for (const sid of entry.seats.values()) io.to(sid).emit('gameMessage', msg);
-        },
-        onPlayerMoved: (move) => {
-          const sid = socketIdFor(entry, move.uid);
-          if (sid) io.to(sid).emit('tableMoved', move);
-        },
-        onFieldUpdate: () => broadcastField(entry),
-        onFinished: (result) => {
-          for (const sid of entry.seats.values()) {
-            io.to(sid).emit('tournamentFinished', {
-              ...result,
-              results: director.finalResults(),
-            });
-          }
-          stopTournament(entry);
-          broadcastList();
-          // Keep the standings around for a while, then free the slot: a
-          // finished entry used to stay forever and exhaust maxTournaments.
-          entry.cleanupTimer = setTimeout(() => {
-            if (tournaments.get(director.id) === entry) {
-              tournaments.delete(director.id);
-              broadcastList();
-            }
-          }, finishedTtlMs);
-          if (entry.cleanupTimer.unref) entry.cleanupTimer.unref();
-        },
-      });
-      entry.director = director;
-
-      director.register({ id: socket.id, uid: hostUid, name: who.name, avatar: who.avatar });
-      for (const bot of makeBotEntrants(botCount)) director.register(bot);
-
-      tournaments.set(director.id, entry);
-      bind(entry, hostUid, socket);
-      broadcastList();
+      const { error } = registry.create(socket.data.uid, payload, socket);
+      if (error) fail(socket, error);
     });
 
     socket.on('joinTournament', (payload = {}) => {
-      const entry = tournaments.get(payload.tournamentId);
-      if (!entry) {
-        socket.emit('error', { message: 'Tournament not found' });
-        return;
-      }
-      if (entry.director.isRunning) {
-        socket.emit('error', { message: 'Tournament already started' });
-        return;
-      }
-      const who = identity.get(socket.data.uid);
-      if (!who) {
-        socket.emit('error', { message: 'Identify first' });
-        return;
-      }
-      if (findByUid(who.uid)) {
-        socket.emit('error', { message: 'You are already in a tournament' });
-        return;
-      }
-      entry.director.register({ id: socket.id, uid: who.uid, name: who.name, avatar: who.avatar });
-      bind(entry, who.uid, socket);
-      broadcastList();
+      const { error } = registry.join(socket.data.uid, payload, socket);
+      if (error) fail(socket, error);
     });
 
-    socket.on('startTournament', () => {
-      const entry = tournaments.get(socket.data.tournamentId);
+    function startNow() {
+      const entry = entryFor(socket);
       if (!entry) return;
-      if (socket.data.tournamentUid !== entry.hostUid) {
-        socket.emit('error', { message: 'Only the tournament host can start it' });
-        return;
-      }
-      if (entry.director.isRunning) return;
-      if (entry.director.entrants.length < 2) {
-        socket.emit('error', { message: 'Need at least 2 entrants' });
-        return;
-      }
-      entry.director.start();
-      broadcastField(entry);
-      broadcastList();
-      entry.timer = setInterval(() => {
-        try {
-          entry.director.tick();
-          broadcastField(entry);
-        } catch (err) {
-          for (const sid of entry.seats.values()) {
-            io.to(sid).emit('gameMessage', `Tournament halted: ${err.message}`);
-          }
-          stopTournament(entry);
-        }
-      }, TICK_MS);
-      if (entry.timer.unref) entry.timer.unref();
+      const { error } = registry.startNow(entry, socket.data.uid);
+      if (error) fail(socket, error);
+    }
+    socket.on('startTournamentNow', startNow);
+    socket.on('startTournament', startNow); // pre-lobby client
+
+    socket.on('cancelTournament', () => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.cancel(entry, socket.data.uid);
+      if (error) fail(socket, error);
+    });
+
+    socket.on('setTournamentBots', (payload = {}) => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.setBots(entry, socket.data.uid, payload.count);
+      if (error) fail(socket, error);
+    });
+
+    socket.on('unregisterTournament', () => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.unregister(entry, socket.data.uid, socket);
+      if (error) fail(socket, error);
+    });
+
+    function leave() {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.leave(entry, socket.data.uid, socket);
+      if (error) fail(socket, error);
+    }
+    socket.on('leaveTournament', leave);
+    socket.on('exitGame', leave); // the table's menu says "exit"
+
+    function sendState() {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const state = registry.stateFor(entry, socket.data.tournamentUid);
+      socket.emit('tournamentState', state);
+      socket.emit('tournamentField', state); // pre-lobby client
+    }
+    socket.on('requestTournamentState', sendState);
+    socket.on('requestTournamentField', sendState);
+
+    // The mobile resume path: mark us present again and resend everything.
+    socket.on('requestState', () => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      registry.bind(entry, socket.data.tournamentUid, socket, { resumed: true });
     });
 
     // Actions are routed by uid, never by a cached table: a player's table
     // changes when the field is balanced and their socket id changes on
     // reconnect, so the seat has to be looked up fresh every time.
     function routeAction(payload = {}) {
-      const entry = tournaments.get(socket.data.tournamentId);
-      if (!entry) return;
       const VALID = ['fold', 'check', 'call', 'raise', 'allin'];
       if (!VALID.includes(payload.action)) return;
       const amount = payload.amount;
       if (amount !== undefined && (typeof amount !== 'number' || amount < 0 || !isFinite(amount))) {
         return;
       }
-      const seat = entry.director.playerByUid(socket.data.tournamentUid);
+      const seat = seatFor(socket);
       if (!seat) return;
       seat.table.handleAction(seat.player.id, payload.action, amount);
     }
-
-    // The table UI emits 'action' -- it is the same felt, the same buttons, and
-    // it has no idea whether it is showing a cash table or a tournament one.
-    // Listening only for 'tournamentAction' meant every click was swallowed by
-    // the single-table handler (which finds no room and returns), so the seat
-    // sat idle until the 90-second timeout acted for the player. Both names are
-    // accepted; the single-table listener still ignores tournament sockets
-    // because there is no room of that id.
+    // The table UI emits 'action' whatever kind of table it is showing; the
+    // single-table listener ignores tournament sockets (no room of that id).
     socket.on('action', routeAction);
     socket.on('tournamentAction', routeAction);
 
-    // Same seat lookup as an action: the table can change between requests.
     socket.on('requestTime', () => {
-      const entry = tournaments.get(socket.data.tournamentId);
-      if (!entry) return;
-      const seat = entry.director.playerByUid(socket.data.tournamentUid);
+      const seat = seatFor(socket);
       if (!seat) return;
       seat.table.requestTimeExtension(seat.player.id);
     });
 
-    socket.on('requestTournamentField', () => {
-      const entry = tournaments.get(socket.data.tournamentId);
-      if (!entry) return;
-      socket.emit('tournamentField', entry.director.fieldSummary(socket.data.tournamentUid));
+    socket.on('setAutoPlay', (payload = {}) => {
+      const seat = seatFor(socket);
+      if (!seat) return;
+      const { table, player } = seat;
+      const enabled = payload.enabled !== false;
+      if (player.autoPlay === enabled) return;
+      player.autoPlay = enabled;
+      player.isReady = false;
+      table.emitMessage(`${player.name} ${enabled ? 'switched to auto-play' : 'resumed control'}`, {
+        kind: 'system',
+      });
+      const idx = table.players.findIndex((p) => p.id === player.id);
+      if (enabled && table.isRunning && idx === table.currentPlayerIndex) table.beginCurrentTurn();
+      else table.emitUpdate();
     });
 
-    socket.on('leaveTournament', () => {
-      const entry = tournaments.get(socket.data.tournamentId);
-      if (!entry) return;
-      entry.seats.delete(socket.data.tournamentUid);
-      socket.data.tournamentId = null;
-      socket.data.tournamentUid = null;
-      if ([...entry.seats.keys()].length === 0) {
-        stopTournament(entry);
-        tournaments.delete(entry.director.id);
+    socket.on('requestEquity', () => {
+      const seat = seatFor(socket);
+      if (!seat) return;
+      try {
+        const result = seat.table.useEquity(seat.player.id);
+        socket.emit('equityResult', result);
+        if (result && result.cost > 0) seat.table.emitUpdate();
+      } catch (err) {
+        fail(socket, err.message || 'Equity unavailable');
       }
-      broadcastList();
     });
 
     socket.on('disconnect', () => {
-      const entry = tournaments.get(socket.data.tournamentId);
+      const entry = entryFor(socket);
       if (!entry) return;
-      // Keep the seat: a disconnected player's chips stay in play and their
-      // socket id is rebound if they come back. Only drop the mapping.
-      const uid = socket.data.tournamentUid;
-      if (uid && entry.seats.get(uid) === socket.id) entry.seats.delete(uid);
-      if (entry.seats.size === 0) scheduleAbandon(entry);
+      registry.unbind(entry, socket.data.tournamentUid, socket);
     });
   });
 
-  return { tournaments, publicList };
+  return { registry, tournaments: registry.tournaments, publicList: registry.publicList };
 }
 
 module.exports = { registerTournamentHandlers };

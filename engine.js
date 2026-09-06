@@ -1422,7 +1422,11 @@ class PokerGame {
       this.emitMessage(`${this.getPublicName(p)} eliminated`, { kind: 'eliminate' });
       this._log(`❌ eliminated ${this.getPublicName(p)}`);
       if (this.tournament && this.tournament.isActive) {
-        const place = this.tournament.recordElimination(this.getPublicName(p), this.roundCount);
+        const place = this.tournament.recordElimination(
+          this.getPublicName(p),
+          this.roundCount,
+          p.uid
+        );
         this.emitMessage(`📊 ${this.getPublicName(p)} placed #${place}`, { kind: 'eliminate' });
       }
     }

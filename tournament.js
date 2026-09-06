@@ -91,15 +91,27 @@ class Tournament {
     return Math.max(0, Math.ceil(nextLevelAt - elapsed));
   }
 
-  recordElimination(playerName, handNum) {
+  recordElimination(playerName, handNum, uid = null) {
     const place = this.startingPlayers - this.eliminations.length;
     this.eliminations.push({
       name: playerName,
+      uid,
       place,
       handNum,
       time: Date.now(),
     });
     return place;
+  }
+
+  // Late registration grows the field after bust-outs have been recorded.
+  // Places are "field size minus players out before you", so earlier
+  // bust-outs move down a place, exactly as a live event renumbers them. The
+  // ledger is worst-first, which makes the renumbering a single pass.
+  setFieldSize(n) {
+    this.startingPlayers = n;
+    this.eliminations.forEach((e, i) => {
+      e.place = n - i;
+    });
   }
 
   // The field, when one is supplied; otherwise just the table that asked.

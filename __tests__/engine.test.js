@@ -1424,7 +1424,8 @@ describe('Dealer narration', () => {
     expect(ofKind('win').length).toBeGreaterThan(0);
     expect(ofKind('win')[0].meta.handNum).toBe(1);
     // The untagged betting strings the client sniffs are still there verbatim.
-    expect(lines.some((l) => /wins \d+!/.test(l.msg))).toBe(true);
+    // A chopped pot says "splits pot" instead; both are the untouched strings.
+    expect(lines.some((l) => /wins \d+!|splits pot \d+/.test(l.msg))).toBe(true);
   });
 });
 

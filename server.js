@@ -343,6 +343,10 @@ app.get('/api/rooms', (req, res) => {
 });
 
 // API endpoint to check server status
+app.get('/api/tournaments', (req, res) => {
+  res.json(tournamentLayer.publicList());
+});
+
 app.get('/api/status', (req, res) => {
   res.json({
     preflopTableReady: preflopTableReady,
@@ -395,10 +399,13 @@ const tournamentLayer = registerTournamentHandlers({
   io,
   identity,
   sanitizeName,
+  normalizeNameKey,
   sanitizeAvatar,
   maxTournaments: config.maxTournaments,
   finishedTtlMs: config.tournamentFinishedTtlMs,
   abandonGraceMs: config.tournamentAbandonGraceMs,
+  hostTransferGraceMs: config.hostTransferGraceMs,
+  sweepMs: config.tournamentSweepMs,
   // Director tables get the same solver and bot options as rooms, and the
   // preflop table once it is built (it is assigned after boot, hence a getter).
   tableOptions: {
@@ -516,6 +523,7 @@ module.exports = {
   io,
   games,
   tournaments: tournamentLayer.tournaments,
+  registry: tournamentLayer.registry,
   identity,
   sessionTokens,
   startServer,
