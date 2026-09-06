@@ -361,6 +361,33 @@
   .menu-dropdown {
     min-width: 126px;
   }
+  /* A 10-seat ring does not fit a phone's width at full radius; pull the
+     sides in and slim the plates so the outer seats stay on screen. */
+  :root {
+    --seat-rx: 41;
+  }
+  .player-info {
+    min-width: 72px;
+    max-width: 94px;
+    padding: 2px 4px;
+    gap: 3px;
+  }
+  .seat-avatar {
+    width: 18px;
+    height: 18px;
+    font-size: 0.66rem;
+  }
+  .player-name {
+    font-size: 0.58rem;
+  }
+  .player-chips {
+    font-size: 0.6rem;
+  }
+  .side-tab {
+    font-size: 0.62rem;
+    padding: 9px 2px 8px;
+    letter-spacing: 0.04em;
+  }
 }
 @media (min-width: 1600px) {
   .community-cards .card {
@@ -589,16 +616,10 @@
   .action-row::-webkit-scrollbar {
     display: none;
   }
+  /* No height for a second row here: the bar would sit on the viewer's
+     plate. The slider keeps raising possible. */
   .action-presets {
-    min-height: 18px;
-    gap: 6px;
-  }
-  .hand-strength {
-    font-size: 0.56rem;
-  }
-  .preset-btn {
-    padding: 1px 6px;
-    font-size: 0.54rem;
+    display: none;
   }
   .action-btn {
     flex: 0 0 auto;

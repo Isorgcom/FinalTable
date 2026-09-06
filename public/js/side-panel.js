@@ -82,6 +82,19 @@
     if (isShowing() && current === name) return;
     const tab = tabFor(name);
     if (tab) tab.classList.add('unread');
+    // Out of view entirely: the top-bar button carries the dot.
+    if (!isShowing()) {
+      const btn = document.getElementById('btnPanelToggle');
+      if (btn) btn.classList.add('unread');
+    }
+  }
+
+  function syncToggle() {
+    const btn = document.getElementById('btnPanelToggle');
+    if (!btn) return;
+    btn.setAttribute('aria-expanded', isShowing() ? 'true' : 'false');
+    if (isShowing()) btn.classList.remove('unread');
+    document.body.classList.toggle('panel-open', isDrawer() && isShowing());
   }
 
   function open() {
@@ -92,6 +105,7 @@
     if (scrim) scrim.classList.remove('hidden');
     const tab = tabFor(current);
     if (tab) tab.classList.remove('unread');
+    syncToggle();
   }
 
   // Returns true when a drawer was actually closed, so the Escape chain can
@@ -102,6 +116,7 @@
     p.classList.remove('open');
     const scrim = document.getElementById('panelScrim');
     if (scrim) scrim.classList.add('hidden');
+    syncToggle();
     return true;
   }
 
@@ -117,6 +132,7 @@
       const tab = tabFor(current);
       if (tab) tab.classList.remove('unread');
     }
+    syncToggle();
   }
 
   function isDocked() {
@@ -133,6 +149,7 @@
       document.body.classList.remove('rail-hidden');
       if (typeof window.roomThreeRefit === 'function') window.roomThreeRefit();
     }
+    syncToggle();
   }
 
   function onTabKey(e) {
@@ -157,6 +174,19 @@
     if (strip) strip.addEventListener('keydown', onTabKey);
     const scrim = document.getElementById('panelScrim');
     if (scrim) scrim.addEventListener('click', close);
+    const toggleBtn = document.getElementById('btnPanelToggle');
+    if (toggleBtn) toggleBtn.addEventListener('click', toggle);
+    const closeBtn = document.getElementById('btnPanelClose');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    // Crossing the docked threshold: a drawer left open must not linger as
+    // an open class, and the toggle's state text must follow the mode.
+    const docked = window.matchMedia('(min-width: 1024px)');
+    const onModeChange = () => {
+      if (docked.matches) close();
+      syncToggle();
+    };
+    if (docked.addEventListener) docked.addEventListener('change', onModeChange);
+    else if (docked.addListener) docked.addListener(onModeChange);
     let saved = null;
     try {
       saved = localStorage.getItem(TAB_KEY);
@@ -164,6 +194,7 @@
       /* private mode */
     }
     select(NAMES.includes(saved) ? saved : 'chat');
+    syncToggle();
   }
 
   window.SidePanel = {

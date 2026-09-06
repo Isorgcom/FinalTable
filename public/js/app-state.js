@@ -50,8 +50,11 @@ function getSeatPositions(playerCount) {
   const arcStart = 225; // bottom-left: the seat immediately clockwise of the viewer
   const arcSpan = -270; // clockwise over 3/4 of the ellipse, leaving the bottom free
 
-  const rx = 53; // horizontal radius %
-  const ry = 52; // vertical radius %
+  // Radii come from CSS so a breakpoint can pull the ring in on a narrow
+  // felt (tokens.css --seat-rx / --seat-ry; responsive.css overrides).
+  const rootStyle = getComputedStyle(document.documentElement);
+  const rx = parseFloat(rootStyle.getPropertyValue('--seat-rx')) || 53; // horizontal radius %
+  const ry = parseFloat(rootStyle.getPropertyValue('--seat-ry')) || 52; // vertical radius %
   const cx = 50; // center x %
   const cy = 44; // center y %
 

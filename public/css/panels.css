@@ -1352,6 +1352,39 @@
   padding: 8px 10px;
 }
 
+.side-panel-close {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--smoke);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.side-panel-close:hover {
+  color: var(--cream);
+}
+/* The top-bar toggle carries a dot when the panel is out of view. */
+.top-btn.unread::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+  vertical-align: middle;
+}
+/* The multi-table field lives in the Info tab (docked or drawer). */
+.mtt-panel {
+  display: none;
+}
+
 /* The last dealer line over the felt, in the corner the floating log used to
    occupy. Only shown while the panel is out of view. */
 .dealer-ticker {
@@ -1407,13 +1440,53 @@
   margin-bottom: 4px;
 }
 
+/* Below the docked threshold the same panel is a drawer over the table. It
+   stays laid out (display: flex) and slides off-screen when closed, with
+   visibility following so nothing off-screen can take focus. */
+@media (max-width: 1023px) {
+  .side-panel {
+    display: flex;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--panel-w);
+    max-width: 100%;
+    z-index: 120;
+    transform: translateX(100%);
+    visibility: hidden;
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+    transition:
+      transform 0.22s ease,
+      visibility 0s linear 0.22s;
+  }
+  .side-panel.open {
+    transform: none;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+  .side-panel-close {
+    display: inline-flex;
+  }
+  .panel-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  body.panel-open .dealer-ticker {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side-panel {
+    transition: none;
+  }
+}
+
 @media (min-width: 1024px) {
   .side-panel {
     display: flex;
-  }
-  /* The field lives in the Info tab while the panel is docked. */
-  .mtt-panel {
-    display: none;
   }
   body.rail-hidden .side-panel {
     display: none;

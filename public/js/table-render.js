@@ -322,6 +322,18 @@ const SEAT_ACTION_CSS = {
   allin: 'action-allin',
 };
 
+// Seat geometry depends on the viewport (CSS radii, capacity), so a resize
+// or orientation change re-lays the ring. Debounced; a rebuild is cheap.
+let _seatRelayoutTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_seatRelayoutTimer);
+  _seatRelayoutTimer = setTimeout(() => {
+    if (!gameState) return;
+    _builtIdentityKey = '';
+    renderPlayersIncremental();
+  }, 150);
+});
+
 function seatRenderContext() {
   return {
     isRunning: !!gameState.isRunning,

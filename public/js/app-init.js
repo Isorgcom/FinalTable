@@ -293,8 +293,8 @@ function init() {
   });
   document.getElementById('btnLeaderboard').addEventListener('click', () => {
     closeMenu();
-    // Docked panel: the Stats tab. Phones keep the modal until the drawer lands.
-    if (window.SidePanel && SidePanel.isDocked()) {
+    // The Stats tab, in the docked panel or the phone drawer.
+    if (window.SidePanel) {
       SidePanel.reveal('stats');
       return;
     }
@@ -306,7 +306,7 @@ function init() {
   });
   document.getElementById('btnReplay').addEventListener('click', () => {
     closeMenu();
-    if (window.SidePanel && SidePanel.isDocked()) {
+    if (window.SidePanel) {
       SidePanel.reveal('history');
       return;
     }

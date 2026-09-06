@@ -164,6 +164,15 @@
           <button class="top-btn" id="btnLeaderboard" title="Leaderboard">stats</button>
           <button class="top-btn" id="btnReplay" title="Hand Replay">replay</button>
           <button class="top-btn" id="btnAutoPlay" title="Auto-play this seat">auto</button>
+          <button
+            class="top-btn"
+            id="btnPanelToggle"
+            title="Table panel"
+            aria-controls="sidePanel"
+            aria-expanded="true"
+          >
+            panel
+          </button>
           <!-- Hamburger menu for secondary actions -->
           <div class="menu-shell">
             <button class="menu-toggle" id="menuToggle" aria-label="Menu" aria-haspopup="true">
@@ -324,6 +333,14 @@
           >
             History
           </button>
+          <button
+            class="side-panel-close"
+            id="btnPanelClose"
+            type="button"
+            aria-label="Close panel"
+          >
+            ×
+          </button>
         </div>
         <div class="side-panel-bodies">
           <section class="side-tabpanel" id="panelChat" role="tabpanel" aria-labelledby="tabChat">
@@ -357,6 +374,8 @@
           </section>
         </div>
       </aside>
+      <!-- Drawer backdrop on phones; a tap closes the panel -->
+      <div class="panel-scrim hidden" id="panelScrim"></div>
     </div>
 
     <!-- NPC MANAGEMENT PANEL -->

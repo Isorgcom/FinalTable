@@ -25,6 +25,9 @@
   --rail-w: 0px;
   --topbar-h: 44px;
   --bet-scale: 1;
+  /* Seat ring radii in % of the felt, read by getSeatPositions(). */
+  --seat-rx: 53;
+  --seat-ry: 52;
 }
 @media (min-width: 1024px) {
   :root {

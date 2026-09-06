@@ -172,3 +172,37 @@ test('requesting time extends the clock once per hand', async ({ page }) => {
   await expect(button).toBeDisabled();
   expect(pageErrors).toEqual([]);
 });
+
+test.describe('phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('the side panel is a drawer: toggle, Escape, scrim, and the stats button', async ({
+    page,
+  }) => {
+    const pageErrors = await seatAtPracticeTable(page, 'PhoneTester');
+    const panel = page.locator('#sidePanel');
+    await expect(panel).toBeHidden();
+    await expect(page.locator('#btnPanelToggle')).toHaveAttribute('aria-expanded', 'false');
+
+    await page.click('#btnPanelToggle');
+    await expect(panel).toBeVisible();
+    await expect(page.locator('#panelScrim')).toBeVisible();
+    await expect(page.locator('#btnPanelToggle')).toHaveAttribute('aria-expanded', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+
+    await page.click('#btnPanelToggle');
+    await expect(panel).toBeVisible();
+    await page.locator('#panelScrim').click({ position: { x: 5, y: 400 } });
+    await expect(panel).toBeHidden();
+
+    await page.click('#btnLeaderboard');
+    await expect(panel).toBeVisible();
+    await expect(page.locator('#panelStats')).toBeVisible();
+    await expect(page.locator('#lbPanel')).toBeHidden();
+    await page.click('#btnPanelClose');
+    await expect(panel).toBeHidden();
+    expect(pageErrors).toEqual([]);
+  });
+});
