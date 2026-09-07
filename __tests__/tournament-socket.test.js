@@ -23,8 +23,7 @@ describe('Tournament socket layer', () => {
     process.env.TOURNAMENT_ABANDON_GRACE_MS = '400';
     process.env.TOURNAMENT_SWEEP_MS = '40';
     process.env.HOST_TRANSFER_GRACE_MS = '300';
-    process.env.NPC_DELAY_MIN = '5';
-    process.env.NPC_DELAY_MAX = '10';
+    process.env.AUTO_TURN_DELAY_MS = '5';
     jest.resetModules();
     serverModule = require('../server');
     await serverModule.startServer({

@@ -4,7 +4,6 @@ const { evaluateHand, compareHands, HAND_NAMES } = require('./hand-eval');
 const { describeHand, describeBest } = require('./hand-describe');
 const random = require('./random');
 const { createStructuredLogger } = require('./server/logger');
-const { PlayerStats } = require('./player-stats');
 const { HandHistory, Leaderboard } = require('./hand-history');
 const { Tournament } = require('./tournament');
 
@@ -67,15 +66,11 @@ class PokerGame {
     this.onMessage = null;
 
     // Player behavior tracking
-    this.playerStats = new PlayerStats();
     this.handActionHistory = {};
     this.handActionLog = [];
     this.handStartPlayerCount = 0;
     this.handStartStacks = {};
     this.preflopRaiserId = null;
-
-    // Preflop lookup table (injected by server)
-    this.preflopTable = null;
 
     // Winner tracking (authoritative, sent to client)
     this.lastRoundWinnerIds = [];
@@ -454,7 +449,6 @@ class PokerGame {
 
     // Start tracking this hand
     const activeIds = this.players.filter((p) => !p.folded).map((p) => p.id);
-    this.playerStats.newHand(activeIds);
     for (const id of activeIds) {
       this.handActionHistory[id] = [];
     }
@@ -704,15 +698,6 @@ class PokerGame {
 
     this.clearActionTimeout();
 
-    // v4: Record action for opponent modeling
-    const facingRaise = toCall > 0;
-    const isBlind = false; // blinds are posted separately via postBlind()
-    this.playerStats.recordAction(playerId, this.phase, action, recordedAmount, {
-      facingRaise,
-      isBlind,
-      firstToAct: this.currentBet === 0,
-      checkedTo: this.currentBet === 0,
-    });
     if (this.handActionHistory[playerId]) {
       this.handActionHistory[playerId].push({ phase: this.phase, action, amount: recordedAmount });
     }
@@ -993,13 +978,6 @@ class PokerGame {
 
     // Handle side pots and main pot
     this.distributePot(results);
-
-    // v4: Record showdown hands for opponent modeling
-    const winnerRank = results[0].hand;
-    for (const r of results) {
-      const won = compareHands(r.hand, winnerRank) >= 0;
-      this.playerStats.recordShowdown(r.player.id, r.player.holeCards, won);
-    }
 
     this.endRound();
   }

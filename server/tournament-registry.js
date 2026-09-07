@@ -33,7 +33,6 @@ function createTournamentRegistry(deps = {}) {
         .toLowerCase(),
     maxTournaments = 8,
     tableOptions = {},
-    getPreflopTable = () => null,
     finishedTtlMs = 10 * 60 * 1000,
     abandonGraceMs = 2 * 60 * 1000,
     hostTransferGraceMs = 2 * 60 * 1000,
@@ -265,8 +264,6 @@ function createTournamentRegistry(deps = {}) {
 
   function wireTable(entry, table) {
     table.hostPlayerId = entry.hostUid;
-    const preflop = getPreflopTable();
-    if (preflop) table.preflopTable = preflop;
     table.onUpdate = (g) => {
       for (const r of recipientsFor(entry, g)) {
         io.to(r.socketId).emit('gameState', g.getStateForPlayer(r.playerId));

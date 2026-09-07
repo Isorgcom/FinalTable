@@ -137,7 +137,12 @@ test('a tournament table seats every player, deals, and hands the viewer the act
   await expect(page.locator('#logLast')).not.toContainText('joined the table');
   await expect(page.locator('#panelChatBody .log-entry')).not.toHaveCount(0);
   await expect(page.locator('#panelChatBody .log-entry[data-kind="handStart"]')).not.toHaveCount(0);
-  await expect(page.locator('#panelChatBody .log-entry[data-kind="blind"]')).toHaveCount(2);
+  // Two blinds a hand. The opponent is sitting out, so a hand it opens ends
+  // at once and the viewer's turn can arrive on the second one; the count is
+  // a multiple of two rather than exactly two.
+  const blinds = await page.locator('#panelChatBody .log-entry[data-kind="blind"]').count();
+  expect(blinds).toBeGreaterThanOrEqual(2);
+  expect(blinds % 2).toBe(0);
   await expect(page.locator('#tabChat')).toHaveAttribute('aria-selected', 'true');
   await page.click('#tabInfo');
   await expect(page.locator('#panelInfo')).toBeVisible();
