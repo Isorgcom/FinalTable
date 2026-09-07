@@ -533,8 +533,12 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
   // Check or call whenever the action arrives. The opponent is sitting out, so
   // it checks its blind and checks down; a hand where the viewer is the small
   // blind reaches a showdown.
+  // Bounded by the clock, not by a loop count: hands take as long as the
+  // street and hand pauses make them, so a fixed number of turns either gives
+  // up early or outlives the test timeout, and a timeout reports nothing.
   let reached = false;
-  for (let i = 0; i < 120 && !reached; i++) {
+  const deadline = Date.now() + 30000;
+  while (!reached && Date.now() < deadline) {
     const st = await page.evaluate(() => ({
       phase: gameState && gameState.phase,
       lit: ((gameState && gameState.showdownWinningCards) || []).length,
@@ -548,7 +552,10 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
       break;
     }
     if (st.btn) {
-      await page.click('#' + st.btn).catch(() => {});
+      // The action bar hides itself during the between-street pause, and a
+      // click on a hidden target retries until the *test* times out, so the
+      // catch never runs. Give it its own short deadline instead.
+      await page.click('#' + st.btn, { timeout: 1500 }).catch(() => {});
       await page.waitForTimeout(120);
     } else {
       await page.waitForTimeout(200);
@@ -621,6 +628,53 @@ test('the card sound is served, decoded, and played once per card', async ({ pag
   const offsets = await page.evaluate(() => window.__cardSnaps.slice(0, 4));
   expect(offsets[0]).toBeGreaterThan(0);
   expect(offsets[3]).toBeGreaterThan(offsets[0]);
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('the readout names the hand and then shows the five cards', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Readout');
+  await deal(page);
+  const game = await gameForPage(page);
+  expect(game).toBeTruthy();
+
+  // Preflop there is no five-card hand, so the readout names the holding and
+  // shows nothing. A card here would be the client inventing one.
+  const readout = page.locator('#handStrength');
+  await expect(readout).toContainText('You have');
+  await expect(readout.locator('.hand-card')).toHaveCount(0);
+
+  await page.click('#btnCall');
+  await expect.poll(() => game.communityCards.length, { timeout: 15000 }).toBeGreaterThanOrEqual(3);
+
+  // From the flop on it is a made five, and the name stays: the cards are an
+  // addition to the prose, not a replacement for it.
+  await expect(readout.locator('.hand-card')).toHaveCount(5, { timeout: 10000 });
+  await expect(readout.locator('strong')).not.toBeEmpty();
+
+  // The five it shows are the five the server picked, in the same order.
+  const drawn = await readout.locator('.hand-card').allTextContents();
+  const sent = await page.evaluate(() => gameState.myHand.cards.map((c) => c.rank));
+  expect(drawn.map((t) => t.slice(0, -1))).toEqual(sent);
+
+  // Suit colour is what separates them at a glance; both must resolve to a
+  // real colour rather than inheriting the row's text.
+  const coloured = await readout
+    .locator('.hand-card')
+    .evaluateAll((els) =>
+      els.map((el) => ({ cls: el.className, color: getComputedStyle(el).color }))
+    );
+  for (const c of coloured) {
+    expect(c.cls).toMatch(/hand-card (red|black)/);
+    expect(c.color).toMatch(/^rgb/);
+  }
+
+  // The panel still fits the felt. The readout shares its row with the raise
+  // presets and has no max-width of its own, so a long line pushes them off
+  // rather than wrapping unless the row is told to wrap.
+  const panel = await page.locator('#actionsPanel').boundingBox();
+  expect(panel.x).toBeGreaterThanOrEqual(0);
+  expect(panel.x + panel.width).toBeLessThanOrEqual(page.viewportSize().width + 1);
 
   expect(pageErrors).toEqual([]);
 });

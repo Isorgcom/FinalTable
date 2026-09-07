@@ -67,7 +67,7 @@ function describeBest(best) {
   }
 }
 
-// Returns { name, detail, text, rank } or null without two hole cards.
+// Returns { name, detail, text, rank, cards } or null without two hole cards.
 // Before the flop there is no five-card hand, so the hole cards are described
 // on their own (Pocket Kings, Ace-King suited).
 function describeHand(holeCards, communityCards) {
@@ -80,7 +80,12 @@ function describeHand(holeCards, communityCards) {
   const best = evaluateHand([...holeCards, ...board]);
   if (!best) return null;
   const detail = describeBest(best);
-  return { name: best.name, detail, text: `You have ${detail}`, rank: best.rank };
+  // The five that actually play, so the readout can show the hand rather than
+  // only name it. evaluateHand picks them out of the seven and this is the
+  // line that used to drop them. Mapped down to what the client draws: the
+  // internal sort value is no business of the wire.
+  const cards = (best.cards || []).map((c) => ({ rank: c.rank, suit: c.suit }));
+  return { name: best.name, detail, text: `You have ${detail}`, rank: best.rank, cards };
 }
 
 module.exports = { describeHand, describeBest };

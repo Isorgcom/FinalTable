@@ -1139,6 +1139,21 @@ function updateHandStrength() {
   if (!hand) return;
   el.textContent = 'You have ';
   el.appendChild(createTextElement('strong', '', hand.detail));
+  // Then the five that make it, so "Two Pair" says which two pair. Preflop
+  // there is no five-card hand and the server sends none, which is why this
+  // is a list to walk rather than a flag to check.
+  for (const card of hand.cards || []) {
+    const span = createTextElement(
+      'span',
+      'hand-card ' + (SUIT_COLORS[card.suit] || 'black'),
+      `${card.rank}${SUIT_SYMBOLS[card.suit] || ''}`
+    );
+    span.setAttribute(
+      'aria-label',
+      `${RANK_NAMES[card.rank] || card.rank} of ${SUIT_NAMES[card.suit] || card.suit}`
+    );
+    el.appendChild(span);
+  }
 }
 
 function updateTurnTimerBars(orderedPlayers) {

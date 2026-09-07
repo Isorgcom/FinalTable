@@ -1078,14 +1078,18 @@
   align-items: center;
   gap: 8px;
 }
-/* Hand readout on the left, raise presets on the right. Not a wrapping row,
-   so the auto margin is safe. */
+/* Hand readout on the left, raise presets on the right. It wraps because the
+   readout names five cards and .actions-panel is shrink-to-fit with no
+   max-width: a line too long for the row would otherwise widen the whole panel
+   and push the presets off the felt rather than moving to its own line. */
 .action-presets {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   min-height: 22px;
+  max-width: min(92vw, 620px);
 }
 .hand-strength {
   margin-right: auto;
@@ -1097,6 +1101,24 @@
 .hand-strength strong {
   color: var(--gold);
   font-weight: 600;
+}
+/* The five cards that make the hand. The card face's own red and black are
+   #b53535 and #2a2a2a, both picked against white and neither legible on this
+   panel, so the suits get their own pair tuned for a dark ground. */
+.hand-card {
+  font-family: var(--font-mono);
+  /* Same size as the words around it: these are the substance of the readout,
+     not a footnote to it, and the row is already the smallest text on screen. */
+  font-size: 1em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-left: 7px;
+}
+.hand-card.red {
+  color: #e2766c;
+}
+.hand-card.black {
+  color: var(--cream);
 }
 .seat-caption.is-hand {
   color: var(--gold);
