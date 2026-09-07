@@ -20,7 +20,6 @@ const repoRoot = path.join(__dirname, '..');
 
 test.beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-table-pw-'));
-  process.env.PREFLOP_TABLE = 'off';
   process.env.SAVE_DIR = tempDir;
   process.env.HOST = '127.0.0.1';
   // Bots act almost at once so the viewer's turn comes round in well under a
@@ -40,7 +39,6 @@ test.beforeAll(async () => {
   await serverModule.startServer({
     port: 0,
     host: '127.0.0.1',
-    buildPreflop: false,
     unrefServer: true,
   });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;

@@ -15,7 +15,6 @@ test.setTimeout(60000);
 
 test.beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-tourney-pw-'));
-  process.env.PREFLOP_TABLE = 'off';
   process.env.SAVE_DIR = tempDir;
   process.env.HOST = '127.0.0.1';
   process.env.NPC_DELAY_MIN = '40';
@@ -30,7 +29,6 @@ test.beforeAll(async () => {
   await serverModule.startServer({
     port: 0,
     host: '127.0.0.1',
-    buildPreflop: false,
     unrefServer: true,
   });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
@@ -98,7 +96,6 @@ test('two players reach one table, and one comes back to it after a reload', asy
   expect(after.table).toBe(before.table);
   expect(after.seated).toBe(true);
   expect(after.resumed).toBe(true);
-  expect(serverModule.games.size).toBe(0); // no phantom room, ever
   expect(errors).toEqual([]);
   await guestContext.close();
 });

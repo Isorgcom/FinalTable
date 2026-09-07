@@ -13,7 +13,6 @@ const repoRoot = path.join(__dirname, '..');
 
 test.beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-lobby-pw-'));
-  process.env.PREFLOP_TABLE = 'off';
   process.env.SAVE_DIR = tempDir;
   process.env.HOST = '127.0.0.1';
   process.env.NPC_DELAY_MIN = '40';
@@ -28,7 +27,6 @@ test.beforeAll(async () => {
   await serverModule.startServer({
     port: 0,
     host: '127.0.0.1',
-    buildPreflop: false,
     unrefServer: true,
   });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;

@@ -1,8 +1,8 @@
 const { PokerGame } = require('../engine');
 
-describe('room host state', () => {
+describe('table host state', () => {
   test('marks the matching human player as host in player-specific state', () => {
-    const game = new PokerGame('host-room');
+    const game = new PokerGame('host-table');
     const alice = game.addPlayer({ id: 'p1', name: 'Alice' });
     game.addPlayer({ id: 'p2', name: 'Bob' });
     game.hostPlayerId = alice.uid;

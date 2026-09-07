@@ -16,7 +16,6 @@ describe('Tournament socket layer', () => {
 
   beforeAll(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-tsock-'));
-    process.env.PREFLOP_TABLE = 'off';
     process.env.SAVE_DIR = tempDir;
     process.env.HTTP_RATE_LIMIT = '1000';
     process.env.HOST = '127.0.0.1';
@@ -31,7 +30,6 @@ describe('Tournament socket layer', () => {
     await serverModule.startServer({
       port: 0,
       host: '127.0.0.1',
-      buildPreflop: false,
       unrefServer: true,
     });
     baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
@@ -142,23 +140,6 @@ describe('Tournament socket layer', () => {
     }
     return check();
   }
-
-  test('a tournament socket cannot fall into a room, even one named mtt', async () => {
-    const host = await connectClient();
-    await createTournament(host);
-    const refused = waitFor(host, 'error', (e) => /Leave the tournament/.test(e.message));
-    host.emit('joinRoom', {
-      roomId: 'mtt',
-      playerName: 'Host',
-      npcCount: 0,
-      smallBlind: 10,
-      startChips: 1000,
-      playerAvatar: '🦊',
-      gameMode: 'cash',
-    });
-    await refused;
-    expect(serverModule.games.has('mtt')).toBe(false);
-  });
 
   test('seated players carry their avatar, the host, and the tournament clock', async () => {
     const host = await connectClient();

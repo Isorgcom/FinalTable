@@ -12,7 +12,6 @@ describe('UI smoke', () => {
 
   beforeAll(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lonicera-ui-'));
-    process.env.PREFLOP_TABLE = 'off';
     process.env.SAVE_DIR = tempDir;
     process.env.HOST = '127.0.0.1';
     jest.resetModules();
@@ -20,7 +19,6 @@ describe('UI smoke', () => {
     await serverModule.startServer({
       port: 0,
       host: '127.0.0.1',
-      buildPreflop: false,
       unrefServer: true,
     });
     baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
@@ -56,10 +54,6 @@ describe('UI smoke', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toMatchObject({
-      preflopTableReady: false,
-      preflopTableEnabled: false,
-      activeRooms: 0,
-    });
+    expect(body).toMatchObject({ activeTournaments: 0 });
   });
 });
