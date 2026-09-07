@@ -120,12 +120,14 @@ function updateGameState(state) {
   const nextMe = state && myId ? state.players.find((p) => p.id === myId) : null;
   if (previousMe && nextMe) {
     if (previousMe.isConnected !== false && nextMe.isConnected === false) {
-      addLog('⚠️ Connection lost · this seat will sit out until you are back');
+      addLog('⚠️ Connection lost · this seat sits out until you are back');
     } else if (previousMe.isConnected === false && nextMe.isConnected !== false) {
       addLog(
+        // Coming back resumes the seat on its own, unless sitting out was the
+        // player's own choice, which no reconnect should override.
         nextMe.autoPlay
-          ? '✅ Reconnected · still sitting out, tap sit in when ready'
-          : '✅ Reconnected · control restored'
+          ? '✅ Reconnected · still sitting out by your choice, tap sit in to play'
+          : '✅ Reconnected · you are back in the hand'
       );
     }
     if (!previousMe.isSpectator && nextMe.isSpectator) {

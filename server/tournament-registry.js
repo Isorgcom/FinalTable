@@ -434,20 +434,10 @@ function createTournamentRegistry(deps = {}) {
 
     const existing = entry.registrations.get(uid);
     if (existing) {
-      // Back for more: a left player rejoins their own seat, and takes it off
-      // sit-out. Leaving switched the seat to sitting out so the stack could
-      // keep posting blinds; coming back deliberately is a request to play it
-      // again, not to watch it fold itself away. A socket reconnect is
-      // different and is left alone: see bind().
-      const wasLeft = existing.left;
+      // Back for more: a player rejoins their own seat. bind() takes it off
+      // sit-out, the same as any other return.
       existing.left = false;
-      const seat = entry.director.playerByUid(uid);
-      if (wasLeft && seat && seat.player.autoPlay) {
-        seat.player.autoPlay = false;
-        seat.table.emitMessage(`${seat.player.name} is back at the table`, { kind: 'system' });
-      }
       if (socket) bind(entry, uid, socket, { resumed: true });
-      if (wasLeft && seat) seat.table.emitUpdate();
       emitState(entry);
       emitList();
       return { entry };
@@ -483,6 +473,27 @@ function createTournamentRegistry(deps = {}) {
     return { entry };
   }
 
+  // A seat sits out when its player drops, leaves or lets the clock run out.
+  // None of those are a decision to sit out, so being back at the keyboard
+  // undoes them: the seat plays again without anyone having to notice a badge
+  // and press a button. A seat the player deliberately sat out stays sitting
+  // out, because that one *was* the decision.
+  //
+  // If it is their turn when they land, the clock has to be handed back too:
+  // the pending sit-out timer will see a non-automated seat and bail without
+  // acting, leaving the turn with nothing driving it.
+  function resumeSeat(seat) {
+    const { table, player } = seat;
+    if (!player.autoPlay || player.sitOutReason === 'requested') return false;
+    player.autoPlay = false;
+    player.sitOutReason = null;
+    table.emitMessage(`${player.name} is back at the table`, { kind: 'system' });
+    const idx = table.players.findIndex((p) => p.id === player.id);
+    if (table.isRunning && idx === table.currentPlayerIndex) table.beginCurrentTurn();
+    else table.emitUpdate();
+    return true;
+  }
+
   // Bind a socket to its registration. On a rejoin the seated player's id is
   // rebound to the new socket, exactly as the room layer does on reconnect,
   // so every socket-id-keyed path in the engine and the client keeps working.
@@ -502,6 +513,7 @@ function createTournamentRegistry(deps = {}) {
       seat.player.id = socket.id;
       seat.player.isConnected = true;
       seat.player.disconnectedAt = null;
+      resumeSeat(seat);
     }
     socket.emit('tournamentJoined', {
       id: entry.id,
@@ -541,6 +553,7 @@ function createTournamentRegistry(deps = {}) {
       if (table.isRunning && !player.folded && !player.allIn) {
         if (!player.autoPlay) {
           player.autoPlay = true;
+          player.sitOutReason = 'disconnect';
           player.isReady = false;
           table.emitMessage(`${player.name} is sitting out after a dropped connection`, {
             kind: 'system',
@@ -592,6 +605,7 @@ function createTournamentRegistry(deps = {}) {
     const seat = entry.director.playerByUid(uid);
     if (seat && !seat.player.autoPlay) {
       seat.player.autoPlay = true;
+      seat.player.sitOutReason = 'left';
       seat.table.emitMessage(`${seat.player.name} left the table and is sitting out`, {
         kind: 'system',
       });

@@ -218,6 +218,48 @@ describe('tournament registry', () => {
     expect(entry.director.playerByUid('h').player.autoPlay).toBe(false);
   });
 
+  test('a dropped connection sits the seat out, and coming back resumes it', () => {
+    const hostSocket = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+    const guest = makeSocket('sg', 'g');
+    registry.join('g', { code: entry.code }, guest);
+    registry.startNow(entry, 'h');
+    // start() seats the field; the first hand arrives on the director's tick.
+    jest.advanceTimersByTime(1300);
+    entry.director.holdField();
+    const seat = entry.director.playerByUid('h');
+    expect(seat.table.isRunning).toBe(true);
+
+    registry.unbind(entry, 'h', hostSocket);
+    expect(seat.player.autoPlay).toBe(true);
+    expect(seat.player.sitOutReason).toBe('disconnect');
+    expect(seat.player.isConnected).toBe(false);
+
+    registry.bind(entry, 'h', makeSocket('sh2', 'h'), { resumed: true });
+    expect(seat.player.autoPlay).toBe(false);
+    expect(seat.player.sitOutReason).toBeNull();
+    expect(seat.player.isConnected).toBe(true);
+  });
+
+  test('a sit-out the player asked for survives a reconnect', () => {
+    const hostSocket = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+    registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+    registry.startNow(entry, 'h');
+    jest.advanceTimersByTime(1300);
+    entry.director.holdField();
+    const seat = entry.director.playerByUid('h');
+
+    // What the sit-out button does, through the handler's own bookkeeping.
+    seat.player.autoPlay = true;
+    seat.player.sitOutReason = 'requested';
+
+    registry.unbind(entry, 'h', hostSocket);
+    registry.bind(entry, 'h', makeSocket('sh2', 'h'), { resumed: true });
+    expect(seat.player.autoPlay).toBe(true);
+    expect(seat.player.sitOutReason).toBe('requested');
+  });
+
   test('one live registration per identity, resumable by uid', () => {
     const { entry } = create({ startsAt: Date.now() + 60000 });
     expect(registry.create('h', { name: 'Again' }, makeSocket('sh2')).error).toMatch(/already/);

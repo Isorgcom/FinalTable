@@ -170,6 +170,10 @@ class PokerGame {
       isConnected: true,
       isReady: false,
       autoPlay: false,
+      // Why this seat is sitting out: 'requested' when the player asked for
+      // it, 'timeout' | 'disconnect' | 'left' when it was decided for them.
+      // Only the first survives their return: see bind() in the registry.
+      sitOutReason: null,
       wins: 0,
       handsPlayed: 0,
     };
@@ -308,6 +312,7 @@ class PokerGame {
         return;
       }
       liveCurrent.autoPlay = true;
+      liveCurrent.sitOutReason = 'timeout';
       this.emitMessage(`${this.getPublicName(liveCurrent)} timed out and is sitting out`, {
         kind: 'timebank',
       });
@@ -1396,6 +1401,7 @@ class PokerGame {
         isConnected: p.isConnected,
         isReady: !!p.isReady,
         autoPlay: !!p.autoPlay,
+        sitOutReason: p.sitOutReason || null,
         isSpectator: this.isSpectatorPlayer(p),
         avatar: p.avatar || null,
         lastAction: p.lastAction || null,

@@ -155,6 +155,9 @@ function registerTournamentHandlers(deps) {
       const enabled = payload.enabled !== false;
       if (player.autoPlay === enabled) return;
       player.autoPlay = enabled;
+      // Asked for, so it survives a reconnect: resumeSeat() leaves this one
+      // alone where it undoes a drop, a timeout or a walk-out.
+      player.sitOutReason = enabled ? 'requested' : null;
       player.isReady = false;
       table.emitMessage(`${player.name} ${enabled ? 'is sitting out' : 'is back at the table'}`, {
         kind: 'system',

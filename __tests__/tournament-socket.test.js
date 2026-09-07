@@ -241,6 +241,9 @@ describe('Tournament socket layer', () => {
     const seatAfter = entry.director.playerByUid(joined.uid);
     expect(seatAfter.player.id).toBe(second.id);
     expect(seatAfter.player.isConnected).toBe(true);
+    // The drop sat the seat out; being back at the keyboard undoes it.
+    expect(seatAfter.player.autoPlay).toBe(false);
+    expect(seatAfter.player.sitOutReason).toBeNull();
     const seen = await state;
     expect(seen.players.some((p) => p.id === second.id)).toBe(true);
     expect(serverModule.tournaments.has(joined.id)).toBe(true);

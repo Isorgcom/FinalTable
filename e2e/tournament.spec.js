@@ -151,3 +151,69 @@ test('the host can leave the table and rejoin it, back in control', async ({ bro
   expect(errors).toEqual([]);
   await guestContext.close();
 });
+
+test('a dropped connection sits the seat out, and coming back resumes it', async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Dropper');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Dropper');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Signal Loss');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code}`);
+  await guest.fill('#playerName', 'Steady');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // The table screen opens on tournamentJoined; the first hand arrives on the
+  // director's next tick. Dropping before it is dealt is a no-op, because a
+  // seat at an idle table has nothing to sit out of.
+  await expect
+    .poll(() =>
+      page.evaluate(() => !!(typeof gameState !== 'undefined' && gameState && gameState.isRunning))
+    )
+    .toBe(true);
+
+  const uid = await page.evaluate(() => window.__identity.uid);
+  const seatState = () => {
+    const entry = serverModule.registry.findByUid(uid);
+    const seat = entry ? entry.director.playerByUid(uid) : null;
+    return seat ? { auto: !!seat.player.autoPlay, reason: seat.player.sitOutReason } : null;
+  };
+
+  // Drop the socket. This half is asserted on the server: a disconnected page
+  // stops receiving gameState, so it cannot see its own seat sit out.
+  await page.evaluate(() => socket.disconnect());
+  await expect.poll(() => seatState() && seatState().auto).toBe(true);
+  expect(seatState().reason).toBe('disconnect');
+
+  // Coming back hands the seat straight back, with no button to press.
+  await page.evaluate(() => socket.connect());
+  await expect.poll(() => seatState() && seatState().auto).toBe(false);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const me = gameState && gameState.players.find((p) => p.id === myId);
+        return me ? !!me.autoPlay : null;
+      })
+    )
+    .toBe(false);
+  await expect(page.locator('#btnAutoPlay')).toHaveText('sit out');
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
