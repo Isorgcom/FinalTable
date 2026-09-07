@@ -105,7 +105,7 @@
           <div class="form-group">
             <label for="tStartAt">Starts</label>
             <div class="seg" id="tStartQuick" role="group" aria-label="Start time">
-              <button type="button" data-min="0">Now</button>
+              <button type="button" data-min="0">As soon as we are 2</button>
               <button type="button" data-min="5">+5 min</button>
               <button type="button" data-min="15">+15</button>
               <button type="button" data-min="30">+30</button>
@@ -155,10 +155,6 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="tBots">Bots to add</label>
-              <input type="number" id="tBots" min="0" max="60" value="0" inputmode="numeric" />
-            </div>
-            <div class="form-group">
               <label for="tBuyIn">Buy-in (play chips)</label>
               <input type="number" id="tBuyIn" min="0" max="10000" value="0" inputmode="numeric" />
             </div>
@@ -184,15 +180,6 @@
           <div class="wr-settings" id="wrSettings"></div>
           <div class="wr-host hidden" id="wrHostControls">
             <button class="btn-enter" id="btnStartNow" type="button">Start now</button>
-            <div class="wr-bots" aria-label="Bots">
-              <button class="btn-secondary" id="btnBotsMinus" type="button" aria-label="Fewer bots">
-                −
-              </button>
-              <span><span id="wrBotCount">0</span> bots</span>
-              <button class="btn-secondary" id="btnBotsPlus" type="button" aria-label="More bots">
-                +
-              </button>
-            </div>
             <button class="btn-danger" id="btnCancelTournament" type="button">
               Cancel tournament
             </button>

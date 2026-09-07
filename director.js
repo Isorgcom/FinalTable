@@ -176,13 +176,6 @@ class TournamentDirector {
     return this.entrants.length < before;
   }
 
-  // Swap the bot entrants for a new set, keeping every human in place.
-  replaceBots(bots) {
-    if (this.isRunning) return false;
-    this.entrants = [...this.entrants.filter((e) => !e.isNPC), ...bots];
-    return true;
-  }
-
   lateRegOpen() {
     return this.isRunning && !this.finished && this.tournament.currentLevel < this.lateRegLevels;
   }

@@ -85,13 +85,6 @@ function registerTournamentHandlers(deps) {
       if (error) fail(socket, error);
     });
 
-    socket.on('setTournamentBots', (payload = {}) => {
-      const entry = entryFor(socket);
-      if (!entry) return;
-      const { error } = registry.setBots(entry, socket.data.uid, payload.count);
-      if (error) fail(socket, error);
-    });
-
     socket.on('unregisterTournament', () => {
       const entry = entryFor(socket);
       if (!entry) return;

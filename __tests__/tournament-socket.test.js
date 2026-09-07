@@ -118,18 +118,35 @@ describe('Tournament socket layer', () => {
       socket.__identity = await identify(socket, { name: playerName, avatar: playerAvatar });
     }
     const joined = waitFor(socket, 'tournamentJoined');
-    // A start an hour away: without one the registry starts as soon as two
-    // entrants exist, and the bots count. Tests that want a start say so.
+    // A start an hour away: without one the registry deals as soon as a second
+    // entrant registers. Tests that want a start say so.
     socket.emit('createTournament', {
       name: 'Test Night',
       tableSize: 6,
-      botCount: 2,
       startChips: 1000,
       levelDuration: 600,
       startsAt: Date.now() + 60 * 60 * 1000,
       ...rest,
     });
     return joined;
+  }
+
+  // A field of one never starts, so every test that needs a dealt table needs
+  // a second person. Bots used to be that second entrant; a second socket is
+  // now. The caller owns both sockets.
+  async function createTournamentWithGuest(host, payload = {}) {
+    const { guestName = 'Guest', guestAvatar = '🐸', ...rest } = payload;
+    const created = await createTournament(host, rest);
+    const guest = await connectClient();
+    await joinByCode(guest, created.code, { name: guestName, avatar: guestAvatar });
+    return { created, guest };
+  }
+
+  async function startAndDeal(host, guest) {
+    const hostDealt = waitFor(host, 'gameState', (st) => st.isRunning, 5000);
+    const guestDealt = waitFor(guest, 'gameState', (st) => st.isRunning, 5000);
+    host.emit('startTournament');
+    return Promise.all([hostDealt, guestDealt]);
   }
 
   async function until(check, timeoutMs = 4000, everyMs = 25) {
@@ -143,15 +160,13 @@ describe('Tournament socket layer', () => {
 
   test('seated players carry their avatar, the host, and the tournament clock', async () => {
     const host = await connectClient();
-    const joined = await createTournament(host, { playerAvatar: '🐸', botCount: 1 });
-    const state = waitFor(host, 'gameState', (s) => s.isRunning);
-    host.emit('startTournament');
-    const seen = await state;
-    const me = seen.players.find((p) => !p.isNPC);
+    const { created, guest } = await createTournamentWithGuest(host, { playerAvatar: '🐸' });
+    const [seen] = await startAndDeal(host, guest);
+    const me = seen.players.find((p) => p.uid === created.uid);
     expect(me.avatar).toBe('🐸');
-    expect(me.uid).toBe(joined.uid);
+    expect(me.uid).toBe(created.uid);
     expect(seen.gameMode).toBe('tournament');
-    expect(seen.hostId).toBe(joined.uid);
+    expect(seen.hostId).toBe(created.uid);
     expect(seen.hostName).toBe('Host');
     expect(seen.turnDurationMs === null || seen.turnDurationMs <= 25000).toBe(true);
   });
@@ -170,16 +185,15 @@ describe('Tournament socket layer', () => {
 
   test('a running tournament survives a dropped connection for the grace period, then goes', async () => {
     const host = await connectClient();
-    const joined = await createTournament(host, { botCount: 1 });
-    const running = waitFor(host, 'gameState', (st) => st.isRunning);
-    host.emit('startTournament');
-    await running;
+    const { created: joined, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
     expect(serverModule.tournaments.has(joined.id)).toBe(true);
     const entry = serverModule.tournaments.get(joined.id);
-    // No new hands: a heads-up between two automated seats could finish and
+    // No new hands: a heads-up between two sit-out seats could finish and
     // expire inside the grace window, which is not what this test is about.
     entry.director.holdField();
     host.close();
+    guest.close();
     // The server notices the drop...
     expect(await until(() => entry.registrations.get(joined.uid).socketId === null)).toBe(true);
     // ...keeps the tournament through the grace...
@@ -206,11 +220,9 @@ describe('Tournament socket layer', () => {
 
   test('a fresh socket with the same token rejoins the seat and the table follows', async () => {
     const first = await connectClient();
-    const joined = await createTournament(first, { botCount: 1 });
+    const { created: joined, guest } = await createTournamentWithGuest(first);
     const token = first.__identity.token;
-    const running = waitFor(first, 'gameState', (s) => s.isRunning);
-    first.emit('startTournament');
-    await running;
+    await startAndDeal(first, guest);
     const entry = serverModule.tournaments.get(joined.id);
     const seatBefore = entry.director.playerByUid(joined.uid);
     expect(seatBefore.player.id).toBe(first.id);
@@ -231,7 +243,7 @@ describe('Tournament socket layer', () => {
     expect(seatAfter.player.id).toBe(second.id);
     expect(seatAfter.player.isConnected).toBe(true);
     const seen = await state;
-    expect(seen.players.some((p) => p.id === second.id && !p.isNPC)).toBe(true);
+    expect(seen.players.some((p) => p.id === second.id)).toBe(true);
     expect(serverModule.tournaments.has(joined.id)).toBe(true);
   });
 
@@ -245,7 +257,7 @@ describe('Tournament socket layer', () => {
 
   test('two humans register by code and both see the roster with avatars', async () => {
     const host = await connectClient();
-    const created = await createTournament(host, { botCount: 2 });
+    const created = await createTournament(host);
     expect(created.code).toMatch(/^[A-Z2-9]{5}$/);
     const guest = await connectClient();
     const hostSees = waitFor(host, 'tournamentState', (st) =>
@@ -258,7 +270,7 @@ describe('Tournament socket layer', () => {
     expect(joined.host).toBe(false);
     expect(joined.status).toBe('registering');
     const state = await hostSees;
-    const humans = state.roster.filter((r) => !r.isNPC);
+    const humans = state.roster;
     expect(humans).toHaveLength(2);
     expect(humans.find((r) => r.name === 'Host')).toMatchObject({
       avatar: '🦊',
@@ -270,15 +282,14 @@ describe('Tournament socket layer', () => {
       isHost: false,
       connected: true,
     });
-    expect(state.roster.filter((r) => r.isNPC)).toHaveLength(2);
-    expect(state.entrants).toBe(4);
+    expect(state.entrants).toBe(2);
     expect(state.isHost).toBe(true);
     const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
     expect(list.find((t) => t.id === created.id)).toMatchObject({
       code: created.code,
       status: 'registering',
       hostName: 'Host',
-      entrants: { humans: 2, bots: 2, total: 4 },
+      entrants: { humans: 2, total: 2 },
     });
   });
 
@@ -294,7 +305,7 @@ describe('Tournament socket layer', () => {
 
   test('a scheduled start deals to everyone when the time arrives', async () => {
     const host = await connectClient();
-    const created = await createTournament(host, { botCount: 1, startsAt: Date.now() + 250 });
+    const created = await createTournament(host, { startsAt: Date.now() + 250 });
     const guest = await connectClient();
     await joinByCode(guest, created.code, { name: 'Guest2' });
     const hostDealt = waitFor(host, 'gameState', (st) => st.isRunning, 5000);
@@ -308,10 +319,8 @@ describe('Tournament socket layer', () => {
 
   test('a late entrant is seated with the starting stack after the start', async () => {
     const host = await connectClient();
-    const created = await createTournament(host, { botCount: 2, lateRegLevels: 3 });
-    const running = waitFor(host, 'gameState', (st) => st.isRunning);
-    host.emit('startTournament');
-    await running;
+    const { created, guest } = await createTournamentWithGuest(host, { lateRegLevels: 3 });
+    await startAndDeal(host, guest);
     const late = await connectClient();
     const joined = await joinByCode(late, created.code, { name: 'Late' });
     expect(joined.status).toBe('running');
@@ -322,7 +331,7 @@ describe('Tournament socket layer', () => {
     const seat = entry.director.playerByUid(late.__identity.uid);
     expect(seat.player.chips).toBe(1000);
     expect(seat.player.id).toBe(late.id);
-    expect(entry.director.entrants).toHaveLength(4);
+    expect(entry.director.entrants).toHaveLength(3);
     expect(() => entry.director.assertChipConservation()).not.toThrow();
   });
 
@@ -347,10 +356,8 @@ describe('Tournament socket layer', () => {
 
   test('leaving a running tournament keeps the seat under auto-play', async () => {
     const host = await connectClient();
-    const created = await createTournament(host, { botCount: 2 });
-    const running = waitFor(host, 'gameState', (st) => st.isRunning);
-    host.emit('startTournament');
-    await running;
+    const { created, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
     const left = waitFor(host, 'leftTournament');
     host.emit('exitGame');
     expect(await left).toMatchObject({ id: created.id, reason: 'left' });

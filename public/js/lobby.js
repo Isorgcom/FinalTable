@@ -301,9 +301,7 @@
 
     const meta = document.createElement('div');
     meta.className = 't-card-meta';
-    const players =
-      `${t.entrants.humans} player${t.entrants.humans === 1 ? '' : 's'}` +
-      (t.entrants.bots ? ` · ${t.entrants.bots} bots` : '');
+    const players = `${t.entrants.total} player${t.entrants.total === 1 ? '' : 's'}`;
     const parts = [
       t.hostName ? `Host ${t.hostName}` : null,
       players,
@@ -400,7 +398,6 @@
       startChips: parseInt($('tStartChips').value, 10),
       levelDuration: parseInt($('tLevelDuration').value, 10),
       lateRegLevels: parseInt($('tLateRegLevels').value, 10),
-      botCount: Math.max(0, Math.min(60, parseInt($('tBots').value, 10) || 0)),
       buyIn: Math.max(0, Math.min(10000, parseInt($('tBuyIn').value, 10) || 0)),
     };
     if (identity && socket && socket.connected) {
@@ -434,13 +431,13 @@
 
   function renderRosterRow(row) {
     const line = document.createElement('div');
-    line.className = 'wr-row' + (row.isNPC ? ' wr-row-bot' : '');
+    line.className = 'wr-row';
     const dot = document.createElement('span');
     dot.className = 'wr-dot' + (row.connected ? ' on' : '');
-    dot.title = row.isNPC ? 'Bot' : row.connected ? 'Connected' : 'Not connected';
+    dot.title = row.connected ? 'Connected' : 'Not connected';
     const avatar = document.createElement('span');
     avatar.className = 'wr-avatar';
-    avatar.textContent = row.avatar || (row.isNPC ? '🤖' : '🧑');
+    avatar.textContent = row.avatar || '🧑';
     const name = document.createElement('span');
     name.className = 'wr-name';
     name.textContent = row.name;
@@ -449,12 +446,6 @@
       const badge = document.createElement('span');
       badge.className = 'wr-badge';
       badge.textContent = 'host';
-      line.appendChild(badge);
-    }
-    if (row.isNPC) {
-      const badge = document.createElement('span');
-      badge.className = 'wr-badge wr-badge-bot';
-      badge.textContent = 'bot';
       line.appendChild(badge);
     }
     if (row.place) {
@@ -497,7 +488,6 @@
     }
     const host = $('wrHostControls');
     host.classList.toggle('hidden', !(t.isHost && t.status === 'registering'));
-    $('wrBotCount').textContent = String(s.botCount || 0);
     $('btnStartNow').disabled = (t.entrants || 0) < 2;
     $('btnUnregister').classList.toggle('hidden', t.status !== 'registering');
     $('btnLeaveTournament').classList.toggle('hidden', t.status === 'registering');
@@ -605,13 +595,6 @@
       }
       if (ok && socket) socket.emit('cancelTournament');
     });
-    const bots = (delta) => {
-      if (!current || !socket) return;
-      const next = Math.max(0, Math.min(60, (current.settings.botCount || 0) + delta));
-      socket.emit('setTournamentBots', { count: next });
-    };
-    $('btnBotsMinus').addEventListener('click', () => bots(-1));
-    $('btnBotsPlus').addEventListener('click', () => bots(1));
     $('btnUnregister').addEventListener('click', leave);
     $('btnLeaveTournament').addEventListener('click', leave);
     $('btnEnterTable').addEventListener('click', enterTable);

@@ -1,11 +1,11 @@
 // table.spec.js - the table screen, end to end in a real browser.
 //
 // The Jest suite covers the engine thoroughly and the DOM barely at all. This
-// spec is the safety net for the table UI: it boots the real server, seats a
-// human at a practice table with fast bots, deals, and checks that the seats,
-// the action bar, the log and a raise all round-trip through the socket.
-// Server-side assertions go through game.onMessage rather than the log DOM so
-// they survive the log moving between containers.
+// spec is the safety net for the table UI: it boots the real server, seats two
+// humans at a tournament table, deals, and checks that the seats, the action
+// bar, the log and a raise all round-trip through the socket. Server-side
+// assertions go through game.onMessage rather than the log DOM so they survive
+// the log moving between containers.
 
 const fs = require('fs');
 const os = require('os');
@@ -53,6 +53,25 @@ test.afterAll(async () => {
   process.env = originalEnv;
 });
 
+let guestContext = null;
+let browserRef = null;
+
+test.beforeEach(({ browser }) => {
+  browserRef = browser;
+});
+
+test.afterEach(async () => {
+  if (guestContext) await guestContext.close();
+  guestContext = null;
+  // Both seats of a finished test's table are sitting out once the pages
+  // close, and a table of sit-outs keeps dealing itself hands until the
+  // abandon reaper notices. Stop the field so it does not compete with the
+  // next test for the box.
+  for (const entry of serverModule.registry.tournaments.values()) {
+    if (entry.director && entry.director.isRunning) entry.director.holdField();
+  }
+});
+
 // The table a page is seated at, through the registry: the page knows its
 // identity uid, and the registry knows where that uid sits right now.
 async function gameForPage(page) {
@@ -62,8 +81,14 @@ async function gameForPage(page) {
   return seat ? seat.table : null;
 }
 
-// Create a tournament that starts now with a few bots; the sweep deals it.
-async function seatAtTournamentTable(page, name, { bots = 3 } = {}) {
+// A dealt heads-up table. A field of one never starts, so the viewer needs an
+// opponent: a second browser context joins by link and the host starts.
+//
+// The opponent sits out the moment it is seated. Left as a live human it would
+// never act, and the viewer would wait out its whole 25-second clock before the
+// action came round; sitting out, it checks or folds on its own and the turn
+// reaches the viewer within a hand. The context is closed in afterEach.
+async function seatAtTournamentTable(page, name) {
   const pageErrors = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
   await page.goto(baseUrl);
@@ -72,10 +97,29 @@ async function seatAtTournamentTable(page, name, { bots = 3 } = {}) {
   await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
   await page.click('#btnCreateTournament');
   await page.fill('#tName', `${name} table`);
-  await page.click('#tStartQuick button[data-min="0"]');
-  await page.fill('#tBots', String(bots));
+  await page.click('#tStartQuick button[data-min="15"]');
   await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  guestContext = await browserRef.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
+  await guest.fill('#playerName', `${name}Foe`);
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+
+  // Enabled only once the guest's registration has reached the host.
+  await expect(page.locator('#btnStartNow')).toBeEnabled();
+  await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 15000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 15000 });
+  // The game screen opens on tournamentJoined, before the first gameState
+  // arrives; clicking sit-out any earlier is a no-op because the client has no
+  // seat to toggle yet.
+  await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(2);
+  await guest.click('#btnAutoPlay');
+  await expect(guest.locator('#btnAutoPlay')).toHaveText('resume', { timeout: 10000 });
   return pageErrors;
 }
 
@@ -88,7 +132,7 @@ test('a tournament table seats every player, deals, and hands the viewer the act
 }) => {
   const pageErrors = await seatAtTournamentTable(page, 'TableTester');
 
-  await expect(page.locator('#playerSeats .player-seat')).toHaveCount(4);
+  await expect(page.locator('#playerSeats .player-seat')).toHaveCount(2);
 
   await deal(page);
 
@@ -114,7 +158,7 @@ test('a tournament table seats every player, deals, and hands the viewer the act
   await expect(page.locator('#btnFold')).toBeVisible();
   // Blinds are on the felt as chip stacks, and every plate carries an avatar
   await expect(page.locator('#feltBets .felt-bet')).not.toHaveCount(0);
-  await expect(page.locator('#playerSeats .seat-plate .seat-avatar')).toHaveCount(4);
+  await expect(page.locator('#playerSeats .seat-plate .seat-avatar')).toHaveCount(2);
   await expect(page.locator('.player-bet-badge')).toHaveCount(0);
   await expect(page.locator('#handStrength')).toContainText('You have');
   await expect(page.locator('#presetGroup .preset-btn')).toHaveCount(4);

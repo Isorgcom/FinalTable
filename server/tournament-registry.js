@@ -12,7 +12,6 @@
 // need the same loop anyway. `now` and `timers` are injectable for tests.
 
 const { TournamentDirector } = require('../director');
-const { getAvailableNPCs, getNPCByName } = require('../npc');
 const random = require('../random');
 
 const TICK_MS = 1200;
@@ -71,8 +70,6 @@ function createTournamentRegistry(deps = {}) {
         uid: e.uid,
         name: e.name,
         avatar: e.avatar || null,
-        isNPC: !!e.isNPC,
-        npcProfileName: e.isNPC && e.npcProfile ? e.npcProfile.name : null,
       })),
       registrations: [...entry.registrations.entries()].map(([uid, r]) => ({
         uid,
@@ -175,7 +172,7 @@ function createTournamentRegistry(deps = {}) {
       startedAt: entry.startedAt,
       finishedAt: entry.finishedAt,
       hostName: hostName(entry),
-      entrants: { humans, bots: total - humans, total },
+      entrants: { humans, total },
       tableSize: d.tableSize,
       startChips: d.startChips,
       levelDuration: d.tournament.levelDuration,
@@ -216,7 +213,7 @@ function createTournamentRegistry(deps = {}) {
       return {
         ...row,
         isHost: row.uid === entry.hostUid,
-        connected: row.isNPC ? true : !!(r && r.socketId),
+        connected: !!(r && r.socketId),
       };
     });
     return {
@@ -247,29 +244,6 @@ function createTournamentRegistry(deps = {}) {
     };
   }
 
-  // ── Bots ─────────────────────────────────────────────────────────────────
-
-  // There are ~22 distinct profiles and getAvailableNPCs caps two per source,
-  // so a large field reuses them with a numeric suffix rather than silently
-  // seating fewer bots than asked for.
-  function makeBotEntrants(count) {
-    const pool = getAvailableNPCs(Math.min(count, 22));
-    const bots = [];
-    for (let i = 0; i < count; i++) {
-      const profile = pool[i % pool.length];
-      if (!profile) break;
-      const round = Math.floor(i / pool.length);
-      bots.push({
-        id: random.randomId('npc_'),
-        uid: random.randomId('u_'),
-        name: round === 0 ? profile.name : `${profile.name} ${round + 1}`,
-        isNPC: true,
-        npcProfile: profile,
-      });
-    }
-    return bots;
-  }
-
   // ── Tables ───────────────────────────────────────────────────────────────
 
   // Seated humans get their table's state; so does anyone watching that table
@@ -278,7 +252,6 @@ function createTournamentRegistry(deps = {}) {
   function recipientsFor(entry, table) {
     const out = [];
     for (const p of table.players) {
-      if (p.isNPC) continue;
       const reg = entry.registrations.get(p.uid);
       if (reg && reg.socketId) out.push({ socketId: reg.socketId, playerId: p.id });
     }
@@ -338,7 +311,6 @@ function createTournamentRegistry(deps = {}) {
         levelDuration: Math.max(30, Math.min(3600, int(payload.levelDuration, 300))),
         lateRegLevels: Math.max(0, Math.min(8, int(payload.lateRegLevels, 3))),
         buyIn: Math.max(0, Math.min(10000, int(payload.buyIn, 0))),
-        botCount: Math.max(0, Math.min(60, int(payload.botCount, 0))),
       },
     };
   }
@@ -358,7 +330,6 @@ function createTournamentRegistry(deps = {}) {
       name: who.name,
       avatar: who.avatar,
     });
-    for (const bot of makeBotEntrants(settings.botCount)) entry.director.register(bot);
     entry.registrations.set(uid, {
       socketId: null,
       disconnectedAt: null,
@@ -400,8 +371,6 @@ function createTournamentRegistry(deps = {}) {
       buyIn: settings.buyIn,
       levelDuration: settings.levelDuration,
       lateRegLevels: settings.lateRegLevels,
-      // Tournament tables run the tournament clock and get the same bot
-      // options as rooms.
       gameOptions: { gameMode: 'tournament', ...tableOptions },
       onTableCreated: (table) => wireTable(entry, table),
       onMessage: (msg) => emitAll(entry, 'gameMessage', msg),
@@ -464,7 +433,7 @@ function createTournamentRegistry(deps = {}) {
     if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
     if (entry.status === 'finished') return { error: 'That tournament is over' };
     const key = normalizeNameKey(who.name);
-    if (entry.director.entrants.some((e) => !e.isNPC && normalizeNameKey(e.name) === key)) {
+    if (entry.director.entrants.some((e) => normalizeNameKey(e.name) === key)) {
       return { error: 'Name already taken in this tournament' };
     }
     const entrant = { id: socket ? socket.id : null, uid, name: who.name, avatar: who.avatar };
@@ -630,18 +599,6 @@ function createTournamentRegistry(deps = {}) {
     return { entry };
   }
 
-  function setBots(entry, uid, count) {
-    if (!requireHost(entry, uid)) return { error: 'Only the host can change the bots' };
-    if (entry.status !== 'registering') return { error: 'The tournament has started' };
-    const n = Math.max(0, Math.min(60, parseInt(count, 10) || 0));
-    entry.director.replaceBots(makeBotEntrants(n));
-    entry.settings.botCount = n;
-    persist();
-    emitState(entry);
-    emitList();
-    return { entry };
-  }
-
   function start(entry) {
     entry.director.start();
     entry.status = 'running';
@@ -771,9 +728,9 @@ function createTournamentRegistry(deps = {}) {
     }
   }
 
-  // Rebuild registering tournaments from the store at boot. Humans come back
-  // unbound (they identify and are rebound); bots come back by profile name.
-  // The first sweep starts anything that is overdue.
+  // Rebuild registering tournaments from the store at boot. Everyone comes
+  // back unbound: they identify and are rebound. The first sweep starts
+  // anything that is overdue.
   function restore() {
     if (!store) return 0;
     let restored = 0;
@@ -786,23 +743,14 @@ function createTournamentRegistry(deps = {}) {
         name: saved.name,
         startsAt: Number(saved.startsAt) || now(),
         hostUid: saved.hostUid,
-        settings: { ...settings, botCount: saved.settings ? saved.settings.botCount || 0 : 0 },
+        settings,
         createdAt: saved.createdAt,
       });
       for (const e of saved.entrants || []) {
-        if (e.isNPC) {
-          const profile = e.npcProfileName ? getNPCByName(e.npcProfileName) : null;
-          if (!profile) continue;
-          entry.director.register({
-            id: random.randomId('npc_'),
-            uid: e.uid || random.randomId('u_'),
-            name: e.name || profile.name,
-            isNPC: true,
-            npcProfile: profile,
-          });
-        } else {
-          entry.director.register({ id: null, uid: e.uid, name: e.name, avatar: e.avatar || null });
-        }
+        // A file written before the bots were removed carries them; skip those
+        // rows rather than choking on a tournament that is otherwise fine.
+        if (e.isNPC) continue;
+        entry.director.register({ id: null, uid: e.uid, name: e.name, avatar: e.avatar || null });
       }
       for (const r of saved.registrations || []) {
         if (!r || !r.uid) continue;
@@ -836,7 +784,6 @@ function createTournamentRegistry(deps = {}) {
     leave,
     startNow,
     cancel,
-    setBots,
     stateFor,
     listFor,
     publicList,

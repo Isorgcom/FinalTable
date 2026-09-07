@@ -472,9 +472,6 @@
   font-size: 0.9rem;
   color: var(--cream);
 }
-.wr-row-bot {
-  color: var(--smoke);
-}
 .wr-dot {
   width: 8px;
   height: 8px;
@@ -515,11 +512,6 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
-.wr-badge-bot {
-  border-color: rgba(168, 158, 136, 0.3);
-  background: none;
-  color: var(--smoke);
-}
 .wr-settings {
   font-size: 0.72rem;
   color: var(--smoke);
@@ -539,18 +531,6 @@
   gap: 10px;
   padding-top: 12px;
   border-top: 1px solid rgba(92, 61, 26, 0.3);
-}
-.wr-bots {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: var(--cream);
-}
-.wr-bots .btn-secondary {
-  min-width: 40px;
-  padding: 6px 0;
-  font-size: 1rem;
 }
 
 /* ── Phones ── */

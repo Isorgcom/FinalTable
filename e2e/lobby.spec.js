@@ -49,12 +49,11 @@ async function identifyAs(page, name) {
   await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
 }
 
-async function createTournament(page, { name = 'Friday Night', minutes = 15, bots = 0 } = {}) {
+async function createTournament(page, { name = 'Friday Night', minutes = 15 } = {}) {
   await page.click('#btnCreateTournament');
   await expect(page.locator('#lobbyCreate')).toBeVisible();
   await page.fill('#tName', name);
   await page.click(`#tStartQuick button[data-min="${minutes}"]`);
-  await page.fill('#tBots', String(bots));
   await page.click('#btnCreateSubmit');
   await expect(page.locator('#lobbyWaiting')).toBeVisible();
   const code = (await page.locator('#wrCode').textContent()).trim();
@@ -80,17 +79,17 @@ test('creating a tournament lands in the waiting room with roster, code and sett
   page,
 }) => {
   await identifyAs(page, 'Host');
-  const code = await createTournament(page, { name: 'Sunday Deepstack', minutes: 15, bots: 2 });
+  const code = await createTournament(page, { name: 'Sunday Deepstack', minutes: 15 });
   await expect(page.locator('#wrName')).toHaveText('Sunday Deepstack');
   await expect(page.locator('#wrStatus')).toContainText('Starts in');
-  await expect(page.locator('#wrRoster .wr-row')).toHaveCount(3);
+  await expect(page.locator('#wrRoster .wr-row')).toHaveCount(1);
   await expect(page.locator('#wrRoster .wr-row').first()).toContainText('Host');
   await expect(page.locator('#wrRoster .wr-badge').first()).toHaveText('host');
-  await expect(page.locator('#wrRoster .wr-row-bot')).toHaveCount(2);
   await expect(page.locator('#wrSettings')).toContainText('9-max');
   await expect(page.locator('#wrSettings')).toContainText('late registration through level 3');
   await expect(page.locator('#wrHostControls')).toBeVisible();
-  await expect(page.locator('#btnStartNow')).toBeEnabled();
+  // A field of one cannot deal, so the host waits for a second person.
+  await expect(page.locator('#btnStartNow')).toBeDisabled();
   const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
   expect(list.find((t) => t.code === code)).toMatchObject({
     status: 'registering',
@@ -103,7 +102,7 @@ test('a second player joins by link, both see each other, and the host starts fo
   page,
 }) => {
   await identifyAs(page, 'Host');
-  const code = await createTournament(page, { name: 'Two Up', minutes: 15, bots: 1 });
+  const code = await createTournament(page, { name: 'Two Up', minutes: 15 });
 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
@@ -119,16 +118,16 @@ test('a second player joins by link, both see each other, and the host starts fo
 
   // Both rosters show both humans, connected.
   for (const p of [page, guest]) {
-    await expect(p.locator('#wrRoster .wr-row:not(.wr-row-bot)')).toHaveCount(2);
+    await expect(p.locator('#wrRoster .wr-row')).toHaveCount(2);
     await expect(p.locator('#wrRoster')).toContainText('Host');
     await expect(p.locator('#wrRoster')).toContainText('Guest');
-    await expect(p.locator('#wrRoster .wr-row:not(.wr-row-bot) .wr-dot.on')).toHaveCount(2);
+    await expect(p.locator('#wrRoster .wr-dot.on')).toHaveCount(2);
   }
 
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
-  await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(3);
+  await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(2);
   await guest.click('#tabInfo');
   await expect(guest.locator('#panelInfoBody')).toContainText('Multi-table');
   await expect(guest.locator('#panelInfoBody')).toContainText('Host');

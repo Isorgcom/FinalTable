@@ -627,20 +627,12 @@ describe('Lobby phase 2: late registration, unregister, roster, placements', () 
     };
   }
 
-  test('unregister and replaceBots only work before the start', () => {
+  test('unregister only works before the start', () => {
     const d = makeDirector(3);
-    d.register({ id: 'b1', uid: 'bot1', name: 'Bot', isNPC: true });
     expect(d.unregister('p1')).toBe(true);
-    expect(d.entrants.map((e) => e.id)).toEqual(['p0', 'p2', 'b1']);
-    d.replaceBots([
-      { id: 'b2', uid: 'bot2', name: 'Bot2', isNPC: true },
-      { id: 'b3', uid: 'bot3', name: 'Bot3', isNPC: true },
-    ]);
-    expect(d.entrants.filter((e) => e.isNPC).map((e) => e.uid)).toEqual(['bot2', 'bot3']);
-    expect(d.entrants.filter((e) => !e.isNPC)).toHaveLength(2);
+    expect(d.entrants.map((e) => e.id)).toEqual(['p0', 'p2']);
     d.start();
     expect(d.unregister('p0')).toBe(false);
-    expect(d.replaceBots([])).toBe(false);
   });
 
   test('a late entrant sits at the smallest table with the starting stack, conserving chips', () => {

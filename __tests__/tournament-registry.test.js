@@ -61,11 +61,7 @@ describe('tournament registry', () => {
   });
 
   function create(overrides = {}, socket = makeSocket('sh')) {
-    const { entry, error } = registry.create(
-      'h',
-      { name: 'Night', botCount: 0, ...overrides },
-      socket
-    );
+    const { entry, error } = registry.create('h', { name: 'Night', ...overrides }, socket);
     expect(error).toBeUndefined();
     return { entry, socket };
   }
@@ -148,7 +144,7 @@ describe('tournament registry', () => {
   });
 
   test('the last human unregistering removes the tournament', () => {
-    const { entry, socket } = create({ startsAt: Date.now() + 60000, botCount: 3 });
+    const { entry, socket } = create({ startsAt: Date.now() + 60000 });
     registry.unregister(entry, 'h', socket);
     expect(registry.tournaments.has(entry.id)).toBe(false);
   });
@@ -182,18 +178,6 @@ describe('tournament registry', () => {
     expect(registry.tournaments.has(entry.id)).toBe(false);
   });
 
-  test('the host can change the bots before the start', () => {
-    const { entry } = create({ startsAt: Date.now() + 60000, botCount: 2 });
-    expect(entry.director.entrants.filter((e) => e.isNPC)).toHaveLength(2);
-    expect(registry.setBots(entry, 'h', 5).error).toBeUndefined();
-    expect(entry.director.entrants.filter((e) => e.isNPC)).toHaveLength(5);
-    expect(entry.settings.botCount).toBe(5);
-    expect(registry.setBots(entry, 'g', 1).error).toMatch(/host/);
-    registry.join('g', { code: entry.code }, makeSocket('sg'));
-    registry.startNow(entry, 'h');
-    expect(registry.setBots(entry, 'h', 0).error).toMatch(/started/);
-  });
-
   test('one live registration per identity, resumable by uid', () => {
     const { entry } = create({ startsAt: Date.now() + 60000 });
     expect(registry.create('h', { name: 'Again' }, makeSocket('sh2')).error).toMatch(/already/);
@@ -219,14 +203,13 @@ describe('tournament registry', () => {
     });
     const { entry } = first.create(
       'h',
-      { name: 'Persisted', botCount: 2, startsAt: Date.now() + 8000 },
+      { name: 'Persisted', startsAt: Date.now() + 8000 },
       makeSocket('sh')
     );
     first.join('g', { code: entry.code }, makeSocket('sg'));
     first.flush();
     expect(store.load()).toHaveLength(1);
     expect(store.load()[0]).toMatchObject({ id: entry.id, code: entry.code, hostUid: 'h' });
-    expect(store.load()[0].entrants.filter((e) => e.isNPC)).toHaveLength(2);
     expect(
       store
         .load()[0]
@@ -248,9 +231,8 @@ describe('tournament registry', () => {
     expect(back.code).toBe(entry.code);
     expect(back.name).toBe('Persisted');
     expect(back.hostUid).toBe('h');
-    expect(back.settings.botCount).toBe(2);
-    expect(back.director.entrants).toHaveLength(4);
-    expect(back.director.entrants.filter((e) => e.isNPC).every((e) => e.npcProfile)).toBe(true);
+    expect(back.settings.lateRegLevels).toBe(3);
+    expect(back.director.entrants).toHaveLength(2);
     expect(back.registrations.size).toBe(2);
     expect(back.registrations.get('g').socketId).toBeNull();
     // A returning human is rebound to their registration...
