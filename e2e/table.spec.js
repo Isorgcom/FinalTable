@@ -257,3 +257,58 @@ test.describe('phone', () => {
     expect(pageErrors).toEqual([]);
   });
 });
+
+test('the pot sits above the board and carries a pile of chips', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'PotTester');
+  await deal(page);
+
+  const pot = await page.locator('#potDisplay').boundingBox();
+  const board = await page.locator('#communityCards').boundingBox();
+  // The whole point of .board-stack: the pot hangs off the top of the card
+  // row, so this holds at every card size without a per-breakpoint offset.
+  expect(pot.y + pot.height).toBeLessThanOrEqual(board.y + 1);
+
+  await expect(page.locator('#potPile .pot-chip')).not.toHaveCount(0);
+  // The pile must never collide with a bet stack; on a short felt they are
+  // neighbours, and a bounding-box check between the pot and the board misses
+  // it because the colliding element is in a different layer.
+  const bets = await page.locator('#feltBets .felt-bet').all();
+  for (const bet of bets) {
+    const b = await bet.boundingBox();
+    const overlaps =
+      b.x < pot.x + pot.width &&
+      pot.x < b.x + b.width &&
+      b.y < pot.y + pot.height &&
+      pot.y < b.y + b.height;
+    expect(overlaps).toBe(false);
+  }
+  expect(pageErrors).toEqual([]);
+});
+
+test('the street bets sweep into the pot when the board turns over', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'SweepTester');
+  await deal(page);
+  const game = await gameForPage(page);
+  expect(game).toBeTruthy();
+
+  // Calling closes the preflop round: the opponent is sitting out, so it
+  // checks its big blind and the flop lands.
+  const before = await page.evaluate(() => window.__anim.sweeps);
+  const potBefore = await page.evaluate(() => gameState.pot);
+  await expect(page.locator('#feltBets .felt-bet')).not.toHaveCount(0);
+  await page.click('#btnCall');
+
+  await expect.poll(() => game.communityCards.length, { timeout: 15000 }).toBeGreaterThanOrEqual(3);
+  // Exactly one sweep for one street. Two would mean it also fired on a push
+  // it should have ignored.
+  await expect.poll(() => page.evaluate(() => window.__anim.sweeps)).toBe(before + 1);
+  await expect(page.locator('#feltBets .felt-bet')).toHaveCount(0);
+  // The engine credits the pot action by action, so the sweep is the money
+  // catching up with a number that already moved. If the pot jumps here,
+  // something has started double-counting.
+  expect(await page.evaluate(() => gameState.pot)).toBeGreaterThanOrEqual(potBefore);
+
+  // Nothing left behind: a leaked ghost accumulates over a long session.
+  await expect(page.locator('.chip-fly')).toHaveCount(0, { timeout: 5000 });
+  expect(pageErrors).toEqual([]);
+});

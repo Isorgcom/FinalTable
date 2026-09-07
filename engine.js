@@ -868,6 +868,13 @@ class PokerGame {
       return;
     }
 
+    // The last frame in which this street's bets exist. Everything below runs
+    // in one synchronous stack that ends in a single emit, so without this the
+    // client's first sight of the flop already has every bet at zero and the
+    // closing player's bet was never sent at all: no chips could travel, and
+    // the player who closed the street got no animation for their own money.
+    this.emitUpdate();
+
     // Reset bets for new betting round
     for (const p of this.players) {
       p.bet = 0;

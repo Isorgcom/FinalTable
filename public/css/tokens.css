@@ -28,9 +28,12 @@
   /* Seat ring radii in % of the felt, read by getSeatPositions(). */
   --seat-rx: 53;
   --seat-ry: 52;
-  /* Felt-bet ring radii, likewise. */
+  /* Felt-bet ring radii, likewise. The vertical radius is deliberately close
+     to the seat ring: a bet belongs in front of the player who made it, and
+     the pot now sits above the board, so a bet ring much nearer the middle
+     runs into it on a short felt. */
   --bet-rx: 34;
-  --bet-ry: 30;
+  --bet-ry: 36;
 }
 @media (min-width: 1024px) {
   :root {

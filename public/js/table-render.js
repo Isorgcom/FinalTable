@@ -91,59 +91,122 @@ function chipCountForAmount(amount) {
   return Math.max(1, Math.min(CHIP_FLY_MAX, Math.round(amount / bb) || 1));
 }
 
-// Chips from a point rather than an element. The street sweep needs this: the
-// stacks it flies from are already gone by the time it runs, so it carries
-// their remembered coordinates instead.
-function flyChipsFrom(x0, y0, toEl, count, extraClass, delayMs) {
-  const wrap = document.querySelector('.poker-table-wrapper');
-  if (!wrap || !toEl) return;
-  // Deliberately NOT a width check. #potDisplay collapses to 0x0 at the end of
-  // a hand, because renderTable blanks the pot amount once the hand stops
-  // running, which is the exact moment chips need to fly OUT of it. Its
-  // position stays correct (absolutely anchored), so test visibility instead:
-  // offsetParent is null only when the element or an ancestor is display:none.
-  if (!toEl.isConnected || toEl.offsetParent === null) return;
+// Both ends of a flight can be an element or a remembered {x, y}. The street
+// sweep needs the latter: the stacks it flies from have already been wiped off
+// the felt by the time it runs, so it carries their coordinates instead.
+function flyPoint(target, wrapRect) {
+  if (!target) return null;
+  if (target.nodeType === 1) {
+    // Deliberately NOT a width check. #potDisplay collapses to 0x0 at the end
+    // of a hand, because renderTable blanks the pot amount once the hand stops
+    // running, which is the exact moment chips need to fly OUT of it. Its
+    // position stays correct, so test visibility instead: offsetParent is null
+    // only when the element or an ancestor is display:none.
+    if (!target.isConnected || target.offsetParent === null) return null;
+    const r = target.getBoundingClientRect();
+    return { x: r.left + r.width / 2 - wrapRect.left, y: r.top + r.height / 2 - wrapRect.top };
+  }
+  if (Number.isFinite(target.x) && Number.isFinite(target.y)) return { x: target.x, y: target.y };
+  return null;
+}
 
+function flyChips(from, to, count, extraClass, opts) {
+  const wrap = document.querySelector('.poker-table-wrapper');
+  if (!wrap) return;
   const wrapRect = wrap.getBoundingClientRect();
-  const to = toEl.getBoundingClientRect();
-  const dx = to.left + to.width / 2 - wrapRect.left - x0;
-  const dy = to.top + to.height / 2 - wrapRect.top - y0;
+  const a = flyPoint(from, wrapRect);
+  const b = flyPoint(to, wrapRect);
+  if (!a || !b) return;
+  const delayMs = (opts && opts.delayMs) || 0;
+  const durMs = (opts && opts.durMs) || 550;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
 
   for (let i = 0; i < count; i++) {
     const chip = document.createElement('div');
     chip.className = 'chip-fly' + (extraClass ? ' ' + extraClass : '');
-    chip.style.left = x0 + 'px';
-    chip.style.top = y0 + 'px';
+    chip.style.left = a.x + 'px';
+    chip.style.top = a.y + 'px';
     // Scatter the landing slightly so a stack does not read as a single chip.
     const scatter = (i % 2 ? 1 : -1) * Math.min(10, i * 3);
     chip.style.setProperty('--fly-dx', dx + scatter + 'px');
-    chip.style.setProperty('--fly-dy', dy + 'px');
-    chip.style.animationDelay = (delayMs || 0) + i * 70 + 'ms';
+    chip.style.setProperty('--fly-dy', dy + ((i % 3) - 1) * 3 + 'px');
+    chip.style.setProperty('--fly-dur', durMs + 'ms');
+    chip.style.animationDelay = delayMs + i * 70 + 'ms';
     wrap.appendChild(chip);
     chip.addEventListener('animationend', () => chip.remove(), { once: true });
     // Under prefers-reduced-motion the chip is display:none, so animationend
-    // never fires and nothing else would ever remove it.
-    setTimeout(() => chip.remove(), 2500 + (delayMs || 0));
+    // never fires and nothing else would ever remove it. The fallback has to
+    // clear the delay too, or a queued chip is reaped in flight.
+    setTimeout(() => chip.remove(), delayMs + durMs + 2000);
   }
 }
 
-function flyChips(fromEl, toEl, count, extraClass, delayMs) {
-  const wrap = document.querySelector('.poker-table-wrapper');
-  if (!wrap || !fromEl) return;
-  if (!fromEl.isConnected || fromEl.offsetParent === null) return;
-  const wrapRect = wrap.getBoundingClientRect();
-  const from = fromEl.getBoundingClientRect();
-  flyChipsFrom(
-    from.left + from.width / 2 - wrapRect.left,
-    from.top + from.height / 2 - wrapRect.top,
-    toEl,
-    count,
-    extraClass,
-    delayMs
-  );
+// Animation counters, so a browser test can assert that a sweep happened once
+// rather than racing a sub-second animation in the DOM. Same idea as
+// window.__identity, which the Playwright specs already read.
+window.__anim = { sweeps: 0, deals: 0, flips: 0 };
+
+// How much of the felt a single street end may throw at the pot. Nine seats
+// at five chips each would be forty-five nodes and a visible hitch on a phone.
+const SWEEP_CHIP_BUDGET = 14;
+const SWEEP_DUR_MS = 420;
+
+function feltBetElementFor(playerId) {
+  const layer = document.getElementById('feltBets');
+  if (!layer) return null;
+  for (const el of layer.children) {
+    if (el.dataset && el.dataset.playerId === playerId) return el;
+  }
+  return null;
 }
 
-function animateChipMovement(prevBets, prevWinnerKey) {
+// A bet stack is swept when it is about to leave the felt for any reason other
+// than a new hand. renderFeltBets only draws one while isRunning and bet > 0,
+// so there are exactly two ways it can vanish: nextPhase zeroing the bets at
+// the end of a street, and endRound clearing isRunning after the river. Both
+// are the money going to the middle. Asking "is this stack about to disappear"
+// catches both; asking "did a bet drop to zero" misses the showdown, because
+// nextPhase hands off to showdown without zeroing anything.
+function sweptStacks(prev, next) {
+  if (!prev || !next || !prev.isRunning) return [];
+  if (prev.roundCount !== next.roundCount) return [];
+  const out = [];
+  for (const p of prev.players) {
+    if (!(p.bet > 0)) continue;
+    const now = next.players.find((q) => q.id === p.id);
+    const stillShown = next.isRunning && now && now.bet > 0;
+    if (!stillShown) out.push({ id: p.id, amount: p.bet });
+  }
+  return out;
+}
+
+// Where those stacks are, read before anything in this frame writes to the
+// DOM. It is the only chance: renderFeltBets wipes the layer on every push.
+function measureSweep(prev, next) {
+  const stacks = sweptStacks(prev, next);
+  if (!stacks.length) return [];
+  const wrap = document.querySelector('.poker-table-wrapper');
+  if (!wrap) return [];
+  const wrapRect = wrap.getBoundingClientRect();
+  const out = [];
+  for (const s of stacks) {
+    const el = feltBetElementFor(s.id);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    out.push({
+      amount: s.amount,
+      point: {
+        x: r.left + r.width / 2 - wrapRect.left,
+        y: r.top + r.height / 2 - wrapRect.top,
+      },
+    });
+  }
+  out.sort((a, b) => b.amount - a.amount); // the big bets get the chips
+  return out;
+}
+
+function animateChipMovement(prevBets, prevWinnerKey, sweeps) {
   if (!gameState) return;
 
   // Chips in: any player whose street bet rose, blinds included.
@@ -158,13 +221,32 @@ function animateChipMovement(prevBets, prevWinnerKey) {
     });
   }
 
-  // Chips out: only for a result we have not already animated.
+  // The street is over: everything in front of a player goes to the middle.
+  // The pot number does not move here, because the engine credited it action
+  // by action; this is the money catching up with the arithmetic.
+  if (sweeps && sweeps.length) {
+    const target = potTarget();
+    let budget = SWEEP_CHIP_BUDGET;
+    sweeps.forEach((s, i) => {
+      if (budget <= 0) return;
+      const n = Math.min(budget, Math.max(2, Math.min(4, chipCountForAmount(s.amount))));
+      budget -= n;
+      flyChips(s.point, target, n, 'chip-sweep', { delayMs: i * 40, durMs: SWEEP_DUR_MS });
+    });
+    bumpPotPile();
+    window.__anim.sweeps++;
+  }
+
+  // Chips out: only for a result we have not already animated. At a hand end
+  // this lands on the same push as the sweep, so it waits for the money to
+  // arrive before pushing it across.
   const winners = gameState.lastRoundWinnerIds || [];
   const winnerKey = winners.join(',');
   if (winnerKey && winnerKey !== prevWinnerKey) {
+    const wait = sweeps && sweeps.length ? SWEEP_DUR_MS : 0;
     winners.forEach((id) => {
       const seat = seatElementForPlayer(id);
-      if (seat) flyChips(potTarget(), seat, CHIP_FLY_MAX, 'chip-win');
+      if (seat) flyChips(potTarget(), seat, CHIP_FLY_MAX, 'chip-win', { delayMs: wait });
     });
   }
 }
@@ -180,6 +262,10 @@ function updateGameState(state) {
   const prevBets = new Map();
   if (gameState) gameState.players.forEach((p) => prevBets.set(p.id, p.bet || 0));
   const prevWinnerKey = gameState ? (gameState.lastRoundWinnerIds || []).join(',') : '';
+  // Where the stacks that are about to leave the felt currently sit. Read here
+  // because renderFeltBets is about to wipe them, and read before any write in
+  // this handler so it costs no forced reflow.
+  const sweeps = measureSweep(gameState, state);
   gameState = state;
 
   // Detect new round → force full rebuild
@@ -214,7 +300,7 @@ function updateGameState(state) {
 
   renderTable(oldCommunityLen);
   // After render, so the seat elements the chips fly to and from exist.
-  animateChipMovement(prevBets, prevWinnerKey);
+  animateChipMovement(prevBets, prevWinnerKey, sweeps);
   updateActionsPanel();
   updateHandStrength();
   updateTopBar();

@@ -1163,6 +1163,15 @@
   animation: chipFly var(--fly-dur, 0.55s) cubic-bezier(0.35, 0.05, 0.2, 1) forwards;
 }
 
+/* Street bets sweeping to the middle: smaller and flatter than a bet going
+   in, so the two directions do not read as the same event. */
+.chip-fly.chip-sweep {
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
 /* Pot → winner reads brighter, so a win is distinguishable from a bet. */
 .chip-fly.chip-win {
   background: radial-gradient(circle at 35% 30%, #fff6dd 0 38%, #e0c060 39% 100%);
