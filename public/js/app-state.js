@@ -121,8 +121,10 @@ const SFX = {
     // Fetched here rather than at load: init runs on the first click, which is
     // the same gesture that lets audio play at all, and is long before the
     // first hand is dealt.
-    const link = document.getElementById('sfxChips');
-    this.loadSample('chips', link ? link.getAttribute('href') : '/audio/chips.mp3');
+    const chips = document.getElementById('sfxChips');
+    this.loadSample('chips', chips ? chips.getAttribute('href') : '/audio/chips.mp3');
+    const card = document.getElementById('sfxCard');
+    this.loadSample('card', card ? card.getAttribute('href') : '/audio/card.mp3');
   },
   loadSample(name, url) {
     if (!this.ctx || !url) return;
@@ -136,17 +138,25 @@ const SFX = {
         // No sample: play() falls back to the synthesised version.
       });
   },
-  playSample(name, gain) {
+  // whenOffset books the sound that many seconds ahead. Web Audio schedules
+  // against its own clock, so a card landing in 700ms sounds exactly then even
+  // though the main thread is busy laying out twenty cards; a setTimeout chain
+  // at 55ms spacing audibly jitters. rate detunes a repeated sample so a deal
+  // sounds like a deck rather than a machine.
+  playSample(name, gain, whenOffset, rate) {
     const buffer = this.samples[name];
     if (!this.ctx || !buffer) return false;
     try {
       const src = this.ctx.createBufferSource();
       const vol = this.ctx.createGain();
       src.buffer = buffer;
+      if (rate) src.playbackRate.value = rate;
       vol.gain.value = gain === undefined ? 0.5 : gain;
       src.connect(vol);
       vol.connect(this.ctx.destination);
-      src.start();
+      // A negative or already-passed time is played immediately rather than
+      // throwing, which is what a render that ran long should do.
+      src.start(this.ctx.currentTime + Math.max(0, whenOffset || 0));
       return true;
     } catch (e) {
       return false;
@@ -168,15 +178,31 @@ const SFX = {
       } catch (e) {}
     }
   },
+  // Cards being placed, one snap each, booked against the animation's own
+  // schedule. Takes every offset at once because reduced motion collapses the
+  // whole deal into a single frame: a second of audio trailing an instant
+  // visual is worse than one sound, and that decision belongs here rather than
+  // at each call site.
+  cardsPlaced(offsets) {
+    if (!offsets || !offsets.length) return;
+    if (!this.ctx) this.init();
+    if (!this.ctx) return;
+    const still =
+      window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const schedule = still ? [0] : offsets;
+    for (const offset of schedule) {
+      // A few percent either way. Identical copies of one recording read as a
+      // machine gun; a deck does not.
+      this.playSample('card', 0.32, offset, 0.96 + Math.random() * 0.08);
+    }
+  },
+
   play(type) {
     if (!this.ctx) this.init();
     if (!this.ctx) return;
     try {
       const now = this.ctx.currentTime;
       switch (type) {
-        case 'deal':
-          this._click(now, 800, 0.04);
-          break;
         case 'check':
           this._tap(now, 400, 0.03);
           break;

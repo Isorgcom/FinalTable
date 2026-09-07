@@ -154,6 +154,12 @@ window.__anim = { sweeps: 0, deals: 0, flips: 0 };
 
 // How much of the felt a single street end may throw at the pot. Nine seats
 // at five chips each would be forty-five nodes and a visible hitch on a phone.
+// Where in each animation the card is heard. A dealt card reaches its seat at
+// 78% of the 0.34s flight, and a board card swaps faces at 48% of the 0.36s
+// fold: that is the moment it reads as placed, not the moment it sets off.
+const DEAL_LAND_S = 0.265;
+const FLIP_TURN_S = 0.173;
+
 const SWEEP_CHIP_BUDGET = 14;
 const SWEEP_DUR_MS = 420;
 
@@ -352,6 +358,7 @@ function renderTable(oldCommunityLen) {
       : 'none';
   if (boardKey !== _builtBoardKey || !cc.children.length) {
     _builtBoardKey = boardKey;
+    const heardOnBoard = [];
     cc.textContent = '';
     if (gameState.isRunning || gameState.phase === 'showdown') {
       for (let i = 0; i < 5; i++) {
@@ -377,6 +384,7 @@ function renderTable(oldCommunityLen) {
             };
             cardEl.addEventListener('animationend', drop, { once: true });
             setTimeout(drop, _boardFlipDelayMs + (i - prevCount) * 110 + 900);
+            heardOnBoard.push((_boardFlipDelayMs + (i - prevCount) * 110) / 1000 + FLIP_TURN_S);
             window.__anim.flips++;
           }
           cc.appendChild(cardEl);
@@ -387,6 +395,8 @@ function renderTable(oldCommunityLen) {
         }
       }
     }
+    // A flop is three cards turning over, so it is three snaps.
+    if (typeof SFX !== 'undefined') SFX.cardsPlaced(heardOnBoard);
   }
   prevCommunityCount = curCount;
 
@@ -773,6 +783,7 @@ function applyDealFlight(ordered) {
   }
 
   const step = plan.length > 12 ? 0.055 : 0.085;
+  const heard = [];
   plan.forEach((item, i) => {
     // Released before the early return below, so a card is revealed even when
     // nothing can animate. deal-pending is visibility:hidden; leaving one on
@@ -788,7 +799,15 @@ function applyDealFlight(ordered) {
     setAnimationDelay(item.node, Number((i * step).toFixed(3)));
     item.node.classList.add('dealing');
     clearDealClass(item.node, i * step);
+    heard.push(i * step + DEAL_LAND_S);
   });
+  // One snap per card, on the same schedule the cards are flying to. Cards
+  // that could not animate (no origin to fly from) get a single sound: they
+  // appear all at once, so a patter would be describing motion that is not
+  // there.
+  if (typeof SFX !== 'undefined') {
+    SFX.cardsPlaced(heard.length ? heard : plan.length ? [0] : []);
+  }
   if (plan.length) window.__anim.deals++;
 }
 

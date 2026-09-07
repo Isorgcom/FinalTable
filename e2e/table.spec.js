@@ -417,8 +417,11 @@ test('the chip sound is served, decoded, and played when chips move', async ({ p
   await page.evaluate(() => {
     window.__played = 0;
     const real = SFX.playSample.bind(SFX);
-    SFX.playSample = (name, gain) => {
-      const ok = real(name, gain);
+    // Forward every argument: playSample also takes a schedule offset and a
+    // playback rate, and a wrapper that named only two would drop them while
+    // still counting, so this test would pass over a broken call.
+    SFX.playSample = (...args) => {
+      const ok = real(...args);
       if (ok) window.__played++;
       return ok;
     };
@@ -569,5 +572,55 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
   expect(marks.boardLit).toBeGreaterThan(0);
   expect(marks.dimmed).toBeGreaterThan(0);
   expect(marks.seatsLit).toBeGreaterThan(0);
+  expect(pageErrors).toEqual([]);
+});
+
+test('the card sound is served, decoded, and played once per card', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'CardSound');
+  await deal(page);
+
+  const href = await page.getAttribute('#sfxCard', 'href');
+  expect(href).toMatch(/^\/audio\/card\.mp3\?v=[a-f0-9]{10}$/);
+
+  // Decoding is what catches a 404 page or a truncated upload; without it the
+  // table would just go quiet and nothing would fail.
+  await page.evaluate(() => SFX.init());
+  await expect
+    .poll(() => page.evaluate(() => !!(SFX.samples && SFX.samples.card)), { timeout: 10000 })
+    .toBe(true);
+  const sample = await page.evaluate(() => ({
+    duration: SFX.samples.card.duration,
+    channels: SFX.samples.card.numberOfChannels,
+  }));
+  expect(sample.duration).toBeGreaterThan(0.05);
+  expect(sample.channels).toBeGreaterThan(0);
+
+  // Count the card snaps only, and record the offsets each was booked at.
+  await page.evaluate(() => {
+    window.__cardSnaps = [];
+    const real = SFX.playSample.bind(SFX);
+    SFX.playSample = (name, gain, whenOffset, rate) => {
+      const ok = real(name, gain, whenOffset, rate);
+      if (ok && name === 'card') window.__cardSnaps.push(whenOffset || 0);
+      return ok;
+    };
+  });
+
+  // A fresh deal is two cards each for two seats.
+  const round = await page.evaluate(() => gameState.roundCount);
+  await page.click('#btnAutoPlay'); // sit out so hands turn over quickly
+  await page.waitForFunction((r) => gameState && gameState.roundCount > r, round, {
+    timeout: 30000,
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__cardSnaps.length), { timeout: 10000 })
+    .toBeGreaterThanOrEqual(4);
+
+  // Booked ahead, not all at once: a per-card sound that fired immediately
+  // would be four snaps in one instant rather than a deal going round.
+  const offsets = await page.evaluate(() => window.__cardSnaps.slice(0, 4));
+  expect(offsets[0]).toBeGreaterThan(0);
+  expect(offsets[3]).toBeGreaterThan(offsets[0]);
+
   expect(pageErrors).toEqual([]);
 });

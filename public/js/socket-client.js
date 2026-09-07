@@ -93,15 +93,15 @@ function ensureSocket() {
 
   socket.on('gameMessage', (msg, meta) => {
     addLog(msg, meta);
-    // Calls and raises make no sound here: chips moving on the felt do, from
-    // flyChips, which is timed to the animation rather than to the log line.
+    // Nothing about chips or cards is sounded here. Both are timed to their
+    // animation instead: chips from flyChips, cards from the deal and the
+    // board flip. A log line arrives on the socket tick, which for the board
+    // is 420ms before the flip actually starts, so the old street click was
+    // already ahead of the card it was meant to accompany.
     if (msg.includes('folds')) SFX.play('fold');
     else if (msg.includes('checks')) SFX.play('check');
     else if (msg.includes('all-in')) SFX.play('allin');
     else if (msg.includes('wins') || msg.includes('splits pot')) SFX.play('win');
-    else if (msg.includes('Flop') || msg.includes('Turn') || msg.includes('River'))
-      SFX.play('deal');
-    else if (msg.includes('starts')) SFX.play('deal');
 
     if (msg.includes('starts')) _resultShownThisRound = false;
 

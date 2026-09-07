@@ -31,6 +31,16 @@
       href="/audio/chips.mp3?v=__ASSET_VERSION__"
       crossorigin="anonymous"
     />
+    <!-- One card being placed, played once per card as they are dealt and as
+         the board turns over. crossorigin matters: SFX fetches these itself,
+         and a preload with a different CORS mode is fetched twice. -->
+    <link
+      rel="preload"
+      as="audio"
+      id="sfxCard"
+      href="/audio/card.mp3?v=__ASSET_VERSION__"
+      crossorigin="anonymous"
+    />
   </head>
 
   <body>
