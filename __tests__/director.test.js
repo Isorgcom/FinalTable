@@ -14,7 +14,7 @@ function makeDirector(entrants, opts = {}) {
     ...opts,
   });
   for (let i = 0; i < entrants; i++) {
-    d.register({ id: `p${i}`, uid: `p${i}`, name: `P${i}`, isNPC: false });
+    d.register({ id: `p${i}`, uid: `p${i}`, name: `P${i}` });
   }
   return d;
 }

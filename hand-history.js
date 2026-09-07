@@ -13,10 +13,7 @@ class HandHistory {
     if (!hand) return null;
     return {
       ...hand,
-      players: (hand.players || []).map((player) => ({
-        ...player,
-        npcProfile: player.npcProfile ? { ...player.npcProfile } : null,
-      })),
+      players: (hand.players || []).map((player) => ({ ...player })),
       holeCards: Object.fromEntries(
         Object.entries(hand.holeCards || {}).map(([playerId, cards]) => [
           playerId,
@@ -38,13 +35,6 @@ class HandHistory {
         name: p.name,
         chips: p.chips,
         seatIndex: p.seatIndex,
-        isNPC: p.isNPC,
-        npcProfile: p.isNPC && p.npcProfile
-          ? {
-              nameEn: p.npcProfile.nameEn || '',
-              isWestern: !!p.npcProfile.isWestern,
-            }
-          : null,
       })),
       dealerIndex: dealerIdx,
       sbIndex: sbIdx,
@@ -175,7 +165,6 @@ class Leaderboard {
       if (!this.stats[p.name]) {
         this.stats[p.name] = {
           name: p.name,
-          isNPC: p.isNPC,
           handsPlayed: 0,
           handsWon: 0,
           totalWinnings: 0,

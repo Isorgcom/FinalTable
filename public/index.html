@@ -209,7 +209,9 @@
         <div class="top-bar-btns">
           <button class="top-btn" id="btnLeaderboard" title="Leaderboard">stats</button>
           <button class="top-btn" id="btnReplay" title="Hand Replay">replay</button>
-          <button class="top-btn" id="btnAutoPlay" title="Auto-play this seat">auto</button>
+          <button class="top-btn" id="btnAutoPlay" title="Sit out: check when free, fold to a bet">
+            sit out
+          </button>
           <button
             class="top-btn"
             id="btnPanelToggle"
@@ -244,9 +246,6 @@
             <span class="tb-alive">Alive: <span id="tbAlive">0</span></span>
           </div>
         </div>
-
-        <!-- NPC chat bubbles, top-left of the stage over the felt -->
-        <div class="npc-chat-area" id="npcChatArea"></div>
 
         <div class="poker-table-wrapper">
           <div class="poker-table">
@@ -407,8 +406,6 @@
       <div class="panel-scrim hidden" id="panelScrim"></div>
     </div>
 
-    <!-- NPC MANAGEMENT PANEL -->
-
     <!-- LEADERBOARD PANEL -->
     <div
       class="lb-panel hidden"
@@ -418,7 +415,7 @@
       aria-label="Leaderboard"
     >
       <div class="lb-content">
-        <div class="npc-panel-title">Leaderboard</div>
+        <div class="modal-title">Leaderboard</div>
         <table class="lb-table">
           <thead>
             <tr>
@@ -432,7 +429,7 @@
           </thead>
           <tbody id="lbBody"></tbody>
         </table>
-        <button class="npc-panel-close" id="btnCloseLeaderboard">Close</button>
+        <button class="modal-close" id="btnCloseLeaderboard">Close</button>
       </div>
     </div>
 
@@ -445,8 +442,8 @@
       aria-label="Hand History"
     >
       <div class="replay-content">
-        <div class="npc-panel-title">Hand History</div>
-        <div class="npc-panel-subtitle">Select a hand to review</div>
+        <div class="modal-title">Hand History</div>
+        <div class="modal-subtitle">Select a hand to review</div>
         <div class="replay-hand-list" id="replayHandList"></div>
         <div class="hidden" id="replayDetail">
           <div class="replay-title" id="replayTitle"></div>
@@ -457,7 +454,7 @@
           <div class="replay-section-label">Action Log:</div>
           <div class="replay-actions" id="replayActions"></div>
         </div>
-        <button class="npc-panel-close" id="btnCloseReplay">Close</button>
+        <button class="modal-close" id="btnCloseReplay">Close</button>
       </div>
     </div>
 

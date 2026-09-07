@@ -142,64 +142,6 @@
   color: #c17a5a;
 }
 
-/* ═══ NPC CHAT BUBBLES (left side) ═══ */
-.npc-chat-area {
-  position: absolute;
-  top: 98px;
-  left: 10px;
-  width: 210px;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  pointer-events: none;
-}
-.npc-chat-bubble {
-  background: rgba(13, 31, 18, 0.85);
-  border: 1px solid rgba(92, 61, 26, 0.25);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 0.72rem;
-  line-height: 1.5;
-  color: var(--cream);
-  animation: chatBubbleIn 0.3s ease-out;
-  opacity: 1;
-  transition: opacity 0.8s ease;
-  border-left: 2px solid var(--gold);
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
-}
-.npc-chat-bubble.fading {
-  opacity: 0;
-}
-.npc-chat-bubble .chat-sender {
-  font-weight: 600;
-  color: var(--gold);
-  font-size: 0.68rem;
-  margin-bottom: 2px;
-  display: block;
-  line-height: 1.25;
-}
-.npc-chat-bubble .chat-en {
-  color: var(--smoke);
-  font-size: 0.62rem;
-  font-style: italic;
-  margin-top: 2px;
-  display: block;
-  line-height: 1.35;
-}
-@keyframes chatBubbleIn {
-  from {
-    opacity: 0;
-    transform: translateX(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 /* ═══ GAME LOG ═══ */
 .log-entry {
   font-size: 0.7rem;
@@ -222,12 +164,6 @@
   padding: 4px 6px;
   border-radius: 3px;
   margin: 2px 0;
-}
-.log-entry.npc-chat {
-  color: var(--cream);
-  opacity: 0.8;
-  padding-left: 8px;
-  border-left: 2px solid var(--gold-glow);
 }
 @keyframes logFade {
   from {
@@ -460,140 +396,19 @@
   margin-top: 0;
 }
 
-/* NPC Panel */
-.npc-panel {
-  position: fixed;
-  inset: 0;
-  z-index: 180;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-}
-.npc-panel.hidden {
-  display: none;
-}
-.npc-panel-content {
-  background: var(--bg-deep);
-  border: 1px solid var(--wood);
-  border-radius: 8px;
-  padding: 25px 30px;
-  width: 700px;
-  max-width: 95vw;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-.npc-panel-title {
+/* Shared modal chrome: the Leaderboard and Hand History panels */
+.modal-title {
   font-family: var(--font-display);
   font-size: 1.3rem;
   color: var(--gold);
   margin-bottom: 6px;
 }
-.npc-panel-subtitle {
+.modal-subtitle {
   font-size: 0.75rem;
   color: var(--smoke);
   margin-bottom: 16px;
 }
-.npc-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px;
-}
-.npc-card {
-  background: transparent;
-  border: 1px solid rgba(92, 61, 26, 0.2);
-  border-radius: 6px;
-  padding: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.npc-card:hover {
-  border-color: var(--gold);
-  background: var(--gold-glow);
-}
-.npc-card.at-table {
-  border-color: rgba(74, 122, 90, 0.4);
-  background: rgba(74, 122, 90, 0.08);
-}
-.npc-card-name {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--cream);
-  margin-bottom: 1px;
-}
-.npc-card-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-.npc-card-avatar {
-  font-size: 1.4rem;
-  opacity: 0.7;
-}
-.npc-card-title {
-  font-size: 0.65rem;
-  color: var(--smoke);
-}
-.npc-card-title-muted {
-  color: var(--cream);
-  font-size: 0.6rem;
-  opacity: 0.5;
-}
-.npc-card-origin {
-  font-size: 0.6rem;
-  color: var(--smoke);
-  opacity: 0.6;
-  margin-bottom: 6px;
-}
-.npc-card-bio {
-  font-size: 0.68rem;
-  color: var(--cream);
-  opacity: 0.7;
-  line-height: 1.5;
-  margin-bottom: 8px;
-}
-.npc-card-bio-secondary {
-  color: var(--smoke);
-  font-style: italic;
-  margin-top: 4px;
-}
-.npc-card-style {
-  display: inline-block;
-  font-size: 0.55rem;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: var(--gold-glow);
-  color: var(--gold);
-}
-.npc-card-status {
-  float: right;
-  color: var(--smoke);
-  font-size: 0.6rem;
-}
-.npc-card-btn {
-  float: right;
-  padding: 4px 12px;
-  border: 1px solid var(--wood);
-  border-radius: 3px;
-  font-size: 0.65rem;
-  cursor: pointer;
-  font-family: var(--font-body);
-  background: transparent;
-}
-.npc-card-btn.add {
-  color: var(--gold);
-  border-color: var(--gold);
-}
-.npc-card-btn.add:hover {
-  background: var(--gold-glow);
-}
-.npc-card-btn.remove {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-.npc-panel-close {
+.modal-close {
   margin-top: 15px;
   width: 100%;
   padding: 10px;
@@ -605,7 +420,7 @@
   cursor: pointer;
   font-family: var(--font-body);
 }
-.npc-panel-close:hover {
+.modal-close:hover {
   border-color: var(--gold);
   color: var(--gold);
 }

@@ -253,11 +253,6 @@
     font-size: 0.64rem;
     line-height: 1.28;
   }
-  .npc-chat-area {
-    width: min(42vw, 170px);
-    left: 3px;
-    top: 116px;
-  }
   .top-bar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -312,7 +307,6 @@
     max-width: calc(100vw - 16px);
   }
   .result-content,
-  .npc-panel-content,
   .lb-content,
   .replay-content {
     max-width: calc(100vw - 20px);
@@ -382,9 +376,6 @@
   .dealer-ticker {
     width: min(50vw, 180px);
   }
-  .npc-chat-area {
-    width: min(40vw, 150px);
-  }
   .menu-dropdown {
     min-width: 126px;
   }
@@ -426,9 +417,6 @@
     top: 32px;
   }
   .dealer-ticker {
-    top: 62px;
-  }
-  .npc-chat-area {
     top: 62px;
   }
   .login-container {
@@ -575,12 +563,6 @@
     line-height: 1.22;
     -webkit-line-clamp: 2;
   }
-  .npc-chat-area {
-    width: min(24vw, 136px);
-    top: 62px;
-    left: 4px;
-    gap: 4px;
-  }
   .round-overlay {
     top: 50%;
     width: min(34vw, 230px);
@@ -645,7 +627,6 @@
   }
   .result-content,
   .result-content.result-content-wide,
-  .npc-panel-content,
   .lb-content,
   .replay-content {
     max-height: 88vh;

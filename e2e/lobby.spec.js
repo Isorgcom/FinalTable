@@ -15,8 +15,7 @@ test.beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-lobby-pw-'));
   process.env.SAVE_DIR = tempDir;
   process.env.HOST = '127.0.0.1';
-  process.env.NPC_DELAY_MIN = '40';
-  process.env.NPC_DELAY_MAX = '90';
+  process.env.AUTO_TURN_DELAY_MS = '40';
   process.env.TOURNAMENT_SWEEP_MS = '100';
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(repoRoot) && !key.includes(`${path.sep}node_modules${path.sep}`)) {

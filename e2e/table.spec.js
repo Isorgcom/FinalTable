@@ -22,13 +22,11 @@ test.beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-table-pw-'));
   process.env.SAVE_DIR = tempDir;
   process.env.HOST = '127.0.0.1';
-  // Bots act almost at once so the viewer's turn comes round in well under a
-  // second instead of the human-paced 2.6-5.2s per bot.
-  process.env.NPC_DELAY_MIN = '40';
-  process.env.NPC_DELAY_MAX = '90';
+  // A sit-out acts almost at once so the viewer's turn comes round quickly.
+  process.env.AUTO_TURN_DELAY_MS = '40';
   // A tournament created to start now deals on the next sweep.
   process.env.TOURNAMENT_SWEEP_MS = '100';
-  // engine.js reads NPC_DELAY_* at load, and another spec in this worker may
+  // engine.js reads AUTO_TURN_DELAY_MS at load, and another spec in this worker may
   // already have loaded it. Drop every repo module so the env takes effect.
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(repoRoot) && !key.includes(`${path.sep}node_modules${path.sep}`)) {
@@ -119,7 +117,7 @@ async function seatAtTournamentTable(page, name) {
   // seat to toggle yet.
   await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(2);
   await guest.click('#btnAutoPlay');
-  await expect(guest.locator('#btnAutoPlay')).toHaveText('resume', { timeout: 10000 });
+  await expect(guest.locator('#btnAutoPlay')).toHaveText('sit in', { timeout: 10000 });
   return pageErrors;
 }
 

@@ -206,8 +206,6 @@ class TournamentDirector {
       uid: entrant.uid,
       name: entrant.name,
       avatar: entrant.avatar || null,
-      isNPC: entrant.isNPC || false,
-      npcProfile: entrant.npcProfile || null,
       chips: this.startChips,
     });
     if (!seated) {
@@ -242,7 +240,6 @@ class TournamentDirector {
         uid: e.uid,
         name: e.name,
         avatar: e.avatar || null,
-        isNPC: !!e.isNPC,
         chips: seat ? seat.player.chips : null,
         table: seat ? seat.table.tableNumber : null,
         place: placeByUid.get(e.uid) || null,
@@ -268,8 +265,6 @@ class TournamentDirector {
         uid: entrant.uid,
         name: entrant.name,
         avatar: entrant.avatar || null,
-        isNPC: entrant.isNPC || false,
-        npcProfile: entrant.npcProfile || null,
         chips: this.startChips,
       });
     });
@@ -461,7 +456,6 @@ class TournamentDirector {
     const busted = table.players.filter((p) => p.chips <= 0);
     if (this.onPlayerEliminated) {
       for (const p of busted) {
-        if (p.isNPC) continue;
         const record = [...this.tournament.eliminations].reverse().find((e) => e.uid === p.uid);
         this.onPlayerEliminated({
           uid: p.uid,
@@ -548,8 +542,6 @@ class TournamentDirector {
       uid: player.uid,
       name: player.name,
       avatar: player.avatar || null,
-      isNPC: player.isNPC,
-      npcProfile: player.npcProfile,
       chips: player.chips,
       seatIndex,
     });
@@ -672,8 +664,6 @@ class TournamentDirector {
         uid: player.uid,
         name: player.name,
         avatar: player.avatar || null,
-        isNPC: player.isNPC,
-        npcProfile: player.npcProfile,
         chips: player.chips,
       });
       if (!seated) return;

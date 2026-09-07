@@ -24,7 +24,6 @@ function movePlayer(from, to, uid, seatIndex) {
     uid: player.uid,
     name: player.name,
     chips: player.chips,
-    isNPC: player.isNPC,
     ...(seatIndex === undefined ? {} : { seatIndex }),
   });
   if (!seated) return false;
@@ -126,7 +125,7 @@ describe('chip conservation', () => {
 
   test('conserved across a full hand played to completion', () => {
     const t = makeTable('hand');
-    for (let i = 0; i < 4; i++) t.addPlayer({ id: `p${i}`, name: `P${i}`, isNPC: true });
+    for (let i = 0; i < 4; i++) t.addPlayer({ id: `p${i}`, name: `P${i}` });
     const expected = t.totalChips();
 
     t.startRound();

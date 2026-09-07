@@ -230,8 +230,6 @@
     if (log) log.textContent = '';
     const ticker = $('logLast');
     if (ticker) ticker.textContent = 'Waiting...';
-    const chat = $('npcChatArea');
-    if (chat) chat.textContent = '';
     ['tournamentBanner', 'resultModal'].forEach((id) => {
       const node = $(id);
       if (node) node.classList.add('hidden');

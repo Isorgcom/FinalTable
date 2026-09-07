@@ -120,28 +120,6 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onError(message);
   });
 
-  socket.on('chatMessage', (data) => {
-    if (!data || !data.sender || !data.message) return;
-    const area = document.getElementById('npcChatArea');
-    if (!area) return;
-    const bubble = document.createElement('div');
-    bubble.className = 'npc-chat-bubble';
-    const lines = data.message.split('\n');
-    const zh = lines[0] || '';
-    const en = lines[1] || '';
-    bubble.appendChild(createTextElement('span', 'chat-sender', data.sender));
-    bubble.appendChild(document.createTextNode(zh));
-    if (en) bubble.appendChild(createTextElement('span', 'chat-en', en));
-    area.appendChild(bubble);
-    while (area.children.length > 4) area.removeChild(area.firstChild);
-    setTimeout(() => {
-      bubble.classList.add('fading');
-    }, 6000);
-    setTimeout(() => {
-      if (bubble.parentNode) bubble.remove();
-    }, 7000);
-  });
-
   document.addEventListener('click', () => SFX.init(), { once: true });
   return socket;
 }

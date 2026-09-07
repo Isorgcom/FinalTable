@@ -1,28 +1,10 @@
-function normalizeRuntimeLogMessage(msg) {
-  if (!gameState || !Array.isArray(gameState.players) || !msg) return msg;
-  const replacements = gameState.players
-    .filter((player) => player.isNPC && player.npcProfile && player.npcProfile.isWestern)
-    .map((player) => ({
-      from: player.name,
-      to: player.npcProfile.nameEn || player.name,
-    }))
-    .filter((entry) => entry.from && entry.to && entry.from !== entry.to)
-    .sort((a, b) => b.from.length - a.from.length);
-
-  let normalized = msg;
-  for (const entry of replacements) {
-    normalized = normalized.replaceAll(entry.from, entry.to);
-  }
-  return normalized;
-}
-
 // The dealer log lives in the side panel's Chat tab; the ticker over the
 // felt repeats the last line for when the panel is out of view.
 function addLog(msg, meta) {
   const body = document.getElementById('panelChatBody');
   const last = document.getElementById('logLast');
   if (!body || !last) return;
-  const displayMsg = normalizeRuntimeLogMessage(msg);
+  const displayMsg = msg;
   const entry = document.createElement('div');
   entry.className = 'log-entry';
   if (meta && meta.kind) entry.dataset.kind = meta.kind;
@@ -34,7 +16,6 @@ function addLog(msg, meta) {
   )
     entry.classList.add('highlight');
   if (displayMsg.includes('↩') || displayMsg.includes('returned')) entry.classList.add('muted');
-  if (displayMsg.includes('💬')) entry.classList.add('npc-chat');
   entry.textContent = displayMsg;
   body.appendChild(entry);
   body.scrollTop = body.scrollHeight;
@@ -48,11 +29,7 @@ function addLog(msg, meta) {
 }
 
 function getReplayPlayerDisplayName(player) {
-  if (!player) return '';
-  if (player.isNPC && player.npcProfile && player.npcProfile.isWestern) {
-    return player.npcProfile.nameEn || player.name;
-  }
-  return player.name;
+  return player ? player.name : '';
 }
 
 function getReplayNameByPlayerId(hand, playerId, fallbackName) {

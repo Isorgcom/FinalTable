@@ -2,17 +2,9 @@
 const { createDeck, shuffle } = require('./deck');
 const { evaluateHand, compareHands, HAND_NAMES } = require('./hand-eval');
 const { describeHand, describeBest } = require('./hand-describe');
-const { getAvailableNPCs } = require('./npc');
-const { decideNpcAction } = require('./npc-orchestrator');
-const { generateNPCChat } = require('./npc-chat');
 const random = require('./random');
 const { createStructuredLogger } = require('./server/logger');
-const { buildSolverContext } = require('./solver-context');
-const { warmStrategyTree } = require('./solver-lookup');
-// Neural network NPC disabled — awaiting Deep CFR training
-// const { neuralNpcDecision } = require('./npc-neural');
 const { PlayerStats } = require('./player-stats');
-const { NPCPsychology } = require('./npc-psychology');
 const { HandHistory, Leaderboard } = require('./hand-history');
 const { Tournament } = require('./tournament');
 
@@ -22,22 +14,20 @@ const PHASES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info'; // 'debug' | 'info' | 'warn' | 'error'
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 const GAMEPLAY_TEXT_LOGS = process.env.GAMEPLAY_TEXT_LOGS === '1';
-// How long a bot appears to "think" before acting, in ms. A random value in
-// this range is picked per decision, then divided by the table's speed
-// multiplier (1x-3x). Tunable without a code change:
-//   NPC_DELAY_MIN=4000 NPC_DELAY_MAX=7000 docker compose up -d
-// Defaults are deliberately unhurried: at a full ring the bots are the only
-// thing moving between your turns, and a fast orbit is hard to follow.
 const envInt = (name, fallback) => {
   const raw = parseInt(process.env[name], 10);
   return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
 };
-// Seats per table. Exported so the socket layer clamps bot counts against the
-// same number the engine seats, instead of a copy that silently drifts.
+// Seats per table.
 const DEFAULT_MAX_PLAYERS = 10;
 
-const NPC_DELAY_MIN = envInt('NPC_DELAY_MIN', 2600);
-const NPC_DELAY_MAX = Math.max(NPC_DELAY_MIN, envInt('NPC_DELAY_MAX', 5200));
+// A seat on auto-play pauses this long before it acts, divided by the table's
+// speed multiplier. The pause is cosmetic: there is nothing to decide, but the
+// client needs a moment to draw the seat as active before the action lands,
+// and a table of sit-outs should not cycle hands faster than the felt can
+// render them. Tunable without a code change:
+//   AUTO_TURN_DELAY_MS=200 docker compose up -d
+const AUTO_TURN_DELAY_MS = envInt('AUTO_TURN_DELAY_MS', 600);
 const PRACTICE_NEXT_DELAY = 2500; // Delay before next round in practice mode (ms)
 const CASH_NEXT_DELAY = 5000; // Delay before next round in cash/tournament (ms)
 const PRACTICE_ACTION_TIMEOUT_MS = 18000;
@@ -47,31 +37,7 @@ const CASH_IDLE_TIMEOUT_MS = 90000;
 // times per hand.
 const TIME_BANK_GRANT_MS = 30000;
 const TIME_BANK_PER_HAND = 1;
-const RUNTIME_ROLLOUT_LOG_EVERY = Math.max(
-  1,
-  Number.isFinite(Number(process.env.RUNTIME_ROLLOUT_LOG_EVERY))
-    ? Number(process.env.RUNTIME_ROLLOUT_LOG_EVERY)
-    : 50
-);
-const AUTO_PLAY_PROFILE = {
-  name: 'Auto Play',
-  style: 'balanced',
-  tightness: 0.56,
-  bluffFreq: 0.07,
-  aggression: 0.54,
-  cbetFreq: 0.58,
-  checkRaiseFreq: 0.08,
-};
 const structuredEngineLog = createStructuredLogger('engine');
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function incrementCounter(counterMap, key) {
-  const normalizedKey = key || 'unknown';
-  counterMap[normalizedKey] = (counterMap[normalizedKey] || 0) + 1;
-}
 
 class PokerGame {
   constructor(id, options = {}) {
@@ -99,32 +65,14 @@ class PokerGame {
     this.actionTimeoutMs = this.configuredActionTimeoutMs || 0;
     this.onUpdate = null;
     this.onMessage = null;
-    this.npcModelConfig = options.npcModel || null;
-    this.solverDataDir = options.solverDataDir || null;
-    this.solverRootCacheDir = options.solverRootCacheDir || null;
 
     // Player behavior tracking
     this.playerStats = new PlayerStats();
-    this.npcPsychology = new NPCPsychology();
     this.handActionHistory = {};
     this.handActionLog = [];
     this.handStartPlayerCount = 0;
     this.handStartStacks = {};
     this.preflopRaiserId = null;
-    this.runtimeRolloutStats = {
-      decisions: 0,
-      solverHits: 0,
-      modelHits: 0,
-      fallbacks: 0,
-      coveredFallbacks: 0,
-      lookupSources: {},
-      fallbackReasons: {},
-      solverReasons: {},
-      solverClassifications: {},
-      solverTakeoverModes: {},
-      latencyMsTotal: 0,
-      latencySamples: 0,
-    };
 
     // Preflop lookup table (injected by server)
     this.preflopTable = null;
@@ -161,12 +109,8 @@ class PokerGame {
         return;
       }
       const ts = new Date().toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
-      const humans =
-        this.players
-          .filter((p) => !p.isNPC)
-          .map((p) => p.name)
-          .join(',') || '-';
-      console.log(`[${ts}] [room:${this.id}] [players:${humans}] ${msg}`);
+      const seated = this.players.map((p) => p.name).join(',') || '-';
+      console.log(`[${ts}] [room:${this.id}] [players:${seated}] ${msg}`);
     };
     this.bbIndex = -1;
 
@@ -174,7 +118,7 @@ class PokerGame {
     this.gameMode = options.gameMode || 'cash'; // 'cash' | 'tournament' | 'practice'
     this.speedMultiplier = 1; // 1=normal, 2=fast, 3=turbo
     this.isPaused = false;
-    this._pausedNpcPending = false; // automated turn pending while paused
+    this._pausedAutoPending = false; // automated turn pending while paused
 
     // Hand history & leaderboard
     this.handHistory = new HandHistory();
@@ -186,70 +130,6 @@ class PokerGame {
     this.gameOver = null;
     this.turnExpiresAt = null;
     this.turnDurationMs = 0;
-  }
-
-  recordRuntimeRolloutDecision(trace, solverTrace = null) {
-    if (!trace || !['solver_hit', 'model_hit', 'fallback'].includes(trace.status)) return;
-    const stats = this.runtimeRolloutStats;
-    stats.decisions += 1;
-
-    if (trace.status === 'solver_hit') {
-      stats.solverHits += 1;
-      incrementCounter(stats.lookupSources, trace.lookupSource);
-      incrementCounter(stats.solverReasons, trace.reason);
-      incrementCounter(stats.solverClassifications, trace.classification);
-      incrementCounter(stats.solverTakeoverModes, trace.takeoverMode);
-    } else if (trace.status === 'model_hit') {
-      stats.modelHits += 1;
-    } else if (trace.status === 'fallback') {
-      stats.fallbacks += 1;
-      incrementCounter(stats.fallbackReasons, trace.fallbackReason || trace.reason);
-      if (trace.coverageStatus === 'covered_spot' || solverTrace?.classification === 'cold_load') {
-        stats.coveredFallbacks += 1;
-      }
-      if (solverTrace?.reason) incrementCounter(stats.solverReasons, solverTrace.reason);
-      if (solverTrace?.classification) {
-        incrementCounter(stats.solverClassifications, solverTrace.classification);
-      }
-      if (solverTrace?.lookupSource) incrementCounter(stats.lookupSources, solverTrace.lookupSource);
-    }
-
-    if (typeof trace.latencyMs === 'number' && Number.isFinite(trace.latencyMs)) {
-      stats.latencyMsTotal += trace.latencyMs;
-      stats.latencySamples += 1;
-    }
-
-    const shouldLogSummary =
-      stats.decisions === 1 ||
-      stats.decisions % RUNTIME_ROLLOUT_LOG_EVERY === 0 ||
-      (trace.status === 'fallback' &&
-        (trace.coverageStatus === 'covered_spot' || solverTrace?.classification === 'cold_load'));
-    if (!shouldLogSummary) return;
-
-    const averageLatencyMs =
-      stats.latencySamples > 0
-        ? Math.round((stats.latencyMsTotal / stats.latencySamples) * 100) / 100
-        : 0;
-    this._logEvent(
-      'runtime_rollout_summary',
-      {
-        decisions: stats.decisions,
-        solverHits: stats.solverHits,
-        modelHits: stats.modelHits,
-        fallbacks: stats.fallbacks,
-        coveredFallbacks: stats.coveredFallbacks,
-        lookupSources: stats.lookupSources,
-        fallbackReasons: stats.fallbackReasons,
-        solverReasons: stats.solverReasons,
-        solverClassifications: stats.solverClassifications,
-        solverTakeoverModes: stats.solverTakeoverModes,
-        averageLatencyMs,
-        latestStatus: trace.status,
-        latestReason: trace.reason || null,
-      },
-      trace.status === 'fallback' && stats.coveredFallbacks > 0 ? 'warn' : 'info',
-      'Runtime-first rollout summary'
-    );
   }
 
   // Total chips this table is accountable for. Chips move straight from
@@ -290,8 +170,6 @@ class PokerGame {
       totalBet: 0,
       folded: false,
       allIn: false,
-      isNPC: playerData.isNPC || false,
-      npcProfile: playerData.npcProfile || null,
       avatar: playerData.avatar || null,
       seatIndex: this.players.length,
       isConnected: true,
@@ -320,13 +198,12 @@ class PokerGame {
     } else {
       this.players.push(player);
     }
-    this._log(`📥 seated ${player.name} (${player.isNPC ? 'NPC' : 'human'}) chips:${player.chips}`);
+    this._log(`📥 seated ${player.name} chips:${player.chips}`);
     this._logEvent(
       'player_joined',
       {
         playerId: player.id,
         playerName: this.getPublicName(player),
-        isNPC: player.isNPC,
         seatIndex: player.seatIndex,
         chips: player.chips,
       },
@@ -341,7 +218,7 @@ class PokerGame {
     if (idx === -1) return;
     const removed = this.players[idx];
     this._log(
-      `📤 left ${removed.name} (${removed.isNPC ? 'NPC' : 'human'}) chips:${removed.chips}`
+      `📤 left ${removed.name} chips:${removed.chips}`
     );
     this.players.splice(idx, 1);
     // Adjust dealerIndex if removed player was before or at dealer position
@@ -365,28 +242,11 @@ class PokerGame {
       {
         playerId: removed.id,
         playerName: this.getPublicName(removed),
-        isNPC: removed.isNPC,
         chips: removed.chips,
       },
       'info',
       'Player left room'
     );
-  }
-
-  addNPCs(count) {
-    const npcs = getAvailableNPCs(count);
-    const added = [];
-    for (const npc of npcs) {
-      if (this.players.length >= this.maxPlayers) break;
-      const player = this.addPlayer({
-        id: random.randomId('npc_'),
-        name: npc.name,
-        isNPC: true,
-        npcProfile: npc,
-      });
-      if (player) added.push(player);
-    }
-    return added;
   }
 
   getActivePlayers() {
@@ -398,7 +258,7 @@ class PokerGame {
   }
 
   isSpectatorPlayer(player) {
-    return !!(player && !player.isNPC && player.folded && (!player.holeCards || player.holeCards.length === 0));
+    return !!(player && player.folded && (!player.holeCards || player.holeCards.length === 0));
   }
 
   clearActionTimeout() {
@@ -425,8 +285,7 @@ class PokerGame {
       !current ||
       current.folded ||
       current.allIn ||
-      this.isAutomatedPlayer(current) ||
-      current.isNPC
+      this.isAutomatedPlayer(current)
     ) {
       return;
     }
@@ -454,12 +313,12 @@ class PokerGame {
         return;
       }
       liveCurrent.autoPlay = true;
-      this.emitMessage(`${this.getPublicName(liveCurrent)} timed out and switched to auto-play`, {
+      this.emitMessage(`${this.getPublicName(liveCurrent)} timed out and is sitting out`, {
         kind: 'timebank',
       });
-      this._log(`⏱ ${this.getPublicName(liveCurrent)} timed out -> auto-play`);
+      this._log(`⏱ ${this.getPublicName(liveCurrent)} timed out -> sitting out`);
       this.emitUpdate();
-      this.processNPCTurn();
+      this.processAutoTurn();
     }, timeoutMs);
     if (this.actionTimeout.unref) this.actionTimeout.unref();
   }
@@ -470,7 +329,7 @@ class PokerGame {
     if (!this.isRunning || this.isPaused) return false;
     const current = this.players[this.currentPlayerIndex];
     if (!current || current.id !== playerId) return false;
-    if (current.isNPC || current.folded || current.allIn || this.isAutomatedPlayer(current)) {
+    if (current.folded || current.allIn || this.isAutomatedPlayer(current)) {
       return false;
     }
     if (!this.actionTimeout || !this.turnExpiresAt) return false;
@@ -494,7 +353,7 @@ class PokerGame {
     if (this.isAutomatedPlayer(current)) {
       this.clearActionTimeout();
       this.emitUpdate();
-      this.processNPCTurn();
+      this.processAutoTurn();
       return;
     }
     this.scheduleActionTimeout();
@@ -506,9 +365,6 @@ class PokerGame {
     if (this.players.length < 2) return false;
     this.gameOver = null;
     this.clearActionTimeout();
-
-    // Remove busted players (keep NPCs by refilling them optionally)
-    this.players = this.players.filter((p) => p.chips > 0 || !p.isNPC);
 
     if (this.players.filter((p) => p.chips > 0).length < 2) return false;
 
@@ -641,19 +497,11 @@ class PokerGame {
           name: this.getPublicName(player),
           seatIndex: player.seatIndex,
           chips: player.chips,
-          isNPC: player.isNPC,
         })),
       },
       'info',
       'Round started'
     );
-
-    // v10: round start log
-    const npcNames = this.players
-      .filter((p) => p.isNPC)
-      .map((p) => p.name)
-      .join(', ');
-    this._log(`Hand ${this.roundCount} start | NPC: ${npcNames}`);
 
     // Log deal: dealer, blinds, hole cards
     this._log(
@@ -661,11 +509,7 @@ class PokerGame {
     );
     for (const p of this.players) {
       if (!p.folded && p.holeCards.length === 2) {
-        if (p.isNPC) {
-          this._log(`🃏 ${p.name}: ${this._cards(p.holeCards)}`);
-        } else {
-          this._log(`🃏 ${p.name}: [hidden]`);
-        }
+        this._log(`🃏 ${p.name}: [hidden]`);
       }
     }
 
@@ -889,8 +733,7 @@ class PokerGame {
       chipsAfterAction: player.chips,
     });
 
-    // v9.5: log human player actions to server
-    if (!player.isNPC) {
+    {
       const actStr =
         action === 'raise'
           ? `raise ${player.bet}`
@@ -940,20 +783,6 @@ class PokerGame {
       if (!p._recentActions) p._recentActions = [];
       p._recentActions.push({ action, phase: this.phase });
       if (p._recentActions.length > 30) p._recentActions.shift();
-    }
-
-    // NPC chat: react to own actions
-    if (p && p.isNPC) {
-      let chatEvent = null;
-      if (action === 'fold') chatEvent = 'fold';
-      else if (action === 'allin') chatEvent = 'allin';
-      if (chatEvent) {
-        const msg = generateNPCChat(p.name, chatEvent, 0.35);
-        if (msg) {
-          const avatar = p.npcProfile?.avatar || '';
-          this.emitMessage(`💬 ${avatar} ${this.getPublicName(p)}: ${msg}`, { kind: 'chat' });
-        }
-      }
     }
 
     this.advanceAction();
@@ -1021,7 +850,7 @@ class PokerGame {
       if (isBBLiveBlind) {
         this.currentPlayerIndex = canAct[0].seatIndex;
         this.emitUpdate();
-        this.processNPCTurn();
+        this.processAutoTurn();
         return;
       }
       this.nextPhase();
@@ -1115,8 +944,6 @@ class PokerGame {
     // Record community cards for replay
     this.handHistory.recordCommunityCards(this.communityCards);
 
-    this.prewarmSolverTreesForStreet();
-
     // First to act is after dealer
     this.currentPlayerIndex = this.getNextActiveIndex(this.dealerIndex);
     this.lastRaiserIndex = this.currentPlayerIndex;
@@ -1167,48 +994,11 @@ class PokerGame {
     // Handle side pots and main pot
     this.distributePot(results);
 
-    // NPC reactions to winning/losing
-    for (const r of results) {
-      if (!r.player.isNPC) continue;
-      const won = r._wonContestedPot && r._awarded > 0;
-      const msg = generateNPCChat(r.player.name, won ? 'win' : 'lose', won ? 0.6 : 0.3);
-      if (msg) {
-        const avatar = r.player.npcProfile?.avatar || '';
-        this.emitMessage(`💬 ${avatar} ${this.getPublicName(r.player)}: ${msg}`, { kind: 'chat' });
-      }
-    }
-
     // v4: Record showdown hands for opponent modeling
     const winnerRank = results[0].hand;
     for (const r of results) {
       const won = compareHands(r.hand, winnerRank) >= 0;
       this.playerStats.recordShowdown(r.player.id, r.player.holeCards, won);
-    }
-
-    // v8: Update NPC psychology after showdown
-    const winnerIds = results
-      .filter((r) => compareHands(r.hand, winnerRank) >= 0)
-      .map((r) => r.player.id);
-    for (const r of results) {
-      if (r.player.isNPC) {
-        const isWinner = winnerIds.includes(r.player.id);
-        this.npcPsychology.updateAfterHand(
-          r.player.id,
-          {
-            won: isWinner,
-            lost: !isWinner,
-            amount: r._awarded || r.player.totalBet,
-            taker: !isWinner ? results[0].player.id : null,
-            wasAggressive: (this.handActionHistory[r.player.id] || []).some(
-              (a) => a.action === 'raise' || a.action === 'allin'
-            ),
-            caughtBluffing:
-              !isWinner &&
-              (this.handActionHistory[r.player.id] || []).some((a) => a.action === 'raise'),
-          },
-          r.player.npcProfile
-        );
-      }
     }
 
     this.endRound();
@@ -1484,7 +1274,6 @@ class PokerGame {
           chips: player.chips,
           folded: player.folded,
           allIn: player.allIn,
-          isNPC: player.isNPC,
         })),
         gameOver: this.gameOver,
         tournamentActive: !!(this.tournament && this.tournament.isActive),
@@ -1499,13 +1288,13 @@ class PokerGame {
     if (this.onRoundEnd) this.onRoundEnd(this, tournamentResult);
   }
 
-  // Stop game engine, cancel all pending NPC timers
+  // Stop the engine and cancel any pending automated turn.
   stop() {
     this.isRunning = false;
     this.clearActionTimeout();
-    if (this._npcTimer) {
-      clearTimeout(this._npcTimer);
-      this._npcTimer = null;
+    if (this._autoTurnTimer) {
+      clearTimeout(this._autoTurnTimer);
+      this._autoTurnTimer = null;
     }
     this._log('🛑 Game engine stopped');
   }
@@ -1515,10 +1304,10 @@ class PokerGame {
     if (this.isPaused) return;
     this.isPaused = true;
     this.clearActionTimeout();
-    if (this._npcTimer) {
-      clearTimeout(this._npcTimer);
-      this._npcTimer = null;
-      this._pausedNpcPending = true;
+    if (this._autoTurnTimer) {
+      clearTimeout(this._autoTurnTimer);
+      this._autoTurnTimer = null;
+      this._pausedAutoPending = true;
     }
     this._log('⏸ Game paused');
     this.emitUpdate();
@@ -1528,7 +1317,7 @@ class PokerGame {
     if (!this.isPaused) return;
     this.isPaused = false;
     this._log('▶ Game resumed');
-    if (this._pausedNpcPending) this._pausedNpcPending = false;
+    if (this._pausedAutoPending) this._pausedAutoPending = false;
     if (this.isRunning) this.beginCurrentTurn();
     else this.emitUpdate();
   }
@@ -1540,254 +1329,57 @@ class PokerGame {
   }
 
   isAutomatedPlayer(player) {
-    return !!(player && (player.isNPC || player.autoPlay));
+    return !!(player && player.autoPlay);
   }
 
   getPublicName(player) {
     if (!player) return '';
-    if (player.isNPC && player.npcProfile && player.npcProfile.isWestern) {
-      return player.npcProfile.nameEn || player.name;
-    }
     return player.name;
   }
 
-  getAutoPlayProfile(player) {
-    const seedSource = String(player?.id || player?.name || 'auto');
-    const seed =
-      [...seedSource].reduce((sum, ch, index) => sum + ch.charCodeAt(0) * (index + 1), 0) % 11;
-    const offset = (seed - 5) * 0.012;
-    return {
-      ...AUTO_PLAY_PROFILE,
-      name: `${player?.name || 'Player'} Auto`,
-      tightness: clamp(AUTO_PLAY_PROFILE.tightness + offset, 0.45, 0.7),
-      bluffFreq: clamp(AUTO_PLAY_PROFILE.bluffFreq + offset * 0.4, 0.03, 0.14),
-      aggression: clamp(AUTO_PLAY_PROFILE.aggression - offset * 0.6, 0.42, 0.7),
-      cbetFreq: clamp(AUTO_PLAY_PROFILE.cbetFreq - offset * 0.35, 0.45, 0.72),
-      checkRaiseFreq: clamp(AUTO_PLAY_PROFILE.checkRaiseFreq + offset * 0.2, 0.03, 0.12),
-    };
-  }
-
-  buildSolverContextForPlayer(player) {
-    if (!player || !player.holeCards || player.holeCards.length !== 2) return null;
-    return buildSolverContext({
-      players: this.players,
-      currentPlayerId: player.id,
-      dealerIndex: this.dealerIndex,
-      bbIndex: this.bbIndex,
-      handStartPlayerCount: this.handStartPlayerCount,
-      handStartStacks: this.handStartStacks,
-      handActionLog: this.handActionLog,
-      bigBlind: this.bigBlind,
-      phase: this.phase,
-      communityCards: this.communityCards,
-    });
-  }
-
-  prewarmSolverTreeForPlayer(player) {
-    const solverContext = this.buildSolverContextForPlayer(player);
-    if (!solverContext) return null;
-    return warmStrategyTree({
-      solverContext,
-      holeCards: player.holeCards,
-      dataDir: this.solverDataDir || undefined,
-      rootCacheDir: this.solverRootCacheDir || undefined,
-    });
-  }
-
-  prewarmSolverTreesForStreet() {
-    for (const player of this.players) {
-      if (!player.isNPC || player.folded || player.allIn) continue;
-      if (!player.holeCards || player.holeCards.length !== 2) continue;
-      this.prewarmSolverTreeForPlayer(player);
-    }
-  }
-
-  processNPCTurn() {
+  // A seat on auto-play takes the passive line: check when it is free, fold to
+  // a bet. This is a sit-out, not a strategy. A seat only reaches it because
+  // its player disconnected, left the table, or ran out their clock, and a
+  // sit-out must never put chips in on somebody's behalf.
+  processAutoTurn() {
     const current = this.players[this.currentPlayerIndex];
     if (!current || !this.isAutomatedPlayer(current) || current.folded || current.allIn) return;
 
-    // Paused: mark automated turn as pending
+    // Paused: mark the automated turn as pending and pick it up on resume.
     if (this.isPaused) {
-      this._pausedNpcPending = true;
+      this._pausedAutoPending = true;
       return;
     }
 
-    // NPC delay scaled by speed multiplier
-    const baseMin = NPC_DELAY_MIN,
-      baseMax = NPC_DELAY_MAX;
-    const mult = this.speedMultiplier || 1;
-    const delayMin = baseMin / mult;
-    const delayMax = baseMax / mult;
-    const delay =
-      delayMin >= delayMax ? Math.round(delayMin) : Math.round(delayMin + random.randomInt(Math.max(1, Math.round(delayMax - delayMin) + 1)));
+    // Math.max(1) matters: a chain of zero-delay timeouts is a hot loop.
+    const delay = Math.max(1, Math.round(AUTO_TURN_DELAY_MS / (this.speedMultiplier || 1)));
 
-    if (current.isNPC && current.holeCards && current.holeCards.length === 2) {
-      this.prewarmSolverTreeForPlayer(current);
-    }
-
-    if (this._npcTimer) {
-      clearTimeout(this._npcTimer);
-      this._npcTimer = null;
+    if (this._autoTurnTimer) {
+      clearTimeout(this._autoTurnTimer);
+      this._autoTurnTimer = null;
     }
     this.turnDurationMs = delay;
     this.turnExpiresAt = Date.now() + delay;
     this.emitUpdate();
 
-    this._npcTimer = setTimeout(async () => {
-      // Room cleaned up or game stopped
+    this._autoTurnTimer = setTimeout(() => {
+      this._autoTurnTimer = null;
       if (!this.isRunning) return;
-      const liveCurrent = this.players[this.currentPlayerIndex];
-      if (!liveCurrent || liveCurrent.id !== current.id || !this.isAutomatedPlayer(liveCurrent)) {
-        return;
-      }
-      // Pause check (timer may fire after pause)
+      // The turn may have moved while the timer was pending: someone acted, the
+      // hand ended, the seat was moved between tables, or the player took back
+      // control. Identity is re-checked here rather than captured.
+      const live = this.players[this.currentPlayerIndex];
+      if (!live || live.id !== current.id || !this.isAutomatedPlayer(live)) return;
+      if (live.folded || live.allIn) return;
       if (this.isPaused) {
-        this._pausedNpcPending = true;
+        this._pausedAutoPending = true;
         return;
       }
-
-      // Build opponent action histories for range estimation
-      const opponentActions = {};
-      const opponentProfiles = {};
-      for (const p of this.players) {
-        if (p.id !== current.id && !p.folded) {
-          opponentActions[p.id] = this.handActionHistory[p.id] || [];
-          opponentProfiles[p.id] = this.playerStats.getProfile(p.id);
-        }
-      }
-
-      const decisionProfile = current.isNPC
-        ? current.npcProfile
-        : this.getAutoPlayProfile(current);
-      const solverContext = this.buildSolverContextForPlayer(current);
-
-      const gameState = {
-        pot: this.pot,
-        currentBet: this.currentBet,
-        playerBet: current.bet,
-        chips: current.chips,
-        minRaise: this.currentBet + this.minRaise,
-        phase: this.phase,
-        activePlayers: this.getPlayersInHand().length,
-        seatIndex: current.seatIndex,
-        dealerIndex: this.dealerIndex,
-        sbIndex: this.sbIndex,
-        bbIndex: this.bbIndex,
-        totalPlayers: this.players.filter((p) => !p.folded).length,
-        bigBlind: this.bigBlind,
-        currentPlayerId: current.id,
-        handActionLog: this.handActionLog,
-        handStartPlayerCount: this.handStartPlayerCount,
-        handStartStacks: this.handStartStacks,
-        solverDataDir: this.solverDataDir || undefined,
-        solverContext,
-        // Opponent modeling data
-        opponentActions,
-        opponentProfiles,
-        solverRootCacheDir: this.solverRootCacheDir || undefined,
-        _wasPreRaiser: this.preflopRaiserId === current.id,
-        // Preflop lookup table (injected by server)
-        preflopTable: this.preflopTable,
-        // Veteran thinking data
-        _myHandActions: this.handActionHistory[current.id] || [],
-        _myRecentActions: current._recentActions || [],
-        // Psychology modifiers
-        psychMods: current.isNPC
-          ? current.npcProfile
-            ? this.npcPsychology.getDecisionModifiers(
-                current.id,
-                this.players.find((p) => !p.isNPC && !p.folded)?.id || null,
-                current.npcProfile
-              )
-            : null
-          : null,
-      };
-
-      // Unified orchestrator: solver exact hit -> remote model -> local fallback
-      let decision;
-      try {
-        decision = await decideNpcAction({
-          profile: decisionProfile,
-          holeCards: current.holeCards,
-          communityCards: this.communityCards,
-          gameState,
-          players: this.players,
-          remoteConfig: this.npcModelConfig || undefined,
-        });
-      } catch (e) {
-        this._log(
-          `⚠️ ${current.name}${current.isNPC ? '' : ' [auto]'} decision error: ${e.message}, falling back to check/fold`
-        );
-        const canCheck = this.currentBet <= current.bet;
-        decision = canCheck ? { action: 'check' } : { action: 'fold' };
-      }
-
-      const postAwaitCurrent = this.players[this.currentPlayerIndex];
-      if (!this.isRunning || !postAwaitCurrent || postAwaitCurrent.id !== current.id) {
-        return;
-      }
-
-      if (gameState._decisionTrace?.status === 'solver_hit') {
-        this._logEvent(
-          'solver_hit',
-          {
-            playerId: current.id,
-            playerName: current.name,
-            isNPC: current.isNPC,
-            ...gameState._decisionTrace,
-          },
-          'info',
-          'Solver strategy applied'
-        );
-        this.recordRuntimeRolloutDecision(gameState._decisionTrace, gameState._solverTrace || null);
-      } else if (gameState._decisionTrace?.status === 'model_hit') {
-        this._logEvent(
-          'model_hit',
-          {
-            playerId: current.id,
-            playerName: current.name,
-            isNPC: current.isNPC,
-            ...gameState._decisionTrace,
-          },
-          'info',
-          'Remote model strategy applied'
-        );
-        this.recordRuntimeRolloutDecision(gameState._decisionTrace, gameState._solverTrace || null);
-      } else if (gameState._decisionTrace?.status === 'fallback') {
-        this._logEvent(
-          'decision_fallback',
-          {
-            playerId: current.id,
-            playerName: current.name,
-            isNPC: current.isNPC,
-            ...gameState._decisionTrace,
-            solverTrace: gameState._solverTrace || null,
-          },
-          gameState._decisionTrace.coverageStatus === 'covered_spot' ? 'info' : 'debug',
-          'Decision fallback used'
-        );
-        this.recordRuntimeRolloutDecision(gameState._decisionTrace, gameState._solverTrace || null);
-      }
-      this._log(
-        `📋 ${current.name}${current.isNPC ? '' : ' [auto]'}${decision._solver ? ' [solver]' : decision._model ? ' [model]' : ''}: ${decision.action}${decision.amount ? ' ' + decision.amount : ''}`
-      );
-
-      // Store last action for display (including fallback decisions)
-      current.lastAction = { action: decision.action, amount: decision.amount, time: Date.now() };
-
-      // Psychology-driven chat
-      if (current.isNPC) {
-        const situation =
-          decision.action === 'fold' ? 'folded' : decision._isBluffing ? 'bluffing' : 'normal';
-        const chatMsg = this.npcPsychology.generateChat(current.id, current.npcProfile, situation);
-        if (chatMsg && this.onChat) {
-          this.onChat(current.name, chatMsg);
-        }
-      }
-
-      this.handleAction(current.id, decision.action, decision.amount);
+      const canCheck = this.currentBet <= live.bet;
+      live.lastAction = { action: canCheck ? 'check' : 'fold', amount: 0, time: Date.now() };
+      this.handleAction(live.id, canCheck ? 'check' : 'fold');
     }, delay);
-    if (this._npcTimer.unref) this._npcTimer.unref();
+    if (this._autoTurnTimer.unref) this._autoTurnTimer.unref();
   }
 
   getStateForPlayer(playerId) {
@@ -1822,21 +1414,6 @@ class PokerGame {
         totalBet: p.totalBet,
         folded: p.folded,
         allIn: p.allIn,
-        isNPC: p.isNPC,
-        npcProfile: p.isNPC
-          ? {
-              style: p.npcProfile?.style || 'balanced',
-              avatar: p.npcProfile?.avatar || '🤖',
-              title: p.npcProfile?.title || '',
-              titleEn: p.npcProfile?.titleEn || '',
-              bio: p.npcProfile?.bio || '',
-              bioEn: p.npcProfile?.bioEn || '',
-              origin: p.npcProfile?.origin || '',
-              originEn: p.npcProfile?.originEn || '',
-              nameEn: p.npcProfile?.nameEn || p.name,
-              isWestern: p.npcProfile?.isWestern || false,
-            }
-          : null,
         seatIndex: p.seatIndex,
         isConnected: p.isConnected,
         isReady: !!p.isReady,
@@ -1914,14 +1491,13 @@ class PokerGame {
   }
 }
 
-// NPC_DELAY_* are exported so tests can advance fake timers past the real
-// configured delay instead of hardcoding a literal that silently breaks the
-// next time the pacing is retuned.
+// AUTO_TURN_DELAY_MS is exported so tests can advance fake timers past the
+// real configured delay instead of hardcoding a literal that silently breaks
+// the next time the pacing is retuned.
 module.exports = {
   PokerGame,
   DEFAULT_MAX_PLAYERS,
-  NPC_DELAY_MIN,
-  NPC_DELAY_MAX,
+  AUTO_TURN_DELAY_MS,
   TIME_BANK_GRANT_MS,
   TIME_BANK_PER_HAND,
 };

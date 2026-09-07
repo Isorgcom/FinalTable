@@ -151,7 +151,7 @@ function registerTournamentHandlers(deps) {
       if (player.autoPlay === enabled) return;
       player.autoPlay = enabled;
       player.isReady = false;
-      table.emitMessage(`${player.name} ${enabled ? 'switched to auto-play' : 'resumed control'}`, {
+      table.emitMessage(`${player.name} ${enabled ? 'is sitting out' : 'is back at the table'}`, {
         kind: 'system',
       });
       const idx = table.players.findIndex((p) => p.id === player.id);

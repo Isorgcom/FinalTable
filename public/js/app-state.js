@@ -234,7 +234,7 @@ document.addEventListener('click', (e) => {
 
 function toggleAutoPlay() {
   if (!socket || !gameState) return;
-  const me = gameState.players.find((p) => p.id === myId && !p.isNPC);
+  const me = gameState.players.find((p) => p.id === myId);
   if (!me || me.isSpectator) return;
   if (me.autoPlay) {
     _resumeInteractionGuardUntil = Date.now() + 900;
@@ -259,15 +259,17 @@ function updateModeUI() {
   }
   const autoBtn = document.getElementById('btnAutoPlay');
   if (!autoBtn) return;
-  const me = gameState.players.find((p) => p.id === myId && !p.isNPC);
+  const me = gameState.players.find((p) => p.id === myId);
   if (!me || me.isSpectator || gameState.gameOver || !gameState.isRunning) {
     autoBtn.classList.add('hidden');
     autoBtn.classList.remove('autoplay-active');
   } else {
     autoBtn.classList.remove('hidden');
     autoBtn.classList.toggle('autoplay-active', !!me.autoPlay);
-    autoBtn.textContent = me.autoPlay ? 'resume' : 'auto';
-    autoBtn.title = me.autoPlay ? 'Resume manual control' : 'Let the computer play this seat';
+    autoBtn.textContent = me.autoPlay ? 'sit in' : 'sit out';
+    autoBtn.title = me.autoPlay
+      ? 'Take back control of this seat'
+      : 'Sit out: check when free, fold to a bet';
   }
 }
 

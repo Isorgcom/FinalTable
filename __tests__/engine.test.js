@@ -1,9 +1,6 @@
 // __tests__/engine.test.js
-const { PokerGame: BasePokerGame, NPC_DELAY_MAX } = require('../engine');
+const { PokerGame: BasePokerGame, AUTO_TURN_DELAY_MS } = require('../engine');
 const { evaluateHand, compareHands } = require('../hand-eval');
-const { NPCPsychology } = require('../npc-psychology');
-const { NPC_PROFILES } = require('../npc');
-const { CHAT_LINES } = require('../npc-chat');
 const random = require('../random');
 
 const activeGames = new Set();
@@ -243,8 +240,8 @@ describe('Poker Engine Core Rules & Pot Distribution', () => {
 
   test('Scenario 5b: first hand keeps original seating order', () => {
     const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
-    const npcA = game.addPlayer({ id: 'p2', name: 'NPC_A', isNPC: true });
-    const npcB = game.addPlayer({ id: 'p3', name: 'NPC_B', isNPC: true });
+    const npcA = game.addPlayer({ id: 'p2', name: 'NPC_A' });
+    const npcB = game.addPlayer({ id: 'p3', name: 'NPC_B' });
     const preDealOrder = game.players.map((player) => player.name);
     const preDealSeats = game.players.map((player) => player.seatIndex);
 
@@ -260,7 +257,7 @@ describe('Poker Engine Core Rules & Pot Distribution', () => {
     try {
       const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
       const guest = game.addPlayer({ id: 'p2', name: 'Guest' });
-      const npc = game.addPlayer({ id: 'p3', name: 'NPC_A', isNPC: true });
+      const npc = game.addPlayer({ id: 'p3', name: 'NPC_A' });
 
       expect(game.players.map((player) => player.name)).toEqual(['NPC_A', 'Guest', 'Hero']);
       expect(hero.seatIndex).toBe(2);
@@ -342,71 +339,6 @@ describe('Poker Engine Core Rules & Pot Distribution', () => {
     expect(p1.chips + p2.chips + p3.chips).toBe(100 + 300 + 300 + 700);
   });
 });
-
-describe('NPC copy integrity', () => {
-  test('npc profiles keep complete bilingual identity fields', () => {
-    for (const profile of NPC_PROFILES) {
-      expect(profile).toEqual(
-        expect.objectContaining({
-          name: expect.any(String),
-          nameEn: expect.any(String),
-          title: expect.any(String),
-          titleEn: expect.any(String),
-          bio: expect.any(String),
-          bioEn: expect.any(String),
-          origin: expect.any(String),
-          originEn: expect.any(String),
-        })
-      );
-      expect(profile.name.trim()).not.toBe('');
-      expect(profile.nameEn.trim()).not.toBe('');
-      expect(profile.title.trim()).not.toBe('');
-      expect(profile.titleEn.trim()).not.toBe('');
-      expect(profile.bio.trim()).not.toBe('');
-      expect(profile.bioEn.trim()).not.toBe('');
-      expect(profile.origin.trim()).not.toBe('');
-      expect(profile.originEn.trim()).not.toBe('');
-    }
-  });
-
-  test('every npc has dedicated chat lines for every event', () => {
-    const events = Object.keys(CHAT_LINES);
-    for (const profile of NPC_PROFILES) {
-      for (const event of events) {
-        expect(Array.isArray(CHAT_LINES[event][profile.name])).toBe(true);
-        expect(CHAT_LINES[event][profile.name].length).toBeGreaterThan(0);
-      }
-    }
-  });
-
-  test('western npc user-facing messages use english display names', () => {
-    const game = new PokerGame('western_names', { smallBlind: 10, bigBlind: 20 });
-    const messages = [];
-    game.onMessage = (msg) => messages.push(msg);
-    game.onUpdate = () => {};
-    game.onChat = () => {};
-    game.onRoundEnd = () => {};
-
-    const achillesProfile = NPC_PROFILES.find((p) => p.name === '阿喀琉斯');
-    const hero = game.addPlayer({ id: 'h1', name: 'Hero' });
-    const achilles = game.addPlayer({
-      id: 'n1',
-      name: achillesProfile.name,
-      isNPC: true,
-      npcProfile: achillesProfile,
-    });
-
-    game.startRound();
-    game.currentPlayerIndex = hero.seatIndex;
-    game.isRunning = true;
-    game.handleAction(hero.id, 'fold');
-
-    expect(messages.some((msg) => /Achilles wins/.test(msg))).toBe(true);
-    expect(messages.some((msg) => /阿喀琉斯 wins/.test(msg))).toBe(false);
-    expect(achilles.chips).toBeGreaterThan(0);
-  });
-});
-
 describe('Hand Evaluation', () => {
   test('Flush > Straight', () => {
     const flush = evaluateHand([
@@ -528,8 +460,6 @@ describe('Chip Conservation Stress Test (Chip conservation stresstest)', () => {
         g.addPlayer({
           id: `npc_${i}`,
           name: `Bot${i}`,
-          isNPC: true,
-          npcProfile: { name: `Bot${i}`, style: 'balanced', avatar: '🤖' },
         });
       }
 
@@ -846,7 +776,7 @@ describe('Advanced Pot Distribution', () => {
 
   test('cash tables enter game-over state when only one player has chips left', () => {
     const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
-    const npc = game.addPlayer({ id: 'npc1', name: 'Cao Cao', isNPC: true, npcProfile: { name: 'Cao Cao' } });
+    const npc = game.addPlayer({ id: 'npc1', name: 'Villain' });
     game.startRound();
 
     hero.totalBet = 1000;
@@ -948,52 +878,6 @@ describe('Hand History & Replay Data', () => {
     expect(hands[0].finalPhase).toBe('preflop');
   });
 
-  test('replay keeps western npc display metadata for rendering', () => {
-    const game = new PokerGame('replay_western_npc', { smallBlind: 10, bigBlind: 20 });
-    game.onMessage = () => {};
-    game.onUpdate = () => {};
-    game.onChat = () => {};
-    game.onRoundEnd = () => {};
-
-    const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
-    const achilles = game.addPlayer({
-      id: 'p2',
-      name: '阿喀琉斯',
-      isNPC: true,
-      npcProfile: {
-        nameEn: 'Achilles',
-        isWestern: true,
-        avatar: '⚔️',
-        title: '英雄',
-        titleEn: 'Hero',
-      },
-    });
-    game.startRound();
-
-    hero.totalBet = 500;
-    hero.chips = 500;
-    achilles.totalBet = 500;
-    achilles.chips = 500;
-    game.pot = 1000;
-    game.communityCards = [
-      Card('hearts', 14),
-      Card('spades', 13),
-      Card('diamonds', 12),
-      Card('clubs', 5),
-      Card('hearts', 3),
-    ];
-    hero.holeCards = [Card('spades', 14), Card('diamonds', 13)];
-    achilles.holeCards = [Card('hearts', 2), Card('clubs', 7)];
-
-    game.showdown();
-
-    const hand = game.handHistory.getRecentHands(1)[0];
-    const replayAchilles = hand.players.find((p) => p.id === 'p2');
-    expect(replayAchilles.npcProfile).toBeDefined();
-    expect(replayAchilles.npcProfile.nameEn).toBe('Achilles');
-    expect(replayAchilles.npcProfile.isWestern).toBe(true);
-  });
-
   test('replay snapshots stay stable after a new hand starts', () => {
     const game = new PokerGame('replay_stability', { smallBlind: 10, bigBlind: 20 });
     game.onMessage = () => {};
@@ -1056,13 +940,14 @@ describe('Hand History & Replay Data', () => {
       autoHero.chips = 990;
       game.isRunning = true;
 
-      game.processNPCTurn();
-      jest.advanceTimersByTime(NPC_DELAY_MAX + 100);
+      game.processAutoTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
       await Promise.resolve();
       await Promise.resolve();
 
+      // Facing a bet of 20 with 10 in: a sit-out folds rather than call.
       expect(autoHero.lastAction).toBeTruthy();
-      expect(['fold', 'call', 'raise', 'allin', 'check']).toContain(autoHero.lastAction.action);
+      expect(autoHero.lastAction.action).toBe('fold');
     } finally {
       jest.useRealTimers();
     }
@@ -1087,25 +972,13 @@ describe('Hand History & Replay Data', () => {
       game.currentPlayerIndex = autoHero.seatIndex;
       game.isRunning = true;
 
-      game.processNPCTurn();
+      game.processAutoTurn();
 
       expect(game.turnDurationMs).toBeGreaterThan(0);
       expect(game.turnExpiresAt).toBeGreaterThan(Date.now());
     } finally {
       jest.useRealTimers();
     }
-  });
-
-  test('auto-play seats get an independent dedicated strategy profile', () => {
-    const game = new PokerGame('autoplay_profile', { smallBlind: 10, bigBlind: 20 });
-    const aliceProfile = game.getAutoPlayProfile({ id: 'p1', name: 'Alice' });
-    const bobProfile = game.getAutoPlayProfile({ id: 'p2', name: 'Bob' });
-
-    expect(aliceProfile).not.toBe(bobProfile);
-    expect(aliceProfile.name).toBe('Alice Auto');
-    expect(bobProfile.name).toBe('Bob Auto');
-    expect(aliceProfile).toEqual(expect.objectContaining({ style: 'balanced' }));
-    expect(bobProfile).toEqual(expect.objectContaining({ style: 'balanced' }));
   });
 
   test('human turn timeout switches the seat to auto-play and acts', async () => {
@@ -1140,10 +1013,44 @@ describe('Hand History & Replay Data', () => {
       jest.advanceTimersByTime(35);
       expect(hero.autoPlay).toBe(true);
 
-      jest.advanceTimersByTime(NPC_DELAY_MAX + 100);
-      await Promise.resolve();
-      await Promise.resolve();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
       expect(hero.lastAction).toBeTruthy();
+      expect(hero.lastAction.action).toBe('fold');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('a table where every seat sits out plays hands out instead of spinning', async () => {
+    jest.useFakeTimers();
+    try {
+      const game = new PokerGame('all_sitting_out', { smallBlind: 10, bigBlind: 20 });
+      game.onMessage = () => {};
+      game.onUpdate = () => {};
+      game.onChat = () => {};
+      game.onRoundEnd = () => {};
+
+      const a = game.addPlayer({ id: 'p1', name: 'A', chips: 100 });
+      const b = game.addPlayer({ id: 'p2', name: 'B', chips: 100 });
+      game.startRound();
+      a.autoPlay = true;
+      b.autoPlay = true;
+
+      const realHandleAction = game.handleAction.bind(game);
+      let actions = 0;
+      game.handleAction = (...args) => {
+        actions += 1;
+        return realHandleAction(...args);
+      };
+
+      // Both seats fold to the blind or check it down, so a hand is a handful
+      // of actions. If the delay ever collapsed to zero this would be a hot
+      // loop and the count would run away.
+      game.beginCurrentTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS * 20);
+      expect(actions).toBeGreaterThan(0);
+      expect(actions).toBeLessThan(20);
+      game.stop();
     } finally {
       jest.useRealTimers();
     }
@@ -1235,23 +1142,6 @@ describe('Dealer narration', () => {
     // The untagged betting strings the client sniffs are still there verbatim.
     // A chopped pot says "splits pot" instead; both are the untouched strings.
     expect(lines.some((l) => /wins \d+!|splits pot \d+/.test(l.msg))).toBe(true);
-  });
-});
-
-describe('NPC psychology chat text', () => {
-  test('folded chat lines no longer emit corrupted placeholder text', () => {
-    const psychology = new NPCPsychology();
-    const profile = { style: 'balanced' };
-    const outputs = new Set();
-
-    for (let i = 0; i < 40; i++) {
-      const line = psychology.generateChat('npc_caocao', profile, 'folded');
-      if (line) outputs.add(line);
-    }
-
-    expect([...outputs].some((line) => /etcbelow|countcount|thanksthanks/i.test(line))).toBe(
-      false
-    );
   });
 });
 
@@ -1727,12 +1617,7 @@ describe('Action Flow & Game Mechanics', () => {
         g.onRoundEnd = () => {};
 
         for (let i = 0; i < 6; i++) {
-          g.addPlayer({
-            id: `bot${i}`,
-            name: `Bot${i}`,
-            isNPC: true,
-            npcProfile: { name: `Bot${i}`, style: 'balanced', avatar: '🤖' },
-          });
+          g.addPlayer({ id: `p${i}`, name: `P${i}` });
         }
         g.startRound();
 

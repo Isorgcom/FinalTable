@@ -218,17 +218,10 @@ let _dealAnimationRound = -1;
 function getPlayerIdentityKey(players) {
   return players
     .map((p) => {
-      const profile = p.npcProfile || {};
       return [
         p.id,
         p.name,
         p.avatar || '',
-        p.isNPC ? 'npc' : 'human',
-        profile.nameEn || '',
-        profile.title || '',
-        profile.titleEn || '',
-        profile.avatar || '',
-        profile.isWestern ? 'western' : '',
         p.isReady ? 'ready' : '',
         p.autoPlay ? 'auto' : '',
         p.isConnected === false ? 'offline' : 'online',
@@ -379,7 +372,7 @@ function updateSeatDynamic(seat, player, ctx) {
     ctx.isRunning && player.totalBet > 0,
     `in ${player.totalBet}`
   );
-  if (player.id === myId && !player.isNPC) {
+  if (player.id === myId) {
     const hand = gameState.myHand;
     const cap = setSeatNode(info, 'seat-caption', !!hand, hand ? hand.detail : undefined);
     if (cap && hand) cap.title = hand.text;
@@ -446,119 +439,49 @@ function createTextElement(tag, className, text) {
 }
 
 function getPlayerDisplayName(player) {
-  if (!player) return '';
-  if (player.isNPC && player.npcProfile && player.npcProfile.isWestern) {
-    return player.npcProfile.nameEn || player.name;
-  }
-  return player.name;
+  return player ? player.name : '';
 }
 
-function appendNpcTooltip(info, player, pos) {
-  const p = player.npcProfile;
-  if (!p || !p.bio) return;
-  const isWestern = p.isWestern;
-  const topPct = parseFloat(pos.top);
-  const tooltip = document.createElement('div');
-  tooltip.className = topPct < 50 ? 'npc-tooltip tooltip-below' : 'npc-tooltip';
+function appendPlayerIdentity(info, text, player) {
+  info.appendChild(createTextElement('span', 'seat-avatar', player.avatar || '🧑'));
 
-  if (isWestern) {
-    tooltip.appendChild(
-      createTextElement(
-        'div',
-        'npc-tooltip-title',
-        `${p.titleEn || p.title} · ${p.nameEn || player.name}`
-      )
-    );
-    tooltip.appendChild(createTextElement('div', 'npc-tooltip-origin', p.originEn || p.origin));
-    tooltip.appendChild(createTextElement('div', 'npc-tooltip-bio', p.bioEn || p.bio));
-  } else {
-    tooltip.appendChild(
-      createTextElement('div', 'npc-tooltip-title', `${p.title} · ${player.name}`)
-    );
-    tooltip.appendChild(
-      createTextElement(
-        'div',
-        'npc-tooltip-title npc-tooltip-title-secondary',
-        `${p.titleEn || ''} · ${p.nameEn || ''}`
-      )
-    );
-    tooltip.appendChild(
-      createTextElement('div', 'npc-tooltip-origin', `${p.origin} · ${p.originEn || ''}`)
-    );
-    tooltip.appendChild(createTextElement('div', 'npc-tooltip-bio', p.bio));
-    tooltip.appendChild(
-      createTextElement('div', 'npc-tooltip-bio npc-tooltip-bio-secondary', p.bioEn || '')
-    );
+  const name = createTextElement('div', 'player-name', player.name);
+  if (player.uid && player.uid === gameState.hostId) {
+    const hostBadge = createTextElement('span', 'player-host-badge', 'host');
+    hostBadge.title = 'Tournament host';
+    name.appendChild(hostBadge);
   }
-
-  info.appendChild(tooltip);
-}
-
-function appendPlayerIdentity(info, text, player, pos) {
-  const profile = player.isNPC && player.npcProfile ? player.npcProfile : null;
-  const isWestern = !!(profile && profile.isWestern);
-  const avatar = createTextElement(
-    'span',
-    'npc-avatar seat-avatar',
-    profile ? profile.avatar || '' : player.avatar || '🧑'
-  );
-  info.appendChild(avatar);
-  if (profile) appendNpcTooltip(info, player, pos);
-
-  const name = createTextElement(
-    'div',
-    'player-name',
-    isWestern ? profile.nameEn || player.name : player.name
-  );
-  if (!player.isNPC) {
-    if (player.uid && player.uid === gameState.hostId) {
-      const hostBadge = createTextElement('span', 'player-host-badge', 'host');
-      hostBadge.title = 'Room host';
-      name.appendChild(hostBadge);
-    }
-    if (player.autoPlay) {
-      const autoBadge = createTextElement('span', 'player-auto-badge', 'auto');
-      autoBadge.title = 'Computer is playing this seat';
-      name.appendChild(autoBadge);
-    }
-    if (player.isSpectator) {
-      const spectatorBadge = createTextElement('span', 'player-spectator-badge', 'watch');
-      spectatorBadge.title = 'Spectating this hand';
-      name.appendChild(spectatorBadge);
-    }
-    if (player.isConnected === false) {
-      const offlineBadge = createTextElement('span', 'player-offline-badge', 'offline');
-      offlineBadge.title = 'Disconnected';
-      name.appendChild(offlineBadge);
-    }
-    if (
-      player.isReady &&
-      gameState &&
-      !gameState.isRunning &&
-      gameState.roundCount === 0 &&
-      gameState.gameMode !== 'practice'
-    ) {
-      const readyBadge = createTextElement('span', 'player-ready-badge', 'ready');
-      readyBadge.title = 'Ready to start';
-      name.appendChild(readyBadge);
-    }
+  if (player.autoPlay) {
+    const autoBadge = createTextElement('span', 'player-auto-badge', 'sitting out');
+    autoBadge.title = 'Sitting out: checks when free, folds to a bet';
+    name.appendChild(autoBadge);
+  }
+  if (player.isSpectator) {
+    const spectatorBadge = createTextElement('span', 'player-spectator-badge', 'watch');
+    spectatorBadge.title = 'Spectating this hand';
+    name.appendChild(spectatorBadge);
+  }
+  if (player.isConnected === false) {
+    const offlineBadge = createTextElement('span', 'player-offline-badge', 'offline');
+    offlineBadge.title = 'Disconnected';
+    name.appendChild(offlineBadge);
+  }
+  if (
+    player.isReady &&
+    gameState &&
+    !gameState.isRunning &&
+    gameState.roundCount === 0 &&
+    gameState.gameMode !== 'practice'
+  ) {
+    const readyBadge = createTextElement('span', 'player-ready-badge', 'ready');
+    readyBadge.title = 'Ready to start';
+    name.appendChild(readyBadge);
   }
   text.appendChild(name);
 
-  // A human's caption slot holds the viewer's own hand readout (see
-  // updateSeatDynamic); an NPC's holds the English name and title.
-  if (!profile) {
-    text.appendChild(createTextElement('div', 'seat-caption is-hand hidden', ''));
-  }
-  if (profile) {
-    const title = profile.titleEn || profile.title || '';
-    const caption = isWestern ? title : [profile.nameEn, title].filter(Boolean).join(' · ');
-    if (caption) {
-      const cap = createTextElement('div', 'seat-caption', caption);
-      cap.title = caption;
-      text.appendChild(cap);
-    }
-  }
+  // The caption slot holds the viewer's own hand readout (see
+  // updateSeatDynamic). Every seat gets one; only the viewer's is ever filled.
+  text.appendChild(createTextElement('div', 'seat-caption is-hand hidden', ''));
 }
 
 function renderPlayersFull(container) {
@@ -646,7 +569,7 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   info.className = 'player-info seat-plate';
   const text = document.createElement('div');
   text.className = 'seat-plate-text';
-  appendPlayerIdentity(info, text, player, pos);
+  appendPlayerIdentity(info, text, player);
 
   // Dynamic placeholders, in layout order. The action badge is absolutely
   // positioned so its slot only matters for the writer to find it.
@@ -1066,7 +989,7 @@ function showResult(options = {}) {
     title.classList.add('result-title-winner');
     details.appendChild(document.createElement('hr')).className = 'result-separator';
     const rematchGuests = gameState.players.filter(
-      (player) => !player.isNPC && player.uid !== gameState.hostId
+      (player) => player.uid !== gameState.hostId
     );
     const readyGuests = rematchGuests.filter((player) => player.isReady);
     details.appendChild(

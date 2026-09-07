@@ -520,7 +520,7 @@ function createTournamentRegistry(deps = {}) {
         if (!player.autoPlay) {
           player.autoPlay = true;
           player.isReady = false;
-          table.emitMessage(`${player.name} switched to auto-play after disconnect`, {
+          table.emitMessage(`${player.name} is sitting out after a dropped connection`, {
             kind: 'system',
           });
         }
@@ -570,7 +570,7 @@ function createTournamentRegistry(deps = {}) {
     const seat = entry.director.playerByUid(uid);
     if (seat && !seat.player.autoPlay) {
       seat.player.autoPlay = true;
-      seat.table.emitMessage(`${seat.player.name} left the table; auto-play takes over`, {
+      seat.table.emitMessage(`${seat.player.name} left the table and is sitting out`, {
         kind: 'system',
       });
       seat.table.emitUpdate();
