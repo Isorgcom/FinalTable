@@ -272,6 +272,7 @@ function updateGameState(state) {
   if (state.roundCount !== oldRound) {
     prevCommunityCount = 0;
     _potPileTier = -1;
+    _builtBoardKey = '';
     _builtRound = -1; // force player seat rebuild
     _dealAnimationRound = state.roundCount;
   }
@@ -325,26 +326,48 @@ function renderTable(oldCommunityLen) {
   if (!gameState) return;
 
   // ── Community cards ──
-  // Always rebuild, but only animate NEW cards
   const cc = document.getElementById('communityCards');
   const curCount = gameState.communityCards.length;
   const prevCount = oldCommunityLen !== undefined ? oldCommunityLen : prevCommunityCount;
 
-  cc.textContent = '';
-  if (gameState.isRunning || gameState.phase === 'showdown') {
-    for (let i = 0; i < 5; i++) {
-      if (i < curCount) {
-        const isNew = i >= prevCount;
-        const cardEl = createCardElement(
-          gameState.communityCards[i],
-          isNew ? 'dealing-community' : ''
-        );
-        if (isNew) setAnimationDelay(cardEl, (i - prevCount) * 0.12);
-        cc.appendChild(cardEl);
-      } else {
-        const ph = document.createElement('div');
-        ph.className = 'card-back card-placeholder';
-        cc.appendChild(ph);
+  // Rebuilt only when the board itself changes. Two pushes land back to back
+  // when a street opens, and a blind rebuild on the second one would re-render
+  // the card mid-flip without its animation and snap it flat.
+  const boardKey =
+    gameState.isRunning || gameState.phase === 'showdown'
+      ? gameState.communityCards.map((c) => `${c.rank}${c.suit}`).join(',')
+      : 'none';
+  if (boardKey !== _builtBoardKey || !cc.children.length) {
+    _builtBoardKey = boardKey;
+    cc.textContent = '';
+    if (gameState.isRunning || gameState.phase === 'showdown') {
+      for (let i = 0; i < 5; i++) {
+        if (i < curCount) {
+          const isNew = i >= prevCount;
+          const cardEl = createCardElement(gameState.communityCards[i], isNew ? 'flipping' : '');
+          if (isNew) {
+            setAnimationDelay(cardEl, (i - prevCount) * 0.11);
+            // The card turns over behind its own back, which is dropped when
+            // the fold finishes. Clearing the class matters as much as the
+            // back: the animation fills both ways, so leaving it on freezes
+            // the card's transform for the rest of the hand and kills hover.
+            const back = document.createElement('div');
+            back.className = 'card-flipback';
+            cardEl.appendChild(back);
+            const drop = () => {
+              back.remove();
+              cardEl.classList.remove('flipping');
+            };
+            cardEl.addEventListener('animationend', drop, { once: true });
+            setTimeout(drop, (i - prevCount) * 110 + 900);
+            window.__anim.flips++;
+          }
+          cc.appendChild(cardEl);
+        } else {
+          const ph = document.createElement('div');
+          ph.className = 'card-back card-placeholder';
+          cc.appendChild(ph);
+        }
       }
     }
   }
@@ -378,6 +401,7 @@ let _builtPhase = '';
 let _builtHostId = '';
 let _builtIdentityKey = '';
 let _dealAnimationRound = -1;
+let _builtBoardKey = '';
 
 function getPlayerIdentityKey(players) {
   return players

@@ -436,22 +436,52 @@
     opacity: 1;
   }
 }
-@keyframes dealCommunity {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
+/* The board turns over in place. A scaleX fold rather than a 3D flip: .card
+   already carries transform-style: preserve-3d and .card-front sets
+   overflow:hidden, and that pairing is exactly where mobile Safari flattens a
+   backface. A fold needs neither, and at 34-70px the two are the same picture. */
+@keyframes boardFlip {
+  0% {
+    transform: scaleX(1) translateY(0);
   }
-  to {
-    transform: translateY(0);
+  48% {
+    transform: scaleX(0.04) translateY(-4px);
+  }
+  100% {
+    transform: scaleX(1) translateY(0);
+  }
+}
+/* step-end swaps the face at the fold's narrowest point, so the card is never
+   seen half-turned showing the wrong side. */
+@keyframes boardFlipFace {
+  0%,
+  47% {
     opacity: 1;
+  }
+  48%,
+  100% {
+    opacity: 0;
   }
 }
 .card.dealing {
   animation: dealCard 0.4s ease-out both;
   animation-delay: var(--deal-delay, 0s);
 }
-.card.dealing-community {
-  animation: dealCommunity 0.35s ease-out both;
+.card.flipping {
+  animation: boardFlip var(--flip-dur, 0.36s) ease-in-out both;
+  animation-delay: var(--deal-delay, 0s);
+}
+.card-flipback {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 6px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.08), transparent 22%),
+    linear-gradient(180deg, #3a6d4c 0%, #244b34 100%);
+  border: 1px solid rgba(38, 24, 8, 0.18);
+  animation: boardFlipFace var(--flip-dur, 0.36s) step-end both;
   animation-delay: var(--deal-delay, 0s);
 }
 .card-back.dealing {

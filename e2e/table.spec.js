@@ -310,5 +310,20 @@ test('the street bets sweep into the pot when the board turns over', async ({ pa
 
   // Nothing left behind: a leaked ghost accumulates over a long session.
   await expect(page.locator('.chip-fly')).toHaveCount(0, { timeout: 5000 });
+
+  // The flop turns over rather than sliding in, one card at a time.
+  expect(await page.evaluate(() => window.__anim.flips)).toBeGreaterThanOrEqual(3);
+  // Both halves of the flip clean up. The animation fills both ways, so a
+  // card left with the class keeps its final transform for the rest of the
+  // hand, which silently breaks hover on every board card.
+  await expect(page.locator('#communityCards .card-flipback')).toHaveCount(0, { timeout: 3000 });
+  await expect(page.locator('#communityCards .card.flipping')).toHaveCount(0);
+  const stuck = await page.$$eval('#communityCards .card', (els) =>
+    els.filter((el) => {
+      const t = getComputedStyle(el).transform;
+      return t !== 'none' && t !== 'matrix(1, 0, 0, 1, 0, 0)';
+    })
+  );
+  expect(stuck).toHaveLength(0);
   expect(pageErrors).toEqual([]);
 });
