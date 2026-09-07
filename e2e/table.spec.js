@@ -117,7 +117,7 @@ async function seatAtTournamentTable(page, name) {
   // seat to toggle yet.
   await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(2);
   await guest.click('#btnAutoPlay');
-  await expect(guest.locator('#btnAutoPlay')).toHaveText('sit in', { timeout: 10000 });
+  await expect(guest.locator('#seatBanner')).toBeVisible({ timeout: 10000 });
   return pageErrors;
 }
 

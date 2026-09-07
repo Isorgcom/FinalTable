@@ -230,6 +230,9 @@
     gap: 4px;
     bottom: 5px;
   }
+  .seat-banner {
+    bottom: 5px;
+  }
   .action-row {
     flex-wrap: wrap;
     justify-content: center;
@@ -409,6 +412,9 @@
     bottom: 2px;
     padding: 4px 6px;
   }
+  .seat-banner {
+    bottom: 2px;
+  }
   .action-btn {
     padding: 5px 10px;
     font-size: 0.7rem;
@@ -587,6 +593,10 @@
     transform: translateX(-50%);
     padding: 4px 6px;
     gap: 3px;
+  }
+  .seat-banner {
+    bottom: 2px;
+    width: min(92vw, 420px);
   }
   .action-row {
     flex-wrap: nowrap;

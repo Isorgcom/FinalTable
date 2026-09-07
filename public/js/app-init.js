@@ -171,7 +171,8 @@ function init() {
     renderReplayList();
     document.getElementById('replayPanel').classList.remove('hidden');
   });
-  document.getElementById('btnAutoPlay').addEventListener('click', toggleAutoPlay);
+  document.getElementById('btnAutoPlay').addEventListener('click', () => setSitOut(true));
+  document.getElementById('btnSitIn').addEventListener('click', () => setSitOut(false));
   document.getElementById('btnCloseReplay').addEventListener('click', () => {
     closeReplayPanel();
   });

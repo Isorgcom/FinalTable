@@ -1411,7 +1411,14 @@ class PokerGame {
         holeCards:
           p.id === playerId || (this.phase === 'showdown' && !p.folded) ? p.holeCards : null,
       })),
-      isMyTurn: viewer && this.currentPlayerIndex === viewer.seatIndex && this.isRunning,
+      // A seat that is sitting out is not the viewer's turn to act: the seat
+      // acts for them. Saying otherwise flashes the action bar up for the
+      // length of the sit-out delay and invites a click that races it.
+      isMyTurn:
+        viewer &&
+        this.currentPlayerIndex === viewer.seatIndex &&
+        this.isRunning &&
+        !this.isAutomatedPlayer(viewer),
       canCheck: viewer && this.currentBet === (viewer.bet || 0),
       canRaise: viewer
         ? this.players.some((p) => p.id !== playerId && !p.folded && !p.allIn && p.chips > 0)

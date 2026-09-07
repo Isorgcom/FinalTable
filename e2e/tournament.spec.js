@@ -213,7 +213,60 @@ test('a dropped connection sits the seat out, and coming back resumes it', async
       })
     )
     .toBe(false);
-  await expect(page.locator('#btnAutoPlay')).toHaveText('sit out');
+  await expect(page.locator('#seatBanner')).toBeHidden();
+  await expect(page.locator('#btnAutoPlay')).toBeVisible();
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
+test('the way back in stays put across hand boundaries', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Steady');
+  await page.locator('#playerName').blur();
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'No Flicker');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code}`);
+  await guest.fill('#playerName', 'Mover');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect.poll(() => page.evaluate(() => !!(gameState && gameState.isRunning))).toBe(true);
+
+  // Both seats sit out, so hands finish in a couple of folds and the table
+  // crosses a hand boundary every second or so. That boundary is what used to
+  // take the control away: it was gated on a hand being in progress.
+  await page.click('#btnAutoPlay');
+  await guest.click('#btnAutoPlay');
+  await expect(page.locator('#seatBanner')).toBeVisible();
+
+  const startRound = await page.evaluate(() => gameState.roundCount);
+  let hidden = 0;
+  let samples = 0;
+  for (let i = 0; i < 40; i++) {
+    const shown = await page.evaluate(
+      () => !document.getElementById('seatBanner').classList.contains('hidden')
+    );
+    samples += 1;
+    if (!shown) hidden += 1;
+    await page.waitForTimeout(100);
+  }
+  const endRound = await page.evaluate(() => gameState.roundCount);
+
+  expect(samples).toBe(40);
+  expect(endRound).toBeGreaterThan(startRound); // hands really did turn over
+  expect(hidden).toBe(0);
   expect(errors).toEqual([]);
   await guestContext.close();
 });

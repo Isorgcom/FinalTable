@@ -854,6 +854,64 @@
 }
 
 /* ═══ ACTIONS PANEL ═══ */
+/* ═══ SITTING-OUT BANNER ═══ */
+/* Where the action bar goes, because a seat that is sitting out never gets an
+   action bar: the two cannot collide, and the way back into the hand is where
+   you already look to act. It stays put for as long as the state lasts. */
+.seat-banner {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  width: max-content;
+  max-width: min(92vw, 520px);
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  background: rgba(13, 31, 18, 0.94);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.45);
+}
+.seat-banner.hidden {
+  display: none;
+}
+.seat-banner-text {
+  font-size: 0.78rem;
+  color: var(--cream);
+  line-height: 1.4;
+}
+.seat-banner-text strong {
+  color: var(--gold);
+  font-weight: 600;
+}
+.seat-banner-note {
+  color: var(--smoke);
+}
+.seat-banner-btn {
+  flex-shrink: 0;
+  padding: 8px 18px;
+  min-height: 36px;
+  border: 1px solid var(--gold);
+  border-radius: 4px;
+  background: var(--gold-glow);
+  color: var(--gold);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.seat-banner-btn:hover {
+  background: var(--gold);
+  color: var(--bg-deep);
+}
+
 .actions-panel {
   position: absolute;
   bottom: 20px;

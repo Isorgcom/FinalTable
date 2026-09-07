@@ -259,6 +259,17 @@
           <div id="playerSeats"></div>
         </div>
 
+        <!-- Sitting out is a state you have to be able to leave, so the way
+             out is a fixture at the top of the felt rather than a button in
+             the top bar that comes and goes with the hand. -->
+        <div class="seat-banner hidden" id="seatBanner" role="status">
+          <span class="seat-banner-text">
+            <strong>You are sitting out.</strong>
+            <span class="seat-banner-note">Your blinds still post.</span>
+          </span>
+          <button class="seat-banner-btn" id="btnSitIn" type="button">Sit back in</button>
+        </div>
+
         <div class="round-overlay hidden" id="roundOverlay">
           <div class="round-overlay-note">Waiting for the first deal…</div>
         </div>

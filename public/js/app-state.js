@@ -232,14 +232,14 @@ document.addEventListener('click', (e) => {
   }
 });
 
-function toggleAutoPlay() {
+function setSitOut(enabled) {
   if (!socket || !gameState) return;
   const me = gameState.players.find((p) => p.id === myId);
-  if (!me || me.isSpectator) return;
-  if (me.autoPlay) {
+  if (!me || me.isSpectator || !!me.autoPlay === enabled) return;
+  if (!enabled) {
     _resumeInteractionGuardUntil = Date.now() + 900;
   }
-  socket.emit('setAutoPlay', { enabled: !me.autoPlay });
+  socket.emit('setAutoPlay', { enabled });
 }
 
 function hasResumeInteractionGuard() {
@@ -258,18 +258,26 @@ function updateModeUI() {
     badge.textContent = 'Tournament';
   }
   const autoBtn = document.getElementById('btnAutoPlay');
+  const banner = document.getElementById('seatBanner');
   if (!autoBtn) return;
   const me = gameState.players.find((p) => p.id === myId);
-  if (!me || me.isSpectator || gameState.gameOver || !gameState.isRunning) {
-    autoBtn.classList.add('hidden');
-    autoBtn.classList.remove('autoplay-active');
-  } else {
-    autoBtn.classList.remove('hidden');
-    autoBtn.classList.toggle('autoplay-active', !!me.autoPlay);
-    autoBtn.textContent = me.autoPlay ? 'sit in' : 'sit out';
-    autoBtn.title = me.autoPlay
-      ? 'Take back control of this seat'
-      : 'Sit out: check when free, fold to a bet';
-  }
-}
+  // Holding a seat is the whole condition. It used to also require a hand to
+  // be in progress, which meant the control vanished between every hand, and
+  // a seat that is sitting out folds instantly: the gap was most of the time,
+  // and the way back was a button that flickered past.
+  const seated = !!me && !me.isSpectator;
+  // The way back in is never gated on anything but sitting out. Spectating a
+  // hand you were dealt into late is a state you can also be sitting out in,
+  // and hiding the button there is how someone gets stuck.
+  const sittingOut = !!me && !!me.autoPlay;
 
+  if (banner) banner.classList.toggle('hidden', !sittingOut);
+
+  // One control per state: the banner owns the way back in, the top bar owns
+  // the way out. Two buttons for the same thing is how you end up clicking
+  // the wrong one.
+  autoBtn.classList.toggle('hidden', !seated || sittingOut);
+  autoBtn.classList.remove('autoplay-active');
+  autoBtn.textContent = 'sit out';
+  autoBtn.title = 'Sit out: check when free, fold to a bet';
+}
