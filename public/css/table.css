@@ -473,6 +473,44 @@
     opacity: 0;
   }
 }
+/* ═══ SHOWDOWN ═══ */
+/* Which five cards won, on the felt rather than in the log. outline and filter
+   are used deliberately: transform belongs to the hover lift and to both card
+   animations, which fill both ways and would win any fight over it, and both
+   of .card-front's pseudo-elements are already spent on texture and gloss.
+   The resting state carries the meaning, because reduced motion strips every
+   transition; the transition only softens the arrival. */
+.card.is-winning {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 6px;
+  filter: brightness(1.06);
+  transition:
+    outline-color 0.25s ease,
+    filter 0.25s ease;
+}
+/* Ordered after .card:hover so the ring is not lost when the pointer is over
+   a winning card. */
+.card.is-winning:hover {
+  outline-color: var(--gold);
+}
+.card.is-dimmed {
+  opacity: 0.32;
+  /* Desaturated as well as faded: a red suit at low opacity still reads as
+     red, and a losing hand should not keep drawing the eye. */
+  filter: grayscale(0.85);
+  transition:
+    opacity 0.25s ease,
+    filter 0.25s ease;
+}
+
+/* The seat that took the pot. Matches the ring .player-seat.active-turn puts
+   on a seat that is to act, so the felt has one idiom for "look here". */
+.player-seat.hand-winner .player-info {
+  border-color: var(--gold);
+  box-shadow: 0 0 15px rgba(201, 168, 76, 0.35);
+}
+
 /* Hidden, not removed: applyDealFlight has to measure the card where it will
    land before it can work out where to start it from. */
 .card.deal-pending,

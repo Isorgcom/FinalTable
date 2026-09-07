@@ -522,3 +522,52 @@ test('the table holds a beat between the betting and the next street', async ({ 
   expect(held).toBeGreaterThan(250);
   expect(pageErrors).toEqual([]);
 });
+
+test('at showdown the five winning cards light up and the rest dim', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'ShowTester');
+  await deal(page);
+
+  // Check or call whenever the action arrives. The opponent is sitting out, so
+  // it checks its blind and checks down; a hand where the viewer is the small
+  // blind reaches a showdown.
+  let reached = false;
+  for (let i = 0; i < 120 && !reached; i++) {
+    const st = await page.evaluate(() => ({
+      phase: gameState && gameState.phase,
+      lit: ((gameState && gameState.showdownWinningCards) || []).length,
+      btn: ['btnCheck', 'btnCall'].find((id) => {
+        const el = document.getElementById(id);
+        return el && !el.disabled && el.offsetParent !== null;
+      }),
+    }));
+    if (st.phase === 'showdown' && st.lit > 0) {
+      reached = true;
+      break;
+    }
+    if (st.btn) {
+      await page.click('#' + st.btn).catch(() => {});
+      await page.waitForTimeout(120);
+    } else {
+      await page.waitForTimeout(200);
+    }
+  }
+  expect(reached).toBe(true);
+
+  const marks = await page.evaluate(() => ({
+    winning: gameState.showdownWinningCards.length,
+    boardLit: document.querySelectorAll('#communityCards .card.is-winning').length,
+    holeLit: document.querySelectorAll('#playerSeats .card.is-winning').length,
+    dimmed: document.querySelectorAll('.card.is-dimmed').length,
+    seatsLit: document.querySelectorAll('#playerSeats .player-seat.hand-winner').length,
+  }));
+
+  // Five is the invariant. It catches the union being built wrong, and it
+  // catches the board key not including the winners, which would leave the
+  // community cards unmarked while the hole cards looked fine.
+  expect(marks.winning).toBe(5);
+  expect(marks.boardLit + marks.holeLit).toBe(5);
+  expect(marks.boardLit).toBeGreaterThan(0);
+  expect(marks.dimmed).toBeGreaterThan(0);
+  expect(marks.seatsLit).toBeGreaterThan(0);
+  expect(pageErrors).toEqual([]);
+});

@@ -75,6 +75,10 @@ class PokerGame {
     // Winner tracking (authoritative, sent to client)
     this.lastRoundWinnerIds = [];
     this.lastRoundRefunds = [];
+    // The five cards that made the winning hand at the last showdown, as
+    // `${rank}${suit}` keys. Empty for a hand won by everyone folding: there
+    // is no evaluated hand there and nothing is face up to mark.
+    this.showdownWinningCards = [];
     this.sbIndex = -1;
 
     // Logging helpers
@@ -403,6 +407,7 @@ class PokerGame {
     this.preflopRaiserId = null;
     this.lastRoundWinnerIds = [];
     this.lastRoundRefunds = [];
+    this.showdownWinningCards = [];
 
     // Reset player states
     for (const p of this.players) {
@@ -1123,6 +1128,18 @@ class PokerGame {
           // This player won a pot slice where they beat at least one other player
           r.player.wins++;
           this.lastRoundWinnerIds.push(r.player.id);
+          // The five that made the hand, so the felt can show why it won.
+          // evaluateHand already picked them out of the seven; nothing else
+          // has ever read them. Taking the union across contested winners is
+          // what makes a split pot light both hands and a side pot light each
+          // pot's winner, with no per-seat bookkeeping: a card is unique in a
+          // deck, so a flat list of keys is unambiguous.
+          for (const card of r.hand.cards || []) {
+            const key = `${card.rank}${card.suit}`;
+            if (!this.showdownWinningCards.includes(key)) {
+              this.showdownWinningCards.push(key);
+            }
+          }
           if (isSplitPot) {
             this.emitMessage(
               `🤝 ${this.getPublicName(r.player)} splits pot ${r._awarded} (${r.hand.name})`,
@@ -1487,6 +1504,7 @@ class PokerGame {
       toCall: viewer ? this.currentBet - (viewer.bet || 0) : 0,
       isRunning: this.isRunning,
       lastRoundWinnerIds: this.lastRoundWinnerIds,
+      showdownWinningCards: this.showdownWinningCards,
       lastRoundRefunds: this.lastRoundRefunds,
       // War report & leaderboard
       warReport: this.lastWarReport || null,

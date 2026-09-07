@@ -339,9 +339,16 @@ function renderTable(oldCommunityLen) {
   // Rebuilt only when the board itself changes. Two pushes land back to back
   // when a street opens, and a blind rebuild on the second one would re-render
   // the card mid-flip without its animation and snap it flat.
+  // The winners are part of the key, not just the cards. At showdown the board
+  // does not change, so keying on the cards alone would skip the rebuild and
+  // the highlight would never appear on the community cards while working
+  // perfectly on the hole cards.
+  const boardWinners = winningCardKeys();
   const boardKey =
     gameState.isRunning || gameState.phase === 'showdown'
-      ? gameState.communityCards.map((c) => `${c.rank}${c.suit}`).join(',')
+      ? gameState.communityCards.map((c) => `${c.rank}${c.suit}`).join(',') +
+        '|' +
+        [...boardWinners].join(',')
       : 'none';
   if (boardKey !== _builtBoardKey || !cc.children.length) {
     _builtBoardKey = boardKey;
@@ -350,7 +357,11 @@ function renderTable(oldCommunityLen) {
       for (let i = 0; i < 5; i++) {
         if (i < curCount) {
           const isNew = i >= prevCount;
-          const cardEl = createCardElement(gameState.communityCards[i], isNew ? 'flipping' : '');
+          const card = gameState.communityCards[i];
+          const marks = [isNew ? 'flipping' : '', showdownClassFor(card, boardWinners)]
+            .filter(Boolean)
+            .join(' ');
+          const cardEl = createCardElement(card, marks);
           if (isNew) {
             setAnimationDelay(cardEl, (_boardFlipDelayMs + (i - prevCount) * 110) / 1000);
             // The card turns over behind its own back, which is dropped when
@@ -518,6 +529,7 @@ function seatRenderContext() {
   return {
     isRunning: !!gameState.isRunning,
     currentPlayerIndex: gameState.currentPlayerIndex,
+    winnerIds: gameState.lastRoundWinnerIds || [],
     now: Date.now(),
   };
 }
@@ -552,6 +564,13 @@ function updateSeatDynamic(seat, player, ctx) {
   seat.classList.toggle('auto-play', !!player.autoPlay);
   seat.classList.toggle('offline', player.isConnected === false);
   seat.classList.toggle('spectating', !!player.isSpectator);
+  // The seat that took the pot. At showdown the cards carry the story, but a
+  // hand won by everyone folding reveals nothing, and that ending should not
+  // be silent.
+  seat.classList.toggle(
+    'hand-winner',
+    !!(ctx.winnerIds && ctx.winnerIds.includes(player.id))
+  );
   seat.classList.toggle(
     'active-turn',
     ctx.isRunning && player.originalIndex === ctx.currentPlayerIndex
@@ -835,8 +854,11 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   // so they still have a box to measure.
   const anim = animateDeal ? ' deal-pending' : '';
   if (player.holeCards && player.holeCards.length === 2) {
-    holeCardsDiv.appendChild(createCardElement(player.holeCards[0], anim.trim()));
-    holeCardsDiv.appendChild(createCardElement(player.holeCards[1], anim.trim()));
+    const winners = winningCardKeys();
+    for (const card of player.holeCards) {
+      const marks = [anim.trim(), showdownClassFor(card, winners)].filter(Boolean).join(' ');
+      holeCardsDiv.appendChild(createCardElement(card, marks));
+    }
   } else if (gameState.isRunning && !player.folded) {
     const b1 = document.createElement('div');
     b1.className = 'card-back' + anim;
@@ -900,6 +922,22 @@ function getOrderedPlayersForView() {
     ordered.push({ ...gameState.players[idx], originalIndex: idx });
   }
   return ordered;
+}
+
+// The five cards that won the last showdown, as a lookup. Empty at every
+// other moment, and empty for a hand won by everyone folding, so "is there a
+// highlight running" is just a size check.
+function winningCardKeys() {
+  const list = (gameState && gameState.showdownWinningCards) || [];
+  return new Set(list);
+}
+
+// The mark a card carries at showdown: the ones that made the winning hand, or
+// dimmed if a hand was shown and this card was not part of it. Face-down cards
+// never get either; a folded player's back is not a losing hand.
+function showdownClassFor(card, winners) {
+  if (!winners.size) return '';
+  return winners.has(`${card.rank}${card.suit}`) ? 'is-winning' : 'is-dimmed';
 }
 
 function createCardElement(card, animClass) {

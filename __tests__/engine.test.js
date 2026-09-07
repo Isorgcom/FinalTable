@@ -1749,3 +1749,135 @@ describe('street pacing', () => {
     }
   });
 });
+
+describe('showdown winning cards', () => {
+  function table() {
+    const game = new PokerGame('winners', { smallBlind: 10, bigBlind: 20 });
+    game.onMessage = () => {};
+    game.onUpdate = () => {};
+    game.onChat = () => {};
+    game.onRoundEnd = () => {};
+    return game;
+  }
+
+  const key = (c) => `${c.rank}${c.suit}`;
+
+  test('the five cards that made the hand are reported, and only those', () => {
+    const game = table();
+    const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+    const villain = game.addPlayer({ id: 'p2', name: 'Villain' });
+    game.startRound();
+    game.communityCards = [
+      Card('spades', 13),
+      Card('diamonds', 13),
+      Card('hearts', 7),
+      Card('clubs', 9),
+      Card('diamonds', 2),
+    ];
+    // Kings full of sevens: both board kings, the board seven, and both of
+    // Hero's cards. Villain's nines lose.
+    hero.holeCards = [Card('clubs', 13), Card('spades', 7)];
+    villain.holeCards = [Card('diamonds', 9), Card('spades', 9)];
+    hero.totalBet = 100;
+    villain.totalBet = 100;
+    game.pot = 200;
+
+    game.showdown();
+
+    expect(game.lastRoundWinnerIds).toEqual(['p1']);
+    expect(game.showdownWinningCards).toHaveLength(5);
+    const won = new Set(game.showdownWinningCards);
+    for (const c of [
+      Card('spades', 13),
+      Card('diamonds', 13),
+      Card('clubs', 13),
+      Card('hearts', 7),
+      Card('spades', 7),
+    ]) {
+      expect(won.has(key(c))).toBe(true);
+    }
+    // The board cards that did not play, and the loser's cards, are not in it.
+    expect(won.has(key(Card('clubs', 9)))).toBe(false);
+    expect(won.has(key(Card('diamonds', 2)))).toBe(false);
+    expect(won.has(key(Card('spades', 9)))).toBe(false);
+  });
+
+  test("a winner's own unused card is not reported", () => {
+    const game = table();
+    const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+    const villain = game.addPlayer({ id: 'p2', name: 'Villain' });
+    game.startRound();
+    game.communityCards = [
+      Card('spades', 14),
+      Card('diamonds', 14),
+      Card('hearts', 14),
+      Card('clubs', 5),
+      Card('diamonds', 4),
+    ];
+    // Trip aces on the board plus Hero's king kicker. The deuce plays no part.
+    hero.holeCards = [Card('clubs', 13), Card('spades', 2)];
+    villain.holeCards = [Card('diamonds', 8), Card('spades', 3)];
+    hero.totalBet = 100;
+    villain.totalBet = 100;
+    game.pot = 200;
+
+    game.showdown();
+
+    const won = new Set(game.showdownWinningCards);
+    expect(won.has(key(Card('clubs', 13)))).toBe(true);
+    expect(won.has(key(Card('spades', 2)))).toBe(false);
+    expect(game.showdownWinningCards).toHaveLength(5);
+  });
+
+  test('a split pot reports the union of both winning hands', () => {
+    const game = table();
+    const a = game.addPlayer({ id: 'p1', name: 'A' });
+    const b = game.addPlayer({ id: 'p2', name: 'B' });
+    game.startRound();
+    // The board plays for everyone: a broadway straight nobody can improve.
+    game.communityCards = [
+      Card('spades', 14),
+      Card('diamonds', 13),
+      Card('hearts', 12),
+      Card('clubs', 11),
+      Card('diamonds', 10),
+    ];
+    a.holeCards = [Card('clubs', 3), Card('spades', 2)];
+    b.holeCards = [Card('hearts', 4), Card('spades', 5)];
+    a.totalBet = 100;
+    b.totalBet = 100;
+    game.pot = 200;
+
+    game.showdown();
+
+    expect(game.lastRoundWinnerIds.sort()).toEqual(['p1', 'p2']);
+    // Both hands are the same five board cards, so the union is still five.
+    expect(game.showdownWinningCards).toHaveLength(5);
+    expect(new Set(game.showdownWinningCards).size).toBe(5);
+  });
+
+  test('a hand won by everyone folding reports no winning cards', () => {
+    const game = table();
+    const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+    const villain = game.addPlayer({ id: 'p2', name: 'Villain' });
+    game.startRound();
+    villain.folded = true;
+    game.pot = 200;
+
+    game.showdown();
+
+    expect(game.lastRoundWinnerIds).toEqual(['p1']);
+    // Nothing is face up to mark, and no hand was evaluated.
+    expect(game.showdownWinningCards).toEqual([]);
+  });
+
+  test('a new hand clears the last showdown', () => {
+    const game = table();
+    game.addPlayer({ id: 'p1', name: 'A' });
+    game.addPlayer({ id: 'p2', name: 'B' });
+    game.startRound();
+    game.showdownWinningCards = ['Kspades'];
+    game.startRound();
+    expect(game.showdownWinningCards).toEqual([]);
+  });
+});
