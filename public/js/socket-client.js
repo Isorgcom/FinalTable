@@ -86,10 +86,10 @@ function ensureSocket() {
 
   socket.on('gameMessage', (msg, meta) => {
     addLog(msg, meta);
+    // Calls and raises make no sound here: chips moving on the felt do, from
+    // flyChips, which is timed to the animation rather than to the log line.
     if (msg.includes('folds')) SFX.play('fold');
     else if (msg.includes('checks')) SFX.play('check');
-    else if (msg.includes('calls')) SFX.play('call');
-    else if (msg.includes('raises')) SFX.play('raise');
     else if (msg.includes('all-in')) SFX.play('allin');
     else if (msg.includes('wins') || msg.includes('splits pot')) SFX.play('win');
     else if (msg.includes('Flop') || msg.includes('Turn') || msg.includes('River'))

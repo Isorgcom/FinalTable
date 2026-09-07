@@ -379,3 +379,42 @@ test('the hole cards are dealt from the button, one at a time, twice round', asy
   expect(stuck).toHaveLength(0);
   expect(pageErrors).toEqual([]);
 });
+
+test('the chip sound is served, decoded, and played when chips move', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'SoundTester');
+  await deal(page);
+
+  // The link is where the script reads the URL from, and it carries the asset
+  // version so a replacement sound is not served from cache.
+  const href = await page.getAttribute('#sfxChips', 'href');
+  expect(href).toMatch(/^\/audio\/chips\.mp3\?v=[a-f0-9]{10}$/);
+
+  // Decoding proves the file is really audio and really reachable; a 404 page
+  // or a truncated upload fails here rather than going silently quiet.
+  await page.evaluate(() => SFX.init());
+  await expect
+    .poll(() => page.evaluate(() => !!(SFX.samples && SFX.samples.chips)), { timeout: 10000 })
+    .toBe(true);
+  const sample = await page.evaluate(() => ({
+    duration: SFX.samples.chips.duration,
+    channels: SFX.samples.chips.numberOfChannels,
+  }));
+  expect(sample.duration).toBeGreaterThan(0.1);
+  expect(sample.channels).toBeGreaterThan(0);
+
+  // Chips moving is what makes the sound, and a burst makes one sound rather
+  // than one per player.
+  await page.evaluate(() => {
+    window.__played = 0;
+    const real = SFX.playSample.bind(SFX);
+    SFX.playSample = (name, gain) => {
+      const ok = real(name, gain);
+      if (ok) window.__played++;
+      return ok;
+    };
+  });
+  await page.click('#btnCall');
+  await expect.poll(() => page.evaluate(() => window.__played), { timeout: 10000 }).toBe(1);
+
+  expect(pageErrors).toEqual([]);
+});

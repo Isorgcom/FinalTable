@@ -107,11 +107,66 @@ let _resumeInteractionGuardUntil = 0; // Brief guard after leaving auto-play
 // ============================================================
 const SFX = {
   ctx: null,
+  // Decoded one-shot samples, by name. Everything else here is synthesised;
+  // these are recordings, for the sounds a synth cannot fake.
+  samples: {},
+  _lastChipSound: 0,
   init() {
     if (this.ctx) return;
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    } catch (e) {}
+    } catch (e) {
+      return;
+    }
+    // Fetched here rather than at load: init runs on the first click, which is
+    // the same gesture that lets audio play at all, and is long before the
+    // first hand is dealt.
+    const link = document.getElementById('sfxChips');
+    this.loadSample('chips', link ? link.getAttribute('href') : '/audio/chips.mp3');
+  },
+  loadSample(name, url) {
+    if (!this.ctx || !url) return;
+    fetch(url)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+      .then((buf) => this.ctx.decodeAudioData(buf))
+      .then((decoded) => {
+        this.samples[name] = decoded;
+      })
+      .catch(() => {
+        // No sample: play() falls back to the synthesised version.
+      });
+  },
+  playSample(name, gain) {
+    const buffer = this.samples[name];
+    if (!this.ctx || !buffer) return false;
+    try {
+      const src = this.ctx.createBufferSource();
+      const vol = this.ctx.createGain();
+      src.buffer = buffer;
+      vol.gain.value = gain === undefined ? 0.5 : gain;
+      src.connect(vol);
+      vol.connect(this.ctx.destination);
+      src.start();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+  // Chips moving on the felt, wherever they are going. Called once per player
+  // in a flight, so a nine-handed sweep would otherwise fire nine overlapping
+  // copies of the same recording: one per burst is the sound of a table, nine
+  // is a landslide.
+  chipsMoved() {
+    if (!this.ctx) this.init();
+    if (!this.ctx) return;
+    const now = Date.now();
+    if (now - this._lastChipSound < 220) return;
+    this._lastChipSound = now;
+    if (!this.playSample('chips', 0.45)) {
+      try {
+        this._chips(this.ctx.currentTime, 2);
+      } catch (e) {}
+    }
   },
   play(type) {
     if (!this.ctx) this.init();
@@ -124,12 +179,6 @@ const SFX = {
           break;
         case 'check':
           this._tap(now, 400, 0.03);
-          break;
-        case 'call':
-          this._chips(now, 1);
-          break;
-        case 'raise':
-          this._chips(now, 3);
           break;
         case 'fold':
           this._swoosh(now);

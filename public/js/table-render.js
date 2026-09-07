@@ -121,6 +121,11 @@ function flyChips(from, to, count, extraClass, opts) {
   const durMs = (opts && opts.durMs) || 550;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
+  // Chips are actually going somewhere, so this is the one honest place to
+  // make the sound: it covers a bet going in, a street sweeping to the middle
+  // and a pot being pushed to the winner, and it cannot fire for a flight that
+  // was abandoned above.
+  if (typeof SFX !== 'undefined') SFX.chipsMoved();
 
   for (let i = 0; i < count; i++) {
     const chip = document.createElement('div');

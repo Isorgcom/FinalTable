@@ -21,6 +21,16 @@
     />
     <link rel="stylesheet" href="/vendor/fonts/google-fonts.css?v=__ASSET_VERSION__" />
     <link rel="stylesheet" href="/css/style.css?v=__ASSET_VERSION__" />
+    <!-- The chip sound, fetched and decoded by SFX on the first click. The
+         link carries the asset version so a replacement is not served from
+         cache, and gives the script one place to read the URL from. -->
+    <link
+      rel="preload"
+      as="audio"
+      id="sfxChips"
+      href="/audio/chips.mp3?v=__ASSET_VERSION__"
+      crossorigin="anonymous"
+    />
   </head>
 
   <body>
