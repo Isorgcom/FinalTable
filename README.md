@@ -14,6 +14,12 @@ break as players bust, late registration, payouts and hand-for-hand at the
 bubble, and rejoin after a dropped connection or a page reload. Registrations
 survive a server restart; a running tournament does not.
 
+It is people only. There are no bots, so a tournament needs at least two
+players before it can deal. A seat whose player disconnects, leaves or runs
+out their clock sits out rather than being played for them: it checks when
+that is free and folds to a bet, and the stack blinds down until they come
+back or bust.
+
 ## Running it
 
 ```bash
@@ -45,9 +51,6 @@ to loopback only, on the assumption a reverse proxy sits in front.
 | `engine.js`                                                  | `PokerGame`: one table, one hand loop, betting and showdown                                     |
 | `tournament.js`                                              | Blind schedule, level timer, elimination ledger                                                 |
 | `hand-eval.js`, `hand-describe.js`                           | Hand ranking, and the hand in words for the table's readout                                     |
-| `npc.js`, `npc-*.js`                                         | Bot decision pipeline (Monte Carlo equity, psychology)                                          |
-| `solver-*.js`                                                | Runtime solver lookups the bots consult                                                         |
-| `server/socket-handlers.js`, `save-manager.js`               | The single-table room layer, kept for its tests; the lobby no longer uses it                    |
 | `public/js/lobby.js`, `socket-client.js`                     | The lobby and the one socket for the life of the page                                           |
 | `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Info / Stats / History panel                     |
 | `__tests__/`, `e2e/`                                         | Jest suites and Playwright specs                                                                |
@@ -61,6 +64,7 @@ hand-for-hand at the bubble), the table redesign, and the tournament lobby
 
 Not built, in the order they are likely to matter:
 
+- A headless client that can fill a field, now that bots cannot
 - Railbird spectating for people who are not registered
 - Restoring a running tournament after a restart (between hands)
 - Re-entry during late registration; kicking a registrant
