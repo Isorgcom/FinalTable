@@ -52,9 +52,9 @@ describe('Poker Engine Core Rules & Pot Distribution', () => {
 
   test('Scenario 1: Complex multi-way side pots with uncontested refund', () => {
     const p1 = game.addPlayer({ id: 'p1', name: 'Shark34' });
-    const p2 = game.addPlayer({ id: 'p2', name: '赵云' });
-    const p3 = game.addPlayer({ id: 'p3', name: '关羽' });
-    const p4 = game.addPlayer({ id: 'p4', name: '曹操' });
+    const p2 = game.addPlayer({ id: 'p2', name: 'Rook21' });
+    const p3 = game.addPlayer({ id: 'p3', name: 'Nine' });
+    const p4 = game.addPlayer({ id: 'p4', name: 'Delta' });
     game.startRound();
 
     p1.totalBet = 1000;

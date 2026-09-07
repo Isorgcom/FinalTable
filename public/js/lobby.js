@@ -158,7 +158,7 @@
     if (data && data.id !== currentId) return;
     returnToLobby(
       data && data.reason === 'left'
-        ? 'You left the table. Your stack plays on under auto-play; join by code to take it back.'
+        ? 'You left the table. Your stack sits out; join by code to take it back.'
         : null
     );
   }
@@ -544,7 +544,7 @@
   }
 
   // Leave whatever we are in: unregister before the start, leave (with the
-  // stack under auto-play) once running.
+  // stack sitting out) once running.
   async function leave() {
     if (!socket || !currentId) return;
     if (current && current.status === 'registering') {
@@ -555,7 +555,7 @@
     if (typeof window.showConfirmDialog === 'function') {
       ok = await window.showConfirmDialog({
         title: 'Leave the tournament?',
-        message: 'Your stack stays in play under auto-play. You can rejoin from the lobby.',
+        message: 'Your stack stays at the table, sitting out. You can rejoin from the lobby.',
         confirmLabel: 'Leave',
         cancelLabel: 'Stay',
       });

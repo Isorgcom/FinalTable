@@ -556,7 +556,7 @@ function createTournamentRegistry(deps = {}) {
   }
 
   // Leaving a running tournament: the stack cannot leave, so the seat stays
-  // under auto-play and the registration is marked as left. Auto-return will
+  // sitting out and the registration is marked as left. Auto-return will
   // not pull them back in; joining by code rebinds their own seat.
   function leave(entry, uid, socket) {
     if (entry.status === 'registering') return unregister(entry, uid, socket);

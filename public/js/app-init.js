@@ -144,7 +144,7 @@ function init() {
   });
   document.getElementById('menuToggle').addEventListener('click', toggleMenu);
   // Leaving is the lobby's business: unregister before the start, leave the
-  // stack under auto-play once running.
+  // stack sitting out once running.
   document.getElementById('btnExit').addEventListener('click', () => {
     closeMenu();
     if (window.Lobby) Lobby.leave();

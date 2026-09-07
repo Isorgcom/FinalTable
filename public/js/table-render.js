@@ -120,11 +120,11 @@ function updateGameState(state) {
   const nextMe = state && myId ? state.players.find((p) => p.id === myId) : null;
   if (previousMe && nextMe) {
     if (previousMe.isConnected !== false && nextMe.isConnected === false) {
-      addLog('⚠️ Connection lost · auto-play may take over this seat');
+      addLog('⚠️ Connection lost · this seat will sit out until you are back');
     } else if (previousMe.isConnected === false && nextMe.isConnected !== false) {
       addLog(
         nextMe.autoPlay
-          ? '✅ Reconnected · auto-play is still active, tap resume when ready'
+          ? '✅ Reconnected · still sitting out, tap sit in when ready'
           : '✅ Reconnected · control restored'
       );
     }
@@ -872,7 +872,7 @@ function updateTopBar() {
     text = `Watching table ${field.you.watchingTable || ''}`.trim();
     if (field.you.place) text += ` · out in #${field.you.place}`;
   } else if (me && me.isConnected === false) {
-    text = me.autoPlay ? 'Disconnected · Auto-play active' : 'Disconnected';
+    text = me.autoPlay ? 'Disconnected · sitting out' : 'Disconnected';
   } else if (me && me.isSpectator && !gameState.gameOver) {
     text =
       me.chips > 0
@@ -893,7 +893,7 @@ function updateTopBar() {
       (me ? ` · ${me.chips}` : '');
   }
 
-  if (me && me.autoPlay) text += ' · Auto';
+  if (me && me.autoPlay) text += ' · sitting out';
 
   topInfo.textContent = text;
 }
