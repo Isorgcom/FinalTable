@@ -672,6 +672,97 @@ function appendPlayerIdentity(info, text, player) {
   text.appendChild(createTextElement('div', 'seat-caption is-hand hidden', ''));
 }
 
+// ── The deal ──────────────────────────────────────────────────────────────
+// Cards go out one at a time from the button, starting to its left, twice
+// round, the way a person deals them.
+
+function holeCardNodes(seat) {
+  const row = seat.querySelector('.player-hole-cards');
+  return row ? Array.from(row.children) : [];
+}
+
+// Display order is rotated so the viewer sits at the bottom, so it is not
+// dealing order. getOrderedPlayersForView stamps originalIndex, which is the
+// index into gameState.players and therefore the same space dealerIndex uses.
+function dealSlots(ordered) {
+  const n = ordered.length;
+  if (!n) return { slots: [], dealerSlot: -1 };
+  const dealerSlot = ordered.findIndex((p) => p.originalIndex === gameState.dealerIndex);
+  const start = dealerSlot < 0 ? n - 1 : dealerSlot;
+  const slots = [];
+  for (let i = 1; i <= n; i++) slots.push((start + i) % n);
+  return { slots, dealerSlot };
+}
+
+// Where the cards come from. The button itself when it is on screen, then the
+// dealer's seat, then the middle of the felt: a seat can be missing because
+// its player left between the deal and this render.
+function dealOrigin(ordered, dealerSlot, wrapRect) {
+  const centre = (r) => ({
+    x: r.left + r.width / 2 - wrapRect.left,
+    y: r.top + r.height / 2 - wrapRect.top,
+  });
+  const seat = dealerSlot >= 0 ? seatElementForPlayer(ordered[dealerSlot].id) : null;
+  const chip = seat && seat.querySelector('.dealer-chip');
+  if (chip) return centre(chip.getBoundingClientRect());
+  if (seat) return centre(seat.getBoundingClientRect());
+  const board = document.querySelector('.board-stack');
+  if (board) return centre(board.getBoundingClientRect());
+  return { x: wrapRect.width / 2, y: wrapRect.height * 0.44 };
+}
+
+function clearDealClass(node, delaySeconds) {
+  const done = () => {
+    node.classList.remove('dealing');
+    node.style.removeProperty('--deal-dx');
+    node.style.removeProperty('--deal-dy');
+    node.style.removeProperty('--deal-rot');
+    node.style.removeProperty('--deal-delay');
+  };
+  node.addEventListener('animationend', done, { once: true });
+  // The animation fills both ways, so a card that never hears animationend
+  // would hold its final transform for the rest of the hand and lose hover.
+  setTimeout(done, delaySeconds * 1000 + 900);
+}
+
+// Two passes: all the reads, then all the writes. Measuring each card as it is
+// built would force a layout per card.
+function applyDealFlight(ordered) {
+  const wrap = document.querySelector('.poker-table-wrapper');
+  const wrapRect = wrap ? wrap.getBoundingClientRect() : null;
+  const { slots, dealerSlot } = dealSlots(ordered);
+  const origin = wrapRect ? dealOrigin(ordered, dealerSlot, wrapRect) : null;
+
+  const plan = [];
+  for (let pass = 0; pass < 2; pass++) {
+    for (const slot of slots) {
+      const seat = seatElementForPlayer(ordered[slot].id);
+      const node = seat ? holeCardNodes(seat)[pass] : null;
+      if (!node) continue;
+      plan.push({ node, pass, rect: node.getBoundingClientRect() });
+    }
+  }
+
+  const step = plan.length > 12 ? 0.055 : 0.085;
+  plan.forEach((item, i) => {
+    // Released before the early return below, so a card is revealed even when
+    // nothing can animate. deal-pending is visibility:hidden; leaving one on
+    // would hide that hand's cards for good.
+    item.node.classList.remove('deal-pending');
+    item.node.dataset.dealOrder = String(i);
+    if (!origin || !wrapRect) return;
+    const cx = item.rect.left + item.rect.width / 2 - wrapRect.left;
+    const cy = item.rect.top + item.rect.height / 2 - wrapRect.top;
+    item.node.style.setProperty('--deal-dx', Math.round(origin.x - cx) + 'px');
+    item.node.style.setProperty('--deal-dy', Math.round(origin.y - cy) + 'px');
+    item.node.style.setProperty('--deal-rot', (item.pass ? 16 : -20) + 'deg');
+    setAnimationDelay(item.node, Number((i * step).toFixed(3)));
+    item.node.classList.add('dealing');
+    clearDealClass(item.node, i * step);
+  });
+  if (plan.length) window.__anim.deals++;
+}
+
 function renderPlayersFull(container) {
   container.textContent = '';
   const ordered = getOrderedPlayersForView();
@@ -693,7 +784,10 @@ function renderPlayersFull(container) {
   }
   renderFeltBets(ordered, seatPositions);
 
-  if (animateDeal) _dealAnimationRound = -1;
+  if (animateDeal) {
+    applyDealFlight(ordered);
+    _dealAnimationRound = -1;
+  }
   updateTurnTimerBars(ordered);
 }
 
@@ -726,26 +820,18 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   // Hole cards
   const holeCardsDiv = document.createElement('div');
   holeCardsDiv.className = 'player-hole-cards';
+  // Cards start hidden when a deal is coming: applyDealFlight measures them
+  // where they will land, then releases them. visibility rather than display,
+  // so they still have a box to measure.
+  const anim = animateDeal ? ' deal-pending' : '';
   if (player.holeCards && player.holeCards.length === 2) {
-    const anim = animateDeal ? 'dealing' : '';
-    const c1 = createCardElement(player.holeCards[0], anim);
-    const c2 = createCardElement(player.holeCards[1], anim);
-    if (anim) {
-      setAnimationDelay(c1, seatIdx * 0.08);
-      setAnimationDelay(c2, seatIdx * 0.08 + 0.15);
-    }
-    holeCardsDiv.appendChild(c1);
-    holeCardsDiv.appendChild(c2);
+    holeCardsDiv.appendChild(createCardElement(player.holeCards[0], anim.trim()));
+    holeCardsDiv.appendChild(createCardElement(player.holeCards[1], anim.trim()));
   } else if (gameState.isRunning && !player.folded) {
-    const anim = animateDeal ? ' dealing' : '';
     const b1 = document.createElement('div');
     b1.className = 'card-back' + anim;
     const b2 = document.createElement('div');
     b2.className = 'card-back' + anim;
-    if (anim) {
-      setAnimationDelay(b1, seatIdx * 0.08);
-      setAnimationDelay(b2, seatIdx * 0.08 + 0.15);
-    }
     holeCardsDiv.appendChild(b1);
     holeCardsDiv.appendChild(b2);
   }

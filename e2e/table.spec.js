@@ -327,3 +327,55 @@ test('the street bets sweep into the pot when the board turns over', async ({ pa
   expect(stuck).toHaveLength(0);
   expect(pageErrors).toEqual([]);
 });
+
+test('the hole cards are dealt from the button, one at a time, twice round', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'DealTester');
+  await deal(page);
+
+  // Sit out so hands cycle in a second or two instead of waiting out the
+  // viewer's 25s action clock; the seat is still dealt in.
+  await page.click('#btnAutoPlay');
+
+  // Wait for a fresh deal so the schedule under test is the one just written.
+  const round = await page.evaluate(() => gameState.roundCount);
+  await page.waitForFunction((r) => gameState && gameState.roundCount > r, round, {
+    timeout: 30000,
+  });
+  await expect.poll(() => page.evaluate(() => window.__anim.deals)).toBeGreaterThan(0);
+
+  const info = await page.evaluate(() => ({
+    cards: [...document.querySelectorAll('#playerSeats .player-hole-cards > *')].map((el) => ({
+      order: Number(el.dataset.dealOrder),
+      seat: el.closest('.player-seat').dataset.playerId,
+    })),
+    seats: [...document.querySelectorAll('#playerSeats .player-seat')].map(
+      (el) => el.dataset.playerId
+    ),
+    dealer: (document.querySelector('#playerSeats .player-seat:has(.dealer-chip)') || {}).dataset
+      ?.playerId,
+  }));
+
+  // Every card has a place in the order, and the places are 0..n-1.
+  const orders = info.cards.map((c) => c.order).sort((a, b) => a - b);
+  expect(orders).toEqual(orders.map((_, i) => i));
+
+  // The first card goes to the seat left of the button. Heads-up this also
+  // means the button takes the second card, which is the real rule.
+  const first = info.cards.find((c) => c.order === 0);
+  const leftOfButton = info.seats[(info.seats.indexOf(info.dealer) + 1) % info.seats.length];
+  expect(first.seat).toBe(leftOfButton);
+
+  // Nothing left hidden or frozen. deal-pending is visibility:hidden, so a
+  // stuck one would hide that player's cards for the whole hand, and the
+  // animation fills both ways, so a stuck class would freeze the transform.
+  await expect(page.locator('.deal-pending')).toHaveCount(0, { timeout: 4000 });
+  await expect(page.locator('#playerSeats .dealing')).toHaveCount(0, { timeout: 4000 });
+  const stuck = await page.$$eval('#playerSeats .player-hole-cards > *', (els) =>
+    els.filter((el) => {
+      const t = getComputedStyle(el).transform;
+      return t !== 'none' && t !== 'matrix(1, 0, 0, 1, 0, 0)';
+    })
+  );
+  expect(stuck).toHaveLength(0);
+  expect(pageErrors).toEqual([]);
+});

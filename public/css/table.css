@@ -426,14 +426,24 @@
 }
 
 /* Deal animations */
-@keyframes dealCard {
-  from {
-    transform: translateY(-40px);
+/* A card leaves the button, turns as it travels, and settles. --deal-dx/dy
+   are the offset back to the dealer, so the card starts there and animates to
+   where it already sits: no layout moves, only a transform. */
+@keyframes dealFlight {
+  0% {
     opacity: 0;
+    transform: translate(var(--deal-dx, 0px), var(--deal-dy, 0px)) rotate(var(--deal-rot, -20deg))
+      scale(0.86);
   }
-  to {
-    transform: translateY(0);
+  10% {
     opacity: 1;
+  }
+  78% {
+    transform: translate(0, 0) rotate(2deg) scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
   }
 }
 /* The board turns over in place. A scaleX fold rather than a 3D flip: .card
@@ -463,9 +473,17 @@
     opacity: 0;
   }
 }
-.card.dealing {
-  animation: dealCard 0.4s ease-out both;
+/* Hidden, not removed: applyDealFlight has to measure the card where it will
+   land before it can work out where to start it from. */
+.card.deal-pending,
+.card-back.deal-pending {
+  visibility: hidden;
+}
+.card.dealing,
+.card-back.dealing {
+  animation: dealFlight var(--deal-dur, 0.34s) cubic-bezier(0.22, 0.7, 0.3, 1) both;
   animation-delay: var(--deal-delay, 0s);
+  will-change: transform, opacity;
 }
 .card.flipping {
   animation: boardFlip var(--flip-dur, 0.36s) ease-in-out both;
@@ -482,10 +500,6 @@
     linear-gradient(180deg, #3a6d4c 0%, #244b34 100%);
   border: 1px solid rgba(38, 24, 8, 0.18);
   animation: boardFlipFace var(--flip-dur, 0.36s) step-end both;
-  animation-delay: var(--deal-delay, 0s);
-}
-.card-back.dealing {
-  animation: dealCard 0.4s ease-out both;
   animation-delay: var(--deal-delay, 0s);
 }
 
