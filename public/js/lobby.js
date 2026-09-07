@@ -222,8 +222,6 @@
     window.mttFinished = null;
     gameState = null;
     myId = null;
-    _currentEquity = null;
-    _currentEquityContextKey = null;
     if (tournamentTimer) {
       clearInterval(tournamentTimer);
       tournamentTimer = null;
@@ -234,7 +232,7 @@
     if (ticker) ticker.textContent = 'Waiting...';
     const chat = $('npcChatArea');
     if (chat) chat.textContent = '';
-    ['eqSide', 'tournamentBanner', 'resultModal'].forEach((id) => {
+    ['tournamentBanner', 'resultModal'].forEach((id) => {
       const node = $(id);
       if (node) node.classList.add('hidden');
     });

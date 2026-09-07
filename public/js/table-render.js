@@ -108,14 +108,11 @@ function updateGameState(state) {
   const prevWinnerKey = gameState ? (gameState.lastRoundWinnerIds || []).join(',') : '';
   gameState = state;
 
-  // Detect new round → force full rebuild + clear equity
+  // Detect new round → force full rebuild
   if (state.roundCount !== oldRound) {
     prevCommunityCount = 0;
     _builtRound = -1; // force player seat rebuild
     _dealAnimationRound = state.roundCount;
-    _currentEquity = null; // v11: clear equity on new round
-    const eqDetail = document.getElementById('eqSideDetail');
-    if (eqDetail) eqDetail.classList.add('hidden');
   }
   if ((hadGameOver && !state.gameOver) || state.roundCount < oldRound) {
     document.getElementById('resultModal').classList.add('hidden');
@@ -151,7 +148,6 @@ function updateGameState(state) {
     SidePanel.refresh('history');
   }
   updateModeUI(); // v11
-  updateEquityButton(); // v11
   const resultModal = document.getElementById('resultModal');
   if (
     resultModal &&
@@ -1002,10 +998,6 @@ function showResult(options = {}) {
     modal.classList.add('hidden');
     return;
   }
-
-  // v11: clear equity
-  _currentEquity = null;
-  updateEquityUI(null);
 
   // Check if human player won this hand
   const me = gameState.players.find((p) => p.id === myId);

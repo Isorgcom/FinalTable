@@ -199,21 +199,6 @@ function getOrCreateGame(roomId, options = {}) {
           io.to(p.id).emit('gameState', g.getStateForPlayer(p.id));
         }
       }
-      // Practice mode: auto-push equity on community card change
-      if (g.gameMode === 'practice' && g.isRunning) {
-        const ccLen = g.communityCards.length;
-        if (g._lastAutoEqCCLen !== ccLen) {
-          g._lastAutoEqCCLen = ccLen;
-          setImmediate(() => {
-            for (const p of g.players) {
-              if (!p.isNPC && p.holeCards && p.holeCards.length === 2 && !p.folded) {
-                const eqResult = g.calculateEquity(p.id);
-                if (eqResult !== null) io.to(p.id).emit('autoEquity', eqResult);
-              }
-            }
-          });
-        }
-      }
     };
     game.onMessage = (msg, meta) => {
       io.to(roomId).emit('gameMessage', msg, meta || null);

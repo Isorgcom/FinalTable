@@ -311,16 +311,10 @@
     top: 62px;
     max-width: calc(100vw - 16px);
   }
-  .eq-side {
-    top: auto;
-    bottom: 160px;
-    transform: none;
-  }
   .result-content,
   .npc-panel-content,
   .lb-content,
-  .replay-content,
-  .eq-rules-box {
+  .replay-content {
     max-width: calc(100vw - 20px);
     max-height: 82vh;
     padding: 20px 16px;
@@ -649,32 +643,11 @@
     font-size: 0.56rem;
     white-space: nowrap;
   }
-  .eq-side {
-    bottom: 86px;
-    right: 2px;
-  }
-  .eq-side-btn {
-    min-width: 42px;
-    padding: 7px 8px 7px 10px;
-  }
-  .eq-side-icon {
-    font-size: 1.15rem;
-  }
-  .eq-side-caption,
-  .eq-side-badge,
-  .eq-side-label,
-  .eq-side-sub {
-    font-size: 0.46rem;
-  }
-  .eq-side-bar {
-    width: 58px;
-  }
   .result-content,
   .result-content.result-content-wide,
   .npc-panel-content,
   .lb-content,
-  .replay-content,
-  .eq-rules-box {
+  .replay-content {
     max-height: 88vh;
     padding: 16px 18px;
   }

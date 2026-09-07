@@ -182,17 +182,6 @@ function init() {
   document.getElementById('btnCloseHintModal').addEventListener('click', () => {
     document.getElementById('hintModal').classList.add('hidden');
   });
-  document.getElementById('eqSide').addEventListener('click', onEqSideClick);
-  document.getElementById('eqSideBtn').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onEqSideClick();
-    }
-  });
-  document.getElementById('btnCloseEqRules').addEventListener('click', closeEqRules);
-  document.getElementById('btnCancelEqConfirm').addEventListener('click', cancelEqConfirm);
-  document.getElementById('btnConfirmEqPurchase').addEventListener('click', confirmEqPurchase);
-  document.getElementById('btnCloseDalioModal').addEventListener('click', closeDalioModal);
 
   const slider = document.getElementById('raiseSlider');
   const raiseInput = document.getElementById('raiseInput');
@@ -387,9 +376,6 @@ function init() {
       'hintModal',
       'resultModal',
       'appDialogModal',
-      'eqRulesModal',
-      'eqConfirmModal',
-      'dalioModal',
     ];
     for (const id of modals) {
       if (closeOverlayById(id)) return;
@@ -405,14 +391,6 @@ function init() {
     'resultModal',
     'appDialogModal',
   ].forEach((id) => {
-    const overlay = document.getElementById(id);
-    if (!overlay) return;
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeOverlayById(id);
-    });
-  });
-
-  ['eqRulesModal', 'eqConfirmModal', 'dalioModal'].forEach((id) => {
     const overlay = document.getElementById(id);
     if (!overlay) return;
     overlay.addEventListener('click', (e) => {

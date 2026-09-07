@@ -1072,47 +1072,6 @@ function registerSocketHandlers(deps) {
       game.resume();
     });
 
-    // Equity query (cash/tournament: paid; practice: free)
-    socket.on('requestEquity', () => {
-      const roomId = socket.data.roomId;
-      if (!roomId) return;
-      const game = games.get(roomId);
-      if (!game) return;
-      try {
-        const result = game.useEquity(socket.id);
-        socket.emit('equityResult', result);
-        if (result.cost > 0) {
-          game.emitUpdate(game);
-          io.to(roomId).emit(
-            'gameMessage',
-            `🔮 ${socket.data.playerName} used equity oracle (-${result.cost} chips)`
-          );
-        }
-        logSocketEvent(
-          result.error ? 'equity_rejected' : 'equity_requested',
-          {
-            socketId: socket.id,
-            roomId,
-            playerName: socket.data.playerName,
-            cost: result.cost || 0,
-            error: result.error || null,
-            nextPrice: result.nextPrice,
-            freeLeft: result.freeLeft,
-          },
-          result.error ? 'warn' : 'info',
-          result.error ? 'Equity request rejected' : 'Equity request processed'
-        );
-      } catch (e) {
-        logSocketEvent(
-          'equity_error',
-          { socketId: socket.id, roomId, playerName: socket.data.playerName, error: e.message },
-          'error',
-          'Equity request failed'
-        );
-        socket.emit('equityResult', { error: 'Server error' });
-      }
-    });
-
     socket.on('disconnect', () => {
       const roomId = socket.data.roomId;
       if (!roomId) return;

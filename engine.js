@@ -2,9 +2,8 @@
 const { createDeck, shuffle } = require('./deck');
 const { evaluateHand, compareHands, HAND_NAMES } = require('./hand-eval');
 const { describeHand, describeBest } = require('./hand-describe');
-const { getAvailableNPCs, vanillaMC, rangeWeightedMC } = require('./npc');
+const { getAvailableNPCs } = require('./npc');
 const { decideNpcAction } = require('./npc-orchestrator');
-const { estimateRange, boardConnectivity } = require('./range');
 const { generateNPCChat } = require('./npc-chat');
 const random = require('./random');
 const { createStructuredLogger } = require('./server/logger');
@@ -23,7 +22,6 @@ const PHASES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info'; // 'debug' | 'info' | 'warn' | 'error'
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 const GAMEPLAY_TEXT_LOGS = process.env.GAMEPLAY_TEXT_LOGS === '1';
-const EQUITY_SIMS = 3000; // Monte Carlo iterations for equity calculation
 // How long a bot appears to "think" before acting, in ms. A random value in
 // this range is picked per decision, then divided by the table's speed
 // multiplier (1x-3x). Tunable without a code change:
@@ -172,13 +170,11 @@ class PokerGame {
     };
     this.bbIndex = -1;
 
-    // Game mode, speed control, pause, equity state
+    // Game mode, speed control, pause
     this.gameMode = options.gameMode || 'cash'; // 'cash' | 'tournament' | 'practice'
     this.speedMultiplier = 1; // 1=normal, 2=fast, 3=turbo
     this.isPaused = false;
     this._pausedNpcPending = false; // automated turn pending while paused
-    this.equityState = {}; // per-player: { freeLeft, priceLevel, unusedStreak }
-    this.equitySnapshots = {}; // per-player cached oracle result for unchanged board state
 
     // Hand history & leaderboard
     this.handHistory = new HandHistory();
@@ -518,10 +514,7 @@ class PokerGame {
 
     this.roundCount++;
 
-    // Tick equity unused counter (5 consecutive unused = price drop)
-    this.tickEquityStreak();
     for (const p of this.players) {
-      this.initEquityState(p.id);
       p.timeExtensionsLeft = TIME_BANK_PER_HAND;
     }
 
@@ -539,7 +532,6 @@ class PokerGame {
     this.minRaise = this.bigBlind;
     this.roundBets = {};
     this.raiseCount = 0; // Raise cap: max 4 raises per betting round
-    this.equitySnapshots = {};
 
     // v4: Initialize hand tracking for opponent modeling
     this.handActionHistory = {};
@@ -676,9 +668,6 @@ class PokerGame {
         }
       }
     }
-
-    // Reset auto-equity tracker (-1 ensures preflop push)
-    this._lastAutoEqCCLen = -1;
 
     this.beginCurrentTurn();
 
@@ -1550,453 +1539,6 @@ class PokerGame {
     this._log(`⚡ Speed set to ${this.speedMultiplier}x`);
   }
 
-  // Calculate equity (range-weighted MC + hand diagnostics)
-  calculateEquity(playerId) {
-    const player = this.players.find((p) => p.id === playerId);
-    if (!player || !player.holeCards || player.holeCards.length < 2) return null;
-    if (!this.isRunning || this.phase === 'waiting' || this.phase === 'showdown') return null;
-    const opponents = this.players.filter((p) => !p.folded && p.id !== playerId);
-    if (opponents.length < 1) return null;
-
-    // Build estimated range for each opponent (observable behavior only)
-    const excludeCards = [...player.holeCards, ...this.communityCards];
-    const opRanges = [];
-    let useRange = false;
-
-    for (const opp of opponents) {
-      const actions = this.handActionHistory[opp.id] || [];
-      const profile = this.playerStats.getProfile(opp.id);
-      if (actions.length > 0) {
-        try {
-          const range = estimateRange(excludeCards, profile, actions, this.communityCards, {
-            bigBlind: this.bigBlind,
-            pot: this.pot,
-          });
-          if (range && range.length > 0) {
-            opRanges.push(range);
-            useRange = true;
-            continue;
-          }
-        } catch (e) {
-          this._log(`⚠️ Range estimation error for ${opp.name}: ${e.message}`, 'warn');
-        }
-      }
-      // No action history or empty range or error → full range (fallback)
-      opRanges.push(null);
-    }
-
-    // Equity calculation
-    let eqResult;
-    if (useRange) {
-      // Build effective range array (replace null with full range placeholder)
-      const validRanges = opRanges
-        .map((r) => {
-          if (r) return r;
-          try {
-            return estimateRange(excludeCards, null, [], this.communityCards, {
-              bigBlind: this.bigBlind,
-              pot: this.pot,
-            });
-          } catch (e) {
-            return null;
-          }
-        })
-        .filter((r) => r && r.length > 0);
-
-      if (validRanges.length > 0) {
-        eqResult = rangeWeightedMC(player.holeCards, this.communityCards, validRanges, EQUITY_SIMS);
-      } else {
-        eqResult = vanillaMC(player.holeCards, this.communityCards, opponents.length, EQUITY_SIMS);
-      }
-    } else {
-      eqResult = vanillaMC(player.holeCards, this.communityCards, opponents.length, EQUITY_SIMS);
-    }
-
-    const equityPct = Math.round(eqResult.equity * 1000) / 10;
-
-    // Hand classification (distinguish player-made vs board-only)
-    let handName = '';
-    let handRank = 0;
-    if (this.communityCards.length >= 3) {
-      const best = evaluateHand([...player.holeCards, ...this.communityCards]);
-      if (best) {
-        handRank = best.rank;
-        const holeVals = player.holeCards.map((c) => c.value);
-        const holeSuits = player.holeCards.map((c) => c.suit);
-        let contributed = false;
-
-        if (this.communityCards.length >= 5) {
-          // River: compare with/without hole cards directly
-          const commBest = evaluateHand(this.communityCards);
-          contributed =
-            !commBest ||
-            best.rank > commBest.rank ||
-            (best.rank === commBest.rank && compareHands(best, commBest) > 0);
-        } else {
-          // Flop/Turn: check if hole cards contribute to made hand
-          const commVals = this.communityCards.map((c) => c.value);
-          if (best.rank === 2) {
-            // One pair: does pair value include a hole card value
-            const allVals = [...holeVals, ...commVals];
-            const counts = {};
-            for (const v of allVals) counts[v] = (counts[v] || 0) + 1;
-            const pairVal = Object.entries(counts).find(([, c]) => c >= 2);
-            contributed = pairVal && holeVals.includes(parseInt(pairVal[0]));
-          } else if (best.rank === 3) {
-            // Two pair: at least one pair includes hole card
-            const allVals = [...holeVals, ...commVals];
-            const counts = {};
-            for (const v of allVals) counts[v] = (counts[v] || 0) + 1;
-            const pairVals = Object.entries(counts)
-              .filter(([, c]) => c >= 2)
-              .map(([v]) => parseInt(v));
-            contributed = pairVals.some((pv) => holeVals.includes(pv));
-          } else if (best.rank === 4) {
-            // Three of a kind: does trips value include hole card
-            const allVals = [...holeVals, ...commVals];
-            const counts = {};
-            for (const v of allVals) counts[v] = (counts[v] || 0) + 1;
-            const tripVal = Object.entries(counts).find(([, c]) => c >= 3);
-            contributed = tripVal && holeVals.includes(parseInt(tripVal[0]));
-          } else if (best.rank >= 5) {
-            // Straight+: almost always needs hole cards (3-4 community cards alone insufficient)
-            contributed = true;
-          } else {
-            contributed = true; // high card
-          }
-        }
-
-        if (contributed) {
-          handName = HAND_NAMES[best.rank] || '';
-        } else if (best.rank >= 2) {
-          // Hand made entirely by community cards — lower display weight
-          handName = 'board ' + (HAND_NAMES[best.rank] || '');
-          handRank = 1; // treat as high card label, avoid misleading board pair
-        }
-      }
-    }
-
-    // Outs calculation
-    const outs = this._countOuts(player.holeCards, this.communityCards);
-
-    // Hand strength label
-    const label = this._getHandLabel(equityPct, handRank, outs);
-
-    // Delta vs previous equity
-    const prevEq = this._lastEquity && this._lastEquity[playerId];
-    const delta = prevEq !== undefined ? Math.round((equityPct - prevEq) * 10) / 10 : null;
-    if (!this._lastEquity) this._lastEquity = {};
-    this._lastEquity[playerId] = equityPct;
-
-    return {
-      equity: equityPct, // 47.3
-      label, // e.g. "marginal"
-      handName, // e.g. "one pair" / "" (preflop)
-      outs: outs.total, // 9
-      outsDesc: outs.desc, // e.g. "9 outs → flush"
-      delta, // -12.5 or null
-      rangeAdjusted: useRange, // whether range-weighted was used
-    };
-  }
-
-  // Outs calculation: detect flush draws, straight draws, etc.
-  _countOuts(holeCards, communityCards) {
-    if (communityCards.length < 3 || communityCards.length >= 5) {
-      return { total: 0, desc: '' };
-    }
-
-    const allCards = [...holeCards, ...communityCards];
-    const knownSet = new Set(allCards.map((c) => c.rank + c.suit));
-    const remainDeck = createDeck().filter((c) => !knownSet.has(c.rank + c.suit));
-
-    // Flush draw detection
-    const suitCounts = {};
-    for (const c of allCards) {
-      suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1;
-    }
-    let flushOuts = 0;
-    let flushSuit = null;
-    for (const [suit, cnt] of Object.entries(suitCounts)) {
-      if (cnt === 4) {
-        flushSuit = suit;
-        flushOuts = remainDeck.filter((c) => c.suit === suit).length;
-      }
-    }
-
-    // Straight draw detection — collect unique missing values to avoid double-counting
-    const vals = [...new Set(allCards.map((c) => c.value))].sort((a, b) => a - b);
-    // Ace can also be 1
-    if (vals.includes(14)) vals.unshift(1);
-    const straightMissing = new Set();
-    // Check if 1 card short of straight (open-ended or gutshot)
-    for (let target = 5; target <= 14; target++) {
-      const needed = [target, target - 1, target - 2, target - 3, target - 4];
-      const have = needed.filter((v) => vals.includes(v));
-      const missing = needed.filter((v) => !vals.includes(v));
-      if (have.length === 4 && missing.length === 1) {
-        const missVal = missing[0] === 1 ? 14 : missing[0]; // 1→Ace
-        straightMissing.add(missVal);
-      }
-    }
-    let straightOuts = 0;
-    for (const mv of straightMissing) {
-      straightOuts += remainDeck.filter((c) => c.value === mv).length;
-    }
-    let straightType = '';
-    if (straightMissing.size >= 2) straightType = 'OESD';
-    else if (straightMissing.size === 1) straightType = 'gutshot';
-
-    // Pick best draw description
-    const draws = [];
-    if (flushOuts > 0) draws.push({ outs: flushOuts, desc: `flush draw(${flushOuts})` });
-    if (straightOuts > 0)
-      draws.push({ outs: straightOuts, desc: `${straightType}(${straightOuts})` });
-
-    // Straight flush draw!
-    if (flushOuts > 0 && straightOuts > 0) {
-      const combo = flushOuts + straightOuts - 2; // deduplicate (~2 overlap)
-      return { total: combo, desc: `flush+${straightType}(~${combo})` };
-    }
-    if (draws.length > 0) {
-      draws.sort((a, b) => b.outs - a.outs);
-      return { total: draws[0].outs, desc: draws[0].desc };
-    }
-
-    return { total: 0, desc: '' };
-  }
-
-  // Hand strength label (equity + made hand + draws)
-  _getHandLabel(equity, handRank, outs) {
-    // Very high equity = monster (regardless of hand rank)
-    if (equity >= 85) return 'monster';
-    // Already made a strong hand
-    if (handRank >= 7) return 'monster'; // full house+
-    if (equity >= 70) return 'strong';
-    if (handRank >= 5) return 'strong'; // straight/flush
-    if (handRank >= 4) return 'decent'; // three of a kind
-
-    // Many outs (drawing state)
-    if (outs.total >= 8) return 'strong draw'; // flush draw / open-ended straight draw
-    if (outs.total >= 4) return 'drawing'; // gutshot etc.
-
-    // Judge by equity
-    if (equity >= 50) return 'decent';
-    if (equity >= 35) return 'marginal';
-    if (equity >= 20) return 'weak';
-    return 'danger';
-  }
-
-  // v11: Equity usage & billing (cash/tournament only)
-  initEquityState(playerId) {
-    if (!this.equityState[playerId]) {
-      this.equityState[playerId] = { freeLeft: 3, priceLevel: 0, unusedStreak: 0 };
-    }
-  }
-
-  _getEquitySnapshotKey(playerId) {
-    const player = this.players.find((p) => p.id === playerId);
-    if (!player || !player.holeCards || player.holeCards.length < 2) return null;
-    return JSON.stringify({
-      roundCount: this.roundCount,
-      board: this.communityCards.map((c) => `${c.rank}${c.suit}`),
-      hero: player.holeCards.map((c) => `${c.rank}${c.suit}`),
-    });
-  }
-
-  useEquity(playerId) {
-    try {
-      this.initEquityState(playerId);
-      const es = this.equityState[playerId];
-      const player = this.players.find((p) => p.id === playerId);
-      if (!player) {
-        this._logEvent(
-          'equity_rejected',
-          { playerId, reason: 'player_not_found' },
-          'warn',
-          'Equity request rejected'
-        );
-        return { error: 'Player not found' };
-      }
-      if (this.communityCards.length < 3) {
-        this._logEvent(
-          'equity_rejected',
-          { playerId, playerName: this.getPublicName(player), reason: 'preflop_locked' },
-          'info',
-          'Equity request rejected'
-        );
-        return { error: 'Equity oracle opens on the flop' };
-      }
-
-      const snapshotKey = this._getEquitySnapshotKey(playerId);
-      const cachedSnapshot = snapshotKey ? this.equitySnapshots[playerId] : null;
-      if (cachedSnapshot && cachedSnapshot.key === snapshotKey) {
-        const nextPrice =
-          this.gameMode === 'practice' ? 0 : this._equityPrice((this.equityState[playerId] || {}).priceLevel || 0);
-        this._logEvent(
-          'equity_reused',
-          {
-            playerId,
-            playerName: this.getPublicName(player),
-            mode: this.gameMode,
-            freeLeft: this.gameMode === 'practice' ? Infinity : es.freeLeft,
-            priceLevel: this.gameMode === 'practice' ? 0 : es.priceLevel,
-            nextPrice,
-          },
-          'info',
-          'Equity result reused for unchanged board state'
-        );
-        return {
-          ...cachedSnapshot.result,
-          unchanged: true,
-          cost: 0,
-          freeLeft: this.gameMode === 'practice' ? Infinity : es.freeLeft,
-          priceLevel: this.gameMode === 'practice' ? 0 : es.priceLevel,
-          nextPrice,
-        };
-      }
-
-      const result = this.calculateEquity(playerId);
-      if (result === null) {
-        this._logEvent(
-          'equity_rejected',
-          { playerId, playerName: this.getPublicName(player), reason: 'calculation_unavailable' },
-          'warn',
-          'Equity request rejected'
-        );
-        return { error: 'Equity unavailable right now' };
-      }
-
-      if (this.gameMode === 'practice') {
-        if (snapshotKey) {
-          this.equitySnapshots[playerId] = { key: snapshotKey, result };
-        }
-        this._logEvent(
-          'equity_used',
-          {
-            playerId,
-            playerName: this.getPublicName(player),
-            mode: this.gameMode,
-            cost: 0,
-            freeLeft: Infinity,
-            priceLevel: 0,
-          },
-          'info',
-          'Equity used'
-        );
-        return { ...result, cost: 0, freeLeft: Infinity, nextPrice: 0, priceLevel: 0 };
-      }
-
-      if (es.freeLeft > 0) {
-        es.freeLeft--;
-        es.unusedStreak = 0;
-        if (snapshotKey) {
-          this.equitySnapshots[playerId] = { key: snapshotKey, result };
-        }
-        this._logEvent(
-          'equity_used',
-          {
-            playerId,
-            playerName: this.getPublicName(player),
-            mode: this.gameMode,
-            cost: 0,
-            freeLeft: es.freeLeft,
-            priceLevel: es.priceLevel,
-          },
-          'info',
-          'Equity used'
-        );
-        return {
-          ...result,
-          cost: 0,
-          freeLeft: es.freeLeft,
-          priceLevel: es.priceLevel,
-          nextPrice: this._equityPrice(es.priceLevel),
-        };
-      }
-
-      const price = this._equityPrice(es.priceLevel);
-      if (!Number.isFinite(price) || price <= 0) {
-        this._logEvent(
-          'equity_rejected',
-          { playerId, playerName: this.getPublicName(player), reason: 'invalid_price', price },
-          'warn',
-          'Equity request rejected'
-        );
-        return { error: 'Equity unavailable right now' };
-      }
-      if (!Number.isFinite(player.chips) || player.chips <= 0 || price > player.chips) {
-        this._logEvent(
-          'equity_rejected',
-          {
-            playerId,
-            playerName: this.getPublicName(player),
-            reason: 'insufficient_chips',
-            price,
-            chips: player.chips,
-          },
-          'info',
-          'Equity request rejected'
-        );
-        return { error: 'Not enough chips', price };
-      }
-
-      player.chips -= price;
-      es.priceLevel++;
-      es.unusedStreak = 0;
-      if (snapshotKey) {
-        this.equitySnapshots[playerId] = { key: snapshotKey, result };
-      }
-      this._log(`🔮 ${player.name} used equity oracle, cost ${price} chips`);
-      this._logEvent(
-        'equity_used',
-        {
-          playerId,
-          playerName: this.getPublicName(player),
-          mode: this.gameMode,
-          cost: price,
-          freeLeft: 0,
-          priceLevel: es.priceLevel,
-          nextPrice: this._equityPrice(es.priceLevel),
-          chipsAfter: player.chips,
-        },
-        'info',
-        'Equity used'
-      );
-      return {
-        ...result,
-        cost: price,
-        freeLeft: 0,
-        priceLevel: es.priceLevel,
-        nextPrice: this._equityPrice(es.priceLevel),
-      };
-    } catch (e) {
-      this._log(`⚠️ Equity calculation error: ${e.message}`);
-      this._logEvent(
-        'equity_rejected',
-        { playerId, reason: 'exception', error: e.message },
-        'error',
-        'Equity request failed'
-      );
-      return { error: 'Calculation error' };
-    }
-  }
-
-  // Per-round: consecutive unused ticks = price drop
-  tickEquityStreak() {
-    for (const pid of Object.keys(this.equityState)) {
-      const es = this.equityState[pid];
-      es.unusedStreak++;
-      if (es.unusedStreak >= 5 && es.priceLevel > 0) {
-        es.priceLevel--;
-        es.unusedStreak = 0;
-      }
-    }
-  }
-
-  _equityPrice(level) {
-    return this.bigBlind * Math.pow(2, level); // 1BB, 2BB, 4BB, 8BB, 16BB...
-  }
-
   isAutomatedPlayer(player) {
     return !!(player && (player.isNPC || player.autoPlay));
   }
@@ -2357,8 +1899,6 @@ class PokerGame {
       gameMode: this.gameMode,
       isPaused: this.isPaused,
       speedMultiplier: this.speedMultiplier,
-      equityState: this.equityState[playerId] || { freeLeft: 3, priceLevel: 0, unusedStreak: 0 },
-      equityPrice: this._equityPrice((this.equityState[playerId] || { priceLevel: 0 }).priceLevel),
     };
   }
 

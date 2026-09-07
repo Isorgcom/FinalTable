@@ -166,18 +166,6 @@ function registerTournamentHandlers(deps) {
       else table.emitUpdate();
     });
 
-    socket.on('requestEquity', () => {
-      const seat = seatFor(socket);
-      if (!seat) return;
-      try {
-        const result = seat.table.useEquity(seat.player.id);
-        socket.emit('equityResult', result);
-        if (result && result.cost > 0) seat.table.emitUpdate();
-      } catch (err) {
-        fail(socket, err.message || 'Equity unavailable');
-      }
-    });
-
     socket.on('disconnect', () => {
       const entry = entryFor(socket);
       if (!entry) return;

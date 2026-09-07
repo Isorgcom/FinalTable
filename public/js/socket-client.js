@@ -142,38 +142,6 @@ function ensureSocket() {
     }, 7000);
   });
 
-  socket.on('equityResult', (result) => {
-    if (result.error) {
-      addLog('⚠️ ' + result.error);
-      return;
-    }
-    showEquityDisplay(result);
-    if (result.cost > 0) {
-      showFeeFloat(result.cost);
-      _eqPaidCount++;
-      if (_eqPaidCount >= 5 && !_dalioShown) {
-        _dalioShown = true;
-        setTimeout(() => showDalioEasterEgg(), 1500);
-      }
-    }
-    if (gameState) {
-      const me = gameState.players && gameState.players.find((player) => player.id === myId);
-      if (me && result.cost > 0) {
-        me.chips = Math.max(0, me.chips - result.cost);
-      }
-      gameState.equityState = {
-        freeLeft: result.freeLeft !== undefined ? result.freeLeft : gameState.equityState.freeLeft,
-        priceLevel:
-          result.priceLevel !== undefined
-            ? result.priceLevel
-            : (gameState.equityState || {}).priceLevel || 0,
-        unusedStreak: 0,
-      };
-      if (result.nextPrice !== undefined) gameState.equityPrice = result.nextPrice;
-      updateEquityButton();
-    }
-  });
-
   document.addEventListener('click', () => SFX.init(), { once: true });
   return socket;
 }
