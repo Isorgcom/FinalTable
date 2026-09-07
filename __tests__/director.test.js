@@ -747,4 +747,31 @@ describe('Lobby phase 2: late registration, unregister, roster, placements', () 
     expect(table.players.some((p) => p.uid === victim.uid)).toBe(false);
     expect(d.roster().find((r) => r.uid === victim.uid)).toMatchObject({ place: 3, table: null });
   });
+
+  test('the next hand waits out the pause after the last one ended', () => {
+    let clock = 100000;
+    const d = makeDirector(3, { handPauseMs: 4000, now: () => clock });
+    d.start();
+    const table = d.tables[0];
+    // start() seats the field; hands begin on the director's tick, so the
+    // table is idle and ready until a hand has actually ended on it.
+    expect(d.canStartHand(table)).toBe(true);
+
+    // End a hand the way the engine does, through the director's own hook.
+    d._handleRoundEnd(table, null);
+    expect(d.canStartHand(table)).toBe(false); // held: the result is still up
+
+    clock += 3999;
+    expect(d.canStartHand(table)).toBe(false);
+    clock += 2;
+    expect(d.canStartHand(table)).toBe(true);
+  });
+
+  test('with no pause the next hand can start straight away', () => {
+    const d = makeDirector(3, { handPauseMs: 0 });
+    d.start();
+    const table = d.tables[0];
+    d._handleRoundEnd(table, null);
+    expect(d.canStartHand(table)).toBe(true);
+  });
 });

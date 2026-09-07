@@ -114,6 +114,12 @@ class PokerGame {
     this.speedMultiplier = 1; // 1=normal, 2=fast, 3=turbo
     this.isPaused = false;
     this._pausedAutoPending = false; // automated turn pending while paused
+    // A held beat between the end of a betting round and the next street, so
+    // the chips can be seen going in and the cards can be seen turning over.
+    // Zero keeps the hand loop synchronous, which is what the engine tests
+    // and the director's own hand driver expect; the server sets a real one.
+    this.streetPauseMs = Math.max(0, options.streetPauseMs || 0);
+    this._streetTimer = null;
 
     // Hand history & leaderboard
     this.handHistory = new HandHistory();
@@ -546,6 +552,9 @@ class PokerGame {
   }
 
   handleAction(playerId, action, amount = 0) {
+    // The betting round is over and the street is mid-pause: currentPlayerIndex
+    // still points at whoever closed it, so without this they could act twice.
+    if (this._streetTimer) return false;
     const playerIdx = this.players.findIndex((p) => p.id === playerId);
     if (playerIdx === -1 || playerIdx !== this.currentPlayerIndex) return false;
     const player = this.players[playerIdx];
@@ -851,20 +860,52 @@ class PokerGame {
     this.beginCurrentTurn();
   }
 
+  // Everyone is all in, so the rest of the board is a formality. It is still
+  // dealt a card at a time on the street beat: five cards appearing at once is
+  // the moment of the hand going past too fast to watch.
   dealRemainingCards() {
-    while (this.communityCards.length < 5) {
-      this.deck.pop(); // burn
-      this.communityCards.push(this.deck.pop());
+    if (this.communityCards.length >= 5) {
+      this.phase = 'showdown';
+      this.showdown();
+      return;
     }
-    this.phase = 'showdown';
-    this.showdown();
+    this.deck.pop(); // burn
+    this.communityCards.push(this.deck.pop());
+    this.emitUpdate();
+    this._afterStreetPause(() => this.dealRemainingCards());
+  }
+
+  // Runs fn after the street pause, or immediately when there is none. Only
+  // one can be pending: a hand has a single thread of progress.
+  _afterStreetPause(fn) {
+    if (this._streetTimer) {
+      clearTimeout(this._streetTimer);
+      this._streetTimer = null;
+    }
+    if (!this.streetPauseMs) {
+      fn();
+      return;
+    }
+    this._streetTimer = setTimeout(() => {
+      this._streetTimer = null;
+      if (!this.isRunning) return;
+      fn();
+    }, this.streetPauseMs);
+    if (this._streetTimer.unref) this._streetTimer.unref();
   }
 
   nextPhase() {
     const phaseIdx = PHASES.indexOf(this.phase);
     if (phaseIdx >= 4) {
-      this.phase = 'showdown';
-      this.showdown();
+      // The river's betting is over. Hold the same beat before the cards are
+      // turned up: this is the last money to go in, and the showdown landing
+      // on top of it is the moment of the hand nobody gets to see.
+      this.clearActionTimeout();
+      this.emitUpdate();
+      this._afterStreetPause(() => {
+        this.phase = 'showdown';
+        this.showdown();
+      });
       return;
     }
 
@@ -873,8 +914,16 @@ class PokerGame {
     // client's first sight of the flop already has every bet at zero and the
     // closing player's bet was never sent at all: no chips could travel, and
     // the player who closed the street got no animation for their own money.
+    // It is also the frame the pause holds on, so the bets can be read before
+    // they are swept in.
+    this.clearActionTimeout();
     this.emitUpdate();
+    this._afterStreetPause(() => this._openStreet(phaseIdx));
+  }
 
+  // Everything the new street brings: the bets go to the middle, the cards
+  // come out, and somebody is to act again.
+  _openStreet(phaseIdx) {
     // Reset bets for new betting round
     for (const p of this.players) {
       p.bet = 0;
@@ -1286,6 +1335,10 @@ class PokerGame {
       clearTimeout(this._autoTurnTimer);
       this._autoTurnTimer = null;
     }
+    if (this._streetTimer) {
+      clearTimeout(this._streetTimer);
+      this._streetTimer = null;
+    }
     this._log('🛑 Game engine stopped');
   }
 
@@ -1425,6 +1478,7 @@ class PokerGame {
         viewer &&
         this.currentPlayerIndex === viewer.seatIndex &&
         this.isRunning &&
+        !this._streetTimer &&
         !this.isAutomatedPlayer(viewer),
       canCheck: viewer && this.currentBet === (viewer.bet || 0),
       canRaise: viewer
@@ -1456,8 +1510,10 @@ class PokerGame {
       tournament: this.tournament ? this.tournament.getState() : null,
       gameOver: this.gameOver,
       viewerIsSpectator: this.isSpectatorPlayer(viewer),
-      turnExpiresAt: this.turnExpiresAt,
-      turnDurationMs: this.turnDurationMs,
+      // No clock runs while the street beat is held: nobody is to act, and a
+      // countdown ticking down on the last actor's seat reads as their turn.
+      turnExpiresAt: this._streetTimer ? null : this.turnExpiresAt,
+      turnDurationMs: this._streetTimer ? null : this.turnDurationMs,
       // The viewer's own hand in words, never anyone else's.
       myHand:
         viewer &&

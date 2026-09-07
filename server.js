@@ -124,6 +124,8 @@ const tournamentLayer = registerTournamentHandlers({
   abandonGraceMs: config.tournamentAbandonGraceMs,
   hostTransferGraceMs: config.hostTransferGraceMs,
   sweepMs: config.tournamentSweepMs,
+  handPauseMs: config.handPauseMs,
+  tableOptions: { streetPauseMs: config.streetPauseMs },
 });
 // Registrations survive a restart; a running tournament does not.
 const restoredTournaments = tournamentLayer.registry.restore();

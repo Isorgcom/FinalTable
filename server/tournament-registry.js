@@ -33,6 +33,7 @@ function createTournamentRegistry(deps = {}) {
         .toLowerCase(),
     maxTournaments = 8,
     tableOptions = {},
+    handPauseMs = 0,
     // Every connected socket, for the personalised tournament list. Injectable
     // so the registry tests can drive it without a real socket.io server.
     connectedSockets = () => (io && io.sockets ? io.sockets.sockets.values() : []),
@@ -381,6 +382,7 @@ function createTournamentRegistry(deps = {}) {
       buyIn: settings.buyIn,
       levelDuration: settings.levelDuration,
       lateRegLevels: settings.lateRegLevels,
+      handPauseMs,
       gameOptions: { gameMode: 'tournament', ...tableOptions },
       onTableCreated: (table) => wireTable(entry, table),
       onMessage: (msg) => emitAll(entry, 'gameMessage', msg),

@@ -46,6 +46,11 @@ function loadConfig() {
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),
+    // Pacing. A betting round closing and the next street arriving in the same
+    // frame is too fast to follow, so the table holds a beat between them, and
+    // another between one hand and the next.
+    streetPauseMs: intFromEnv('STREET_PAUSE_MS', 1600, 0, 15000),
+    handPauseMs: intFromEnv('HAND_PAUSE_MS', 3500, 0, 60000),
   };
 }
 

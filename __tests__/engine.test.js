@@ -1650,3 +1650,102 @@ describe('Action Flow & Game Mechanics', () => {
     expect(crashes).toBe(0);
   });
 });
+
+describe('street pacing', () => {
+  function twoHanded(opts) {
+    const game = new PokerGame('paced', { smallBlind: 10, bigBlind: 20, ...opts });
+    game.onMessage = () => {};
+    game.onUpdate = () => {};
+    game.onChat = () => {};
+    game.onRoundEnd = () => {};
+    const a = game.addPlayer({ id: 'p1', name: 'A' });
+    const b = game.addPlayer({ id: 'p2', name: 'B' });
+    game.startRound();
+    return { game, a, b };
+  }
+
+  test('with no pause configured the street opens in the same call', () => {
+    const { game } = twoHanded();
+    expect(game.phase).toBe('preflop');
+    game.nextPhase();
+    expect(game.phase).toBe('flop');
+    expect(game.communityCards).toHaveLength(3);
+  });
+
+  test('a pause holds the bets on the felt, then opens the street', () => {
+    jest.useFakeTimers();
+    try {
+      const { game, a } = twoHanded({ streetPauseMs: 500 });
+      const betBefore = a.bet;
+      expect(betBefore).toBeGreaterThan(0);
+
+      game.nextPhase();
+      // Held: the bets are still in front of the players and no card has come
+      // out. This is the frame the sweep animation plays against.
+      expect(game.phase).toBe('preflop');
+      expect(game.communityCards).toHaveLength(0);
+      expect(a.bet).toBe(betBefore);
+
+      jest.advanceTimersByTime(520);
+      expect(game.phase).toBe('flop');
+      expect(game.communityCards).toHaveLength(3);
+      expect(a.bet).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('nobody can act into the held beat', () => {
+    jest.useFakeTimers();
+    try {
+      const { game } = twoHanded({ streetPauseMs: 500 });
+      const actor = game.players[game.currentPlayerIndex];
+      game.nextPhase();
+      // currentPlayerIndex still points at whoever closed the round, so
+      // without the guard they could act a second time on a dead street.
+      expect(game.handleAction(actor.id, 'check')).toBe(false);
+      expect(game.getStateForPlayer(actor.id).isMyTurn).toBe(false);
+      expect(game.getStateForPlayer(actor.id).turnExpiresAt).toBeNull();
+      jest.advanceTimersByTime(520);
+      expect(game.phase).toBe('flop');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('stopping the table drops a pending street', () => {
+    jest.useFakeTimers();
+    try {
+      const { game } = twoHanded({ streetPauseMs: 500 });
+      game.nextPhase();
+      game.stop();
+      jest.advanceTimersByTime(2000);
+      // The street never opened: a stopped table must not deal itself a flop.
+      expect(game.phase).toBe('preflop');
+      expect(game.communityCards).toHaveLength(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('an all-in run-out deals a card at a time on the same beat', () => {
+    jest.useFakeTimers();
+    try {
+      const { game, a, b } = twoHanded({ streetPauseMs: 300 });
+      a.holeCards = [Card('spades', 14), Card('hearts', 14)];
+      b.holeCards = [Card('clubs', 2), Card('diamonds', 7)];
+      a.allIn = true;
+      b.allIn = true;
+
+      game.dealRemainingCards();
+      expect(game.communityCards).toHaveLength(1);
+      jest.advanceTimersByTime(320);
+      expect(game.communityCards).toHaveLength(2);
+      jest.advanceTimersByTime(320 * 4);
+      expect(game.communityCards).toHaveLength(5);
+      expect(game.phase).toBe('showdown');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

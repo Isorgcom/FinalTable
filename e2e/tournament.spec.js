@@ -19,6 +19,10 @@ test.beforeAll(async () => {
   process.env.HOST = '127.0.0.1';
   process.env.AUTO_TURN_DELAY_MS = '40';
   process.env.TOURNAMENT_SWEEP_MS = '100';
+  // The table holds a beat between streets and between hands. Short here, or
+  // a spec that waits for hands to turn over waits out the real pacing.
+  process.env.STREET_PAUSE_MS = '400';
+  process.env.HAND_PAUSE_MS = '400';
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(repoRoot) && !key.includes(`${path.sep}node_modules${path.sep}`)) {
       delete require.cache[key];

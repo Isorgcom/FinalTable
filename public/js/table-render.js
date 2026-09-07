@@ -271,6 +271,7 @@ function updateGameState(state) {
   // because renderFeltBets is about to wipe them, and read before any write in
   // this handler so it costs no forced reflow.
   const sweeps = measureSweep(gameState, state);
+  _boardFlipDelayMs = sweeps.length ? SWEEP_DUR_MS : 0;
   gameState = state;
 
   // Detect new round → force full rebuild
@@ -351,7 +352,7 @@ function renderTable(oldCommunityLen) {
           const isNew = i >= prevCount;
           const cardEl = createCardElement(gameState.communityCards[i], isNew ? 'flipping' : '');
           if (isNew) {
-            setAnimationDelay(cardEl, (i - prevCount) * 0.11);
+            setAnimationDelay(cardEl, (_boardFlipDelayMs + (i - prevCount) * 110) / 1000);
             // The card turns over behind its own back, which is dropped when
             // the fold finishes. Clearing the class matters as much as the
             // back: the animation fills both ways, so leaving it on freezes
@@ -364,7 +365,7 @@ function renderTable(oldCommunityLen) {
               cardEl.classList.remove('flipping');
             };
             cardEl.addEventListener('animationend', drop, { once: true });
-            setTimeout(drop, (i - prevCount) * 110 + 900);
+            setTimeout(drop, _boardFlipDelayMs + (i - prevCount) * 110 + 900);
             window.__anim.flips++;
           }
           cc.appendChild(cardEl);
@@ -407,6 +408,10 @@ let _builtHostId = '';
 let _builtIdentityKey = '';
 let _dealAnimationRound = -1;
 let _builtBoardKey = '';
+// Set for the one render where a street just closed: the board waits for the
+// chips to reach the middle before it turns over, so the two read as a
+// sequence rather than as one busy frame.
+let _boardFlipDelayMs = 0;
 
 function getPlayerIdentityKey(players) {
   return players

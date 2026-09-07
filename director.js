@@ -64,6 +64,12 @@ class TournamentDirector {
     this.finished = null;
     this._expectedChips = null;
     this._paused = false;
+    // A held beat between hands, so the showdown and the pot going to the
+    // winner can be watched rather than glimpsed. Zero keeps the tests'
+    // hand driver immediate; the server sets a real one. The director's tick
+    // is the granularity, so the wait is this rounded up to the next tick.
+    this.handPauseMs = Math.max(0, options.handPauseMs || 0);
+    this.now = options.now || (() => Date.now());
 
     // Hooks the host (a server, or a test) supplies.
     this.onMessage = options.onMessage || null;
@@ -412,6 +418,12 @@ class TournamentDirector {
   canStartHand(table) {
     if (!this.isRunning || this.finished || this._paused) return false;
     if (table.isRunning) return false;
+    if (
+      this.handPauseMs &&
+      table._handEndedAt &&
+      this.now() - table._handEndedAt < this.handPauseMs
+    )
+      return false;
     // Hand for hand on the bubble: a table that finishes early waits for the
     // rest, so no table can stall its way past the money while another plays
     // on. Without it a big stack simply slows down and folds into a payout.
@@ -450,6 +462,9 @@ class TournamentDirector {
 
   _handleRoundEnd(table, tournamentResult) {
     if (!this.isRunning) return;
+    // When the next hand may start from here. Stamped before anything else so
+    // an early return still holds the table for its beat.
+    table._handEndedAt = this.now();
 
     // Busted players leave their seat. The engine has already recorded their
     // finishing place in the shared ledger by this point.

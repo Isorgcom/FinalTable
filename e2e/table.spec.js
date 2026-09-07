@@ -26,6 +26,10 @@ test.beforeAll(async () => {
   process.env.AUTO_TURN_DELAY_MS = '40';
   // A tournament created to start now deals on the next sweep.
   process.env.TOURNAMENT_SWEEP_MS = '100';
+  // The table holds a beat between streets and between hands so a person can
+  // follow it. Long enough here to be observable, short enough to test with.
+  process.env.STREET_PAUSE_MS = '400';
+  process.env.HAND_PAUSE_MS = '400';
   // Every test in this file creates a tournament against one in-process
   // server, and the default cap of eight is reached part way down the file.
   // The short abandon grace also clears each finished test's table instead of
@@ -472,5 +476,49 @@ test('the turn chime fires once when the action arrives, not on every push', asy
     .poll(() => page.evaluate(() => ({ c: window.__chimes, e: window.__edges })))
     .toEqual({ c: 1, e: 1 });
 
+  expect(pageErrors).toEqual([]);
+});
+
+test('the table holds a beat between the betting and the next street', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'PaceTester');
+  await deal(page);
+  const game = await gameForPage(page);
+
+  // Record every distinct shape of the felt so the order of events can be
+  // read back: the bets have to be seen on the felt after the round closes
+  // and before any card arrives.
+  await page.evaluate(() => {
+    window.__frames = [];
+    let last = '';
+    socket.on('gameState', (s) => {
+      const key = `${s.phase}|b${s.communityCards.length}|bets${s.players.filter((x) => x.bet > 0).length}`;
+      if (key === last) return;
+      last = key;
+      window.__frames.push({ t: Math.round(performance.now()), key });
+    });
+  });
+
+  const action = await page.evaluate(() =>
+    ['btnCall', 'btnCheck'].find((id) => {
+      const el = document.getElementById(id);
+      return el && !el.disabled && el.offsetParent !== null;
+    })
+  );
+  expect(action).toBeTruthy();
+  await page.click('#' + action);
+
+  await expect.poll(() => game.communityCards.length, { timeout: 15000 }).toBeGreaterThanOrEqual(3);
+  await page.waitForTimeout(200);
+
+  const frames = await page.evaluate(() => window.__frames);
+  const closed = frames.find((f) => f.key.startsWith('preflop|b0|bets'));
+  const opened = frames.find((f) => f.key.startsWith('flop|b3'));
+  expect(closed).toBeTruthy();
+  expect(opened).toBeTruthy();
+
+  // The gap is the beat. Without it the closing bet and the flop arrive in
+  // one frame and there is nothing to watch.
+  const held = opened.t - closed.t;
+  expect(held).toBeGreaterThan(250);
   expect(pageErrors).toEqual([]);
 });
