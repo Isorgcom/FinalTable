@@ -314,7 +314,9 @@
     const btn = document.createElement('button');
     btn.className = 't-card-btn';
     btn.type = 'button';
-    const mine = t.you && t.you.registered;
+    // A tournament you left is still yours: your stack is at the table, and
+    // the way back must not be the late-registration button, which closes.
+    const mine = t.you && (t.you.registered || t.you.left);
     if (mine) {
       btn.textContent = t.status === 'registering' ? 'Open' : 'Rejoin';
     } else if (t.status === 'registering') {
@@ -337,7 +339,7 @@
   function renderList() {
     const buckets = { yours: [], registering: [], running: [], finished: [] };
     for (const t of list) {
-      if (t.you && t.you.registered) buckets.yours.push(t);
+      if (t.you && (t.you.registered || t.you.left)) buckets.yours.push(t);
       else if (buckets[t.status]) buckets[t.status].push(t);
     }
     let any = false;

@@ -36,9 +36,11 @@ function registerTournamentHandlers(deps) {
       const entry = entryFor(socket);
       if (entry) registry.bind(entry, socket.data.tournamentUid, socket, { resumed: true });
     }
-    socket.emit('tournamentList', registry.publicList());
+    socket.emit('tournamentList', registry.listFor(socket.data.uid));
 
-    socket.on('listTournaments', () => socket.emit('tournamentList', registry.publicList()));
+    socket.on('listTournaments', () =>
+      socket.emit('tournamentList', registry.listFor(socket.data.uid))
+    );
 
     // First thing on every connect, reconnects included. Establishes who the
     // socket is and, when that person has a live registration, rebinds it.
@@ -57,6 +59,9 @@ function registerTournamentHandlers(deps) {
         resume = { id: entry.id, code: entry.code, name: entry.name, status: entry.status };
       }
       socket.emit('identified', { ...ident, resume });
+      // The list this socket got on connect was built before it had a uid, so
+      // none of its cards knew they were this player's. Send it again.
+      socket.emit('tournamentList', registry.listFor(ident.uid));
     });
 
     socket.on('createTournament', (payload = {}) => {

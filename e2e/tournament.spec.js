@@ -97,3 +97,57 @@ test('two players reach one table, and one comes back to it after a reload', asy
   expect(errors).toEqual([]);
   await guestContext.close();
 });
+
+test('the host can leave the table and rejoin it, back in control', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Leaver');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Leaver');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Back In A Minute');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code}`);
+  await guest.fill('#playerName', 'Stayer');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // Leave through the menu, confirming the dialog.
+  await page.click('#menuToggle');
+  await page.click('#btnExit');
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#lobbyHome')).toBeVisible();
+
+  // The card has to say Rejoin. Before the fix it sat in the Running section
+  // offering late registration, which closes, and then nothing at all.
+  const card = page.locator('#listYours .t-card').first();
+  await expect(card).toBeVisible();
+  await expect(card.locator('.t-card-btn')).toHaveText('Rejoin');
+
+  await card.locator('.t-card-btn').click();
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // Back in control: the seat is the viewer's again and is not sitting out.
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const me = gameState && gameState.players.find((p) => p.id === myId);
+        return me ? !!me.autoPlay : null;
+      })
+    )
+    .toBe(false);
+  await expect(page.locator('.player-auto-badge')).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});

@@ -29,9 +29,20 @@ function makeStore() {
   };
 }
 
-function makeSocket(id) {
+// Sockets register themselves so the personalised tournament list has
+// somewhere to go, the way a real socket.io server tracks them.
+const live = new Map();
+
+function makeSocket(id, uid) {
   const emitted = [];
-  return { id, data: {}, emitted, emit: (event, payload) => emitted.push({ event, payload }) };
+  const socket = {
+    id,
+    data: uid ? { uid } : {},
+    emitted,
+    emit: (event, payload) => emitted.push({ event, payload }),
+  };
+  live.set(id, socket);
+  return socket;
 }
 
 describe('tournament registry', () => {
@@ -43,6 +54,7 @@ describe('tournament registry', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-09-06T20:00:00Z'));
     io = makeIo();
+    live.clear();
     registry = createTournamentRegistry({
       io,
       identity: makeIdentity(names),
@@ -52,6 +64,7 @@ describe('tournament registry', () => {
       overdueAbandonMs: 20000,
       sweepMs: 1000,
       tableOptions: { actionTimeoutMs: 0 },
+      connectedSockets: () => live.values(),
     });
   });
 
@@ -176,6 +189,33 @@ describe('tournament registry', () => {
     expect(registry.tournaments.has(entry.id)).toBe(true);
     jest.advanceTimersByTime(3000);
     expect(registry.tournaments.has(entry.id)).toBe(false);
+  });
+
+  test('a card knows the tournament is yours, including after you leave', () => {
+    const hostSocket = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+    const guest = makeSocket('sg', 'g');
+    registry.join('g', { code: entry.code }, guest);
+    registry.startNow(entry, 'h');
+
+    const rowFor = (socket) => {
+      const last = [...socket.emitted].reverse().find((m) => m.event === 'tournamentList');
+      return last ? last.payload.find((t) => t.id === entry.id) : null;
+    };
+    expect(rowFor(hostSocket).you).toMatchObject({ registered: true, left: false });
+    expect(rowFor(guest).you).toMatchObject({ registered: true, left: false });
+
+    // Leaving hands the stack to a sit-out, but the card must still say the
+    // tournament is yours or the lobby offers late registration instead.
+    registry.leave(entry, 'h', hostSocket);
+    registry.sweep();
+    expect(rowFor(hostSocket).you).toMatchObject({ registered: false, left: true });
+    expect(entry.director.playerByUid('h').player.autoPlay).toBe(true);
+
+    // Coming back takes the seat off sit-out.
+    registry.join('h', { code: entry.code }, hostSocket);
+    expect(rowFor(hostSocket).you).toMatchObject({ registered: true, left: false });
+    expect(entry.director.playerByUid('h').player.autoPlay).toBe(false);
   });
 
   test('one live registration per identity, resumable by uid', () => {

@@ -33,6 +33,9 @@ function createTournamentRegistry(deps = {}) {
         .toLowerCase(),
     maxTournaments = 8,
     tableOptions = {},
+    // Every connected socket, for the personalised tournament list. Injectable
+    // so the registry tests can drive it without a real socket.io server.
+    connectedSockets = () => (io && io.sockets ? io.sockets.sockets.values() : []),
     finishedTtlMs = 10 * 60 * 1000,
     abandonGraceMs = 2 * 60 * 1000,
     hostTransferGraceMs = 2 * 60 * 1000,
@@ -135,8 +138,14 @@ function createTournamentRegistry(deps = {}) {
     }
   }
 
+  // The list is personalised: a card has to know whether this tournament is
+  // already yours, so it can offer Open or Rejoin instead of a Join button
+  // that late registration will close. io.emit cannot do that, so the rows are
+  // built per socket. A home game has a handful of them.
   function emitList() {
-    io.emit('tournamentList', publicList());
+    for (const socket of connectedSockets()) {
+      socket.emit('tournamentList', listFor(socket.data && socket.data.uid));
+    }
   }
 
   // Everyone connected gets the state from their own point of view. The
@@ -197,6 +206,9 @@ function createTournamentRegistry(deps = {}) {
       ...summarize(entry),
       you: {
         registered: entry.registrations.has(uid) && !entry.registrations.get(uid).left,
+        // Left the table but the stack is still in play: the card offers a way
+        // back, and it must not depend on late registration being open.
+        left: !!(entry.registrations.has(uid) && entry.registrations.get(uid).left),
         eliminated: entry.watching.has(uid),
       },
     }));
@@ -232,6 +244,7 @@ function createTournamentRegistry(deps = {}) {
         uid,
         playerId: seat ? seat.player.id : reg && reg.socketId ? reg.socketId : null,
         registered: !!reg && !reg.left,
+        left: !!(reg && reg.left),
         seated: !!seat,
         eliminated: entry.watching.has(uid),
         place: place ? place.place : null,
@@ -421,10 +434,22 @@ function createTournamentRegistry(deps = {}) {
 
     const existing = entry.registrations.get(uid);
     if (existing) {
-      // Back for more: a left player rejoins their own seat.
+      // Back for more: a left player rejoins their own seat, and takes it off
+      // sit-out. Leaving switched the seat to sitting out so the stack could
+      // keep posting blinds; coming back deliberately is a request to play it
+      // again, not to watch it fold itself away. A socket reconnect is
+      // different and is left alone: see bind().
+      const wasLeft = existing.left;
       existing.left = false;
+      const seat = entry.director.playerByUid(uid);
+      if (wasLeft && seat && seat.player.autoPlay) {
+        seat.player.autoPlay = false;
+        seat.table.emitMessage(`${seat.player.name} is back at the table`, { kind: 'system' });
+      }
       if (socket) bind(entry, uid, socket, { resumed: true });
+      if (wasLeft && seat) seat.table.emitUpdate();
       emitState(entry);
+      emitList();
       return { entry };
     }
     if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };

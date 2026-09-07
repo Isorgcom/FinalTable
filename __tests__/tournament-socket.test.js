@@ -366,4 +366,40 @@ describe('Tournament socket layer', () => {
     expect(seat.player.autoPlay).toBe(true);
     expect(entry.registrations.get(host.__identity.uid).left).toBe(true);
   });
+
+  test('a player who left is offered a way back and returns in control', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
+    const uid = host.__identity.uid;
+
+    const left = waitFor(host, 'leftTournament');
+    host.emit('exitGame');
+    await left;
+
+    // The lobby has to know this tournament is still theirs, or it offers a
+    // late-registration button that closes at level 3 and then nothing at all.
+    const listed = await waitFor(
+      host,
+      'tournamentList',
+      (rows) => !!rows.find((t) => t.id === created.id)
+    );
+    const mine = listed.find((t) => t.id === created.id);
+    expect(mine.you.left).toBe(true);
+
+    const rejoined = waitFor(host, 'tournamentJoined');
+    host.emit('joinTournament', { code: created.code });
+    const info = await rejoined;
+    expect(info.resumed).toBe(true);
+    expect(info.you.playerId).toBe(host.id);
+
+    const entry = serverModule.tournaments.get(created.id);
+    const seat = entry.director.playerByUid(uid);
+    expect(seat.player.id).toBe(host.id);
+    expect(seat.player.isConnected).toBe(true);
+    // Coming back deliberately means taking the seat back, not watching it
+    // fold your stack away.
+    expect(seat.player.autoPlay).toBe(false);
+    expect(entry.registrations.get(uid).left).toBe(false);
+  });
 });
