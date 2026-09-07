@@ -26,6 +26,12 @@ test.beforeAll(async () => {
   process.env.AUTO_TURN_DELAY_MS = '40';
   // A tournament created to start now deals on the next sweep.
   process.env.TOURNAMENT_SWEEP_MS = '100';
+  // Every test in this file creates a tournament against one in-process
+  // server, and the default cap of eight is reached part way down the file.
+  // The short abandon grace also clears each finished test's table instead of
+  // leaving it dealing hands to nobody for the rest of the run.
+  process.env.MAX_TOURNAMENTS = '50';
+  process.env.TOURNAMENT_ABANDON_GRACE_MS = '3000';
   // engine.js reads AUTO_TURN_DELAY_MS at load, and another spec in this worker may
   // already have loaded it. Drop every repo module so the env takes effect.
   for (const key of Object.keys(require.cache)) {
@@ -415,6 +421,56 @@ test('the chip sound is served, decoded, and played when chips move', async ({ p
   });
   await page.click('#btnCall');
   await expect.poll(() => page.evaluate(() => window.__played), { timeout: 10000 }).toBe(1);
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('the turn chime fires once when the action arrives, not on every push', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'ChimeTester');
+  await deal(page);
+
+  await page.evaluate(() => {
+    window.__chimes = 0;
+    window.__edges = 0;
+    window.__wasMine = !!(gameState && gameState.isMyTurn);
+    const real = SFX.play.bind(SFX);
+    SFX.play = (type) => {
+      if (type === 'turn') window.__chimes++;
+      return real(type);
+    };
+    socket.on('gameState', (s) => {
+      const mine = !!s.isMyTurn;
+      if (mine && !window.__wasMine) window.__edges++;
+      window.__wasMine = mine;
+    });
+  });
+
+  // Requesting time pushes fresh state while the turn is still ours. That is
+  // the deterministic version of the bug: the chime used to test isMyTurn
+  // rather than the edge into it, so anything landing mid-turn re-fired it.
+  await expect(page.locator('#btnRequestTime')).toBeEnabled();
+  await page.click('#btnRequestTime');
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => window.__chimes)).toBe(0);
+
+  // And it is latched, not silenced: act, and the next turn chimes once.
+  // Pick the button that is actually live rather than clicking one and
+  // catching: a Playwright click on a hidden target retries until the test
+  // times out, so the fallback would never run.
+  const action = await page.evaluate(() =>
+    ['btnCheck', 'btnCall'].find((id) => {
+      const el = document.getElementById(id);
+      return el && !el.disabled && el.offsetParent !== null;
+    })
+  );
+  expect(action).toBeTruthy();
+  await page.click('#' + action);
+  await expect
+    .poll(() => page.evaluate(() => window.__edges), { timeout: 20000 })
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() => page.evaluate(() => ({ c: window.__chimes, e: window.__edges })))
+    .toEqual({ c: 1, e: 1 });
 
   expect(pageErrors).toEqual([]);
 });

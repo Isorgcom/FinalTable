@@ -79,9 +79,16 @@ function ensureSocket() {
 
   // The table
   socket.on('gameState', (state) => {
-    const oldPhase = gameState ? gameState.phase : null;
+    // The chime marks the action arriving, so it is latched on the edge rather
+    // than on the state. Testing isMyTurn alone re-fired it for every push
+    // that happened to land while the turn was still yours: pressing +30s, an
+    // opponent dropping, someone toggling sit-out, or a tab-return resync.
+    // hadState keeps it quiet on the first push of a session, which is the
+    // page loading into a hand rather than the action reaching you.
+    const hadState = !!gameState;
+    const wasMyTurn = !!(gameState && gameState.isMyTurn);
     updateGameState(state);
-    if (state.isMyTurn && oldPhase !== null) SFX.play('turn');
+    if (state.isMyTurn && !wasMyTurn && hadState) SFX.play('turn');
   });
 
   socket.on('gameMessage', (msg, meta) => {
