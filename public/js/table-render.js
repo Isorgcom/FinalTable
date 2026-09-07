@@ -25,27 +25,87 @@ function seatElementForPlayer(playerId) {
   return null;
 }
 
+// The pot drawn as chips. Bucketed by big blinds so it reads the same at
+// level 1 and level 12, and capped: one chip per unit would be a wall.
+// Each entry is the chips per column, tallest in the middle.
+const POT_PILE_TIERS = [[], [3], [4, 3], [4, 5, 3], [5, 6, 4], [6, 7, 5]];
+let _potPileTier = -1;
+
+function potPileTier(pot) {
+  if (!(pot > 0)) return 0;
+  const bbs = pot / ((gameState && gameState.bigBlind) || 20);
+  if (bbs < 3) return 1;
+  if (bbs < 8) return 2;
+  if (bbs < 20) return 3;
+  if (bbs < 60) return 4;
+  return 5;
+}
+
+// Rebuilt only when the tier changes. Every action and every 1.2s director
+// tick comes through here, and redrawing eighteen nodes each time would both
+// churn and kill the bump animation half way through.
+function renderPotPile(pot) {
+  const pile = document.getElementById('potPile');
+  if (!pile) return;
+  const tier = gameState && gameState.isRunning ? potPileTier(pot) : 0;
+  if (tier === _potPileTier) return;
+  _potPileTier = tier;
+  pile.dataset.tier = String(tier);
+  pile.classList.toggle('is-empty', tier === 0);
+  pile.textContent = '';
+  POT_PILE_TIERS[tier].forEach((n) => {
+    const col = document.createElement('div');
+    col.className = 'pot-stack';
+    col.style.setProperty('--n', n);
+    for (let i = 0; i < n; i++) {
+      const chip = document.createElement('span');
+      chip.className = 'pot-chip';
+      chip.style.setProperty('--i', i);
+      col.appendChild(chip);
+    }
+    pile.appendChild(col);
+  });
+}
+
+function bumpPotPile() {
+  const pile = document.getElementById('potPile');
+  if (!pile || pile.classList.contains('is-empty')) return;
+  pile.classList.remove('is-bumped');
+  // Reading offsetWidth restarts the animation when a bump is already running.
+  void pile.offsetWidth;
+  pile.classList.add('is-bumped');
+  const done = () => pile.classList.remove('is-bumped');
+  pile.addEventListener('animationend', done, { once: true });
+  setTimeout(done, 500);
+}
+
+// Chips land on the pile when there is one, and on the pot block otherwise.
+function potTarget() {
+  const pile = document.getElementById('potPile');
+  if (pile && pile.isConnected && pile.offsetParent !== null) return pile;
+  return document.getElementById('potDisplay');
+}
+
 function chipCountForAmount(amount) {
   const bb = (gameState && gameState.bigBlind) || 20;
   return Math.max(1, Math.min(CHIP_FLY_MAX, Math.round(amount / bb) || 1));
 }
 
-function flyChips(fromEl, toEl, count, extraClass) {
+// Chips from a point rather than an element. The street sweep needs this: the
+// stacks it flies from are already gone by the time it runs, so it carries
+// their remembered coordinates instead.
+function flyChipsFrom(x0, y0, toEl, count, extraClass, delayMs) {
   const wrap = document.querySelector('.poker-table-wrapper');
-  if (!wrap || !fromEl || !toEl) return;
-  const wrapRect = wrap.getBoundingClientRect();
-  const from = fromEl.getBoundingClientRect();
-  const to = toEl.getBoundingClientRect();
+  if (!wrap || !toEl) return;
   // Deliberately NOT a width check. #potDisplay collapses to 0x0 at the end of
   // a hand, because renderTable blanks the pot amount once the hand stops
   // running, which is the exact moment chips need to fly OUT of it. Its
-  // position stays correct (absolutely centred), so test visibility instead:
+  // position stays correct (absolutely anchored), so test visibility instead:
   // offsetParent is null only when the element or an ancestor is display:none.
-  if (!fromEl.isConnected || !toEl.isConnected) return;
-  if (fromEl.offsetParent === null || toEl.offsetParent === null) return;
+  if (!toEl.isConnected || toEl.offsetParent === null) return;
 
-  const x0 = from.left + from.width / 2 - wrapRect.left;
-  const y0 = from.top + from.height / 2 - wrapRect.top;
+  const wrapRect = wrap.getBoundingClientRect();
+  const to = toEl.getBoundingClientRect();
   const dx = to.left + to.width / 2 - wrapRect.left - x0;
   const dy = to.top + to.height / 2 - wrapRect.top - y0;
 
@@ -58,19 +118,33 @@ function flyChips(fromEl, toEl, count, extraClass) {
     const scatter = (i % 2 ? 1 : -1) * Math.min(10, i * 3);
     chip.style.setProperty('--fly-dx', dx + scatter + 'px');
     chip.style.setProperty('--fly-dy', dy + 'px');
-    chip.style.animationDelay = i * 70 + 'ms';
+    chip.style.animationDelay = (delayMs || 0) + i * 70 + 'ms';
     wrap.appendChild(chip);
     chip.addEventListener('animationend', () => chip.remove(), { once: true });
     // Under prefers-reduced-motion the chip is display:none, so animationend
     // never fires and nothing else would ever remove it.
-    setTimeout(() => chip.remove(), 2500);
+    setTimeout(() => chip.remove(), 2500 + (delayMs || 0));
   }
+}
+
+function flyChips(fromEl, toEl, count, extraClass, delayMs) {
+  const wrap = document.querySelector('.poker-table-wrapper');
+  if (!wrap || !fromEl) return;
+  if (!fromEl.isConnected || fromEl.offsetParent === null) return;
+  const wrapRect = wrap.getBoundingClientRect();
+  const from = fromEl.getBoundingClientRect();
+  flyChipsFrom(
+    from.left + from.width / 2 - wrapRect.left,
+    from.top + from.height / 2 - wrapRect.top,
+    toEl,
+    count,
+    extraClass,
+    delayMs
+  );
 }
 
 function animateChipMovement(prevBets, prevWinnerKey) {
   if (!gameState) return;
-  const pot = document.getElementById('potDisplay');
-  if (!pot) return;
 
   // Chips in: any player whose street bet rose, blinds included.
   if (gameState.isRunning) {
@@ -80,7 +154,7 @@ function animateChipMovement(prevBets, prevWinnerKey) {
       if (delta <= 0) return; // a between-streets reset, not a bet
       const seat = seatElementForPlayer(p.id);
       const stack = document.querySelector(`#feltBets .felt-bet[data-player-id="${CSS.escape(p.id)}"]`);
-      if (seat) flyChips(seat, stack || pot, chipCountForAmount(delta));
+      if (seat) flyChips(seat, stack || potTarget(), chipCountForAmount(delta));
     });
   }
 
@@ -90,7 +164,7 @@ function animateChipMovement(prevBets, prevWinnerKey) {
   if (winnerKey && winnerKey !== prevWinnerKey) {
     winners.forEach((id) => {
       const seat = seatElementForPlayer(id);
-      if (seat) flyChips(pot, seat, CHIP_FLY_MAX, 'chip-win');
+      if (seat) flyChips(potTarget(), seat, CHIP_FLY_MAX, 'chip-win');
     });
   }
 }
@@ -111,6 +185,7 @@ function updateGameState(state) {
   // Detect new round → force full rebuild
   if (state.roundCount !== oldRound) {
     prevCommunityCount = 0;
+    _potPileTier = -1;
     _builtRound = -1; // force player seat rebuild
     _dealAnimationRound = state.roundCount;
   }
@@ -192,6 +267,7 @@ function renderTable(oldCommunityLen) {
   // ── Pot ──
   document.getElementById('potDisplay').querySelector('.pot-amount').textContent =
     gameState.isRunning ? `${gameState.pot}` : '';
+  renderPotPile(gameState.pot);
 
   // ── Players: INCREMENTAL ──
   renderPlayersIncremental();

@@ -251,9 +251,15 @@
           <div class="poker-table">
             <div class="table-brand">FinalTable</div>
           </div>
-          <div class="community-cards" id="communityCards"></div>
-          <div class="pot-display" id="potDisplay">
-            <div class="pot-amount"></div>
+          <!-- The board and the pot travel together: .board-stack's height IS
+               the card row, so the pot hangs off its top edge and stays put at
+               every card size without knowing what that size is. -->
+          <div class="board-stack">
+            <div class="pot-display" id="potDisplay">
+              <div class="pot-pile is-empty" id="potPile" aria-hidden="true"></div>
+              <div class="pot-amount"></div>
+            </div>
+            <div class="community-cards" id="communityCards"></div>
           </div>
           <div class="felt-bets" id="feltBets"></div>
           <div id="playerSeats"></div>

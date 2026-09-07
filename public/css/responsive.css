@@ -59,7 +59,8 @@
     margin-left: 4px;
     padding: 1px 3px;
   }
-  .community-cards .card {
+  .community-cards .card,
+  .community-cards .card-back {
     width: 55px;
     height: 77px;
   }
@@ -113,10 +114,14 @@
   }
   /* A 95%-wide felt leaves no margin for a 53% ring: seats at the sides
      would hang off a portrait tablet or a large phone. Pull the ring and
-     the bet ring in. */
+     the bet ring in. --bet-ry goes the other way: on a short felt the pot now
+     sits above the board, and a bet ring at 30 puts the far seat's chips into
+     it. Pushing the ring out also reads better, since a bet belongs in front
+     of the player who made it rather than halfway to the middle. */
   :root {
     --seat-rx: 41;
     --bet-rx: 29;
+    --bet-ry: 37;
   }
   .player-info {
     padding: 3px 5px;
@@ -289,6 +294,19 @@
   .pot-amount {
     font-size: 0.9rem;
   }
+  /* Heads-up on a phone the far seat's bet stack sits at 14% of the felt and
+     the board is only a little below it. Drop the board to centre and lay the
+     pot out sideways to buy back the clearance. */
+  .board-stack {
+    transform: translate(-50%, -50%);
+    --pot-gap: 6px;
+  }
+  .pot-display {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    --pot-chip: 11px;
+  }
   .player-action-badge {
     font-size: 0.5rem;
     padding: 2px 6px;
@@ -384,7 +402,8 @@
   }
 }
 @media (min-width: 1600px) {
-  .community-cards .card {
+  .community-cards .card,
+  .community-cards .card-back {
     width: 70px;
     height: 98px;
   }
@@ -447,9 +466,20 @@
     font-size: 1rem;
     letter-spacing: 0.22em;
   }
+  .board-stack {
+    transform: translate(-50%, -50%);
+    --pot-gap: 6px;
+  }
   .community-cards {
     gap: 3px;
-    transform: translate(-50%, -58%);
+  }
+  /* The pot lies down at this size: a column of pile-over-number is taller
+     than the clearance between the board and the far seat's bet stack. */
+  .pot-display {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    --pot-chip: 11px;
   }
   .community-cards .card,
   .community-cards .card-back {
@@ -465,9 +495,6 @@
   .community-cards .card-corner,
   .community-cards .card-corner-br {
     font-size: 0.3rem;
-  }
-  .pot-display {
-    transform: translate(-50%, 30px);
   }
   .pot-amount {
     font-size: 0.82rem;

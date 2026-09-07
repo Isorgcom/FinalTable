@@ -170,24 +170,84 @@
   display: none;
 }
 
-/* Community cards */
-.community-cards {
+/* The board and the pot as one unit. .board-stack shrink-wraps the card row,
+   so its height IS the cards: the pot can hang off `bottom: 100%` and land
+   correctly whether the cards are 34px or 98px, with no per-breakpoint
+   arithmetic. Absolute, so an empty pot cannot shift the board. */
+.board-stack {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -60%);
+  z-index: 10;
+}
+.community-cards {
   display: flex;
   gap: 8px;
-  z-index: 10;
 }
 .pot-display {
   position: absolute;
-  top: 50%;
   left: 50%;
-  transform: translate(-50%, 40px);
+  bottom: calc(100% + var(--pot-gap, 10px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
   text-align: center;
-  z-index: 10;
+  white-space: nowrap;
 }
+
+/* The pot as chips. Bucketed into a few short stacks, never one chip per
+   unit: at a 34px card size a single disc reads as a bug, a pile reads as
+   money. is-empty must stay visibility:hidden and never display:none —
+   flyChips tests offsetParent, and the pot pays out on the very push where
+   the pot hits zero. */
+.pot-pile {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: calc(var(--pot-chip, 14px) + 6 * var(--pot-riser, 3px));
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.45));
+}
+.pot-pile.is-empty {
+  visibility: hidden;
+}
+.pot-stack {
+  position: relative;
+  width: var(--pot-chip, 14px);
+  height: calc(var(--pot-chip, 14px) + (var(--n, 1) - 1) * var(--pot-riser, 3px));
+}
+.pot-chip {
+  position: absolute;
+  left: 0;
+  bottom: calc(var(--i, 0) * var(--pot-riser, 3px));
+  width: var(--pot-chip, 14px);
+  height: var(--pot-chip, 14px);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f0e6cf 0 38%, var(--gold) 39% 100%);
+  border: 1.5px solid rgba(0, 0, 0, 0.45);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+/* Alternate the tone so a tall stack does not read as one smear. */
+.pot-chip:nth-child(even) {
+  background: radial-gradient(circle at 35% 30%, #d8ccae 0 38%, var(--wood) 39% 100%);
+}
+@keyframes potPileBump {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.13);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.pot-pile.is-bumped {
+  animation: potPileBump 0.22s ease-out;
+}
+
 .pot-amount {
   font-family: var(--font-display);
   font-size: 1.4rem;
