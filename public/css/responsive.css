@@ -66,15 +66,12 @@
   }
 }
 @media (max-width: 768px) {
-  .login-container,
-  .login-card {
+  .login-container {
     max-width: 400px;
   }
   .form-row.form-row-3,
-  .room-selection-group,
   .lobby-section,
-  .avatar-picker,
-  .login-card > .form-group {
+  .avatar-picker {
     max-width: none;
   }
   .card-front::before {
@@ -86,19 +83,9 @@
   .form-row.form-row-3 > :last-child {
     grid-column: 1 / -1;
   }
-  .mode-select-inline {
-    flex-wrap: wrap;
-    gap: 12px 16px;
-    margin-bottom: 18px;
-  }
   .btn-enter {
     width: 100%;
     max-width: none;
-  }
-  .lobby-rooms {
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-    max-height: 170px;
   }
   .poker-table-wrapper {
     --table-fit-height: 84vh;
@@ -167,20 +154,13 @@
     margin-left: 3px;
     padding: 0 3px;
   }
-  .ready-status {
-    width: 100%;
-    max-width: none;
-    font-size: 0.68rem;
-    line-height: 1.45;
-  }
   .round-overlay {
     width: min(92vw, 320px);
   }
   .round-overlay #modeSelectBtns {
     width: 100%;
   }
-  .btn-start-game,
-  .btn-ready-toggle {
+  .btn-start-game {
     width: 100%;
   }
   .player-chips {
@@ -287,10 +267,6 @@
   .top-bar-btns {
     justify-self: end;
     max-width: 48vw;
-  }
-  .speed-pause-group {
-    flex-wrap: wrap;
-    justify-content: flex-end;
   }
   .top-btn {
     padding: 3px 5px;
@@ -577,12 +553,6 @@
     max-width: 44vw;
     gap: 1px;
   }
-  .speed-pause-group {
-    margin-right: 4px;
-    gap: 1px;
-  }
-  .speed-btn,
-  .pause-btn,
   .top-btn {
     padding: 2px 4px;
     font-size: 0.56rem;
@@ -612,15 +582,10 @@
   .round-overlay #modeSelectBtns {
     gap: 6px;
   }
-  .btn-start-game,
-  .btn-ready-toggle {
+  .btn-start-game {
     width: 100%;
     padding: 8px 14px;
     font-size: 0.68rem;
-  }
-  .ready-status {
-    font-size: 0.56rem;
-    line-height: 1.2;
   }
   .actions-panel {
     left: 50%;
@@ -697,7 +662,6 @@
     white-space: nowrap;
   }
   .result-content,
-  .result-content.result-content-wide,
   .lb-content,
   .replay-content {
     max-height: 88vh;

@@ -81,10 +81,6 @@
 .menu-toggle:hover {
   color: var(--gold);
 }
-.host-locked {
-  cursor: not-allowed !important;
-  opacity: 0.45 !important;
-}
 .menu-dropdown {
   position: absolute;
   top: 100%;
@@ -208,26 +204,7 @@
 .btn-start-game:hover {
   background: var(--gold-glow);
   border-color: var(--gold);
-}
-.btn-ready-toggle {
-  min-width: 180px;
-  font-size: 0.82rem;
-}
-.btn-ready-toggle.ready {
-  border-color: var(--success);
-  color: #9bd8ae;
-}
-.stacked-start-btn {
-  margin-top: 10px;
-}
-.ready-status {
-  max-width: 260px;
-  color: var(--smoke);
-  font-size: 0.72rem;
-  line-height: 1.6;
-}
-
-/* ═══ MODALS ═══ */
+} /* ═══ MODALS ═══ */
 .result-modal {
   position: fixed;
   inset: 0;
@@ -249,9 +226,6 @@
   text-align: center;
   animation: fadeIn 0.3s ease-out;
   min-width: 300px;
-}
-.result-content.result-content-wide {
-  min-width: 350px;
 }
 .result-title {
   font-family: var(--font-display);
@@ -291,17 +265,6 @@
   gap: 10px;
   flex-wrap: wrap;
 }
-.result-rematch-tools {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.result-side-btn {
-  padding-inline: 18px;
-  font-size: 0.75rem;
-}
 .result-exit-btn {
   background: rgba(92, 61, 26, 0.7);
   border-color: rgba(92, 61, 26, 0.9);
@@ -312,9 +275,6 @@
   font-size: 0.82rem;
   line-height: 1.55;
   opacity: 0.95;
-}
-.modal-action-spaced {
-  margin-top: 15px;
 }
 .hint-content {
   max-width: 400px;
@@ -653,13 +613,6 @@
   color: var(--smoke);
   white-space: nowrap;
 }
-
-/* Tournament */
-.tournament-summary {
-  margin-bottom: 12px;
-  color: var(--smoke);
-  font-size: 0.8rem;
-}
 .tournament-banner {
   position: absolute;
   top: 46px;
@@ -685,30 +638,7 @@
 }
 .tournament-banner .tb-alive {
   color: var(--smoke);
-}
-.tournament-result {
-  text-align: left;
-}
-.tournament-result .tr-place {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(92, 61, 26, 0.1);
-  font-size: 0.85rem;
-}
-.tournament-result .tr-1st {
-  color: var(--gold);
-  font-weight: 600;
-  font-size: 1rem;
-}
-.tournament-result .tr-2nd {
-  color: var(--smoke);
-}
-.tournament-result .tr-3rd {
-  color: var(--wood);
-}
-
-/* War Report */
+} /* War Report */
 .war-report-details {
   text-align: left;
 }
@@ -716,82 +646,6 @@
   color: var(--gold);
   font-size: 0.9rem;
   margin-bottom: 8px;
-}
-
-/* ═══ SPEED / PAUSE ═══ */
-.speed-pause-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-right: 6px;
-}
-.speed-btn,
-.pause-btn {
-  padding: 3px 8px;
-  border-radius: 3px;
-  border: none;
-  background: none;
-  color: var(--smoke);
-  cursor: pointer;
-  font-size: 0.7rem;
-  font-family: var(--font-body);
-  transition: all 0.2s;
-  white-space: nowrap;
-  border-bottom: 1px solid transparent;
-}
-.speed-btn.active {
-  color: var(--gold);
-  border-bottom-color: var(--gold);
-}
-.speed-btn:hover,
-.pause-btn:hover {
-  color: var(--gold);
-}
-.pause-btn.paused {
-  color: var(--danger);
-}
-
-.pause-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 800;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 16px;
-}
-.pause-overlay.hidden {
-  display: none;
-}
-.pause-text {
-  font-family: var(--font-display);
-  font-size: 2rem;
-  font-weight: 600;
-  color: var(--gold);
-  letter-spacing: 0.2em;
-}
-.pause-subtext {
-  color: var(--smoke);
-  font-size: 0.85rem;
-}
-.pause-resume-btn {
-  padding: 10px 36px;
-  border-radius: 4px;
-  border: 1px solid var(--wood);
-  background: transparent;
-  color: var(--gold);
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: var(--font-body);
-  transition: all 0.2s;
-}
-.pause-resume-btn:hover {
-  background: var(--gold-glow);
-  border-color: var(--gold);
 }
 .confetti-layer {
   position: fixed;
@@ -982,11 +836,6 @@
   background: var(--gold);
   vertical-align: middle;
 }
-/* The multi-table field lives in the Info tab (docked or drawer). */
-.mtt-panel {
-  display: none;
-}
-
 /* The last dealer line over the felt, in the corner the floating log used to
    occupy. Only shown while the panel is out of view. */
 .dealer-ticker {

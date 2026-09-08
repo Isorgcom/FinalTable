@@ -166,10 +166,6 @@
   white-space: nowrap;
   z-index: 2;
 }
-.table-glow {
-  display: none;
-}
-
 /* The board and the pot as one unit. .board-stack shrink-wraps the card row,
    so its height IS the cards: the pot can hang off `bottom: 100%` and land
    correctly whether the cards are 34px or 98px, with no per-breakpoint
@@ -1392,45 +1388,6 @@
     display: none;
   }
 }
-
-/* ── Multi-table tournament field panel ───────────────────────────────────
-   Sits over the felt rather than in it: this is field information a player
-   cannot get from their own table, so it reads as a separate surface. */
-.mtt-panel {
-  position: fixed;
-  top: 52px;
-  left: 12px;
-  z-index: 60;
-  width: 226px;
-  padding: 12px 14px;
-  background: rgba(13, 31, 18, 0.94);
-  border: 1px solid rgba(201, 168, 76, 0.35);
-  border-radius: 4px;
-  color: var(--cream);
-  font-size: 0.78rem;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
-}
-.mtt-head {
-  /* Stacked, not a row: the level line ("Level 7 · 300/600") is long enough to
-     wrap against the title and leave a ragged two-line header. */
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  border-bottom: 1px solid rgba(201, 168, 76, 0.22);
-  padding-bottom: 7px;
-  margin-bottom: 9px;
-}
-.mtt-title {
-  font-family: var(--font-display);
-  font-size: 0.98rem;
-  color: var(--gold);
-  letter-spacing: 0.04em;
-}
-.mtt-level {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--smoke);
-}
 .mtt-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1543,13 +1500,6 @@
 }
 
 @media (max-width: 900px) {
-  .mtt-panel {
-    top: auto;
-    bottom: 96px;
-    left: 8px;
-    width: 172px;
-    font-size: 0.72rem;
-  }
   .mtt-ladder {
     max-height: 96px;
   }

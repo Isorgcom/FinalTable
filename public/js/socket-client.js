@@ -27,10 +27,7 @@ function ensureSocket() {
     timeout: 30000,
   });
 
-  // Mobile keep-alive, and a resume when the tab comes back to the front.
-  _heartbeatTimer = setInterval(() => {
-    if (socket && socket.connected) socket.emit('heartbeat');
-  }, 15000);
+  // A resume when the tab comes back to the front.
   _visibilityHandler = () => {
     if (document.visibilityState !== 'visible' || !socket) return;
     if (!socket.connected) socket.connect();

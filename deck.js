@@ -37,8 +37,4 @@ function shuffle(deck) {
   return d;
 }
 
-function cardToString(card) {
-  return `${card.rank}${card.suit[0].toUpperCase()}`;
-}
-
-module.exports = { SUITS, RANKS, RANK_VALUES, createDeck, shuffle, cardToString };
+module.exports = { SUITS, RANKS, RANK_VALUES, createDeck, shuffle };

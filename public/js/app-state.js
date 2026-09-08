@@ -93,14 +93,12 @@ function getSeatPositions(playerCount) {
 
 let socket = null; // Socket.IO connection
 let myId = null; // Current player's socket ID
-let _heartbeatTimer = null; // Mobile keep-alive interval
 let _visibilityHandler = null; // Mobile foreground resume handler
 let gameState = null; // Latest game state from server
 let prevCommunityCount = 0; // Track community cards for animation
 let messages = []; // Chat/log message history
 let tournamentTimer = null; // Tournament countdown interval
 let _resultShownThisRound = false; // Debounce: prevent double result popup
-let _resumeInteractionGuardUntil = 0; // Brief guard after leaving auto-play
 
 // ============================================================
 //  SOUND SYSTEM - Web Audio API synthesized sounds
@@ -331,9 +329,6 @@ function setSitOut(enabled) {
   if (!socket || !gameState) return;
   const me = gameState.players.find((p) => p.id === myId);
   if (!me || me.isSpectator || !!me.autoPlay === enabled) return;
-  if (!enabled) {
-    _resumeInteractionGuardUntil = Date.now() + 900;
-  }
   socket.emit('setAutoPlay', { enabled });
 }
 
@@ -368,10 +363,6 @@ function setSitOutNextHand(enabled) {
   gameState.mySitOutNextHand = enabled;
   updatePreActionPanel();
   socket.emit('setSitOutNextHand', { enabled });
-}
-
-function hasResumeInteractionGuard() {
-  return Date.now() < _resumeInteractionGuardUntil;
 }
 
 // ============================================================

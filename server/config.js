@@ -10,13 +10,6 @@ function boolFromEnv(name, fallback = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
 }
 
-function stringFromEnv(name, fallback = '') {
-  const raw = process.env[name];
-  if (raw === undefined || raw === null) return fallback;
-  const trimmed = String(raw).trim();
-  return trimmed || fallback;
-}
-
 function loadConfig() {
   const rawCorsOrigin = process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.trim();
   const corsOrigin = rawCorsOrigin || '*';
@@ -54,4 +47,4 @@ function loadConfig() {
   };
 }
 
-module.exports = { boolFromEnv, intFromEnv, loadConfig, stringFromEnv };
+module.exports = { loadConfig };
