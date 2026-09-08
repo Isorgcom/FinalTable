@@ -610,17 +610,21 @@ class TournamentDirector {
 
   _breakIfPossible() {
     for (let pass = 0; pass < this.tables.length; pass++) {
-      // A hand in progress makes a table untouchable, so wait for it.
-      if (this.tables.some((t) => t.isRunning)) return;
       const active = this.activeTables();
       if (active.length <= 1) return;
       const capacityWithoutOne = (active.length - 1) * this.tableSize;
       if (this.playersRemaining() > capacityWithoutOne) return;
 
-      // The first table in break order that still has anyone.
+      // A hand in progress makes that table untouchable, and only that table.
+      // This used to wait for every table in the field to be idle at once,
+      // which is a moment that barely exists: rebalanceField runs from one
+      // table's round end, when the others are most likely mid-hand, so the
+      // check almost always tripped and the field never consolidated. The
+      // move itself is what has to be safe, and _movePlayer refuses a table
+      // that is dealing at either end.
       const doomed = this.breakOrder
         .map((num) => this.tables.find((t) => t.tableNumber === num))
-        .find((t) => t && t.players.length > 0);
+        .find((t) => t && t.players.length > 0 && !t.isRunning);
       if (!doomed) return;
 
       for (const player of [...doomed.players]) {
@@ -638,11 +642,12 @@ class TournamentDirector {
 
   _balanceTables() {
     for (let pass = 0; pass < 50; pass++) {
-      if (this.tables.some((t) => t.isRunning)) return;
       const active = this.activeTables();
       if (active.length < 2) return;
+      // Only tables that are between hands can give or take a seat; a table
+      // mid-hand is left exactly as it is and balanced on a later pass.
       const sorted = [...active]
-        .filter((t) => !t._broken)
+        .filter((t) => !t._broken && !t.isRunning)
         .sort((a, b) => a.players.length - b.players.length);
       if (sorted.length < 2) return;
       const smallest = sorted[0];
@@ -660,7 +665,9 @@ class TournamentDirector {
   // tournament does and which reads as a bug from the seat.
   _emptiestTableExcept(exclude) {
     return this.tables
-      .filter((t) => t !== exclude && !t._broken && t.players.length < this.tableSize)
+      .filter(
+        (t) => t !== exclude && !t._broken && !t.isRunning && t.players.length < this.tableSize
+      )
       .sort((a, b) => a.players.length - b.players.length)[0];
   }
 

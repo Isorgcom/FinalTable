@@ -636,6 +636,84 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     expect(moved.sitOutNextHand).toBe(true);
   });
 
+  // rebalanceField runs from one table's round end, which is precisely the
+  // moment the other tables are most likely to be mid-hand. Gating the whole
+  // consolidation on every table being idle at once means it almost never runs:
+  // observed on a live 21-player field that fell to nine players and stayed
+  // spread across three tables, when nine fit on one.
+  test('a table is broken even while another table is mid-hand', () => {
+    const d = new TournamentDirector({
+      id: 'break_while_running',
+      tableSize: 9,
+      startChips: 1000,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    for (let i = 0; i < 20; i++) d.register({ id: `p${i}`, uid: `u${i}`, name: `P${i}` });
+    d.start();
+    expect(d.tables.length).toBe(3);
+
+    // Bust the field down to nine, three at each table, so the whole field
+    // would fit on a single table. Chips are handed to a survivor rather than
+    // zeroed: busting moves a stack, it does not destroy one, and the
+    // director's conservation check is right to object if it goes missing.
+    for (const table of d.tables) {
+      const survivors = table.players.slice(0, 3);
+      table.players.slice(3).forEach((p) => {
+        survivors[0].chips += p.chips;
+        p.chips = 0;
+      });
+      table.players = table.players.filter((p) => p.chips > 0);
+    }
+    expect(d.playersRemaining()).toBe(9);
+    const before = d.activeTables().length;
+
+    // One table is dealing. The other two are between hands and can be moved.
+    d.tables[2].isRunning = true;
+    d.rebalanceField();
+
+    expect(d.activeTables().length).toBeLessThan(before);
+    // The table that was mid-hand kept every one of its players.
+    expect(d.tables[2].players).toHaveLength(3);
+    expect(d.totalChips()).toBe(20 * 1000);
+  });
+
+  test('balancing also runs while another table is mid-hand', () => {
+    const d = new TournamentDirector({
+      id: 'balance_while_running',
+      tableSize: 9,
+      startChips: 1000,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    for (let i = 0; i < 27; i++) d.register({ id: `p${i}`, uid: `u${i}`, name: `P${i}` });
+    d.start();
+    expect(d.tables.length).toBe(3);
+
+    // Lopsided: nine, nine, two — and a third table busy, so the imbalance can
+    // only be fixed between the two that are free.
+    const keep = d.tables[1].players.slice(0, 2);
+    d.tables[1].players.slice(2).forEach((p) => {
+      keep[0].chips += p.chips;
+      p.chips = 0;
+    });
+    d.tables[1].players = d.tables[1].players.filter((p) => p.chips > 0);
+    d.tables[2].isRunning = true;
+    const spread = () => {
+      const live = d.activeTables().filter((t) => !t.isRunning);
+      return (
+        Math.max(...live.map((t) => t.players.length)) -
+        Math.min(...live.map((t) => t.players.length))
+      );
+    };
+    expect(spread()).toBeGreaterThan(1);
+
+    d.rebalanceField();
+
+    expect(spread()).toBeLessThanOrEqual(1);
+    expect(d.tables[2].players).toHaveLength(9);
+  });
+
   test('director tables run the tournament action clock', () => {
     const d = makeDirector(2, { gameOptions: {} });
     d.start();
