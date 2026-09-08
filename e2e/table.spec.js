@@ -1016,3 +1016,49 @@ test('a line armed off turn reaches the server, and the two bars never share the
 
   expect(pageErrors).toEqual([]);
 });
+
+test('the end of a tournament fires a result screen for the winner and the rest', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Champ');
+
+  // Driven at the handler the socket calls rather than by playing a
+  // tournament out: how one finishes is the engine's business and is covered
+  // there, and what this asserts is that finishing puts something on screen.
+  await page.evaluate(() => {
+    window.TournamentField.showFinished({
+      winner: 'Champ',
+      results: [
+        { place: 1, name: 'Champ', prize: 500, inTheMoney: true },
+        { place: 2, name: 'ChampFoe', prize: 0, inTheMoney: false },
+      ],
+      you: { place: 1, prize: 500 },
+    });
+  });
+  await expect(page.locator('#appDialogModal')).toBeVisible();
+  await expect(page.locator('#appDialogTitle')).toContainText('You won the tournament');
+  await expect(page.locator('#appDialogBody')).toContainText('First of 2');
+  await expect(page.locator('#appDialogBody')).toContainText('500');
+  await expect(page.locator('#appDialogHint')).toContainText('1st Champ');
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#appDialogModal')).toBeHidden();
+
+  // Everyone else is told who won and where they came, ordinals and all.
+  await page.evaluate(() => {
+    window.TournamentField.showFinished({
+      winner: 'ChampFoe',
+      results: [
+        { place: 1, name: 'ChampFoe', prize: 0 },
+        { place: 2, name: 'Champ', prize: 0 },
+        { place: 3, name: 'Spare', prize: 0 },
+      ],
+      you: { place: 2, prize: 0 },
+    });
+  });
+  await expect(page.locator('#appDialogModal')).toBeVisible();
+  await expect(page.locator('#appDialogTitle')).toContainText('ChampFoe won');
+  await expect(page.locator('#appDialogBody')).toContainText('You finished 2nd of 3');
+  await page.click('#btnAppDialogConfirm');
+
+  expect(pageErrors).toEqual([]);
+});
