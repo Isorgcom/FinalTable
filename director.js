@@ -122,15 +122,28 @@ class TournamentDirector {
     return null;
   }
 
-  // Field summary for the UI: everything a player needs to know about where
-  // they stand without opening another screen.
-  fieldSummary(viewerUid = null) {
+  // The half of a field summary that does not depend on who is looking. Built
+  // once and handed to every fieldSummary call in the same broadcast.
+  fieldShared() {
+    const seats = this.seatIndex();
     const alive = this.fieldPlayers().filter((p) => p.chips > 0);
     const sorted = [...alive].sort((a, b) => b.chips - a.chips);
-    const leader = sorted[0] || null;
-    const me = viewerUid ? alive.find((p) => p.uid === viewerUid) : null;
-    const myRank = me ? sorted.findIndex((p) => p.uid === viewerUid) + 1 : null;
-    const seat = viewerUid ? this.playerByUid(viewerUid) : null;
+    const rankByUid = new Map();
+    sorted.forEach((p, i) => rankByUid.set(p.uid, i + 1));
+    return { seats, alive, sorted, leader: sorted[0] || null, rankByUid };
+  }
+
+  // Field summary for the UI: everything a player needs to know about where
+  // they stand without opening another screen.
+  // shared, when given, is fieldShared() computed once for a whole broadcast.
+  // Everything in it is the same for every viewer, and recomputing it per
+  // recipient is what made a push cost the square of the field.
+  fieldSummary(viewerUid = null, shared = this.fieldShared()) {
+    const { alive, sorted, leader, seats, rankByUid } = shared;
+    const me = viewerUid ? seats.get(viewerUid) : null;
+    const mePlayer = me && me.player.chips > 0 ? me.player : null;
+    const myRank = mePlayer ? rankByUid.get(viewerUid) || null : null;
+    const seat = me || null;
     return {
       id: this.id,
       isRunning: this.isRunning,
@@ -145,7 +158,7 @@ class TournamentDirector {
       lateRegOpen: this.lateRegOpen(),
       averageStack: alive.length ? Math.floor(this.totalChips() / alive.length) : 0,
       chipLeader: leader ? { name: leader.name, chips: leader.chips } : null,
-      myChips: me ? me.chips : null,
+      myChips: mePlayer ? mePlayer.chips : null,
       myRank,
       myTable: seat ? seat.table.tableNumber : null,
       tablesLeft: this.activeTables().length,
@@ -241,13 +254,25 @@ class TournamentDirector {
     return { table, player: seated };
   }
 
+  // uid -> where that player is sitting, in one pass over the field. Callers
+  // that need this for every entrant used to reach for playerByUid each time,
+  // which walks every table: fine for nine players, quadratic for two hundred,
+  // and the roster and the field summary are both built from it on every push.
+  seatIndex() {
+    const index = new Map();
+    for (const table of this.tables) {
+      for (const player of table.players) index.set(player.uid, { table, player });
+    }
+    return index;
+  }
+
   // Everyone who registered, with where they stand now. Connection status is
   // the socket layer's business and is added there.
-  roster() {
+  roster(seats = this.seatIndex()) {
     const placeByUid = new Map();
     for (const e of this.tournament.eliminations) if (e.uid) placeByUid.set(e.uid, e.place);
     return this.entrants.map((e) => {
-      const seat = this.playerByUid(e.uid);
+      const seat = seats.get(e.uid) || null;
       return {
         uid: e.uid,
         name: e.name,

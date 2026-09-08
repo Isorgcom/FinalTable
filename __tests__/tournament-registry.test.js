@@ -336,6 +336,52 @@ describe('tournament registry', () => {
     second.stop();
   });
 
+  // A broadcast builds the roster and the field summary once and hands them to
+  // every recipient. The risk in that is showing one player another player's
+  // corner of the state, so it is pinned: what is shared must be identical for
+  // everyone, and what is personal must not be.
+  test('a shared broadcast still gives every viewer their own corner', () => {
+    const store = makeStore();
+    const reg = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    const { entry } = reg.create(
+      'h',
+      { name: 'Shared', startsAt: Date.now() + 1000 },
+      makeSocket('sh')
+    );
+    reg.join('g', { code: entry.code }, makeSocket('sg'));
+    reg.join('t', { code: entry.code }, makeSocket('st'));
+    jest.advanceTimersByTime(2000);
+    expect(entry.status).toBe('running');
+
+    const forHost = reg.stateFor(entry, 'h');
+    const forGuest = reg.stateFor(entry, 'g');
+    const forThird = reg.stateFor(entry, 't');
+
+    // Shared: the same field, the same roster, for everyone.
+    expect(forGuest.roster).toEqual(forHost.roster);
+    expect(forThird.roster).toEqual(forHost.roster);
+    expect(forHost.roster.map((r) => r.uid).sort()).toEqual(['g', 'h', 't']);
+    expect(forGuest.entrants).toBe(forHost.entrants);
+    expect(forGuest.blinds).toEqual(forHost.blinds);
+
+    // Personal: never mixed up between them.
+    expect(forHost.you.uid).toBe('h');
+    expect(forGuest.you.uid).toBe('g');
+    expect(forThird.you.uid).toBe('t');
+    expect(forHost.isHost).toBe(true);
+    expect(forGuest.isHost).toBe(false);
+    expect(forHost.myChips).toBe(forGuest.myChips); // equal stacks, but each read for itself
+    expect(typeof forGuest.myRank).toBe('number');
+
+    reg.stop();
+  });
+
   test('a tournament that was mid-play is seated again after a restart', () => {
     const store = makeStore();
     const first = createTournamentRegistry({

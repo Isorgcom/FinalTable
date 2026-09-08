@@ -151,8 +151,13 @@ function createTournamentRegistry(deps = {}) {
   // that late registration will close. io.emit cannot do that, so the rows are
   // built per socket. A home game has a handful of them.
   function emitList() {
+    // Every card except the "you" corner is the same for everyone, so it is
+    // built once for the whole broadcast rather than once per socket. With two
+    // hundred people connected the difference is two hundred summaries against
+    // forty thousand.
+    const shared = [...tournaments.values()].map((entry) => ({ entry, card: summarize(entry) }));
     for (const socket of connectedSockets()) {
-      socket.emit('tournamentList', listFor(socket.data && socket.data.uid));
+      socket.emit('tournamentList', listFor(socket.data && socket.data.uid, shared));
     }
   }
 
@@ -160,11 +165,14 @@ function createTournamentRegistry(deps = {}) {
   // legacy `tournamentField` event carries the same payload until the client
   // has moved to `tournamentState`.
   function emitState(entry) {
+    // The roster and the field summary are identical for everyone in the
+    // tournament; only the "you" corner differs. Built once for the whole
+    // broadcast, because rebuilding them per recipient made a single push cost
+    // the square of the field and, through the old roster, its cube.
+    const shared = sharedState(entry);
     for (const [uid, reg] of entry.registrations) {
       if (!reg.socketId) continue;
-      const state = stateFor(entry, uid);
-      io.to(reg.socketId).emit('tournamentState', state);
-      io.to(reg.socketId).emit('tournamentField', state);
+      io.to(reg.socketId).emit('tournamentState', stateFor(entry, uid, shared));
     }
   }
 
@@ -209,9 +217,10 @@ function createTournamentRegistry(deps = {}) {
     return [...tournaments.values()].map(summarize);
   }
 
-  function listFor(uid) {
-    return [...tournaments.values()].map((entry) => ({
-      ...summarize(entry),
+  function listFor(uid, shared = null) {
+    const rows = shared || [...tournaments.values()].map((entry) => ({ entry, card: summarize(entry) }));
+    return rows.map(({ entry, card }) => ({
+      ...card,
       you: {
         registered: entry.registrations.has(uid) && !entry.registrations.get(uid).left,
         // Left the table but the stack is still in play: the card offers a way
@@ -222,12 +231,11 @@ function createTournamentRegistry(deps = {}) {
     }));
   }
 
-  function stateFor(entry, uid) {
+  // Everything in a tournament state that is the same whoever is looking.
+  function sharedState(entry) {
     const d = entry.director;
-    const reg = entry.registrations.get(uid) || null;
-    const seat = d.playerByUid(uid);
-    const place = d.tournament.eliminations.find((e) => e.uid === uid);
-    const roster = d.roster().map((row) => {
+    const field = d.fieldShared();
+    const roster = d.roster(field.seats).map((row) => {
       const r = entry.registrations.get(row.uid);
       return {
         ...row,
@@ -235,8 +243,19 @@ function createTournamentRegistry(deps = {}) {
         connected: !!(r && r.socketId),
       };
     });
+    const placeByUid = new Map();
+    for (const e of d.tournament.eliminations) if (e.uid) placeByUid.set(e.uid, e.place);
+    return { field, roster, placeByUid, hostName: hostName(entry) };
+  }
+
+  function stateFor(entry, uid, shared = sharedState(entry)) {
+    const d = entry.director;
+    const reg = entry.registrations.get(uid) || null;
+    const seat = shared.field.seats.get(uid) || null;
+    const place = shared.placeByUid.has(uid) ? { place: shared.placeByUid.get(uid) } : null;
+    const roster = shared.roster;
     return {
-      ...d.fieldSummary(uid),
+      ...d.fieldSummary(uid, shared.field),
       id: entry.id,
       code: entry.code,
       name: entry.name,
@@ -245,7 +264,7 @@ function createTournamentRegistry(deps = {}) {
       startedAt: entry.startedAt,
       finishedAt: entry.finishedAt,
       waitingReason: entry.waitingReason,
-      host: { uid: entry.hostUid, name: hostName(entry) },
+      host: { uid: entry.hostUid, name: shared.hostName },
       isHost: requireHost(entry, uid),
       settings: { ...entry.settings },
       you: {
