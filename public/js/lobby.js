@@ -336,7 +336,16 @@
     return card;
   }
 
+  // Rebuilding the list throws away every node in it, so a redraw that changes
+  // nothing still takes the button under the cursor away and puts a new one
+  // there. Skip the redraw when the list is the same as the one already drawn.
+  let _drawnListSig = null;
   function renderList() {
+    const sig = JSON.stringify(
+      list.map((t) => [t.id, t.status, t.players, t.entrants, t.level, t.startsAt, t.you])
+    );
+    if (sig === _drawnListSig) return;
+    _drawnListSig = sig;
     const buckets = { yours: [], registering: [], running: [], finished: [] };
     for (const t of list) {
       if (t.you && (t.you.registered || t.you.left)) buckets.yours.push(t);

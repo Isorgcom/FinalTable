@@ -48,6 +48,8 @@ function createTournamentRegistry(deps = {}) {
   const timers = deps.timers || {
     setInterval: (...a) => setInterval(...a),
     clearInterval: (...a) => clearInterval(...a),
+    setTimeout: (...a) => setTimeout(...a),
+    clearTimeout: (...a) => clearTimeout(...a),
   };
 
   // id -> entry
@@ -56,6 +58,11 @@ function createTournamentRegistry(deps = {}) {
   // that had nothing to do with the field, and few enough that a field which
   // kills the process stops doing so within a few seconds.
   const MAX_RESTORE_ATTEMPTS = 3;
+
+  // How long a burst of lobby-list changes is gathered up before one push goes
+  // out. Short enough that the list still feels live, long enough that two
+  // hundred people joining is one redraw and not two hundred.
+  const LIST_COALESCE_MS = 250;
 
   // id -> entry
   const tournaments = new Map();
@@ -160,7 +167,22 @@ function createTournamentRegistry(deps = {}) {
   // already yours, so it can offer Open or Rejoin instead of a Join button
   // that late registration will close. io.emit cannot do that, so the rows are
   // built per socket. A home game has a handful of them.
+  // The lobby list is rebuilt from scratch by every client that receives it, so
+  // a burst of joins used to mean a burst of full redraws: two hundred people
+  // arriving redrew the list two hundred times, and the buttons in it flickered
+  // and would not take a click because they were being replaced underneath the
+  // cursor. Bursts are coalesced into one push.
+  let listTimer = null;
   function emitList() {
+    if (listTimer) return;
+    listTimer = timers.setTimeout(() => {
+      listTimer = null;
+      emitListNow();
+    }, LIST_COALESCE_MS);
+    if (listTimer && listTimer.unref) listTimer.unref();
+  }
+
+  function emitListNow() {
     // Every card except the "you" corner is the same for everyone, so it is
     // built once for the whole broadcast rather than once per socket. With two
     // hundred people connected the difference is two hundred summaries against
@@ -878,6 +900,10 @@ function createTournamentRegistry(deps = {}) {
   }
 
   function stop() {
+    if (listTimer) {
+      timers.clearTimeout(listTimer);
+      listTimer = null;
+    }
     flush();
     if (sweepTimer) {
       timers.clearInterval(sweepTimer);

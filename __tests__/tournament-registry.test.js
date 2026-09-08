@@ -198,7 +198,10 @@ describe('tournament registry', () => {
     registry.join('g', { code: entry.code }, guest);
     registry.startNow(entry, 'h');
 
+    // Lobby-list pushes are coalesced, so a burst of joins is one redraw rather
+    // than one per join. Let the window close before reading the last card.
     const rowFor = (socket) => {
+      jest.advanceTimersByTime(300);
       const last = [...socket.emitted].reverse().find((m) => m.event === 'tournamentList');
       return last ? last.payload.find((t) => t.id === entry.id) : null;
     };
