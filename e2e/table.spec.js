@@ -527,6 +527,15 @@ test('the table holds a beat between the betting and the next street', async ({ 
 });
 
 test('at showdown the five winning cards light up and the rest dim', async ({ page }) => {
+  // Heads-up against a sitting-out opponent, only about half the hands reach a
+  // showdown: the sit-out folds to a bet, so whenever it holds the small blind
+  // it folds to the big blind preflop and nothing is turned over. The test
+  // therefore waits for a favourable deal, and how long that takes is luck.
+  // Observed spread on an idle box is 5s to 21s, so the budget is set well past
+  // the worst case rather than just past the average, and the default timeout
+  // is raised to leave room for it. A good run still exits in a few seconds;
+  // only a bad one spends the budget.
+  test.setTimeout(120000);
   const pageErrors = await seatAtTournamentTable(page, 'ShowTester');
   await deal(page);
 
@@ -536,19 +545,48 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
   // Bounded by the clock, not by a loop count: hands take as long as the
   // street and hand pauses make them, so a fixed number of turns either gives
   // up early or outlives the test timeout, and a timeout reports nothing.
-  let reached = false;
-  const deadline = Date.now() + 30000;
-  while (!reached && Date.now() < deadline) {
-    const st = await page.evaluate(() => ({
-      phase: gameState && gameState.phase,
-      lit: ((gameState && gameState.showdownWinningCards) || []).length,
-      btn: ['btnCheck', 'btnCall'].find((id) => {
-        const el = document.getElementById(id);
-        return el && !el.disabled && el.offsetParent !== null;
-      }),
-    }));
-    if (st.phase === 'showdown' && st.lit > 0) {
-      reached = true;
+  // The highlight lasts exactly one hand pause and then the next deal clears it.
+  // Detecting the showdown in one round trip and measuring the DOM in a second
+  // races that window and loses it under load, so the measurement is taken in
+  // the same evaluate that finds the showdown. gameState and the DOM cannot
+  // disagree inside one call: the socket handler assigns the state and renders
+  // from it synchronously, so nothing can interleave between the two reads.
+  let marks = null;
+  let last = null;
+  const deadline = Date.now() + 90000;
+  while (!marks && Date.now() < deadline) {
+    const st = await page.evaluate(() => {
+      const lit = ((gameState && gameState.showdownWinningCards) || []).length;
+      const atShowdown = !!(gameState && gameState.phase === 'showdown' && lit > 0);
+      const me = gameState && gameState.players.find((p) => p.id === myId);
+      return {
+        atShowdown,
+        // Carried only so a failure can say what it was stuck on.
+        why: {
+          phase: gameState && gameState.phase,
+          hand: gameState && gameState.roundCount,
+          myTurn: !!(gameState && gameState.isMyTurn),
+          autoPlay: !!(me && me.autoPlay),
+          running: !!(gameState && gameState.isRunning),
+        },
+        marks: atShowdown
+          ? {
+              winning: lit,
+              boardLit: document.querySelectorAll('#communityCards .card.is-winning').length,
+              holeLit: document.querySelectorAll('#playerSeats .card.is-winning').length,
+              dimmed: document.querySelectorAll('.card.is-dimmed').length,
+              seatsLit: document.querySelectorAll('#playerSeats .player-seat.hand-winner').length,
+            }
+          : null,
+        btn: ['btnCheck', 'btnCall'].find((id) => {
+          const el = document.getElementById(id);
+          return el && !el.disabled && el.offsetParent !== null;
+        }),
+      };
+    });
+    last = st.why;
+    if (st.atShowdown) {
+      marks = st.marks;
       break;
     }
     if (st.btn) {
@@ -561,15 +599,7 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
       await page.waitForTimeout(200);
     }
   }
-  expect(reached).toBe(true);
-
-  const marks = await page.evaluate(() => ({
-    winning: gameState.showdownWinningCards.length,
-    boardLit: document.querySelectorAll('#communityCards .card.is-winning').length,
-    holeLit: document.querySelectorAll('#playerSeats .card.is-winning').length,
-    dimmed: document.querySelectorAll('.card.is-dimmed').length,
-    seatsLit: document.querySelectorAll('#playerSeats .player-seat.hand-winner').length,
-  }));
+  expect(marks, `never reached a showdown; last saw ${JSON.stringify(last)}`).not.toBeNull();
 
   // Five is the invariant. It catches the union being built wrong, and it
   // catches the board key not including the winners, which would leave the
