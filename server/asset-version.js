@@ -24,6 +24,7 @@ const ASSET_VERSION_FILES = [
   'public/js/room-3d.js',
   'public/audio/chips.mp3',
   'public/audio/card.mp3',
+  'public/audio/shuffle.mp3',
   'public/vendor/fonts/google-fonts.css',
   'public/vendor/three/three.r128.min.js',
 ];

@@ -111,6 +111,7 @@ const SFX = {
   // these are recordings, for the sounds a synth cannot fake.
   samples: {},
   _lastChipSound: 0,
+  _lastShuffleSound: 0,
   init() {
     if (this.ctx) return;
     try {
@@ -125,6 +126,8 @@ const SFX = {
     this.loadSample('chips', chips ? chips.getAttribute('href') : '/audio/chips.mp3');
     const card = document.getElementById('sfxCard');
     this.loadSample('card', card ? card.getAttribute('href') : '/audio/card.mp3');
+    const shuffle = document.getElementById('sfxShuffle');
+    this.loadSample('shuffle', shuffle ? shuffle.getAttribute('href') : '/audio/shuffle.mp3');
   },
   loadSample(name, url) {
     if (!this.ctx || !url) return;
@@ -178,6 +181,23 @@ const SFX = {
       } catch (e) {}
     }
   },
+  // The deck, once as a hand is dealt. Played at offset 0 from the same
+  // function that books the card snaps, so the shuffle is still ringing when
+  // the first card lands rather than finishing into silence. There is no
+  // synthesised fallback on purpose: a synth shuffle is white noise with a
+  // hopeful name, and a sample that failed to decode is better as nothing.
+  deckShuffled() {
+    if (!this.ctx) this.init();
+    if (!this.ctx) return;
+    const now = Date.now();
+    // One deal is one shuffle. The deal animation is latched to fire once per
+    // hand, but a repeated render arriving inside that window must not stack a
+    // second copy on top of the first.
+    if (now - this._lastShuffleSound < 900) return;
+    this._lastShuffleSound = now;
+    this.playSample('shuffle', 0.4);
+  },
+
   // Cards being placed, one snap each, booked against the animation's own
   // schedule. Takes every offset at once because reduced motion collapses the
   // whole deal into a single frame: a second of audio trailing an instant

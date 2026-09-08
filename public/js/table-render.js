@@ -806,6 +806,9 @@ function applyDealFlight(ordered) {
   // appear all at once, so a patter would be describing motion that is not
   // there.
   if (typeof SFX !== 'undefined') {
+    // The deck first, then the cards it pitched. Gated on there being cards to
+    // deal: a render with nothing to fly should make no sound at all.
+    if (plan.length) SFX.deckShuffled();
     SFX.cardsPlaced(heard.length ? heard : plan.length ? [0] : []);
   }
   if (plan.length) window.__anim.deals++;

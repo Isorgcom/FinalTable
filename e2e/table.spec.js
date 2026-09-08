@@ -678,3 +678,74 @@ test('the readout names the hand and then shows the five cards', async ({ page }
 
   expect(pageErrors).toEqual([]);
 });
+
+test('the deck is shuffled once as a hand is dealt, ahead of the cards', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Shuffle');
+  await deal(page);
+
+  const href = await page.getAttribute('#sfxShuffle', 'href');
+  expect(href).toMatch(/^\/audio\/shuffle\.mp3\?v=[a-f0-9]{10}$/);
+
+  // Decoding is the check that matters: a 404 page or a truncated copy would
+  // leave the table quiet and nothing else would fail.
+  await page.evaluate(() => SFX.init());
+  await expect
+    .poll(() => page.evaluate(() => !!(SFX.samples && SFX.samples.shuffle)), { timeout: 10000 })
+    .toBe(true);
+  expect(await page.evaluate(() => SFX.samples.shuffle.duration)).toBeGreaterThan(0.5);
+
+  // Tag every booking with the hand it belongs to, because hands turn over on
+  // their own once both seats are sitting out and a plain count would be
+  // counting an unknown number of deals.
+  await page.evaluate(() => {
+    window.__sfxLog = [];
+    const real = SFX.playSample.bind(SFX);
+    SFX.playSample = (name, gain, whenOffset, rate) => {
+      const ok = real(name, gain, whenOffset, rate);
+      if (ok) {
+        window.__sfxLog.push({
+          name,
+          offset: whenOffset || 0,
+          round: gameState ? gameState.roundCount : -1,
+        });
+      }
+      return ok;
+    };
+  });
+
+  const round = await page.evaluate(() => gameState.roundCount);
+  await page.click('#btnAutoPlay'); // sit out so the next hand comes quickly
+  await page.waitForFunction((r) => gameState && gameState.roundCount > r, round, {
+    timeout: 30000,
+  });
+  // Let the deal finish and a few more state pushes land: the failure this
+  // guards against is a re-render firing a second shuffle mid-hand.
+  await expect
+    .poll(() => page.evaluate(() => window.__sfxLog.filter((e) => e.name === 'card').length), {
+      timeout: 10000,
+    })
+    .toBeGreaterThanOrEqual(4);
+  await page.waitForTimeout(1500);
+
+  const log = await page.evaluate(() => window.__sfxLog);
+  const dealt = round + 1;
+  const shuffles = log.filter((e) => e.name === 'shuffle' && e.round === dealt);
+  expect(shuffles).toHaveLength(1);
+  // Played now, not booked ahead: the cards are what carry the schedule.
+  expect(shuffles[0].offset).toBe(0);
+
+  // And it leads. Every card in that hand is booked after the shuffle starts,
+  // so its tail runs under the first ones landing rather than into silence.
+  const cards = log.filter((e) => e.name === 'card' && e.round === dealt);
+  expect(cards.length).toBeGreaterThanOrEqual(4);
+  expect(Math.min(...cards.map((e) => e.offset))).toBeGreaterThan(0);
+
+  // No hand gets two. Later hands are fair game to check for free.
+  const perHand = new Map();
+  for (const e of log.filter((x) => x.name === 'shuffle')) {
+    perHand.set(e.round, (perHand.get(e.round) || 0) + 1);
+  }
+  for (const count of perHand.values()) expect(count).toBe(1);
+
+  expect(pageErrors).toEqual([]);
+});
