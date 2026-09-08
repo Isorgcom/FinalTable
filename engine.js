@@ -1,11 +1,10 @@
 // engine.js - Texas Hold'em game engine
 const { createDeck, shuffle } = require('./deck');
-const { evaluateHand, compareHands, HAND_NAMES } = require('./hand-eval');
+const { evaluateHand, compareHands } = require('./hand-eval');
 const { describeHand, describeBest } = require('./hand-describe');
 const random = require('./random');
 const { createStructuredLogger } = require('./server/logger');
 const { HandHistory, Leaderboard } = require('./hand-history');
-const { Tournament } = require('./tournament');
 
 const PHASES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 
@@ -27,8 +26,6 @@ const DEFAULT_MAX_PLAYERS = 10;
 // render them. Tunable without a code change:
 //   AUTO_TURN_DELAY_MS=200 docker compose up -d
 const AUTO_TURN_DELAY_MS = envInt('AUTO_TURN_DELAY_MS', 600);
-const PRACTICE_NEXT_DELAY = 2500; // Delay before next round in practice mode (ms)
-const CASH_NEXT_DELAY = 5000; // Delay before next round in cash/tournament (ms)
 const PRACTICE_ACTION_TIMEOUT_MS = 18000;
 const TOURNAMENT_ACTION_TIMEOUT_MS = 25000;
 const CASH_IDLE_TIMEOUT_MS = 90000;

@@ -1,5 +1,4 @@
 // hand-eval.js - Texas Hold'em hand evaluation
-const { RANK_VALUES } = require('./deck');
 
 const HAND_RANKS = {
   ROYAL_FLUSH: 10,
@@ -64,7 +63,6 @@ function evaluate5Cards(cards) {
   const groups = getGroups(values);
 
   // Check for low ace straight (A-2-3-4-5)
-  let straightHighCard = values[0];
   if (!isStraight) {
     const lowAceValues = values.map((v) => (v === 14 ? 1 : v)).sort((a, b) => b - a);
     if (checkStraight(lowAceValues)) {
