@@ -218,7 +218,8 @@ function createTournamentRegistry(deps = {}) {
   }
 
   function listFor(uid, shared = null) {
-    const rows = shared || [...tournaments.values()].map((entry) => ({ entry, card: summarize(entry) }));
+    const rows =
+      shared || [...tournaments.values()].map((entry) => ({ entry, card: summarize(entry) }));
     return rows.map(({ entry, card }) => ({
       ...card,
       you: {
