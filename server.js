@@ -168,7 +168,7 @@ function startServer(options = {}) {
       if (SERVER_TEXT_LOGS) {
         console.log(`
 ╔══════════════════════════════════════════════╗
-║    ♠ LONICERA v1.0 ♠                        ║
+║    ♠ FinalTable ♠                           ║
 ║    Running on ${host}:${actualPort}                    ║
 ║    Open http://localhost:${actualPort} to play         ║
 ║    For entertainment & education only        ║

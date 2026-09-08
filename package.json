@@ -1,7 +1,7 @@
 {
   "name": "finaltable",
   "version": "0.1.0",
-  "description": "Multi-table tournament poker server. Fork of LONICERA.",
+  "description": "Self-hosted multi-table tournament poker server.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -19,16 +19,16 @@
     "self-hosted",
     "docker"
   ],
-  "author": "LONICERA: A Poker Game contributors",
+  "author": "FinalTable contributors",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BillWang0101/LONICERA.git"
+    "url": "git+https://github.com/Isorgcom/FinalTable.git"
   },
   "bugs": {
-    "url": "https://github.com/BillWang0101/LONICERA/issues"
+    "url": "https://github.com/Isorgcom/FinalTable/issues"
   },
-  "homepage": "https://github.com/BillWang0101/LONICERA#readme",
+  "homepage": "https://github.com/Isorgcom/FinalTable#readme",
   "engines": {
     "node": ">=18.0.0"
   },

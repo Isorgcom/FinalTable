@@ -11,7 +11,7 @@ describe('UI smoke', () => {
   let tempDir;
 
   beforeAll(async () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lonicera-ui-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-ui-'));
     process.env.SAVE_DIR = tempDir;
     process.env.HOST = '127.0.0.1';
     jest.resetModules();
