@@ -1114,6 +1114,371 @@ describe('Hand History & Replay Data', () => {
     }
   });
 
+  // ── Pre-actions ────────────────────────────────────────────────────────────
+  // A line armed before the turn opens. Every one of these drives the arm
+  // through beginCurrentTurn, because that is the only door a turn opens
+  // through and the only place an arm is played.
+
+  function armedTable(name, opts = {}) {
+    const game = new PokerGame(name, { smallBlind: 10, bigBlind: 20, actionTimeoutMs: 30, ...opts });
+    game.onMessage = () => {};
+    game.onUpdate = () => {};
+    game.onChat = () => {};
+    game.onRoundEnd = () => {};
+    return game;
+  }
+
+  // Puts `hero` on turn with a given price in front of them, without driving a
+  // whole hand there: these tests are about the arm, not about the betting.
+  function putOnTurn(game, hero, { currentBet, heroBet }) {
+    game.currentPlayerIndex = hero.seatIndex;
+    game.currentBet = currentBet;
+    hero.bet = heroBet;
+    hero.folded = false;
+    hero.allIn = false;
+    game.isRunning = true;
+    game.clearActionTimeout();
+  }
+
+  test('an armed check/fold checks when the price is free and folds when it is not', () => {
+    jest.useFakeTimers();
+    try {
+      for (const [currentBet, expected] of [
+        [10, 'check'],
+        [40, 'fold'],
+      ]) {
+        const game = armedTable(`checkfold_${expected}`);
+        const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+        game.addPlayer({ id: 'p2', name: 'Villain' });
+        game.startRound();
+        putOnTurn(game, hero, { currentBet, heroBet: 10 });
+        hero.preAction = { kind: 'checkfold', atBet: null, atToCall: null };
+
+        game.beginCurrentTurn();
+        jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+        expect(hero.lastAction).toBeTruthy();
+        expect(hero.lastAction.action).toBe(expected);
+        expect(hero.preAction).toBeNull();
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('an armed call at a price the table has left is not played', () => {
+    jest.useFakeTimers();
+    try {
+      const game = armedTable('call_price_moved');
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+      game.addPlayer({ id: 'p2', name: 'Villain' });
+      game.startRound();
+      putOnTurn(game, hero, { currentBet: 60, heroBet: 10 });
+      // Armed when it was 20 to go. It is 60 now: a different decision.
+      hero.preAction = { kind: 'call', atBet: 20, atToCall: 10 };
+      const chipsBefore = hero.chips;
+
+      game.beginCurrentTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      expect(hero.chips).toBe(chipsBefore);
+      expect(hero.lastAction).toBeNull();
+      expect(hero.preAction).toBeNull();
+      // And the turn is theirs again, with a clock on it.
+      expect(game.actionTimeout).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('an armed call at the price it was armed against is played', () => {
+    jest.useFakeTimers();
+    try {
+      const game = armedTable('call_price_held');
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+      game.addPlayer({ id: 'p2', name: 'Villain' });
+      game.startRound();
+      putOnTurn(game, hero, { currentBet: 20, heroBet: 10 });
+      hero.preAction = { kind: 'call', atBet: 20, atToCall: 10 };
+      const chipsBefore = hero.chips;
+
+      game.beginCurrentTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      expect(hero.lastAction.action).toBe('call');
+      expect(hero.chips).toBe(chipsBefore - 10);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('an armed check is refused once somebody has bet', () => {
+    jest.useFakeTimers();
+    try {
+      const game = armedTable('check_refused');
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+      game.addPlayer({ id: 'p2', name: 'Villain' });
+      game.startRound();
+      putOnTurn(game, hero, { currentBet: 80, heroBet: 20 });
+      hero.preAction = { kind: 'check', atBet: 20, atToCall: 0 };
+      const chipsBefore = hero.chips;
+
+      game.beginCurrentTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      // Not folded. They said they would check, not that they would give up.
+      expect(hero.lastAction).toBeNull();
+      expect(hero.folded).toBe(false);
+      expect(hero.chips).toBe(chipsBefore);
+      expect(game.actionTimeout).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('call any pays whatever the price became, and checks when there is none', () => {
+    jest.useFakeTimers();
+    try {
+      const raised = armedTable('callany_raised');
+      const hero = raised.addPlayer({ id: 'p1', name: 'Hero' });
+      raised.addPlayer({ id: 'p2', name: 'Villain' });
+      raised.startRound();
+      putOnTurn(raised, hero, { currentBet: 500, heroBet: 20 });
+      hero.preAction = { kind: 'callany', atBet: null, atToCall: null };
+      const chipsBefore = hero.chips;
+
+      raised.beginCurrentTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      expect(hero.lastAction.action).toBe('call');
+      expect(hero.chips).toBe(chipsBefore - 480);
+
+      // Nothing owed: handleAction turns the call into a check.
+      const free = armedTable('callany_free');
+      const hero2 = free.addPlayer({ id: 'p1', name: 'Hero' });
+      free.addPlayer({ id: 'p2', name: 'Villain' });
+      free.startRound();
+      putOnTurn(free, hero2, { currentBet: 20, heroBet: 20 });
+      hero2.preAction = { kind: 'callany', atBet: null, atToCall: null };
+      const chips2 = hero2.chips;
+
+      free.beginCurrentTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      expect(hero2.lastAction.action).toBe('check');
+      expect(hero2.chips).toBe(chips2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('call any with a short stack is an all-in, not a debt', () => {
+    jest.useFakeTimers();
+    try {
+      const game = armedTable('callany_short');
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero', chips: 120 });
+      game.addPlayer({ id: 'p2', name: 'Villain', chips: 5000 });
+      game.startRound();
+      putOnTurn(game, hero, { currentBet: 900, heroBet: 0 });
+      hero.chips = 120;
+      hero.preAction = { kind: 'callany', atBet: null, atToCall: null };
+
+      game.beginCurrentTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      expect(hero.chips).toBe(0);
+      expect(hero.allIn).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('a raise disarms every arm made against the price it replaced', () => {
+    const game = armedTable('sweep', { actionTimeoutMs: 0 });
+    for (let i = 0; i < 5; i++) {
+      game.addPlayer({ id: `p${i}`, name: `P${i}`, chips: 5000 });
+    }
+    game.startRound();
+
+    const raiser = game.players[game.currentPlayerIndex];
+    const others = game.players.filter((p) => p !== raiser);
+    others[0].preAction = { kind: 'check', atBet: 20, atToCall: 0 };
+    others[1].preAction = { kind: 'call', atBet: 20, atToCall: 20 };
+    others[2].preAction = { kind: 'checkfold', atBet: null, atToCall: null };
+    others[3].preAction = { kind: 'callany', atBet: null, atToCall: null };
+
+    game.handleAction(raiser.id, 'raise', 200);
+
+    // The two made against a price of 20 are gone; the price-agnostic two hold.
+    expect(others[0].preAction).toBeNull();
+    expect(others[1].preAction).toBeNull();
+    expect(others[2].preAction).toMatchObject({ kind: 'checkfold' });
+    expect(others[3].preAction).toMatchObject({ kind: 'callany' });
+  });
+
+  // A player can act by hand during the beat before their arm fires, because
+  // the action bar is up: it is their turn, that is why the arm is firing. The
+  // pending timer then finds the turn moved and leaves the arm where it is, so
+  // acting has to spend it, or it plays itself when the betting comes back.
+  test('acting by hand spends the arm rather than leaving it to fire later', () => {
+    jest.useFakeTimers();
+    try {
+      const game = armedTable('arm_overtaken');
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero', chips: 5000 });
+      game.addPlayer({ id: 'p2', name: 'Villain', chips: 5000 });
+      game.addPlayer({ id: 'p3', name: 'Third', chips: 5000 });
+      game.startRound();
+      putOnTurn(game, hero, { currentBet: 20, heroBet: 0 });
+      hero.preAction = { kind: 'callany', atBet: null, atToCall: null };
+
+      game.beginCurrentTurn();
+      // They beat their own arm to it and raise instead.
+      jest.advanceTimersByTime(Math.max(1, Math.floor(AUTO_TURN_DELAY_MS / 2)));
+      expect(game.handleAction(hero.id, 'raise', 200)).toBe(true);
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      expect(hero.preAction).toBeNull();
+      expect(hero.lastAction.action).toBe('raise');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('an arm disarmed inside the beat hands the turn back with a clock', () => {
+    jest.useFakeTimers();
+    try {
+      const game = armedTable('disarm_midbeat');
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+      game.addPlayer({ id: 'p2', name: 'Villain' });
+      game.startRound();
+      putOnTurn(game, hero, { currentBet: 20, heroBet: 10 });
+      hero.preAction = { kind: 'checkfold', atBet: null, atToCall: null };
+
+      game.beginCurrentTurn();
+      // The player changes their mind before the beat is out.
+      jest.advanceTimersByTime(Math.max(1, Math.floor(AUTO_TURN_DELAY_MS / 2)));
+      hero.preAction = null;
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      expect(hero.lastAction).toBeNull();
+      expect(game.actionTimeout).toBeTruthy();
+      expect(game.turnExpiresAt).toBeGreaterThan(Date.now());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('a new street and a new hand each clear every arm', () => {
+    const game = armedTable('arms_cleared', { actionTimeoutMs: 0 });
+    const a = game.addPlayer({ id: 'p1', name: 'A', chips: 5000 });
+    const b = game.addPlayer({ id: 'p2', name: 'B', chips: 5000 });
+    game.startRound();
+
+    a.preAction = { kind: 'checkfold', atBet: null, atToCall: null };
+    b.preAction = { kind: 'callany', atBet: null, atToCall: null };
+    game._openStreet(0);
+    expect(a.preAction).toBeNull();
+    expect(b.preAction).toBeNull();
+
+    a.preAction = { kind: 'checkfold', atBet: null, atToCall: null };
+    game.startRound();
+    expect(a.preAction).toBeNull();
+  });
+
+  test('sit out next hand waits for the deal, and the blinds still post', () => {
+    const game = armedTable('sitout_next', { actionTimeoutMs: 0 });
+    const hero = game.addPlayer({ id: 'p1', name: 'Hero', chips: 5000 });
+    game.addPlayer({ id: 'p2', name: 'Villain', chips: 5000 });
+    game.startRound();
+
+    hero.sitOutNextHand = true;
+    // The hand in progress is untouched: that is the whole difference from
+    // setAutoPlay, which sits a seat out where it stands.
+    expect(hero.autoPlay).toBe(false);
+
+    game.startRound();
+
+    expect(hero.sitOutNextHand).toBe(false);
+    expect(hero.autoPlay).toBe(true);
+    // 'requested', so a reconnect leaves it alone.
+    expect(hero.sitOutReason).toBe('requested');
+    // Still dealt in, and still paying for the privilege.
+    expect(hero.holeCards).toHaveLength(2);
+    const inABlind = hero.seatIndex === game.sbIndex || hero.seatIndex === game.bbIndex;
+    if (inABlind) expect(hero.bet).toBeGreaterThan(0);
+  });
+
+  test('an arm is never visible to another seat', () => {
+    const game = armedTable('arm_privacy', { actionTimeoutMs: 0 });
+    const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+    game.addPlayer({ id: 'p2', name: 'Villain' });
+    game.startRound();
+    hero.preAction = { kind: 'callany', atBet: null, atToCall: null };
+    hero.sitOutNextHand = true;
+
+    const mine = game.getStateForPlayer('p1');
+    expect(mine.myPreAction).toMatchObject({ kind: 'callany' });
+    expect(mine.mySitOutNextHand).toBe(true);
+
+    const theirs = game.getStateForPlayer('p2');
+    expect(theirs.myPreAction).toBeNull();
+    expect(theirs.mySitOutNextHand).toBe(false);
+    expect(JSON.stringify(theirs.players)).not.toContain('preAction');
+    expect(JSON.stringify(theirs.players)).not.toContain('sitOutNextHand');
+
+    // A watcher with no seat at all is sent state too, and must not throw.
+    expect(() => game.getStateForPlayer('nobody')).not.toThrow();
+    expect(game.getStateForPlayer('nobody').myPreAction).toBeNull();
+  });
+
+  test('a pause inside the beat resumes into the same arm', () => {
+    jest.useFakeTimers();
+    try {
+      const game = armedTable('arm_paused');
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+      game.addPlayer({ id: 'p2', name: 'Villain' });
+      game.startRound();
+      putOnTurn(game, hero, { currentBet: 20, heroBet: 20 });
+      hero.preAction = { kind: 'checkfold', atBet: null, atToCall: null };
+
+      game.beginCurrentTurn();
+      game.pause();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+      // Held, not spent.
+      expect(hero.lastAction).toBeNull();
+      expect(hero.preAction).toBeTruthy();
+
+      game.resume();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+      expect(hero.lastAction.action).toBe('check');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('sitting out beats an arm: the seat folds rather than paying', () => {
+    jest.useFakeTimers();
+    try {
+      const game = armedTable('arm_vs_sitout');
+      const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+      game.addPlayer({ id: 'p2', name: 'Villain' });
+      game.startRound();
+      putOnTurn(game, hero, { currentBet: 500, heroBet: 20 });
+      hero.preAction = { kind: 'callany', atBet: null, atToCall: null };
+      // They drop before the turn opens; the seat is the sit-out's now.
+      hero.autoPlay = true;
+      const chipsBefore = hero.chips;
+
+      game.beginCurrentTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+
+      expect(hero.lastAction.action).toBe('fold');
+      expect(hero.chips).toBe(chipsBefore);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('requesting time defers the auto-play switch by the grant, once per hand', () => {
     jest.useFakeTimers();
     try {

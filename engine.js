@@ -124,6 +124,10 @@ class PokerGame {
     // and the director's own hand driver expect; the server sets a real one.
     this.streetPauseMs = Math.max(0, options.streetPauseMs || 0);
     this._streetTimer = null;
+    // Shared by the sit-out driver and the pre-action driver: only one seat is
+    // ever current, so only one of them can be pending. stop() and pause()
+    // clear it, which is what makes both paths safe to tear down.
+    this._autoTurnTimer = null;
 
     // Hand history & leaderboard
     this.handHistory = new HandHistory();
@@ -184,6 +188,14 @@ class PokerGame {
       // it, 'timeout' | 'disconnect' | 'left' when it was decided for them.
       // Only the first survives their return: see bind() in the registry.
       sitOutReason: null,
+      // The line this seat has armed for a turn that has not opened yet:
+      // { kind, atBet, atToCall } or null. Viewer-private — an opponent must
+      // never learn it — and scoped to one street, since the price it was armed
+      // against does not survive one.
+      preAction: null,
+      // Asked to sit out, but not until the hand in progress is over. startRound
+      // consumes it; unlike setAutoPlay it never touches the current hand.
+      sitOutNextHand: false,
       wins: 0,
       handsPlayed: 0,
     };
@@ -366,6 +378,14 @@ class PokerGame {
       this.processAutoTurn();
       return;
     }
+    // A line armed before the turn opened. Sitting out wins over it above, and
+    // a seat with nothing to decide is left to the ordinary path.
+    if (current.preAction && !current.folded && !current.allIn) {
+      this.clearActionTimeout();
+      this.emitUpdate();
+      this._firePreAction();
+      return;
+    }
     this.scheduleActionTimeout();
     this.emitUpdate();
   }
@@ -410,6 +430,7 @@ class PokerGame {
     this.showdownWinningCards = [];
 
     // Reset player states
+    const sittingOutNow = [];
     for (const p of this.players) {
       p.holeCards = [];
       p.bet = 0;
@@ -418,6 +439,17 @@ class PokerGame {
       p.allIn = false;
       p.lastAction = null;
       p.handsPlayed++;
+      // A new hand is a new price. Nothing armed against the last one survives.
+      p.preAction = null;
+      if (p.sitOutNextHand) {
+        p.sitOutNextHand = false;
+        p.autoPlay = true;
+        // 'requested' rather than 'timeout': they asked for this, so it must
+        // survive their reconnect. See resumeSeat() in the registry.
+        p.sitOutReason = 'requested';
+        p.isReady = false;
+        sittingOutNow.push(p);
+      }
     }
 
     // Move dealer
@@ -493,6 +525,11 @@ class PokerGame {
     this.emitMessage(`${this.getPublicName(bbPlayer)} posts big blind ${bbPlayer.bet}`, {
       kind: 'blind',
     });
+    // After the blinds, not from inside the reset loop: the deal reads as the
+    // deal, and a seat that stepped out this hand reads as a consequence of it.
+    for (const p of sittingOutNow) {
+      this.emitMessage(`${this.getPublicName(p)} is sitting out`, { kind: 'system' });
+    }
     this._logEvent(
       'round_start',
       {
@@ -789,6 +826,25 @@ class PokerGame {
       if (p._recentActions.length > 30) p._recentActions.shift();
     }
 
+    // Acting spends whatever this seat had armed, however the action arrived.
+    // The fire path clears the arm it plays, but a player who clicks during the
+    // beat leaves one behind — the action bar is up, because it is their turn —
+    // and a leftover must not play itself when the betting comes back round.
+    player.preAction = null;
+
+    // A rising price kills every arm that was made against the old one, so the
+    // button visibly disarms rather than going quiet on the player. checkfold
+    // and callany are price-agnostic by design and survive. This is belt to the
+    // braces the fire path already wears, which re-checks the price before it
+    // acts; the point of doing it here is that the client sees it happen.
+    if (this.currentBet > currentBetBeforeAction) {
+      for (const other of this.players) {
+        if (!other.preAction) continue;
+        const kind = other.preAction.kind;
+        if (kind === 'check' || kind === 'call') other.preAction = null;
+      }
+    }
+
     this.advanceAction();
     return true;
   }
@@ -935,6 +991,8 @@ class PokerGame {
     // Reset bets for new betting round
     for (const p of this.players) {
       p.bet = 0;
+      // Armed against the street that just closed, and that price is gone.
+      p.preAction = null;
     }
     this.currentBet = 0;
     this.minRaise = this.bigBlind;
@@ -1448,6 +1506,110 @@ class PokerGame {
     if (this._autoTurnTimer.unref) this._autoTurnTimer.unref();
   }
 
+  // What an armed line comes to at the price the table actually reached. Null
+  // means it no longer applies and the player takes their turn back, which is
+  // the whole reason a pre-action is resolved here rather than at arming time:
+  // the table moves between the click and the turn.
+  _resolvePreAction(player) {
+    const arm = player.preAction;
+    if (!arm) return null;
+    const canCheck = this.currentBet <= player.bet;
+    switch (arm.kind) {
+      // Check when it is free, fold when it is not. Holds at any price, which
+      // is why it is also the line behind the "fold" button the client shows
+      // when there is already a bet to answer.
+      case 'checkfold':
+        return { action: canCheck ? 'check' : 'fold' };
+      // Only ever a check. Somebody betting first hands the turn back rather
+      // than folding a hand the player never said they would fold.
+      case 'check':
+        return canCheck ? { action: 'check' } : null;
+      // Whatever it costs by the time it arrives, up to the whole stack.
+      // handleAction turns a call into a check when nothing is owed.
+      case 'callany':
+        return { action: 'call' };
+      // Only at the price it was armed against. A raise in between is a
+      // different decision from the one the player made, so it is not made for
+      // them. Both halves are checked: the table's price and what it costs this
+      // seat, which are the same invariant from either end.
+      case 'call':
+        if (this.currentBet !== arm.atBet) return null;
+        if (this.currentBet - player.bet !== arm.atToCall) return null;
+        return { action: 'call' };
+      default:
+        return null;
+    }
+  }
+
+  // A line armed before the turn opened, played now that it has. The
+  // scaffolding mirrors processAutoTurn above: the same beat so the felt can
+  // draw the seat as active before the action lands, the same pause guard, the
+  // same single timer. The two are siblings rather than one driver because they
+  // differ in everything that matters — which seats they claim, how they
+  // recognise one across the wait, what they decide, and what they owe a seat
+  // when they decline to act.
+  _firePreAction() {
+    const current = this.players[this.currentPlayerIndex];
+    if (!current || !current.preAction || current.folded || current.allIn) return;
+    if (this.isAutomatedPlayer(current)) return;
+
+    // Paused: resume() calls beginCurrentTurn again and the arm is still on the
+    // seat, because it is consumed in the timer rather than here.
+    if (this.isPaused) {
+      this._pausedAutoPending = true;
+      return;
+    }
+
+    // Math.max(1) matters: a chain of zero-delay timeouts is a hot loop.
+    const delay = Math.max(1, Math.round(AUTO_TURN_DELAY_MS / (this.speedMultiplier || 1)));
+
+    if (this._autoTurnTimer) {
+      clearTimeout(this._autoTurnTimer);
+      this._autoTurnTimer = null;
+    }
+    this.turnDurationMs = delay;
+    this.turnExpiresAt = Date.now() + delay;
+    this.emitUpdate();
+
+    // uid, not id. id is the socket id and is reassigned on reconnect, and a
+    // reload inside this window is exactly what an armed line has to survive;
+    // processAutoTurn can compare id because a dropped seat is not coming back
+    // inside its beat.
+    const armedUid = current.uid;
+
+    this._autoTurnTimer = setTimeout(() => {
+      this._autoTurnTimer = null;
+      if (!this.isRunning) return;
+      if (this.isPaused) {
+        this._pausedAutoPending = true;
+        return;
+      }
+      // The turn may have moved while the timer was pending: someone acted, the
+      // hand ended, or the seat was moved between tables. Identity is
+      // re-checked here rather than captured.
+      const live = this.players[this.currentPlayerIndex];
+      if (!live || live.uid !== armedUid) return;
+      // Sitting out claimed the seat while we waited — a drop, or the player
+      // asking for it. That path owns the turn now, and it folds where this one
+      // might have called: a sit-out never puts chips in on somebody's behalf.
+      if (this.isAutomatedPlayer(live)) return;
+
+      const decided = this._resolvePreAction(live);
+      // Cleared before the call, not after: handleAction runs advanceAction,
+      // which can re-enter beginCurrentTurn synchronously.
+      live.preAction = null;
+      if (decided && this.handleAction(live.id, decided.action)) return;
+
+      // Disarmed mid-beat, no longer valid at the price the table reached, or
+      // refused by handleAction. The turn belongs to the player again and it
+      // needs a clock: without this the seat sits there with no timer and no
+      // action, and the table waits for the abandon sweep.
+      this.scheduleActionTimeout();
+      this.emitUpdate();
+    }, delay);
+    if (this._autoTurnTimer.unref) this._autoTurnTimer.unref();
+  }
+
   getStateForPlayer(playerId) {
     const viewer = this.players.find((p) => p.id === playerId);
     const hostPlayer = this.hostPlayerId
@@ -1508,6 +1670,11 @@ class PokerGame {
         ? this.players.some((p) => p.id !== playerId && !p.folded && !p.allIn && p.chips > 0)
         : false,
       toCall: viewer ? this.currentBet - (viewer.bet || 0) : 0,
+      // Viewer-private, and it has to stay that way: knowing an opponent has
+      // armed "call any" is a read they are not entitled to. Never in players[].
+      // The viewer can be absent here — a busted watcher is sent state too.
+      myPreAction: viewer && viewer.preAction ? { ...viewer.preAction } : null,
+      mySitOutNextHand: !!(viewer && viewer.sitOutNextHand),
       isRunning: this.isRunning,
       lastRoundWinnerIds: this.lastRoundWinnerIds,
       showdownWinningCards: this.showdownWinningCards,

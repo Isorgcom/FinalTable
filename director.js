@@ -567,6 +567,9 @@ class TournamentDirector {
     // live, burn a full clock, and time out into a sit-out they never left.
     seated.autoPlay = player.autoPlay;
     seated.sitOutReason = player.sitOutReason;
+    seated.sitOutNextHand = player.sitOutNextHand;
+    // preAction is deliberately not carried: it is armed against one street's
+    // price, and a move only happens between hands.
     from.removePlayer(player.id);
     this._say(`${player.name} moves to table ${to.tableNumber}`);
     if (this.onPlayerMoved) {
@@ -691,6 +694,7 @@ class TournamentDirector {
       // Same carry as _movePlayer: a collapse must not sit a player back in.
       seated.autoPlay = player.autoPlay;
       seated.sitOutReason = player.sitOutReason;
+      seated.sitOutNextHand = player.sitOutNextHand;
       table.removePlayer(player.id);
       this._say(`${player.name} moves to table ${target.tableNumber}`);
     }

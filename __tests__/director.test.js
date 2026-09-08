@@ -626,12 +626,14 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     const mover = from.players[0];
     mover.autoPlay = true;
     mover.sitOutReason = 'requested';
+    mover.sitOutNextHand = true;
 
     expect(d._movePlayer(from, to, mover)).toBe(true);
 
     const moved = to.players.find((p) => p.uid === mover.uid);
     expect(moved.autoPlay).toBe(true);
     expect(moved.sitOutReason).toBe('requested');
+    expect(moved.sitOutNextHand).toBe(true);
   });
 
   test('director tables run the tournament action clock', () => {
