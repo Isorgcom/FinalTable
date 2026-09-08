@@ -20,6 +20,13 @@ services:
       - HOST=0.0.0.0
       - SAVE_DIR=/app/data
       - LOG_LEVEL=info
+      # Node's own heap ceiling. Left to itself it picks something near half the
+      # container in a 512 MB cgroup, which is comfortable for a table or three
+      # and not for twenty: a large field climbs past it and the process dies
+      # with "JavaScript heap out of memory" while the container still looks to
+      # have room. Raise this and mem_limit together — the heap has to fit
+      # inside the limit with the rest of the process beside it.
+      - NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_MB:-384}
       # Unset by default: no admin password means no operator controls.
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       # How long a seat that is sitting out pauses before it checks or folds,
@@ -30,7 +37,7 @@ services:
       - HAND_PAUSE_MS=${HAND_PAUSE_MS:-3500}
     # This runs as a co-tenant beside other stacks on a 1 vCPU host. Explicit
     # limits so a runaway tournament process cannot starve its neighbours.
-    mem_limit: 512m
+    mem_limit: ${MEM_LIMIT:-512m}
     cpus: 0.75
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:2026/api/status']

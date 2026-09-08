@@ -347,6 +347,84 @@ describe('tournament registry', () => {
   // process down is faithfully seated again on boot and brings it down again,
   // and the restart policy runs that forever. Observed on a two hundred player
   // field, which left the box pegged and the server unreachable.
+  // The first version of this guard cleared the counter on any completed hand,
+  // which a field big enough to crash the process manages hundreds of times
+  // before it does. Playing is not the signal; staying up is.
+  test('a field that keeps crashing is held even though it deals hands', () => {
+    const store = makeStore();
+    const boot = () =>
+      createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        sweepMs: 1000,
+        store,
+        tableOptions: { actionTimeoutMs: 0 },
+      });
+    const first = boot();
+    const { entry } = first.create(
+      'h',
+      { name: 'Crashy', startsAt: Date.now() + 1000 },
+      makeSocket('sh')
+    );
+    first.join('g', { code: entry.code }, makeSocket('sg'));
+    jest.advanceTimersByTime(2000);
+    first.flush();
+    first.stop();
+
+    // Three boots that each deal a hand and then die well inside the window.
+    for (let i = 0; i < 3; i += 1) {
+      const reg = boot();
+      expect(reg.restore()).toBe(1);
+      const back = reg.tournaments.get(entry.id);
+      expect(back.director.isRunning).toBe(true);
+      // A hand finishes, as it would on any real boot.
+      back.director.onSnapshot(back.director);
+      // ...but the process dies long before it has proved itself.
+      jest.advanceTimersByTime(20 * 1000);
+      reg.flush();
+      reg.stop();
+    }
+
+    const held = boot();
+    held.restore();
+    const back = held.tournaments.get(entry.id);
+    expect(back.director.isRunning).toBe(false);
+    expect(back.waitingReason).toMatch(/could not be restarted/i);
+    held.stop();
+  });
+
+  test('a field that stays up is not held against its earlier crashes', () => {
+    const store = makeStore();
+    const boot = () =>
+      createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        sweepMs: 1000,
+        store,
+        tableOptions: { actionTimeoutMs: 0 },
+      });
+    const first = boot();
+    const { entry } = first.create(
+      'h',
+      { name: 'Fine', startsAt: Date.now() + 1000 },
+      makeSocket('sh')
+    );
+    first.join('g', { code: entry.code }, makeSocket('sg'));
+    jest.advanceTimersByTime(2000);
+    first.flush();
+    first.stop();
+
+    const reg = boot();
+    reg.restore();
+    const back = reg.tournaments.get(entry.id);
+    expect(back.restoreCount).toBe(1);
+    // It keeps going for longer than the window, then finishes a hand.
+    jest.advanceTimersByTime(3 * 60 * 1000);
+    back.director.onSnapshot(back.director);
+    expect(back.restoreCount).toBe(0);
+    reg.stop();
+  });
+
   test('a field that never finishes a hand stops being restored', () => {
     const store = makeStore();
     const first = createTournamentRegistry({

@@ -59,6 +59,15 @@ function createTournamentRegistry(deps = {}) {
   // kills the process stops doing so within a few seconds.
   const MAX_RESTORE_ATTEMPTS = 3;
 
+  // How long a restored field has to keep the process alive before it counts as
+  // viable. The first version of this guard cleared the counter as soon as a
+  // hand finished, which sounds like the same thing and is not: a field big
+  // enough to exhaust the heap still deals hundreds of hands across twenty odd
+  // tables before it does, so the counter reset every boot and the loop it was
+  // meant to break ran nine times unimpeded. Surviving is the signal, not
+  // playing.
+  const RESTORE_STABLE_MS = 2 * 60 * 1000;
+
   // How long a burst of lobby-list changes is gathered up before one push goes
   // out. Short enough that the list still feels live, long enough that two
   // hundred people joining is one redraw and not two hundred.
@@ -491,9 +500,11 @@ function createTournamentRegistry(deps = {}) {
       onPlayerMoved: (move) => emitTo(entry, move.uid, 'tableMoved', move),
       // The field has settled after a hand: write it down.
       onSnapshot: () => {
-        // A hand finished, so whatever was wrong at boot is not fatal: the
-        // restore attempt counter goes back to zero.
-        if (entry.restoreCount) entry.restoreCount = 0;
+        // Long enough on its feet to call the field viable, so the restore
+        // attempt counter goes back to zero.
+        if (entry.restoreCount && now() - (entry.restoredAt || 0) > RESTORE_STABLE_MS) {
+          entry.restoreCount = 0;
+        }
         persist();
       },
       onFieldUpdate: () => {
@@ -964,6 +975,7 @@ function createTournamentRegistry(deps = {}) {
       // dealt: the tournament survives as its registrations, and somebody can
       // decide what to do with it.
       entry.restoreCount = (Number(saved.restoreCount) || 0) + 1;
+      entry.restoredAt = now();
       if (saved.status === 'running' && saved.field && entry.restoreCount > MAX_RESTORE_ATTEMPTS) {
         entry.waitingReason = 'This tournament could not be restarted; the field is held.';
       } else if (saved.status === 'running' && saved.field) {
