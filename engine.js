@@ -1034,12 +1034,15 @@ class PokerGame {
     // Sort by hand strength
     results.sort((a, b) => compareHands(b.hand, a.hand));
 
-    // Announce hands
+    // Announce hands. Saying it out loud is what makes a holding public, so
+    // the recorder is told at the same moment: the replay shows exactly the
+    // cards that were turned over here and nothing else.
     for (const r of results) {
       this.emitMessage(
         `${this.getPublicName(r.player)} shows ${this._cards(r.player.holeCards)} · ${describeBest(r.hand)}`,
         { kind: 'show' }
       );
+      this.handHistory.recordShown(r.player.id);
     }
 
     // Handle side pots and main pot
@@ -1515,7 +1518,12 @@ class PokerGame {
         phase: h.finalPhase,
         winners: h.winners,
         communityCards: h.communityCards,
-        holeCards: h.holeCards,
+        // Never the whole table's cards. The recorder keeps every hand in
+        // full server-side; a viewer is sent their own holding plus the ones
+        // actually shown down. Sending the lot handed everyone at the table
+        // the folding range of everyone else, ten hands deep, in a payload
+        // the replay panel then drew.
+        holeCards: this.visibleHistoryCards(h, playerId),
         actions: h.actions,
         players: h.players,
         dealerIndex: h.dealerIndex,
@@ -1549,6 +1557,33 @@ class PokerGame {
       isPaused: this.isPaused,
       speedMultiplier: this.speedMultiplier,
     };
+  }
+
+  // Which recorded seats belong to this viewer. History is keyed by the socket
+  // id a seat held when the hand was dealt and a reconnect issues a new one,
+  // so identity has to come off the uid or a player loses sight of their own
+  // cards the moment they drop and come back.
+  historyIdsForViewer(hand, viewerId) {
+    const ids = new Set(viewerId ? [viewerId] : []);
+    const viewer = this.players.find((p) => p.id === viewerId);
+    if (viewer && viewer.uid) {
+      for (const p of hand.players || []) {
+        if (p.uid && p.uid === viewer.uid) ids.add(p.id);
+      }
+    }
+    return ids;
+  }
+
+  // A recorded hand's cards as this viewer is allowed to see them: their own,
+  // and whatever was turned face up at showdown.
+  visibleHistoryCards(hand, viewerId) {
+    const mine = this.historyIdsForViewer(hand, viewerId);
+    const shown = new Set(hand.shownPlayerIds || []);
+    const visible = {};
+    for (const [id, cards] of Object.entries(hand.holeCards || {})) {
+      if (mine.has(id) || shown.has(id)) visible[id] = cards;
+    }
+    return visible;
   }
 
   emitUpdate() {

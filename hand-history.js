@@ -20,6 +20,7 @@ class HandHistory {
           (cards || []).map((card) => HandHistory.cloneCard(card)),
         ])
       ),
+      shownPlayerIds: [...(hand.shownPlayerIds || [])],
       communityCards: (hand.communityCards || []).map((card) => HandHistory.cloneCard(card)),
       actions: (hand.actions || []).map((action) => ({ ...action })),
       winners: (hand.winners || []).map((winner) => ({ ...winner })),
@@ -32,6 +33,11 @@ class HandHistory {
       timestamp: Date.now(),
       players: players.map((p) => ({
         id: p.id,
+        // The identity behind the seat. Everything else here is keyed by the
+        // socket id the seat had when the hand was dealt, and a reconnect
+        // issues a new one; without the uid a player who dropped and came
+        // back could no longer be recognised as the owner of their own cards.
+        uid: p.uid,
         name: p.name,
         chips: p.chips,
         seatIndex: p.seatIndex,
@@ -41,17 +47,31 @@ class HandHistory {
       bbIndex: bbIdx,
       smallBlind: blinds.sb,
       bigBlind: blinds.bb,
-      holeCards: {}, // playerId → [card, card] (filled at showdown or for recorder)
+      holeCards: {}, // playerId → [card, card], every seat, server-side
+      shownPlayerIds: [], // who actually turned them face up at showdown
       communityCards: [],
       actions: [], // {phase, playerId, playerName, action, amount, pot}
       winners: [], // {playerId, playerName, amount, handName}
       pot: 0,
     };
-    // Record all hole cards (server-side only, not sent to clients until replay)
+    // Every hand in full, for the server's own use. What may leave the server
+    // is decided per viewer in getStateForPlayer, not here: cards a player was
+    // never made to show are never anyone else's to see.
     for (const p of players) {
       if (p.holeCards && p.holeCards.length === 2) {
         this.current.holeCards[p.id] = p.holeCards.map((card) => HandHistory.cloneCard(card));
       }
+    }
+  }
+
+  // Called for each hand turned face up at showdown. That is the only event
+  // that makes a holding public, so it is the only thing that unlocks it in
+  // the replay: a fold takes the cards to the muck unseen, and they stay
+  // unseen afterwards.
+  recordShown(playerId) {
+    if (!this.current || !playerId) return;
+    if (!this.current.shownPlayerIds.includes(playerId)) {
+      this.current.shownPlayerIds.push(playerId);
     }
   }
 

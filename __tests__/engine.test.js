@@ -1881,3 +1881,95 @@ describe('showdown winning cards', () => {
     expect(game.showdownWinningCards).toEqual([]);
   });
 });
+
+describe('a recorded hand keeps unshown cards private', () => {
+  function table() {
+    const game = new PokerGame('history', { smallBlind: 10, bigBlind: 20 });
+    game.onMessage = () => {};
+    game.onUpdate = () => {};
+    game.onChat = () => {};
+    game.onRoundEnd = () => {};
+    return game;
+  }
+
+  const seen = (game, viewerId) =>
+    Object.keys(game.getStateForPlayer(viewerId).recentHands[0].holeCards).sort();
+
+  // Five off the top of the same deck, so a showdown has something to
+  // evaluate and no card is dealt twice.
+  const board = (game) => {
+    game.communityCards = [0, 0, 0, 0, 0].map(() => game.deck.pop());
+  };
+
+  // By id, never by index: startRound seats the field and the array comes back
+  // in seating order, so players[2] is not the third player added.
+  const fold = (game, ...ids) => {
+    for (const id of ids) game.players.find((p) => p.id === id).folded = true;
+  };
+
+  test("a hand won by folding shows the viewer their own cards and nobody else's", () => {
+    const game = table();
+    game.addPlayer({ id: 'p1', name: 'Hero', uid: 'u1' });
+    game.addPlayer({ id: 'p2', name: 'Villain', uid: 'u2' });
+    game.addPlayer({ id: 'p3', name: 'Third', uid: 'u3' });
+    game.startRound();
+    fold(game, 'p2', 'p3');
+
+    game.showdown(); // one contender left: the pot is pushed, nothing is shown
+
+    // The recorder still holds all three hands. What each viewer is sent is
+    // their own, which is the whole point of the redaction.
+    expect(Object.keys(game.handHistory.hands[0].holeCards).sort()).toEqual(['p1', 'p2', 'p3']);
+    expect(seen(game, 'p1')).toEqual(['p1']);
+    expect(seen(game, 'p2')).toEqual(['p2']);
+    expect(seen(game, 'p3')).toEqual(['p3']);
+  });
+
+  test('a showdown opens the hands that were turned over, and only those', () => {
+    const game = table();
+    game.addPlayer({ id: 'p1', name: 'Hero', uid: 'u1' });
+    game.addPlayer({ id: 'p2', name: 'Villain', uid: 'u2' });
+    game.addPlayer({ id: 'p3', name: 'Folder', uid: 'u3' });
+    game.startRound();
+    board(game);
+    fold(game, 'p3');
+
+    game.showdown();
+
+    // Two contenders showed. The third folded and is still nobody's business,
+    // including to the two who beat them.
+    expect(game.handHistory.hands[0].shownPlayerIds.sort()).toEqual(['p1', 'p2']);
+    expect(seen(game, 'p1')).toEqual(['p1', 'p2']);
+    expect(seen(game, 'p2')).toEqual(['p1', 'p2']);
+    expect(seen(game, 'p3')).toEqual(['p1', 'p2', 'p3']);
+  });
+
+  test('a reconnect keeps a player the cards they were dealt', () => {
+    const game = table();
+    game.addPlayer({ id: 'p1', name: 'Hero', uid: 'u1' });
+    game.addPlayer({ id: 'p2', name: 'Villain', uid: 'u2' });
+    game.startRound();
+    board(game);
+    fold(game, 'p2');
+    game.showdown();
+
+    // The seat comes back on a new socket. History is keyed by the id it had
+    // when the hand was dealt, so without the uid this viewer would lose
+    // sight of their own holding.
+    game.players.find((p) => p.id === 'p1').id = 'p1-again';
+    expect(seen(game, 'p1-again')).toEqual(['p1']);
+  });
+
+  test('a spectator is shown only what was turned face up', () => {
+    const game = table();
+    game.addPlayer({ id: 'p1', name: 'Hero', uid: 'u1' });
+    game.addPlayer({ id: 'p2', name: 'Villain', uid: 'u2' });
+    game.startRound();
+    board(game);
+    game.showdown();
+
+    // Nobody by that id sat in the hand, so nothing is theirs to see; both
+    // contenders showed, so both are public.
+    expect(seen(game, 'nobody')).toEqual(['p1', 'p2']);
+  });
+});

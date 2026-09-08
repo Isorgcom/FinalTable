@@ -559,6 +559,20 @@
   gap: 3px;
   justify-content: center;
 }
+/* A holding that was never shown. Sized to the cards it stands in for, so a
+   row of mucked hands keeps the replay's rhythm instead of collapsing. */
+.replay-player-hand .rp-muck {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  padding: 0 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  color: var(--smoke);
+  font-style: italic;
+  opacity: 0.75;
+}
 .replay-card {
   display: inline-block;
   width: 40px;

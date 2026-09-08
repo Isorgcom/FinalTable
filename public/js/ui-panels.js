@@ -435,8 +435,10 @@ function renderReplayDetail(hand) {
   const cardsDiv = document.getElementById('replayPlayerCards');
   cardsDiv.textContent = '';
   for (const p of hand.players) {
+    // A seat with no cards here did not show them: the server sends the
+    // viewer's own holding plus whatever was turned over at showdown, and
+    // nothing else.
     const cards = hand.holeCards[p.id];
-    if (!cards) continue;
     const isWinner = hand.winners.some((w) => w.playerId === p.id);
     const winningEntry = hand.winners.find((w) => w.playerId === p.id);
     const winLabel = winningEntry && winningEntry.handName ? ` · ${winningEntry.handName}` : '';
@@ -451,7 +453,14 @@ function renderReplayDetail(hand) {
     );
     const handCards = document.createElement('div');
     handCards.className = 'rp-cards';
-    cards.forEach((card) => handCards.appendChild(createReplayCardElement(card)));
+    if (cards) {
+      cards.forEach((card) => handCards.appendChild(createReplayCardElement(card)));
+    } else {
+      // Listed without cards rather than dropped from the replay: a table
+      // that folded round would otherwise read as a table that was never
+      // dealt, and the seat's actions are still in the hand below.
+      handCards.appendChild(createTextElement('div', 'rp-muck', 'mucked'));
+    }
     div.appendChild(handCards);
     cardsDiv.appendChild(div);
   }
