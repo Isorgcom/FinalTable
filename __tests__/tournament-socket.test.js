@@ -405,4 +405,145 @@ describe('Tournament socket layer', () => {
     expect(seat.player.autoPlay).toBe(false);
     expect(entry.registrations.get(uid).left).toBe(false);
   });
+
+  // ── Pre-actions over the wire ──────────────────────────────────────────────
+
+  // Finds the seat whose turn it is not, which is the only seat allowed to arm.
+  function offTurnSeat(entry, uidA, uidB) {
+    const a = entry.director.playerByUid(uidA);
+    const table = a.table;
+    const current = table.players[table.currentPlayerIndex];
+    const waitingUid = current.uid === uidA ? uidB : uidA;
+    return { table, seat: entry.director.playerByUid(waitingUid), waitingUid };
+  }
+
+  test('an armed line is played the moment the turn opens', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
+    const entry = serverModule.tournaments.get(created.id);
+    const guestUid = guest.__identity.uid;
+
+    const { table, seat, waitingUid } = offTurnSeat(entry, created.uid, guestUid);
+    const waitingSocket = waitingUid === created.uid ? host : guest;
+
+    waitingSocket.emit('armPreAction', { kind: 'checkfold' });
+    expect(await until(() => !!seat.player.preAction)).toBe(true);
+
+    // A raise, not a call: heads-up preflop a call closes the street, and a new
+    // street clears every arm before the waiting seat ever has a turn. A raise
+    // reopens the action and hands them one.
+    const actor = table.players[table.currentPlayerIndex];
+    table.handleAction(actor.id, 'raise', table.currentBet + table.minRaise);
+
+    // Nobody clicked for the waiting seat, and it acted anyway.
+    expect(await until(() => !!seat.player.lastAction)).toBe(true);
+    expect(['check', 'fold']).toContain(seat.player.lastAction.action);
+    expect(seat.player.preAction).toBeNull();
+  });
+
+  test('an armed line survives a reconnect and still fires', async () => {
+    const first = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(first);
+    const token = first.__identity.token;
+    await startAndDeal(first, guest);
+    const entry = serverModule.tournaments.get(created.id);
+
+    // The host must be the seat that is waiting, so it can arm and then drop.
+    const table = entry.director.playerByUid(created.uid).table;
+    if (table.players[table.currentPlayerIndex].uid === created.uid) {
+      table.handleAction(table.players[table.currentPlayerIndex].id, 'call');
+    }
+    expect(await until(() => table.players[table.currentPlayerIndex].uid !== created.uid)).toBe(
+      true
+    );
+
+    first.emit('armPreAction', { kind: 'callany' });
+    const seat = entry.director.playerByUid(created.uid);
+    expect(await until(() => !!seat.player.preAction)).toBe(true);
+
+    // Drop and come back on a new socket with the same token. The seat is
+    // rebuilt around a new socket id, which is why the fire path matches on uid.
+    first.close();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const second = await connectClient();
+    const rejoined = waitFor(second, 'tournamentJoined');
+    await identify(second, { token, name: 'Host' });
+    await rejoined;
+
+    const seatAfter = entry.director.playerByUid(created.uid);
+    expect(seatAfter.player.preAction).toMatchObject({ kind: 'callany' });
+  });
+
+  test('an armed line is never in another player’s state', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
+    const entry = serverModule.tournaments.get(created.id);
+    const guestUid = guest.__identity.uid;
+    const { seat, waitingUid } = offTurnSeat(entry, created.uid, guestUid);
+    const waitingSocket = waitingUid === created.uid ? host : guest;
+    const otherSocket = waitingSocket === host ? guest : host;
+
+    waitingSocket.emit('armPreAction', { kind: 'callany' });
+    expect(await until(() => !!seat.player.preAction)).toBe(true);
+
+    // An idle table pushes nothing, so make it push: the other seat acts, which
+    // emits to everyone, and that is the payload under inspection.
+    const theirState = waitFor(otherSocket, 'gameState', (st) => st.isRunning);
+    const actor = entry.director.playerByUid(created.uid).table;
+    actor.handleAction(actor.players[actor.currentPlayerIndex].id, 'call');
+    const theirs = await theirState;
+    expect(theirs.myPreAction).toBeNull();
+    expect(JSON.stringify(theirs.players)).not.toContain('preAction');
+    expect(JSON.stringify(theirs.players)).not.toContain('sitOutNextHand');
+  });
+
+  test('a malformed arm is ignored', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
+    const entry = serverModule.tournaments.get(created.id);
+    const guestUid = guest.__identity.uid;
+    const { seat, waitingUid } = offTurnSeat(entry, created.uid, guestUid);
+    const waitingSocket = waitingUid === created.uid ? host : guest;
+
+    for (const bad of [
+      { kind: 'raise' },
+      { kind: 'allin' },
+      { kind: 'call' },
+      { kind: 'call', atBet: '20', atToCall: 20 },
+      { kind: 'call', atBet: -1, atToCall: 0 },
+      { kind: 'call', atBet: 20.5, atToCall: 10 },
+    ]) {
+      waitingSocket.emit('armPreAction', bad);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(seat.player.preAction).toBeNull();
+
+    // And a well-formed one still lands, so the guard is not simply refusing.
+    waitingSocket.emit('armPreAction', { kind: 'checkfold' });
+    expect(await until(() => !!seat.player.preAction)).toBe(true);
+  });
+
+  test('sitting out now clears a line armed for later', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
+    const entry = serverModule.tournaments.get(created.id);
+    const guestUid = guest.__identity.uid;
+    const { seat, waitingUid } = offTurnSeat(entry, created.uid, guestUid);
+    const waitingSocket = waitingUid === created.uid ? host : guest;
+
+    waitingSocket.emit('armPreAction', { kind: 'callany' });
+    expect(await until(() => !!seat.player.preAction)).toBe(true);
+
+    waitingSocket.emit('setSitOutNextHand', { enabled: true });
+    expect(await until(() => seat.player.sitOutNextHand === true)).toBe(true);
+
+    waitingSocket.emit('setAutoPlay', { enabled: true });
+    expect(await until(() => seat.player.autoPlay === true)).toBe(true);
+    expect(seat.player.preAction).toBeNull();
+    expect(seat.player.sitOutNextHand).toBe(false);
+  });
 });

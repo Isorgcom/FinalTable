@@ -159,12 +159,72 @@ function registerTournamentHandlers(deps) {
       // alone where it undoes a drop, a timeout or a walk-out.
       player.sitOutReason = enabled ? 'requested' : null;
       player.isReady = false;
+      // Sitting out now settles anything that was waiting on later: an armed
+      // line, and a sit-out that was queued for the next deal.
+      if (enabled) {
+        player.preAction = null;
+        player.sitOutNextHand = false;
+      }
       table.emitMessage(`${player.name} ${enabled ? 'is sitting out' : 'is back at the table'}`, {
         kind: 'system',
       });
       const idx = table.players.findIndex((p) => p.id === player.id);
       if (enabled && table.isRunning && idx === table.currentPlayerIndex) table.beginCurrentTurn();
       else table.emitUpdate();
+    });
+
+    // Arming a line for a turn that has not opened yet. It lives on the engine's
+    // player record rather than in the page, so it survives a reload, a phone
+    // locking itself and a dropped connection — which is most of why it is
+    // worth having. Nothing about it is public, so the echo goes to this socket
+    // alone rather than out to the table.
+    socket.on('armPreAction', (payload = {}) => {
+      const KINDS = ['checkfold', 'check', 'call', 'callany'];
+      const kind = payload.kind == null ? null : payload.kind;
+      if (kind !== null && !KINDS.includes(kind)) return;
+      // A price-locked call carries the price it was armed at, and the engine
+      // refuses to play it at any other. Integers, because chips are.
+      let atBet = null;
+      let atToCall = null;
+      if (kind === 'call') {
+        if (!Number.isInteger(payload.atBet) || payload.atBet < 0) return;
+        if (!Number.isInteger(payload.atToCall) || payload.atToCall < 0) return;
+        atBet = payload.atBet;
+        atToCall = payload.atToCall;
+      }
+      const seat = seatFor(socket);
+      if (!seat) return;
+      const { table, player } = seat;
+      if (player.autoPlay) return;
+      // Arming is for a turn you do not have yet. With the action bar up the bar
+      // is the way to act, and accepting both is how a click races the beat.
+      const idx = table.players.findIndex((p) => p.id === player.id);
+      if (table.isRunning && idx === table.currentPlayerIndex) return;
+      const before = player.preAction;
+      // No-op guard, as on setAutoPlay above: a state payload carries the last
+      // ten hands, so an unguarded echo turns arm-spam into an amplifier.
+      if (
+        (before ? before.kind : null) === kind &&
+        (before ? before.atBet : null) === atBet &&
+        (before ? before.atToCall : null) === atToCall
+      ) {
+        return;
+      }
+      player.preAction = kind === null ? null : { kind, atBet, atToCall };
+      socket.emit('gameState', table.getStateForPlayer(player.id));
+    });
+
+    // The deferred sit-out. Unlike setAutoPlay it leaves the hand in progress
+    // alone; startRound consumes it. Strictly === true, where setAutoPlay reads
+    // !== false: a malformed payload must not cost somebody a hand of blinds.
+    socket.on('setSitOutNextHand', (payload = {}) => {
+      const enabled = payload.enabled === true;
+      const seat = seatFor(socket);
+      if (!seat) return;
+      const { table, player } = seat;
+      if (!!player.sitOutNextHand === enabled) return;
+      player.sitOutNextHand = enabled;
+      socket.emit('gameState', table.getStateForPlayer(player.id));
     });
 
     socket.on('disconnect', () => {

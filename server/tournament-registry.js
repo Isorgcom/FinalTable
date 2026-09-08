@@ -605,6 +605,12 @@ function createTournamentRegistry(deps = {}) {
     if (socket && reg.socketId === socket.id) unbind(entry, uid, socket);
     reg.left = true;
     const seat = entry.director.playerByUid(uid);
+    if (seat) {
+      // Walking out settles anything the seat had queued: a line armed for a
+      // turn they will not be here for, and a sit-out they have overtaken.
+      seat.player.preAction = null;
+      seat.player.sitOutNextHand = false;
+    }
     if (seat && !seat.player.autoPlay) {
       seat.player.autoPlay = true;
       seat.player.sitOutReason = 'left';
