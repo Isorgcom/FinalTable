@@ -561,6 +561,12 @@ class TournamentDirector {
       seatIndex,
     });
     if (!seated) return false;
+    // Sitting out is a property of the player, not of the seat they happen to
+    // hold. addPlayer builds a fresh record with autoPlay false, so without this
+    // a balance move sits a player back in who asked to sit out: they return
+    // live, burn a full clock, and time out into a sit-out they never left.
+    seated.autoPlay = player.autoPlay;
+    seated.sitOutReason = player.sitOutReason;
     from.removePlayer(player.id);
     this._say(`${player.name} moves to table ${to.tableNumber}`);
     if (this.onPlayerMoved) {
@@ -682,6 +688,9 @@ class TournamentDirector {
         chips: player.chips,
       });
       if (!seated) return;
+      // Same carry as _movePlayer: a collapse must not sit a player back in.
+      seated.autoPlay = player.autoPlay;
+      seated.sitOutReason = player.sitOutReason;
       table.removePlayer(player.id);
       this._say(`${player.name} moves to table ${target.tableNumber}`);
     }

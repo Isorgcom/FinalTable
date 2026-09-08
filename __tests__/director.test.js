@@ -606,6 +606,34 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     );
   });
 
+  // Sitting out is a property of the player, not of the seat. addPlayer builds a
+  // fresh record with autoPlay false, so without the carry a balance move sits
+  // a player back in who asked to sit out: they come back live, burn a full
+  // clock and time out into a sit-out they never left.
+  test('a balance move carries a sitting-out seat with it', () => {
+    const d = new TournamentDirector({
+      id: 'sitout_move',
+      tableSize: 3,
+      startChips: 1000,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    for (let i = 0; i < 4; i++) d.register({ id: `p${i}`, uid: `u${i}`, name: `P${i}` });
+    d.start();
+
+    const from = d.tables[0];
+    const to = d.tables[1];
+    const mover = from.players[0];
+    mover.autoPlay = true;
+    mover.sitOutReason = 'requested';
+
+    expect(d._movePlayer(from, to, mover)).toBe(true);
+
+    const moved = to.players.find((p) => p.uid === mover.uid);
+    expect(moved.autoPlay).toBe(true);
+    expect(moved.sitOutReason).toBe('requested');
+  });
+
   test('director tables run the tournament action clock', () => {
     const d = makeDirector(2, { gameOptions: {} });
     d.start();
