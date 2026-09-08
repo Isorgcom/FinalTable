@@ -46,5 +46,5 @@ Open an issue with:
 - Steps to reproduce
 - Expected vs actual behavior
 - Browser and device info
-- Docker logs if applicable (`docker logs finaltable`)
+- Docker logs if applicable (`docker logs finaltable-dev`)
 - Whether the deployment is local Node, Docker, reverse proxy, or NAS
