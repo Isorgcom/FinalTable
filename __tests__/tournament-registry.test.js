@@ -340,6 +340,66 @@ describe('tournament registry', () => {
   // every recipient. The risk in that is showing one player another player's
   // corner of the state, so it is pinned: what is shared must be identical for
   // everyone, and what is personal must not be.
+  // Persistence turned a crash into a loop: a field heavy enough to bring the
+  // process down is faithfully seated again on boot and brings it down again,
+  // and the restart policy runs that forever. Observed on a two hundred player
+  // field, which left the box pegged and the server unreachable.
+  test('a field that never finishes a hand stops being restored', () => {
+    const store = makeStore();
+    const first = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    const { entry } = first.create(
+      'h',
+      { name: 'Heavy', startsAt: Date.now() + 1000 },
+      makeSocket('sh')
+    );
+    first.join('g', { code: entry.code }, makeSocket('sg'));
+    jest.advanceTimersByTime(2000);
+    expect(entry.status).toBe('running');
+    first.flush();
+    first.stop();
+
+    // Boot after boot, never getting a hand out.
+    let last = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const reg = createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        sweepMs: 1000,
+        store,
+        tableOptions: { actionTimeoutMs: 0 },
+      });
+      expect(reg.restore()).toBe(1);
+      last = reg.tournaments.get(entry.id);
+      expect(last.director.isRunning).toBe(true);
+      expect(last.restoreCount).toBe(attempt);
+      reg.flush();
+      reg.stop();
+    }
+
+    // The fourth time it is held instead of dealt.
+    const held = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    expect(held.restore()).toBe(1);
+    const back = held.tournaments.get(entry.id);
+    expect(back.director.isRunning).toBe(false);
+    expect(back.director.tables).toHaveLength(0);
+    expect(back.waitingReason).toMatch(/could not be restarted/i);
+    // The people are still there; only the field is not dealt.
+    expect(back.registrations.size).toBe(2);
+    held.stop();
+  });
+
   test('a shared broadcast still gives every viewer their own corner', () => {
     const store = makeStore();
     const reg = createTournamentRegistry({

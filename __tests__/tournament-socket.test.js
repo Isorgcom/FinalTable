@@ -263,17 +263,23 @@ describe('Tournament socket layer', () => {
     const created = await createTournament(host);
     expect(created.code).toMatch(/^[A-Z2-9]{5}$/);
     const guest = await connectClient();
-    const hostSees = waitFor(host, 'tournamentState', (st) =>
-      st.roster.some((r) => r.name === 'Guest')
+    // The roster is broadcast on its own now, not carried in every personal
+    // state push, so that is where it is waited for.
+    const hostSees = waitFor(host, 'tournamentRoster', (p) =>
+      p.roster.some((r) => r.name === 'Guest')
     );
+    // Both halves of the push are waited for before the join that triggers
+    // them; registering afterwards races the emit and loses.
+    const hostState = waitFor(host, 'tournamentState', (st) => st.entrants === 2);
     const joined = await joinByCode(guest, created.code.toLowerCase(), {
       name: 'Guest',
       avatar: '🐸',
     });
     expect(joined.host).toBe(false);
     expect(joined.status).toBe('registering');
-    const state = await hostSees;
-    const humans = state.roster;
+    const humans = (await hostSees).roster;
+    // The personal half of the push still carries everything that is per viewer.
+    const state = await hostState;
     expect(humans).toHaveLength(2);
     expect(humans.find((r) => r.name === 'Host')).toMatchObject({
       avatar: '🦊',
@@ -345,8 +351,8 @@ describe('Tournament socket layer', () => {
     await joinByCode(guest, created.code, { name: 'Leaver' });
     const gone = waitFor(
       host,
-      'tournamentState',
-      (st) => !st.roster.some((r) => r.name === 'Leaver')
+      'tournamentRoster',
+      (p) => !p.roster.some((r) => r.name === 'Leaver')
     );
     const left = waitFor(guest, 'leftTournament');
     guest.emit('unregisterTournament');

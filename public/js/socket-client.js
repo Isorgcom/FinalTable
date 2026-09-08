@@ -64,7 +64,27 @@ function ensureSocket() {
   socket.on('tournamentJoined', (info) => {
     if (window.Lobby) Lobby.onJoined(info);
   });
+  // The roster is one list, the same for everyone in the tournament, so the
+  // server broadcasts it on its own when it changes rather than folding a copy
+  // into every personal state push. Held here and put back on the state, so
+  // everything downstream still reads state.roster as a plain field.
+  let _roster = [];
+  let _lastState = null;
+  socket.on('tournamentRoster', (payload) => {
+    if (!payload || !Array.isArray(payload.roster)) return;
+    _roster = payload.roster;
+    // The personal push goes out before this one, so a client that has already
+    // drawn the screen drew it without a roster. Hand it the state again with
+    // the list attached rather than leaving the waiting room looking empty.
+    if (_lastState && window.Lobby) {
+      _lastState.roster = _roster;
+      Lobby.onState(_lastState);
+    }
+  });
   socket.on('tournamentState', (state) => {
+    if (state && !state.roster) state.roster = _roster;
+    else if (state && Array.isArray(state.roster)) _roster = state.roster;
+    _lastState = state;
     if (window.Lobby) Lobby.onState(state);
   });
   socket.on('leftTournament', (data) => {

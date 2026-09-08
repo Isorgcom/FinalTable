@@ -51,6 +51,13 @@ function createTournamentRegistry(deps = {}) {
   };
 
   // id -> entry
+  // How many times a stored field may be seated again without a hand
+  // completing before it is left alone. Three is enough to ride out a restart
+  // that had nothing to do with the field, and few enough that a field which
+  // kills the process stops doing so within a few seconds.
+  const MAX_RESTORE_ATTEMPTS = 3;
+
+  // id -> entry
   const tournaments = new Map();
   let sweepTimer = null;
   let sweeps = 0;
@@ -79,6 +86,9 @@ function createTournamentRegistry(deps = {}) {
         joinedAt: r.joinedAt,
       })),
       status: entry.status,
+      // How many times this field has been seated again without getting a hand
+      // out. See the guard in restore().
+      restoreCount: entry.restoreCount || 0,
       // A running tournament carries the field as it stood between hands, so a
       // restart seats everyone again instead of the tournament ceasing to
       // exist. Registrations alone are enough for one that has not dealt.
@@ -164,16 +174,41 @@ function createTournamentRegistry(deps = {}) {
   // Everyone connected gets the state from their own point of view. The
   // legacy `tournamentField` event carries the same payload until the client
   // has moved to `tournamentState`.
+  // A cheap stand-in for "has the roster changed", over the fields that can:
+  // stacks, seats, finishing places, sitting out, and who is connected.
+  function rosterSignature(roster) {
+    let sig = '';
+    for (const r of roster) {
+      sig += `${r.uid}:${r.chips}:${r.table}:${r.place}:${r.autoPlay ? 1 : 0}:${r.connected ? 1 : 0}|`;
+    }
+    return sig;
+  }
+
   function emitState(entry) {
-    // The roster and the field summary are identical for everyone in the
-    // tournament; only the "you" corner differs. Built once for the whole
-    // broadcast, because rebuilding them per recipient made a single push cost
-    // the square of the field and, through the old roster, its cube.
+    // The field summary is built once for the whole broadcast; only the "you"
+    // corner is per viewer.
     const shared = sharedState(entry);
+    const ids = [];
     for (const [uid, reg] of entry.registrations) {
       if (!reg.socketId) continue;
-      io.to(reg.socketId).emit('tournamentState', stateFor(entry, uid, shared));
+      ids.push(reg.socketId);
+      io.to(reg.socketId).emit(
+        'tournamentState',
+        stateFor(entry, uid, shared, { includeRoster: false })
+      );
     }
+    if (!ids.length) return;
+
+    // The roster is one list, the same for everyone, and at two hundred players
+    // it is 96% of what a state push weighs. Sending it inside each personal
+    // payload meant serialising the same 25 KB once per recipient, every tick,
+    // for as long as the tournament ran. It goes out as a single broadcast
+    // instead — encoded once for the whole set of sockets — and only when it
+    // has actually changed.
+    const sig = rosterSignature(shared.roster);
+    if (sig === entry._rosterSig) return;
+    entry._rosterSig = sig;
+    io.to(ids).emit('tournamentRoster', { id: entry.id, roster: shared.roster });
   }
 
   function requireHost(entry, uid) {
@@ -249,7 +284,7 @@ function createTournamentRegistry(deps = {}) {
     return { field, roster, placeByUid, hostName: hostName(entry) };
   }
 
-  function stateFor(entry, uid, shared = sharedState(entry)) {
+  function stateFor(entry, uid, shared = sharedState(entry), { includeRoster = true } = {}) {
     const d = entry.director;
     const reg = entry.registrations.get(uid) || null;
     const seat = shared.field.seats.get(uid) || null;
@@ -268,6 +303,7 @@ function createTournamentRegistry(deps = {}) {
       host: { uid: entry.hostUid, name: shared.hostName },
       isHost: requireHost(entry, uid),
       settings: { ...entry.settings },
+      ...(includeRoster ? { roster } : {}),
       you: {
         uid,
         playerId: seat ? seat.player.id : reg && reg.socketId ? reg.socketId : null,
@@ -280,7 +316,6 @@ function createTournamentRegistry(deps = {}) {
           ? (d.tables.find((t) => t.id === entry.watching.get(uid)) || {}).tableNumber || null
           : null,
       },
-      roster,
     };
   }
 
@@ -433,7 +468,12 @@ function createTournamentRegistry(deps = {}) {
       onMessage: (msg) => emitAll(entry, 'gameMessage', msg),
       onPlayerMoved: (move) => emitTo(entry, move.uid, 'tableMoved', move),
       // The field has settled after a hand: write it down.
-      onSnapshot: () => persist(),
+      onSnapshot: () => {
+        // A hand finished, so whatever was wrong at boot is not fatal: the
+        // restore attempt counter goes back to zero.
+        if (entry.restoreCount) entry.restoreCount = 0;
+        persist();
+      },
       onFieldUpdate: () => {
         repointWatchers(entry);
         emitState(entry);
@@ -577,6 +617,9 @@ function createTournamentRegistry(deps = {}) {
     const state = stateFor(entry, uid);
     socket.emit('tournamentState', state);
     socket.emit('tournamentField', state);
+    // A client arriving or coming back holds no roster, so the next broadcast
+    // has to carry one whether or not it has changed since the last.
+    entry._rosterSig = null;
     if (seat) seat.table.emitUpdate();
     else if (entry.watching.has(uid)) {
       const table = entry.director.tables.find((t) => t.id === entry.watching.get(uid));
@@ -888,7 +931,16 @@ function createTournamentRegistry(deps = {}) {
       // again from the field it recorded between hands. Every seat comes back
       // sitting out and is taken over by its player when they reconnect, so a
       // field nobody returns to plays itself out rather than hanging.
-      if (saved.status === 'running' && saved.field) {
+      // A field big enough to bring the process down is restored on boot and
+      // brings it down again, and the restart policy makes that a loop the box
+      // never gets out of. So a field that has been seated this many times
+      // without managing to finish a single hand is left in the file but not
+      // dealt: the tournament survives as its registrations, and somebody can
+      // decide what to do with it.
+      entry.restoreCount = (Number(saved.restoreCount) || 0) + 1;
+      if (saved.status === 'running' && saved.field && entry.restoreCount > MAX_RESTORE_ATTEMPTS) {
+        entry.waitingReason = 'This tournament could not be restarted; the field is held.';
+      } else if (saved.status === 'running' && saved.field) {
         try {
           if (entry.director.restoreFrom(saved.field)) {
             for (const table of entry.director.tables) wireTable(entry, table);
