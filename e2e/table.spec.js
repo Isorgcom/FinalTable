@@ -721,6 +721,12 @@ test('picking a hand in the replay panel opens it', async ({ page }) => {
   await expect(page.locator('#replayDetail')).not.toHaveClass(/hidden/);
   await expect(page.locator('#replayDetail')).not.toBeEmpty();
 
+  // What each winner took, not just who won. Two bare names read as one pot
+  // shared between them, which is exactly what a side pot is not.
+  const summary = page.locator('#replayWinnerSummary');
+  await expect(summary).toContainText(/Winner|Winners|Split pot/);
+  await expect(summary).toContainText(/\d/);
+
   expect(pageErrors).toEqual([]);
 });
 

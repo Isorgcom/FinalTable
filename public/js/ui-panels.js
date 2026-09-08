@@ -38,9 +38,25 @@ function getReplayNameByPlayerId(hand, playerId, fallbackName) {
   return getReplayPlayerDisplayName(player) || fallbackName || '';
 }
 
+// What each winner actually took. Two names with no numbers beside them read
+// as one pot split between them, which is what a side pot is not: an all-in
+// player wins the main pot and somebody else wins the money bet past them, and
+// leaving the amounts out makes a correct result look like a wrong one.
 function getReplayWinnerText(hand, winner) {
   const winnerName = getReplayNameByPlayerId(hand, winner.playerId, winner.playerName);
-  return winner.handName ? `${winnerName} (${winner.handName})` : winnerName;
+  const label = winner.handName ? `${winnerName} (${winner.handName})` : winnerName;
+  return Number.isFinite(winner.amount) ? `${label} ${fmtNum(winner.amount)}` : label;
+}
+
+// More than one winner and different amounts means separate pots, not a shared
+// one. Said plainly rather than left for the reader to work out from the
+// numbers.
+function replayWinnerHeading(hand) {
+  const winners = hand.winners || [];
+  if (winners.length < 2) return 'Winner';
+  const amounts = winners.map((w) => w.amount).filter((a) => Number.isFinite(a));
+  const shared = amounts.length === winners.length && new Set(amounts).size === 1;
+  return shared ? 'Split pot' : 'Winners, from separate pots';
 }
 
 // ============================================================
@@ -428,7 +444,9 @@ function renderReplayDetail(hand) {
   if (replayWinnerSummary) {
     replayWinnerSummary.textContent =
       hand.winners.length > 0
-        ? `Winner: ${hand.winners.map((winner) => getReplayWinnerText(hand, winner)).join(', ')}`
+        ? `${replayWinnerHeading(hand)}: ${hand.winners
+            .map((winner) => getReplayWinnerText(hand, winner))
+            .join(', ')}`
         : 'Winner: none';
   }
 
