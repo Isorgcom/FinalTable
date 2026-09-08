@@ -394,17 +394,18 @@ function renderReplayHandList(list, onPick) {
     });
 }
 
+// The last ten hands arrive with every state push, each already filtered to the
+// cards this viewer is allowed to see, so a replay is a lookup rather than a
+// request. It used to emit 'getReplay' and return, waiting for a 'handReplay'
+// that nothing ever sent: there was no handler for the question on the server
+// and no sender for the answer, so picking a hand did nothing at all, and the
+// working lookup below the early return was unreachable.
 function loadReplay(handNum) {
-  if (socket) {
-    socket.emit('getReplay', { handNum });
-    return;
-  }
   if (!gameState || !gameState.recentHands) return;
   const hand = gameState.recentHands.find((h) => h.handNum === handNum);
-  if (hand) {
-    document.getElementById('replayHandList').classList.add('hidden');
-    renderReplayDetail(hand);
-  }
+  if (!hand) return;
+  document.getElementById('replayHandList').classList.add('hidden');
+  renderReplayDetail(hand);
 }
 
 function renderReplayDetail(hand) {

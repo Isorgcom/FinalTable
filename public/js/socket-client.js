@@ -117,10 +117,6 @@ function ensureSocket() {
     addLog(`✅ Name changed to: ${data.name}`);
   });
 
-  socket.on('handReplay', (hand) => {
-    if (hand) renderReplayDetail(hand);
-  });
-
   socket.on('error', (data) => {
     const message = data && data.message ? data.message : 'Something went wrong';
     addLog('⚠️ ' + message);

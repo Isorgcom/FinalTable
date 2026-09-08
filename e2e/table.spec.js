@@ -612,6 +612,51 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
   expect(pageErrors).toEqual([]);
 });
 
+test('picking a hand in the replay panel opens it', async ({ page }) => {
+  // Same shape of wait as the showdown test: a hand has to finish before there
+  // is anything to replay, and how long that takes is the luck of the deal.
+  test.setTimeout(120000);
+  const pageErrors = await seatAtTournamentTable(page, 'ReplayTester');
+  await deal(page);
+
+  // Play until the server has banked at least one finished hand.
+  const deadline = Date.now() + 90000;
+  let banked = 0;
+  while (!banked && Date.now() < deadline) {
+    const st = await page.evaluate(() => ({
+      hands: ((gameState && gameState.recentHands) || []).length,
+      btn: ['btnCheck', 'btnCall'].find((id) => {
+        const el = document.getElementById(id);
+        return el && !el.disabled && el.offsetParent !== null;
+      }),
+    }));
+    banked = st.hands;
+    if (banked) break;
+    if (st.btn) {
+      await page.click('#' + st.btn, { timeout: 1500 }).catch(() => {});
+      await page.waitForTimeout(120);
+    } else {
+      await page.waitForTimeout(200);
+    }
+  }
+  expect(banked).toBeGreaterThan(0);
+
+  // The top-bar button reveals the History tab rather than the modal; the tab
+  // lists the hands, and picking one there is what opens the replay.
+  await page.click('#btnReplay');
+  const first = page.locator('#panelHistoryBody .replay-hand-btn').first();
+  await expect(first).toBeVisible();
+
+  // The bug this pins: picking a hand emitted a request nothing answered, so
+  // the detail never opened and the panel came up blank.
+  await first.click();
+  await expect(page.locator('#replayPanel')).not.toHaveClass(/hidden/);
+  await expect(page.locator('#replayDetail')).not.toHaveClass(/hidden/);
+  await expect(page.locator('#replayDetail')).not.toBeEmpty();
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('the card sound is served, decoded, and played once per card', async ({ page }) => {
   const pageErrors = await seatAtTournamentTable(page, 'CardSound');
   await deal(page);
