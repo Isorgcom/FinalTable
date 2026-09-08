@@ -2586,3 +2586,115 @@ describe('a recorded hand keeps unshown cards private', () => {
     expect(seen(game, 'nobody')).toEqual(['p1', 'p2']);
   });
 });
+
+describe('Turning the hands face up', () => {
+  // A paced run-out, so the stretch between "no more betting is possible" and
+  // "showdown" actually exists to be looked at. With no pause the whole board
+  // lands in one synchronous stack and that window never opens.
+  const table = () => new PokerGame('expose', { smallBlind: 10, bigBlind: 20, streetPauseMs: 50 });
+
+  const seat = (game, id, chips) => {
+    game.addPlayer({ id, name: id, uid: `u-${id}` }).chips = chips;
+  };
+
+  // Seat order is the engine's business, so drive whoever it says is up.
+  const act = (game, action, amount) => {
+    const up = game.players[game.currentPlayerIndex];
+    game.handleAction(up.id, action, amount);
+    return up.id;
+  };
+
+  const opponentCards = (game, viewerId) =>
+    Object.fromEntries(
+      game
+        .getStateForPlayer(viewerId)
+        .players.filter((p) => p.id !== viewerId)
+        .map((p) => [p.id, p.holeCards ? p.holeCards.length : null])
+    );
+
+  test('an all-in run-out shows the live hands before the board is finished', () => {
+    jest.useFakeTimers();
+    try {
+      const game = table();
+      for (const id of ['p1', 'p2', 'p3', 'p4']) seat(game, id, 100);
+      game.startRound();
+
+      const folded = act(game, 'fold');
+      act(game, 'allin');
+      act(game, 'allin');
+      act(game, 'allin');
+
+      // The last bet is the last frame of the street; the run-out starts on
+      // the next beat.
+      expect(game.cardsExposed).toBe(false);
+      jest.advanceTimersByTime(60);
+
+      // Nobody left in the hand can put another chip in, so the rest of the
+      // board is a formality - and the hands are up for it.
+      expect(game.cardsExposed).toBe(true);
+      expect(game.phase).not.toBe('showdown');
+      expect(game.communityCards.length).toBeLessThan(5);
+
+      const live = ['p1', 'p2', 'p3', 'p4'].filter((id) => id !== folded);
+      for (const viewer of ['p1', 'p2', 'p3', 'p4', 'nobody-watching']) {
+        const seen = opponentCards(game, viewer);
+        for (const id of live) if (id !== viewer) expect(seen[id]).toBe(2);
+        if (folded !== viewer) expect(seen[folded]).toBeNull();
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('a hand still being bet on keeps every holding private', () => {
+    const game = table();
+    for (const id of ['p1', 'p2', 'p3']) seat(game, id, 1000);
+    game.startRound();
+    act(game, 'call');
+
+    expect(game.cardsExposed).toBe(false);
+    expect(opponentCards(game, 'p1')).toEqual({ p2: null, p3: null });
+  });
+
+  test('a pot taken uncontested shows nobody anything', () => {
+    const game = table();
+    for (const id of ['p1', 'p2', 'p3']) seat(game, id, 1000);
+    game.startRound();
+
+    act(game, 'fold');
+    act(game, 'fold');
+
+    expect(game.isRunning).toBe(false);
+    expect(game.cardsExposed).toBe(false);
+    expect(opponentCards(game, 'nobody-watching')).toEqual({ p1: null, p2: null, p3: null });
+  });
+
+  test('one contender left is never a showdown, whatever the phase says', () => {
+    const game = table();
+    for (const id of ['p1', 'p2']) seat(game, id, 1000);
+    game.startRound();
+    game.players.find((p) => p.id === 'p2').folded = true;
+    game.showdown();
+
+    // showdown() sets the phase before it counts the contenders, so the phase
+    // on its own must never be what opens the cards.
+    expect(game.phase).toBe('showdown');
+    expect(opponentCards(game, 'nobody-watching')).toEqual({ p1: null, p2: null });
+  });
+
+  test('the next deal puts the cards back down', () => {
+    // No street pause here: the hand runs itself out to the end in one stack,
+    // which is the state the next deal has to clear up after.
+    const game = new PokerGame('expose_reset', { smallBlind: 10, bigBlind: 20 });
+    for (const id of ['p1', 'p2']) seat(game, id, 100);
+    game.startRound();
+    act(game, 'allin');
+    act(game, 'allin');
+    expect(game.cardsExposed).toBe(true);
+
+    for (const p of game.players) p.chips = 1000;
+    game.startRound();
+    expect(game.cardsExposed).toBe(false);
+    expect(opponentCards(game, 'p1')).toEqual({ p2: null });
+  });
+});

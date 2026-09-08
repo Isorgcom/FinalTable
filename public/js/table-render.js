@@ -453,6 +453,10 @@ function getPlayerIdentityKey(players) {
         p.autoPlay ? 'auto' : '',
         p.isConnected === false ? 'offline' : 'online',
         p.isSpectator ? 'spectator' : '',
+        // Whether this seat's cards are face up. The skeleton holds the cards,
+        // so the moment the server tables a hand - at showdown, or on an
+        // all-in run-out - the seats have to be built again to show them.
+        p.holeCards ? 'up' : '',
       ].join(':');
     })
     .join('|');

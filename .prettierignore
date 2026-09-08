@@ -8,3 +8,7 @@ graphify-out/
 test-results/
 playwright-report/
 coverage/
+
+# Written by the Claude Code permission prompt, git-ignored, and not ours to
+# format. Without this every approval leaves format:check failing.
+.claude/settings.local.json

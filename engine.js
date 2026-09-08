@@ -73,6 +73,10 @@ class PokerGame {
     // `${rank}${suit}` keys. Empty for a hand won by everyone folding: there
     // is no evaluated hand there and nothing is face up to mark.
     this.showdownWinningCards = [];
+    // Set once the betting can produce nothing further and the board is only
+    // being run out. Distinct from the showdown phase, which is the end of the
+    // hand: this is the stretch before it, with cards still to come.
+    this.cardsExposed = false;
     this.sbIndex = -1;
 
     // Logging helpers
@@ -418,6 +422,7 @@ class PokerGame {
     this.lastRoundWinnerIds = [];
     this.lastRoundRefunds = [];
     this.showdownWinningCards = [];
+    this.cardsExposed = false;
 
     // Reset player states
     const sittingOutNow = [];
@@ -943,10 +948,23 @@ class PokerGame {
     this.beginCurrentTurn();
   }
 
+  // Betting is over for good: nobody left in the hand can put another chip in,
+  // whatever the board brings. That is the moment a real table turns the hands
+  // face up, and watching the run-out blind is the difference between a hand
+  // and a slot machine. Two live hands are needed for it to mean anything -
+  // one player left is not a showdown, it is a fold, and nobody is owed a look
+  // at the cards.
+  _exposeHands() {
+    if (this.cardsExposed) return;
+    if (this.players.filter((p) => !p.folded).length < 2) return;
+    this.cardsExposed = true;
+  }
+
   // Everyone is all in, so the rest of the board is a formality. It is still
   // dealt a card at a time on the street beat: five cards appearing at once is
   // the moment of the hand going past too fast to watch.
   dealRemainingCards() {
+    this._exposeHands();
     if (this.communityCards.length >= 5) {
       this.phase = 'showdown';
       this.showdown();
@@ -1643,6 +1661,13 @@ class PokerGame {
     const hostPlayer = this.hostPlayerId
       ? this.players.find((p) => p.uid === this.hostPlayerId)
       : null;
+    // Hands are face up when there is something to compare: at showdown, and
+    // through a run-out where the betting is already finished. A pot taken
+    // uncontested is neither - the last player standing is never made to show,
+    // and showdown is the phase that hand ends in too.
+    const handsFaceUp =
+      (this.phase === 'showdown' || this.cardsExposed) &&
+      this.players.filter((p) => !p.folded).length >= 2;
     return {
       id: this.id,
       phase: this.phase,
@@ -1680,9 +1705,8 @@ class PokerGame {
         lastAction: p.lastAction || null,
         wins: p.wins,
         handsPlayed: p.handsPlayed,
-        // Only show hole cards to the player themselves, or during showdown
-        holeCards:
-          p.id === playerId || (this.phase === 'showdown' && !p.folded) ? p.holeCards : null,
+        // Only to the player themselves, or to everyone once the hands are up.
+        holeCards: p.id === playerId || (handsFaceUp && !p.folded) ? p.holeCards : null,
       })),
       // A seat that is sitting out is not the viewer's turn to act: the seat
       // acts for them. Saying otherwise flashes the action bar up for the
