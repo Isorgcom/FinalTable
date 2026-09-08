@@ -638,17 +638,30 @@ class TournamentDirector {
       const capacityWithoutOne = (active.length - 1) * this.tableSize;
       if (this.playersRemaining() > capacityWithoutOne) return;
 
-      // A hand in progress makes that table untouchable, and only that table.
-      // This used to wait for every table in the field to be idle at once,
-      // which is a moment that barely exists: rebalanceField runs from one
-      // table's round end, when the others are most likely mid-hand, so the
-      // check almost always tripped and the field never consolidated. The
-      // move itself is what has to be safe, and _movePlayer refuses a table
-      // that is dealing at either end.
+      // Which table breaks is decided over the whole field and never over the
+      // subset that happens to be idle. Choosing among the free tables looks
+      // harmless and is not: the free set changes from one round end to the
+      // next, so the same table is the obvious one to break now and the wrong
+      // one a second later, and players get carried back and forth. Decide
+      // first, then act only if the table chosen is free; if it is dealing,
+      // wait for it rather than picking a different answer.
       const doomed = this.breakOrder
         .map((num) => this.tables.find((t) => t.tableNumber === num))
-        .find((t) => t && t.players.length > 0 && !t.isRunning);
-      if (!doomed) return;
+        .find((t) => t && t.players.length > 0);
+      if (!doomed || doomed.isRunning) return;
+
+      // And only start a break that can be finished. The capacity test above
+      // counts every table in play, but a table mid-hand cannot take a seat, so
+      // the room may not be there yet. Beginning anyway empties the doomed
+      // table halfway, and the balancer behind it reads what is left as the
+      // emptiest table in the field and fills it straight back up — which is
+      // players carried out and back, over and over, for as long as it takes.
+      const room = this.tables
+        .filter(
+          (t) => t !== doomed && !t._broken && !t.isRunning && t.players.length < this.tableSize
+        )
+        .reduce((sum, t) => sum + (this.tableSize - t.players.length), 0);
+      if (room < doomed.players.length) return;
 
       for (const player of [...doomed.players]) {
         const target = this._emptiestTableExcept(doomed);
@@ -667,15 +680,19 @@ class TournamentDirector {
     for (let pass = 0; pass < 50; pass++) {
       const active = this.activeTables();
       if (active.length < 2) return;
-      // Only tables that are between hands can give or take a seat; a table
-      // mid-hand is left exactly as it is and balanced on a later pass.
+      // Sorted over every table in play, dealing or not. Ranking only the idle
+      // ones ranks a different field every time and sends players back and
+      // forth between two tables that were never out of balance to begin with.
       const sorted = [...active]
-        .filter((t) => !t._broken && !t.isRunning)
+        .filter((t) => !t._broken)
         .sort((a, b) => a.players.length - b.players.length);
       if (sorted.length < 2) return;
       const smallest = sorted[0];
       const largest = sorted[sorted.length - 1];
       if (largest.players.length - smallest.players.length <= 1) return;
+      // The two that need balancing are the two that must be free. If either is
+      // mid-hand the answer does not change, so wait for it.
+      if (smallest.isRunning || largest.isRunning) return;
 
       const mover = this._playerToMove(largest);
       if (!mover) return;
@@ -707,8 +724,18 @@ class TournamentDirector {
     if (this.activeTables().length <= 1) return; // nowhere to go; this is the final table
 
     for (const player of [...survivors]) {
+      // Never a table that is dealing: addPlayer on a running table changes the
+      // seat count a hand is being played against. _movePlayer refuses this;
+      // this path reached for a table directly and did not.
       const target = this.tables
-        .filter((t) => t !== table && t.players.length > 0 && t.players.length < this.tableSize)
+        .filter(
+          (t) =>
+            t !== table &&
+            !t._broken &&
+            !t.isRunning &&
+            t.players.length > 0 &&
+            t.players.length < this.tableSize
+        )
         .sort((a, b) => a.players.length - b.players.length)[0];
       if (!target) return; // every other table is full; leave them put
 

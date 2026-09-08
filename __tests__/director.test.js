@@ -668,13 +668,14 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     expect(d.playersRemaining()).toBe(9);
     const before = d.activeTables().length;
 
-    // One table is dealing. The other two are between hands and can be moved.
-    d.tables[2].isRunning = true;
+    // A table is dealing, and it is not the one due to break. Break order is
+    // fixed at the start, highest number first, so table 3 is the candidate;
+    // table 1 dealing must neither stop it nor lose its own seats.
+    d.tables[0].isRunning = true;
     d.rebalanceField();
 
     expect(d.activeTables().length).toBeLessThan(before);
-    // The table that was mid-hand kept every one of its players.
-    expect(d.tables[2].players).toHaveLength(3);
+    expect(d.tables[0].players).toHaveLength(3);
     expect(d.totalChips()).toBe(20 * 1000);
   });
 
@@ -690,14 +691,19 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     d.start();
     expect(d.tables.length).toBe(3);
 
-    // Lopsided: nine, nine, two — and a third table busy, so the imbalance can
-    // only be fixed between the two that are free.
-    const keep = d.tables[1].players.slice(0, 2);
-    d.tables[1].players.slice(2).forEach((p) => {
-      keep[0].chips += p.chips;
-      p.chips = 0;
-    });
-    d.tables[1].players = d.tables[1].players.filter((p) => p.chips > 0);
+    // Lopsided, with the dealing table sitting between the other two so it is
+    // neither the fullest nor the emptiest: the pair that needs balancing is
+    // free, so the work goes ahead around it.
+    const shed = (table, keepN) => {
+      const keep = table.players.slice(0, keepN);
+      table.players.slice(keepN).forEach((p) => {
+        keep[0].chips += p.chips;
+        p.chips = 0;
+      });
+      table.players = table.players.filter((p) => p.chips > 0);
+    };
+    shed(d.tables[1], 2);
+    shed(d.tables[2], 5);
     d.tables[2].isRunning = true;
     const spread = () => {
       const live = d.activeTables().filter((t) => !t.isRunning);
@@ -711,7 +717,8 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     d.rebalanceField();
 
     expect(spread()).toBeLessThanOrEqual(1);
-    expect(d.tables[2].players).toHaveLength(9);
+    // The table that was dealing was not touched.
+    expect(d.tables[2].players).toHaveLength(5);
   });
 
   // A running tournament lives only in memory, so a crash used to take the
@@ -821,6 +828,108 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     expect(revived.tournament.currentLevel).toBe(2);
     expect(revived.tables[0].smallBlind).toBe(revived.tournament.getCurrentBlinds().sb);
     revived.stop();
+    d.stop();
+  });
+
+  // Ranking only the idle tables ranks a different field on every round end,
+  // so the same table is the obvious one to empty now and the wrong one a
+  // second later. Observed on a live 200-player field: players carried from one
+  // table to another and straight back inside the same second, over and over.
+  test('a break that cannot finish does not get refilled behind it', () => {
+    const d = new TournamentDirector({
+      id: 'partial_break',
+      tableSize: 9,
+      startChips: 1000,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    for (let i = 0; i < 27; i++) d.register({ id: `p${i}`, uid: `u${i}`, name: `P${i}` });
+    d.start();
+    d._say = () => {};
+    const shed = (table, keepN) => {
+      const keep = table.players.slice(0, keepN);
+      table.players.slice(keepN).forEach((p) => {
+        keep[0].chips += p.chips;
+        p.chips = 0;
+      });
+      table.players = table.players.filter((p) => p.chips > 0);
+    };
+    // Eight, eight, two: the field fits on two tables, so table 3 should break.
+    shed(d.tables[0], 8);
+    shed(d.tables[1], 8);
+    shed(d.tables[2], 2);
+    // But the only real spare seat is on a table that is dealing, so the break
+    // cannot finish. It must not start one it cannot complete and leave a
+    // stranded table for the balancer to fill straight back up.
+    d.tables[1].isRunning = true;
+
+    const moves = [];
+    d.onPlayerMoved = (m) => moves.push(`${m.uid}:${m.fromTable}->${m.toTable}`);
+    d.rebalanceField();
+    d.tables.forEach((t) => {
+      t.isRunning = false;
+    });
+
+    const sizes = d.tables.map((t) => t.players.length);
+    // Either table 3 emptied completely, or it was left exactly as it was.
+    expect(sizes[2] === 0 || sizes[2] === 2).toBe(true);
+    // Nobody is carried out of a table and then back into it.
+    const perPlayer = {};
+    for (const m of moves) {
+      const uid = m.split(':')[0];
+      perPlayer[uid] = (perPlayer[uid] || 0) + 1;
+    }
+    expect(Object.entries(perPlayer).filter(([, n]) => n > 1)).toEqual([]);
+    expect(d.totalChips()).toBe(27 * 1000);
+    d.stop();
+  });
+
+  test('balancing does not carry the same player back and forth', () => {
+    const d = new TournamentDirector({
+      id: 'no_oscillation',
+      tableSize: 9,
+      startChips: 1000,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    for (let i = 0; i < 27; i++) d.register({ id: `p${i}`, uid: `u${i}`, name: `P${i}` });
+    d.start();
+    d._say = () => {};
+
+    const shed = (table, keepN) => {
+      const keep = table.players.slice(0, keepN);
+      table.players.slice(keepN).forEach((p) => {
+        keep[0].chips += p.chips;
+        p.chips = 0;
+      });
+      table.players = table.players.filter((p) => p.chips > 0);
+    };
+    shed(d.tables[1], 5);
+    shed(d.tables[2], 4);
+
+    const moves = [];
+    d.onPlayerMoved = (m) => moves.push(m.uid);
+
+    // Round ends arrive from one table at a time, so a different table is
+    // dealing on each pass. That rotation is what used to change the answer.
+    for (let round = 0; round < 20; round += 1) {
+      d.tables.forEach((t, i) => {
+        t.isRunning = i === round % d.tables.length;
+      });
+      d.rebalanceField();
+    }
+    d.tables.forEach((t) => {
+      t.isRunning = false;
+    });
+
+    const counts = {};
+    for (const uid of moves) counts[uid] = (counts[uid] || 0) + 1;
+    const carriedTwice = Object.entries(counts).filter(([, n]) => n > 1);
+    expect(carriedTwice).toEqual([]);
+    // And it settles rather than churning: nobody is moved more than the field
+    // actually needs.
+    expect(moves.length).toBeLessThanOrEqual(9);
+    expect(d.totalChips()).toBe(27 * 1000);
     d.stop();
   });
 

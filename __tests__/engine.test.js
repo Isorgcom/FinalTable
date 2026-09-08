@@ -1248,6 +1248,59 @@ describe('Hand History & Replay Data', () => {
     expect(game.getStateForPlayer('p0').recentHands).not.toBe(first);
   });
 
+  // Seen on a live 200-player field: five players all matched at the same price,
+  // all checking, round and round, for eight minutes. The betting round never
+  // closed and the table never dealt another hand. The walk in advanceAction
+  // ends a street by returning to lastRaiserIndex, which is a proxy for the
+  // real rule; when those indices stop agreeing with the table the proxy has no
+  // terminator and hands the turn on forever. The rule itself cannot do that.
+  test('a betting round ends when nobody owes anything, whatever the indices say', () => {
+    const game = armedTable('betting_backstop', { actionTimeoutMs: 0 });
+    for (let i = 0; i < 5; i++)
+      game.addPlayer({ id: `p${i}`, uid: `u${i}`, name: `P${i}`, chips: 5000 });
+    game.startRound();
+
+    // Everyone in, everyone matched, everyone has acted.
+    game.currentBet = 60;
+    game.players.forEach((p) => {
+      p.bet = 60;
+      p.chips = 4940;
+      p.folded = false;
+      p.allIn = false;
+      p.actedThisStreet = true;
+      p.lastAction = { action: 'call', amount: 60, time: Date.now() };
+    });
+    game.pot = 300;
+    game.currentPlayerIndex = 0;
+    // ...and the terminator the walk is looking for is not something it can
+    // ever land on.
+    game.lastRaiserIndex = 99;
+
+    let checks = 0;
+    while (game.isRunning && game.phase === 'preflop' && checks < 60) {
+      const cur = game.players[game.currentPlayerIndex];
+      if (!cur || !game.handleAction(cur.id, 'check')) break;
+      checks += 1;
+    }
+
+    // The street closes rather than circling the table.
+    expect(game.phase).not.toBe('preflop');
+    expect(checks).toBeLessThan(6);
+  });
+
+  test('the backstop does not end a street somebody still owes into', () => {
+    const game = armedTable('backstop_not_early', { actionTimeoutMs: 0 });
+    for (let i = 0; i < 4; i++)
+      game.addPlayer({ id: `p${i}`, uid: `u${i}`, name: `P${i}`, chips: 5000 });
+    game.startRound();
+    // A raise leaves the rest owing, and the street must stay open for them.
+    const first = game.players[game.currentPlayerIndex];
+    expect(game.handleAction(first.id, 'raise', 200)).toBe(true);
+    expect(game.phase).toBe('preflop');
+    const owing = game.players.filter((p) => !p.folded && !p.allIn && p.bet < game.currentBet);
+    expect(owing.length).toBeGreaterThan(0);
+  });
+
   // ── Pre-actions ────────────────────────────────────────────────────────────
   // A line armed before the turn opens. Every one of these drives the arm
   // through beginCurrentTurn, because that is the only door a turn opens

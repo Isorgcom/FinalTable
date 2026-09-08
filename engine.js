@@ -428,6 +428,7 @@ class PokerGame {
       p.folded = p.chips <= 0;
       p.allIn = false;
       p.lastAction = null;
+      p.actedThisStreet = false;
       p.handsPlayed++;
       // A new hand is a new price. Nothing armed against the last one survives.
       p.preAction = null;
@@ -789,6 +790,8 @@ class PokerGame {
       'Player action applied'
     );
 
+    player.actedThisStreet = true;
+
     // Acting spends whatever this seat had armed, however the action arrived.
     // The fire path clears the arm it plays, but a player who clicks during the
     // beat leaves one behind — the action bar is up, because it is their turn —
@@ -921,6 +924,21 @@ class PokerGame {
       return;
     }
 
+    // A backstop over the index bookkeeping above. The walk decides the street
+    // is over by returning to lastRaiserIndex, which is a proxy for the actual
+    // rule: betting ends when everyone still in the hand has acted on this
+    // street and matched the price. If those indices ever disagree with the
+    // table — and on a live 200 player field something got them to — the walk
+    // hands the turn round and round and the table never deals again. The rule
+    // itself does not have that failure mode, so it is checked here too.
+    const owing = this.players.filter(
+      (p) => !p.folded && !p.allIn && p.chips > 0 && (!p.actedThisStreet || p.bet < this.currentBet)
+    );
+    if (owing.length === 0) {
+      this.nextPhase();
+      return;
+    }
+
     this.currentPlayerIndex = nextIdx;
     this.beginCurrentTurn();
   }
@@ -992,6 +1010,7 @@ class PokerGame {
     // Reset bets for new betting round
     for (const p of this.players) {
       p.bet = 0;
+      p.actedThisStreet = false;
       // Armed against the street that just closed, and that price is gone.
       p.preAction = null;
     }
