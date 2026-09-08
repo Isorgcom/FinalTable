@@ -72,4 +72,59 @@ describe('identity store', () => {
     const store = createIdentityStore({ saveDir: dir });
     expect(store.size).toBe(0);
   });
+
+  // Reading the file back rather than reaching for internals: what matters is
+  // whether the disk was touched, not how the store decided to touch it.
+  const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const identFile = () => path.join(dir, 'identities.json');
+  const readIdentities = () => JSON.parse(fs.readFileSync(identFile(), 'utf8')).identities;
+
+  test('a reconnect does not write; a mint and a rename do', async () => {
+    // A material flush is near-instant here so the test can watch for it; the
+    // touch tier is parked far out of reach so a touch cannot masquerade as one.
+    const store = createIdentityStore({ saveDir: dir, flushDebounceMs: 5, touchFlushMs: 60000 });
+    const me = store.identify({ name: 'Bryce', avatar: '🦊' });
+    await settle(40);
+    expect(readIdentities()).toHaveLength(1);
+
+    // The ordinary reconnect: same token, same name, same avatar. This is the
+    // hot path - it runs on every connect - and it must not reach the disk.
+    fs.rmSync(identFile());
+    store.identify({ token: me.token, name: 'Bryce', avatar: '🦊' });
+    await settle(40);
+    expect(fs.existsSync(identFile())).toBe(false);
+
+    // A name that actually moves is a different matter.
+    store.identify({ token: me.token, name: 'Bee', avatar: '🦊' });
+    await settle(40);
+    expect(readIdentities()[0]).toMatchObject({ name: 'Bee' });
+  });
+
+  test('a touched lastSeenAt still reaches the disk on the slow tier', async () => {
+    const store = createIdentityStore({ saveDir: dir, flushDebounceMs: 5, touchFlushMs: 10 });
+    const me = store.identify({ name: 'Ann' });
+    await settle(40);
+    const before = readIdentities()[0].lastSeenAt;
+    store.verify(me.token);
+    await settle(60);
+    expect(readIdentities()[0].lastSeenAt).toBeGreaterThanOrEqual(before);
+    expect(readIdentities()).toHaveLength(1);
+  });
+
+  test('overlapping writes leave one whole file and no tmp litter', async () => {
+    const store = createIdentityStore({ saveDir: dir, flushDebounceMs: 1, touchFlushMs: 1 });
+    for (let i = 0; i < 40; i++) store.identify({ name: `P${i}` });
+    await settle(120);
+    expect(readIdentities()).toHaveLength(40);
+    expect(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  });
+
+  test('flush is synchronous, so shutdown can rely on it', () => {
+    const store = createIdentityStore({ saveDir: dir, flushDebounceMs: 60000 });
+    store.identify({ name: 'Zed' });
+    expect(fs.existsSync(identFile())).toBe(false);
+    store.flush();
+    // No await: the file is on disk by the time flush returns.
+    expect(readIdentities()).toHaveLength(1);
+  });
 });
