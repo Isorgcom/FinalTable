@@ -279,8 +279,26 @@ function createTournamentRegistry(deps = {}) {
   function wireTable(entry, table) {
     table.hostPlayerId = entry.hostUid;
     table.onUpdate = (g) => {
+      // The hand history goes out on the first push after it changes and is
+      // left off every push in between. It is the great bulk of a state
+      // payload and a hand's worth of it is identical for the whole street,
+      // so sending it per action was rebuilding and restringifying the same
+      // ten hands for every seat on every bet.
+      //
+      // Tracked per recipient rather than per table, because a socket that
+      // arrives mid-hand has nothing cached and must be sent the history on
+      // its first push. A table-wide flag cannot see that: the arriving client
+      // would take whichever routine push happened to reach it first and sit
+      // there with no history until the hand ended.
+      const version = g.handHistory ? g.handHistory.version : 0;
+      if (g._historyVersionSent !== version) {
+        g._historyVersionSent = version;
+        g._historySentTo = new Set();
+      }
       for (const r of recipientsFor(entry, g)) {
-        io.to(r.socketId).emit('gameState', g.getStateForPlayer(r.playerId));
+        const includeHistory = !g._historySentTo.has(r.socketId);
+        if (includeHistory) g._historySentTo.add(r.socketId);
+        io.to(r.socketId).emit('gameState', g.getStateForPlayer(r.playerId, { includeHistory }));
       }
     };
     table.onMessage = (msg, meta) => {

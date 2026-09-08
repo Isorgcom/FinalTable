@@ -280,6 +280,11 @@ function updateGameState(state) {
   // this handler so it costs no forced reflow.
   const sweeps = measureSweep(gameState, state);
   _boardFlipDelayMs = sweeps.length ? SWEEP_DUR_MS : 0;
+  // The server sends the ten-hand history only on the first push after a hand
+  // ends, because it is the bulk of the payload and identical for the whole
+  // street in between. Carrying the last set forward is what lets every reader
+  // below go on treating it as a plain field of the state.
+  if (!state.recentHands && gameState) state.recentHands = gameState.recentHands;
   gameState = state;
 
   // Detect new round → force full rebuild

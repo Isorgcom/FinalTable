@@ -123,6 +123,13 @@ class PokerGame {
     // clear it, which is what makes both paths safe to tear down.
     this._autoTurnTimer = null;
 
+    // The last ten hands as each viewer is allowed to see them, held against
+    // the history's version. It is 88% of a state payload and changes only
+    // when a hand ends, so building it per push meant rebuilding the same
+    // thing for every player on every single action.
+    this._historyCache = new Map();
+    this._historyCacheVersion = -1;
+
     // Hand history & leaderboard
     this.handHistory = new HandHistory();
     this.leaderboard = new Leaderboard();
@@ -1606,7 +1613,13 @@ class PokerGame {
     if (this._autoTurnTimer.unref) this._autoTurnTimer.unref();
   }
 
-  getStateForPlayer(playerId) {
+  // includeHistory: the ten recent hands are 88% of this payload and change
+  // only when a hand ends, so the emit path attaches them to the first push
+  // after each hand and leaves them off the rest. Left on by default, because
+  // a caller asking for a whole state without saying otherwise wants all of
+  // it; the client carries the last set it was sent forward across the pushes
+  // that omit them.
+  getStateForPlayer(playerId, { includeHistory = true } = {}) {
     const viewer = this.players.find((p) => p.id === playerId);
     const hostPlayer = this.hostPlayerId
       ? this.players.find((p) => p.uid === this.hostPlayerId)
@@ -1678,26 +1691,7 @@ class PokerGame {
       // War report & leaderboard
       warReport: this.lastWarReport || null,
       leaderboard: this.leaderboard.getRankings(),
-      recentHands: this.handHistory.getRecentHands(10).map((h) => ({
-        handNum: h.handNum,
-        pot: h.pot,
-        phase: h.finalPhase,
-        winners: h.winners,
-        communityCards: h.communityCards,
-        // Never the whole table's cards. The recorder keeps every hand in
-        // full server-side; a viewer is sent their own holding plus the ones
-        // actually shown down. Sending the lot handed everyone at the table
-        // the folding range of everyone else, ten hands deep, in a payload
-        // the replay panel then drew.
-        holeCards: this.visibleHistoryCards(h, playerId),
-        actions: h.actions,
-        players: h.players,
-        dealerIndex: h.dealerIndex,
-        sbIndex: h.sbIndex,
-        bbIndex: h.bbIndex,
-        smallBlind: h.smallBlind,
-        bigBlind: h.bigBlind,
-      })),
+      ...(includeHistory ? { recentHands: this._recentHandsFor(playerId) } : {}),
       // Tournament
       tournament: this.tournament ? this.tournament.getState() : null,
       gameOver: this.gameOver,
@@ -1750,6 +1744,43 @@ class PokerGame {
       if (mine.has(id) || shown.has(id)) visible[id] = cards;
     }
     return visible;
+  }
+
+  // The ten-hand window this viewer is entitled to see. Rebuilt only when a
+  // hand has ended since the last time it was asked for; between hands every
+  // push reuses the same array. The map is dropped wholesale on a new version
+  // rather than pruned, which keeps it to the viewers actually being served
+  // and means a reconnect's new socket id cannot pile up in it.
+  _recentHandsFor(playerId) {
+    const version = this.handHistory.version;
+    if (this._historyCacheVersion !== version) {
+      this._historyCache.clear();
+      this._historyCacheVersion = version;
+    }
+    const cached = this._historyCache.get(playerId);
+    if (cached) return cached;
+    const built = this.handHistory.getRecentHands(10).map((h) => ({
+      handNum: h.handNum,
+      pot: h.pot,
+      phase: h.finalPhase,
+      winners: h.winners,
+      communityCards: h.communityCards,
+      // Never the whole table's cards. The recorder keeps every hand in
+      // full server-side; a viewer is sent their own holding plus the ones
+      // actually shown down. Sending the lot handed everyone at the table
+      // the folding range of everyone else, ten hands deep, in a payload
+      // the replay panel then drew.
+      holeCards: this.visibleHistoryCards(h, playerId),
+      actions: h.actions,
+      players: h.players,
+      dealerIndex: h.dealerIndex,
+      sbIndex: h.sbIndex,
+      bbIndex: h.bbIndex,
+      smallBlind: h.smallBlind,
+      bigBlind: h.bigBlind,
+    }));
+    this._historyCache.set(playerId, built);
+    return built;
   }
 
   emitUpdate() {

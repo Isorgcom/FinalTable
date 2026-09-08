@@ -546,4 +546,61 @@ describe('Tournament socket layer', () => {
     expect(seat.player.preAction).toBeNull();
     expect(seat.player.sitOutNextHand).toBe(false);
   });
+
+  // ── Hand history on the wire ───────────────────────────────────────────────
+
+  test('the hand history rides one push per hand, not every push', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+
+    const pushes = [];
+    host.on('gameState', (st) => {
+      if (st && st.isRunning) pushes.push('recentHands' in st);
+    });
+
+    await startAndDeal(host, guest);
+    // Both seats sit out so the table plays itself and produces a real stream
+    // of pushes across several hands, which is the shape this is about.
+    host.emit('setAutoPlay', { enabled: true });
+    guest.emit('setAutoPlay', { enabled: true });
+
+    const entry = serverModule.tournaments.get(created.id);
+    // Four pushes is enough to show the difference and is reachable well
+    // inside the budget: this suite runs the real street and hand pauses, so
+    // a hand takes seconds, and asking for a lot of them is how a timing test
+    // turns into a flaky one.
+    await until(() => pushes.length >= 4 && pushes.filter(Boolean).length > 0, 20000);
+    entry.director.holdField();
+
+    const withHistory = pushes.filter(Boolean).length;
+    // A client has to receive it somehow, so some pushes carry it. The point
+    // is that it is no longer every push.
+    expect(pushes.length).toBeGreaterThanOrEqual(4);
+    expect(withHistory).toBeGreaterThan(0);
+    expect(withHistory).toBeLessThan(pushes.length);
+  });
+
+  test('a client that arrives mid-tournament is sent the history', async () => {
+    const first = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(first);
+    const token = first.__identity.token;
+    await startAndDeal(first, guest);
+
+    first.close();
+    await new Promise((r) => setTimeout(r, 60));
+
+    // A fresh socket has nothing cached, so its first state must carry the
+    // history whether or not a hand has ended since the last push.
+    const second = await connectClient();
+    const rejoined = waitFor(second, 'tournamentJoined');
+    // The very first state this socket is sent, whatever the table happens to
+    // be doing. Waiting for a running one instead lets an earlier
+    // between-hands push go by, and that push is the one carrying the history.
+    const state = waitFor(second, 'gameState');
+    await identify(second, { token, name: 'Host' });
+    await rejoined;
+    const seen = await state;
+    expect('recentHands' in seen).toBe(true);
+    expect(Array.isArray(seen.recentHands)).toBe(true);
+  });
 });

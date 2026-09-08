@@ -211,7 +211,7 @@ function registerTournamentHandlers(deps) {
         return;
       }
       player.preAction = kind === null ? null : { kind, atBet, atToCall };
-      socket.emit('gameState', table.getStateForPlayer(player.id));
+      socket.emit('gameState', table.getStateForPlayer(player.id, { includeHistory: false }));
     });
 
     // The deferred sit-out. Unlike setAutoPlay it leaves the hand in progress
@@ -224,7 +224,7 @@ function registerTournamentHandlers(deps) {
       const { table, player } = seat;
       if (!!player.sitOutNextHand === enabled) return;
       player.sitOutNextHand = enabled;
-      socket.emit('gameState', table.getStateForPlayer(player.id));
+      socket.emit('gameState', table.getStateForPlayer(player.id, { includeHistory: false }));
     });
 
     socket.on('disconnect', () => {

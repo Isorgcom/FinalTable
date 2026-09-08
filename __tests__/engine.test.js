@@ -1180,6 +1180,74 @@ describe('Hand History & Replay Data', () => {
     expect(game.phase).toBe('flop');
   });
 
+  // The ten-hand history is the great bulk of a state payload and changes only
+  // when a hand ends, so the emit path sends it on the first push after each
+  // hand and leaves it off the rest. Sending it per action meant rebuilding
+  // and restringifying the same ten hands for every seat on every bet, which
+  // is what put the server into a heap-exhaustion crash on a three-table field.
+  test('the hand history can be left out of a state payload', () => {
+    const game = armedTable('history_optional', { actionTimeoutMs: 0 });
+    for (let i = 0; i < 4; i++) game.addPlayer({ id: `p${i}`, uid: `u${i}`, name: `P${i}` });
+    // Play a couple of hands so there is a history worth omitting.
+    for (let h = 0; h < 2; h++) {
+      if (!game.startRound()) break;
+      let guard = 0;
+      while (game.isRunning && guard++ < 200) {
+        const cur = game.players[game.currentPlayerIndex];
+        if (!cur) break;
+        const toCall = game.currentBet - cur.bet;
+        if (!game.handleAction(cur.id, toCall > 0 ? 'call' : 'check')) {
+          if (!game.handleAction(cur.id, 'fold')) break;
+        }
+      }
+    }
+    expect(game.handHistory.hands.length).toBeGreaterThan(0);
+
+    // A caller that says nothing still gets everything.
+    const full = game.getStateForPlayer('p0');
+    expect(Array.isArray(full.recentHands)).toBe(true);
+    expect(full.recentHands.length).toBeGreaterThan(0);
+
+    const lean = game.getStateForPlayer('p0', { includeHistory: false });
+    expect('recentHands' in lean).toBe(false);
+    // Everything the felt needs to draw the moment is still there.
+    expect(lean.players).toHaveLength(4);
+    expect(lean.phase).toBe(full.phase);
+    expect(lean.pot).toBe(full.pot);
+    expect(JSON.stringify(lean).length).toBeLessThan(JSON.stringify(full).length / 2);
+  });
+
+  test('the history is rebuilt once per hand, not once per push', () => {
+    const game = armedTable('history_cached', { actionTimeoutMs: 0 });
+    for (let i = 0; i < 3; i++) game.addPlayer({ id: `p${i}`, uid: `u${i}`, name: `P${i}` });
+    game.startRound();
+    let guard = 0;
+    while (game.isRunning && guard++ < 200) {
+      const cur = game.players[game.currentPlayerIndex];
+      if (!cur) break;
+      const toCall = game.currentBet - cur.bet;
+      if (!game.handleAction(cur.id, toCall > 0 ? 'call' : 'check')) break;
+    }
+
+    const first = game.getStateForPlayer('p0').recentHands;
+    const second = game.getStateForPlayer('p0').recentHands;
+    // Same array object: between hands there is nothing to rebuild.
+    expect(second).toBe(first);
+
+    const versionBefore = game.handHistory.version;
+    game.startRound();
+    let g2 = 0;
+    while (game.isRunning && g2++ < 200) {
+      const cur = game.players[game.currentPlayerIndex];
+      if (!cur) break;
+      const toCall = game.currentBet - cur.bet;
+      if (!game.handleAction(cur.id, toCall > 0 ? 'call' : 'check')) break;
+    }
+    expect(game.handHistory.version).toBeGreaterThan(versionBefore);
+    // A hand ended, so the next ask builds afresh.
+    expect(game.getStateForPlayer('p0').recentHands).not.toBe(first);
+  });
+
   // ── Pre-actions ────────────────────────────────────────────────────────────
   // A line armed before the turn opens. Every one of these drives the arm
   // through beginCurrentTurn, because that is the only door a turn opens

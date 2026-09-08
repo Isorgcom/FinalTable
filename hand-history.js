@@ -1,6 +1,7 @@
 // hand-history.js - Records complete hand histories for replay and stats
 class HandHistory {
   constructor() {
+    this.version = 0;
     this.hands = []; // Last 20 completed hands
     this.maxHands = 20;
   }
@@ -105,6 +106,9 @@ class HandHistory {
     this.current.endTime = Date.now();
     this.hands.push(this.current);
     if (this.hands.length > this.maxHands) this.hands.shift();
+    // Bumped on the only mutation this record has. Readers cache what they
+    // build out of it against this number instead of rebuilding per push.
+    this.version++;
     const finished = this.current;
     this.current = null;
     return finished;
