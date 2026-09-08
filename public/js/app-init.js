@@ -173,6 +173,15 @@ function init() {
   });
   document.getElementById('btnAutoPlay').addEventListener('click', () => setSitOut(true));
   document.getElementById('btnSitIn').addEventListener('click', () => setSitOut(false));
+  // Delegated, like the raise presets: the buttons are relabelled and hidden on
+  // every push, so binding each one would rebind on every push too.
+  document.getElementById('preActionRow').addEventListener('click', (e) => {
+    const btn = e.target.closest('.preaction-btn');
+    if (btn) armPreAction(btn.dataset.kind);
+  });
+  document.getElementById('btnSitOutNextHand').addEventListener('click', () => {
+    setSitOutNextHand(!(gameState && gameState.mySitOutNextHand));
+  });
   document.getElementById('btnCloseReplay').addEventListener('click', () => {
     closeReplayPanel();
   });

@@ -1054,6 +1054,92 @@
   color: var(--bg-deep);
 }
 
+/* ═══ PRE-ACTION BAR ═══ */
+/* The same slot as the action bar and the sitting-out banner, and it can never
+   share it with either: this wants a seat that is not sitting out and not to
+   act, and those two want the opposites. One row, always, because unlike the
+   action bar this is up almost the whole hand and the slot sits over the
+   viewer's own seat — a second row would bury their cards. */
+.preaction-panel {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  z-index: 100;
+  max-width: 92vw;
+  padding: 6px 10px;
+  border: 1px solid rgba(92, 61, 26, 0.3);
+  border-radius: 8px;
+  background: rgba(13, 31, 18, 0.82);
+  backdrop-filter: blur(12px);
+}
+.preaction-panel.hidden {
+  display: none;
+}
+.preaction-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Never shrink. When the labels outgrow the width the panel scrolls, the way
+     the action row does on a phone; a shrinking row would clip them instead. */
+  flex: 0 0 auto;
+}
+.preaction-row.hidden {
+  display: none;
+}
+.preaction-btn,
+.preaction-sitout {
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 168, 76, 0.28);
+  background: rgba(201, 168, 76, 0.08);
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.preaction-btn.hidden {
+  display: none;
+}
+.preaction-btn:hover,
+.preaction-sitout:hover {
+  background: rgba(201, 168, 76, 0.18);
+  border-color: rgba(201, 168, 76, 0.5);
+}
+/* Armed reads as filled, not merely outlined: it is a decision left running
+   while the player looks away, so it has to be obvious at a glance. */
+.preaction-btn.is-armed {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--bg-deep);
+}
+/* The queued sit-out is not one of the three, and does not compete with them:
+   green, like the other "you are stepping out" affordances. */
+.preaction-sitout {
+  margin-left: auto;
+  border-color: rgba(123, 202, 149, 0.28);
+  background: rgba(123, 202, 149, 0.08);
+  color: #9bd8ae;
+}
+.preaction-sitout:hover {
+  background: rgba(123, 202, 149, 0.18);
+  border-color: rgba(123, 202, 149, 0.5);
+}
+.preaction-sitout.is-armed {
+  background: rgba(123, 202, 149, 0.85);
+  border-color: rgba(123, 202, 149, 0.9);
+  color: var(--bg-deep);
+}
+
 .actions-panel {
   position: absolute;
   bottom: 20px;

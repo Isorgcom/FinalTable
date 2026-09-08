@@ -749,3 +749,81 @@ test('the deck is shuffled once as a hand is dealt, ahead of the cards', async (
 
   expect(pageErrors).toEqual([]);
 });
+
+// The seat record behind a page, not just its table: the pre-action lives on
+// the player, and the point of the round trip is that the server has it.
+async function seatForPage(page) {
+  const uid = await page.evaluate(() => window.__identity && window.__identity.uid);
+  const entry = serverModule.registry.findByUid(uid);
+  return entry ? entry.director.playerByUid(uid) : null;
+}
+
+test('a line armed off turn reaches the server, and the two bars never share the slot', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'PreAct');
+  await deal(page);
+
+  // The action bar has the slot, so the pre-action bar does not.
+  await expect(page.locator('#preActionPanel')).toHaveClass(/hidden/);
+
+  // The opponent comes back to the table so it has a turn it will sit on for
+  // its whole clock. Sitting out it acts in a few milliseconds, which leaves no
+  // window to arm anything in.
+  const guest = guestContext.pages()[0];
+  await guest.click('#btnSitIn');
+  await expect(guest.locator('#seatBanner')).toHaveClass(/hidden/);
+
+  // Give the turn away. Heads-up the viewer can be first to act on the next
+  // street too, so act until the bar goes.
+  for (let i = 0; i < 4; i++) {
+    if (await page.locator('#actionsPanel').evaluate((el) => el.classList.contains('hidden')))
+      break;
+    const call = page.locator('#btnCall');
+    if (await call.isVisible()) await call.click();
+    else await page.locator('#btnCheck').click();
+    await page.waitForTimeout(250);
+  }
+
+  // Now the slot belongs to the pre-action bar, and to it alone.
+  await expect(page.locator('#preActionPanel')).not.toHaveClass(/hidden/, { timeout: 15000 });
+  await expect(page.locator('#actionsPanel')).toHaveClass(/hidden/);
+  await expect(page.locator('#preActionRow')).not.toHaveClass(/hidden/);
+
+  const armed = page.locator('#preActionRow .preaction-btn[data-kind="checkfold"]');
+  await armed.click();
+  await expect(armed).toHaveClass(/is-armed/);
+  // The round trip: the engine is holding it, not the page.
+  await expect
+    .poll(async () => {
+      const seat = await seatForPage(page);
+      return seat && seat.player.preAction ? seat.player.preAction.kind : null;
+    })
+    .toBe('checkfold');
+
+  // Tapping the armed one takes it back.
+  await armed.click();
+  await expect(armed).not.toHaveClass(/is-armed/);
+  await expect
+    .poll(async () => {
+      const seat = await seatForPage(page);
+      return seat ? seat.player.preAction : 'no seat';
+    })
+    .toBeNull();
+
+  // The queued sit-out is a separate control and reaches the seat the same way.
+  const sitOut = page.locator('#btnSitOutNextHand');
+  await sitOut.click();
+  await expect(sitOut).toHaveClass(/is-armed/);
+  await expect
+    .poll(async () => {
+      const seat = await seatForPage(page);
+      return seat ? seat.player.sitOutNextHand : null;
+    })
+    .toBe(true);
+  // It is queued, not taken: the hand in progress is untouched.
+  const seat = await seatForPage(page);
+  expect(seat.player.autoPlay).toBe(false);
+
+  expect(pageErrors).toEqual([]);
+});

@@ -309,6 +309,42 @@
           <div class="round-overlay-note">Waiting for the first deal…</div>
         </div>
 
+        <!-- A line armed for a turn that has not opened yet. It sits in the
+             same slot as the action bar and the sit-out banner, and the three
+             are mutually exclusive by construction: this one wants a seat that
+             is not sitting out and not to act, and the other two want the
+             opposites of those. -->
+        <div class="preaction-panel hidden" id="preActionPanel">
+          <div
+            class="preaction-row"
+            id="preActionRow"
+            role="group"
+            aria-label="Act when it is my turn"
+          >
+            <button class="preaction-btn" type="button" data-kind="checkfold" aria-pressed="false">
+              check / fold
+            </button>
+            <button class="preaction-btn" type="button" data-kind="check" aria-pressed="false">
+              check
+            </button>
+            <button class="preaction-btn" type="button" data-kind="call" aria-pressed="false">
+              call
+            </button>
+            <button class="preaction-btn" type="button" data-kind="callany" aria-pressed="false">
+              call any
+            </button>
+          </div>
+          <button
+            class="preaction-sitout"
+            type="button"
+            id="btnSitOutNextHand"
+            aria-pressed="false"
+            title="Finish this hand, then sit out"
+          >
+            sit out next hand
+          </button>
+        </div>
+
         <div class="actions-panel hidden" id="actionsPanel">
           <div class="action-presets">
             <div class="hand-strength hidden" id="handStrength" aria-live="polite"></div>

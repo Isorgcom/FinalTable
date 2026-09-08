@@ -337,6 +337,39 @@ function setSitOut(enabled) {
   socket.emit('setAutoPlay', { enabled });
 }
 
+// Arming a line for a turn that has not opened yet. The server holds it, so it
+// survives a reload and a phone locking itself; the local write is only so the
+// button responds to the tap, and the echo puts it right if the server disagreed.
+function armPreAction(kind) {
+  if (!socket || !gameState) return;
+  const me = gameState.players.find((p) => p.id === myId);
+  if (!me || me.isSpectator || me.autoPlay) return;
+  const armed = gameState.myPreAction;
+  // Tapping the armed one takes it back; the buttons are one choice, not four.
+  const next = armed && armed.kind === kind ? null : kind;
+  const payload = { kind: next };
+  if (next === 'call') {
+    // The price it is being armed against travels with it, and the engine
+    // refuses to play it at any other.
+    payload.atBet = gameState.currentBet;
+    payload.atToCall = Math.max(0, gameState.currentBet - (me.bet || 0));
+  }
+  gameState.myPreAction = next
+    ? { kind: next, atBet: payload.atBet ?? null, atToCall: payload.atToCall ?? null }
+    : null;
+  updatePreActionPanel();
+  socket.emit('armPreAction', payload);
+}
+
+function setSitOutNextHand(enabled) {
+  if (!socket || !gameState) return;
+  const me = gameState.players.find((p) => p.id === myId);
+  if (!me || me.autoPlay) return;
+  gameState.mySitOutNextHand = enabled;
+  updatePreActionPanel();
+  socket.emit('setSitOutNextHand', { enabled });
+}
+
 function hasResumeInteractionGuard() {
   return Date.now() < _resumeInteractionGuardUntil;
 }

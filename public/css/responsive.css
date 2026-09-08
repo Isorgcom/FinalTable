@@ -238,6 +238,11 @@
   .seat-banner {
     bottom: 5px;
   }
+  .preaction-panel {
+    bottom: 5px;
+    padding: 5px 8px;
+    gap: 6px;
+  }
   .action-row {
     flex-wrap: wrap;
     justify-content: center;
@@ -434,6 +439,10 @@
   .seat-banner {
     bottom: 2px;
   }
+  .preaction-panel {
+    bottom: 2px;
+    padding: 4px 6px;
+  }
   .action-btn {
     padding: 5px 10px;
     font-size: 0.7rem;
@@ -624,6 +633,31 @@
   .seat-banner {
     bottom: 2px;
     width: min(92vw, 420px);
+  }
+  /* Still one row on a phone. It scrolls sideways rather than growing a second
+     one, for the same reason .action-presets is hidden below: the slot is over
+     the viewer's own cards. */
+  .preaction-panel {
+    bottom: 2px;
+    width: min(92vw, 640px);
+    padding: 4px 6px;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .preaction-panel::-webkit-scrollbar {
+    display: none;
+  }
+  .preaction-btn,
+  .preaction-sitout {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    font-size: 0.62rem;
+  }
+  /* No auto margin once the bar scrolls: it would strand the sit-out toggle off
+     the end rather than keeping it a thumb's reach from the rest. */
+  .preaction-sitout {
+    margin-left: 4px;
   }
   .action-row {
     flex-wrap: nowrap;

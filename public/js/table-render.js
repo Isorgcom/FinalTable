@@ -315,6 +315,7 @@ function updateGameState(state) {
   // After render, so the seat elements the chips fly to and from exist.
   animateChipMovement(prevBets, prevWinnerKey, sweeps);
   updateActionsPanel();
+  updatePreActionPanel();
   updateHandStrength();
   updateTopBar();
   updateBlindClock();
@@ -1079,6 +1080,66 @@ function updateActionsPanel() {
       if (npEl) npEl.textContent = `to ${raiseTo} · +${Math.max(0, raiseTo - me.bet)}`;
       renderRaisePresets(me, minRaise, maxRaiseTo);
     }
+  }
+}
+
+// The bar for a turn that has not opened yet. It renders from the same snapshot
+// as the action bar and the sit-out banner, one pass, so the three can never
+// disagree about which of them is up.
+function updatePreActionPanel() {
+  const panel = document.getElementById('preActionPanel');
+  if (!panel) return;
+  const me = gameState ? gameState.players.find((p) => p.id === myId) : null;
+  // Not seated, sitting out, or it is your turn — in which case the action bar
+  // owns this slot and arming would race the beat the arm fires on.
+  if (!gameState || !me || me.autoPlay || gameState.isMyTurn) {
+    panel.classList.add('hidden');
+    return;
+  }
+  panel.classList.remove('hidden');
+
+  // The three action toggles need a live hand and a seat still in it. The
+  // sit-out toggle does not: between hands, folded and all-in are exactly when
+  // somebody decides they are done for now.
+  const row = document.getElementById('preActionRow');
+  const inHand = !!gameState.isRunning && !me.folded && !me.allIn && !me.isSpectator;
+  row.classList.toggle('hidden', !inHand);
+
+  const armed = gameState.myPreAction ? gameState.myPreAction.kind : null;
+  if (inHand) {
+    // Unlike the action bar, this renders between hands too, where toCall goes
+    // negative and canCheck is meaninglessly true. Clamp rather than trust it.
+    const toCall = Math.max(0, gameState.currentBet - (me.bet || 0));
+    const callCost = Math.min(toCall, me.chips);
+    // Facing a bet there is nothing to check, so the same armed line reads as
+    // the fold it would be. Free, it reads as the choice between the two.
+    const labels = {
+      checkfold: toCall > 0 ? 'fold' : 'check / fold',
+      check: 'check',
+      // Say the word before they arm it, not after it has taken the stack:
+      // a call bigger than the stack is an all-in, exactly as the action bar
+      // spells out when the turn is live.
+      call: callCost >= me.chips ? `all-in call ${callCost}` : `call ${callCost}`,
+      callany: toCall >= me.chips ? 'call any · all-in' : 'call any',
+    };
+    for (const btn of row.querySelectorAll('.preaction-btn')) {
+      const kind = btn.dataset.kind;
+      // check only when there is nothing to answer; call only when there is.
+      const shown = kind === 'check' ? toCall === 0 : kind === 'call' ? toCall > 0 : true;
+      btn.classList.toggle('hidden', !shown);
+      btn.textContent = labels[kind];
+      const on = armed === kind;
+      btn.classList.toggle('is-armed', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
+
+  const sitOutBtn = document.getElementById('btnSitOutNextHand');
+  if (sitOutBtn) {
+    const queued = !!gameState.mySitOutNextHand;
+    sitOutBtn.classList.toggle('is-armed', queued);
+    sitOutBtn.setAttribute('aria-pressed', queued ? 'true' : 'false');
+    sitOutBtn.textContent = queued ? 'sitting out next hand' : 'sit out next hand';
   }
 }
 
