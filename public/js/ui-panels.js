@@ -93,8 +93,35 @@ function updateBlindClock() {
   const t = gameState.tournament;
   document.getElementById('tbLevel').textContent = t.currentLevel + 1;
   document.getElementById('tbBlinds').textContent = t.blinds.sb + '/' + t.blinds.bb;
+  // How many are left in the tournament, which is not how many are left at this
+  // table. gameState.players is this table only, so pairing its count with the
+  // field's starting number read as a field count and was not one: two players
+  // arriving from a table that broke made the field appear to grow from 6/201
+  // to 8/201. The field summary knows the real number; the table count is only
+  // a fallback for a table with no tournament around it.
+  const summary = window.mttField;
+  const aliveHere = gameState.players.filter((p) => p.chips > 0).length;
+  const aliveField = summary && Number.isFinite(summary.remaining) ? summary.remaining : null;
   document.getElementById('tbAlive').textContent =
-    gameState.players.filter((p) => p.chips > 0).length + '/' + t.startingPlayers;
+    (aliveField === null ? aliveHere : aliveField) + '/' + t.startingPlayers;
+
+  // The bubble, on the felt rather than only in a panel nobody has open. It is
+  // the one moment where the right way to play changes — every table is held
+  // hand for hand and one more bust-out ends somebody's tournament with
+  // nothing — so it is worth saying loudly and worth taking away again the
+  // moment it stops being true.
+  const bubble = document.getElementById('tbBubble');
+  const banner2 = document.getElementById('tournamentBanner');
+  const onBubble = !!(summary && summary.onBubble);
+  if (bubble) {
+    bubble.classList.toggle('hidden', !onBubble);
+    if (onBubble) {
+      const left = summary.remaining;
+      const paid = summary.paidPlaces;
+      bubble.textContent = `ON THE BUBBLE · ${left} left, ${paid} paid · hand for hand`;
+    }
+  }
+  if (banner2) banner2.classList.toggle('on-bubble', onBubble);
 
   // Live countdown, re-seeded from the server on every state update.
   if (tournamentTimer) clearInterval(tournamentTimer);

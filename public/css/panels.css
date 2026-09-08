@@ -635,6 +635,45 @@
   font-size: 0.7rem;
   color: var(--cream);
 }
+/* The bubble. Amber because it is a warning and not good news, and loud enough
+   to be read without looking for it: this is the one moment where the correct
+   way to play changes for everybody at once. */
+.tournament-banner.on-bubble {
+  border-color: #c9a84c;
+  box-shadow: 0 0 0 1px rgba(201, 168, 76, 0.35);
+}
+.tournament-banner .tb-bubble {
+  margin-top: 4px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  background: rgba(201, 168, 76, 0.92);
+  color: var(--bg-deep);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  animation: bubble-pulse 1.8s ease-in-out infinite;
+}
+.tournament-banner .tb-bubble.hidden {
+  display: none;
+}
+@keyframes bubble-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+/* A pulsing badge is an accessibility problem for some people, and the colour
+   and the words carry the message on their own. */
+@media (prefers-reduced-motion: reduce) {
+  .tournament-banner .tb-bubble {
+    animation: none;
+  }
+}
+
 .tournament-banner .tb-level {
   font-weight: 600;
   font-size: 0.8rem;

@@ -679,6 +679,47 @@ test('folding when checking is free asks first, and folding to a bet does not', 
   expect(pageErrors).toEqual([]);
 });
 
+test('the bubble is announced on the felt, and goes away again', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'BubbleWatch');
+  await deal(page);
+
+  // A heads-up table with one place paid is genuinely on the bubble already —
+  // the next bust ends somebody's tournament with nothing — so the starting
+  // point is set explicitly rather than assumed.
+  await page.evaluate(() => {
+    window.mttField = { onBubble: false, remaining: 40, paidPlaces: 20 };
+    updateBlindClock();
+  });
+  await expect(page.locator('#tbBubble')).toHaveClass(/hidden/);
+  await expect(page.locator('#tournamentBanner')).not.toHaveClass(/on-bubble/);
+
+  // Reaching a real bubble takes a whole field busting down to the money, so
+  // the field summary is set directly: this is about what the felt does with
+  // it, not about how the director decides it.
+  await page.evaluate(() => {
+    window.mttField = { onBubble: true, remaining: 21, paidPlaces: 20 };
+    updateBlindClock();
+  });
+  const badge = page.locator('#tbBubble');
+  await expect(badge).not.toHaveClass(/hidden/);
+  await expect(badge).toBeVisible();
+  await expect(badge).toContainText(/bubble/i);
+  await expect(badge).toContainText('21');
+  await expect(badge).toContainText('20');
+  await expect(badge).toContainText(/hand for hand/i);
+  await expect(page.locator('#tournamentBanner')).toHaveClass(/on-bubble/);
+
+  // And it is taken away the moment it stops being true, rather than lingering.
+  await page.evaluate(() => {
+    window.mttField = { onBubble: false, inTheMoney: true, remaining: 20, paidPlaces: 20 };
+    updateBlindClock();
+  });
+  await expect(badge).toHaveClass(/hidden/);
+  await expect(page.locator('#tournamentBanner')).not.toHaveClass(/on-bubble/);
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('picking a hand in the replay panel opens it', async ({ page }) => {
   // Same shape of wait as the showdown test: a hand has to finish before there
   // is anything to replay, and how long that takes is the luck of the deal.

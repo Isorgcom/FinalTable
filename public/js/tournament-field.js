@@ -17,6 +17,9 @@
   function render(state) {
     window.mttField = state || null;
     if (window.SidePanel) SidePanel.refresh('info');
+    // The felt's banner reads the same summary, and the bubble can turn on or
+    // off on a push that carries no game state with it.
+    if (typeof updateBlindClock === 'function') updateBlindClock();
   }
 
   function showMove(move) {
