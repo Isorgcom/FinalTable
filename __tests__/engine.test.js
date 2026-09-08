@@ -2341,7 +2341,7 @@ describe('street pacing', () => {
     }
   });
 
-  test('an all-in run-out deals a card at a time on the same beat', () => {
+  test('an all-in run-out deals a street at a time on the same beat', () => {
     jest.useFakeTimers();
     try {
       const { game, a, b } = twoHanded({ streetPauseMs: 300 });
@@ -2350,12 +2350,18 @@ describe('street pacing', () => {
       a.allIn = true;
       b.allIn = true;
 
+      // A street a beat, not a card a beat: the board nobody could bet on
+      // still comes out as a flop, a turn and a river.
       game.dealRemainingCards();
-      expect(game.communityCards).toHaveLength(1);
+      expect(game.communityCards).toHaveLength(3);
+      expect(game.phase).toBe('flop');
       jest.advanceTimersByTime(320);
-      expect(game.communityCards).toHaveLength(2);
-      jest.advanceTimersByTime(320 * 4);
+      expect(game.communityCards).toHaveLength(4);
+      expect(game.phase).toBe('turn');
+      jest.advanceTimersByTime(320);
       expect(game.communityCards).toHaveLength(5);
+      expect(game.phase).toBe('river');
+      jest.advanceTimersByTime(320);
       expect(game.phase).toBe('showdown');
     } finally {
       jest.useRealTimers();
@@ -2624,9 +2630,10 @@ describe('Turning the hands face up', () => {
       act(game, 'allin');
       act(game, 'allin');
 
-      // The last bet is the last frame of the street; the run-out starts on
-      // the next beat.
-      expect(game.cardsExposed).toBe(false);
+      // The hands come up the moment the last chips are in, on the frame that
+      // still shows them going in; the board follows on the next beat.
+      expect(game.cardsExposed).toBe(true);
+      expect(game.communityCards).toHaveLength(0);
       jest.advanceTimersByTime(60);
 
       // Nobody left in the hand can put another chip in, so the rest of the
@@ -2680,6 +2687,71 @@ describe('Turning the hands face up', () => {
     // on its own must never be what opens the cards.
     expect(game.phase).toBe('showdown');
     expect(opponentCards(game, 'nobody-watching')).toEqual({ p1: null, p2: null });
+  });
+
+  test('an all-in run-out deals real streets: a flop of three, one burn each', () => {
+    jest.useFakeTimers();
+    try {
+      const game = table();
+      const streets = [];
+      game.onMessage = (msg, meta) => {
+        if (meta && meta.kind === 'street') streets.push(meta.street);
+      };
+      for (const id of ['p1', 'p2']) seat(game, id, 100);
+      game.startRound();
+      const deckAfterDeal = game.deck.length;
+
+      act(game, 'allin');
+      act(game, 'allin');
+
+      // Beat one is the flop, and a flop is three cards.
+      jest.advanceTimersByTime(60);
+      expect(game.communityCards).toHaveLength(3);
+      expect(game.phase).toBe('flop');
+
+      jest.advanceTimersByTime(60);
+      expect(game.communityCards).toHaveLength(4);
+      expect(game.phase).toBe('turn');
+
+      jest.advanceTimersByTime(60);
+      expect(game.communityCards).toHaveLength(5);
+      expect(game.phase).toBe('river');
+
+      // Three burns and five board cards, the same eight a played hand uses -
+      // not a burn before every single card.
+      expect(deckAfterDeal - game.deck.length).toBe(8);
+      expect(streets).toEqual(['flop', 'turn', 'river']);
+
+      jest.advanceTimersByTime(60);
+      expect(game.phase).toBe('showdown');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('a lone player with chips has nobody to bet against, so the hands come up', () => {
+    jest.useFakeTimers();
+    try {
+      const game = table();
+      for (const id of ['p1', 'p2']) seat(game, id, 1000);
+      game.startRound();
+      const short = game.players[game.currentPlayerIndex];
+      short.chips = 40;
+
+      act(game, 'allin');
+      const caller = act(game, 'call');
+
+      // One seat is all in and the other still has a stack - but with nobody
+      // to bet it against, the hand is as settled as if they were both in.
+      expect(game.players.find((p) => p.id === caller).chips).toBeGreaterThan(0);
+      expect(game.cardsExposed).toBe(true);
+      expect(opponentCards(game, caller)[short.id]).toBe(2);
+
+      jest.advanceTimersByTime(60);
+      expect(game.communityCards).toHaveLength(3);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('the next deal puts the cards back down', () => {

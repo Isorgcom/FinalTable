@@ -907,8 +907,13 @@ class PokerGame {
     // If all remaining players are all-in or folded
     const canAct = this.players.filter((p) => !p.folded && !p.allIn && p.chips > 0);
     if (canAct.length === 0) {
-      // Deal remaining community cards
-      this.dealRemainingCards();
+      // The last chips are in and nothing more can be bet. Hold the closing
+      // frame the way nextPhase does - that money is worth seeing land, and
+      // the hands come up on it - then run the board out on the street beat.
+      this.clearActionTimeout();
+      this._exposeHands();
+      this.emitUpdate();
+      this._afterStreetPause(() => this.dealRemainingCards());
       return;
     }
 
@@ -948,15 +953,56 @@ class PokerGame {
     this.beginCurrentTurn();
   }
 
+  // The next street: the burn, the cards, the phase and the announcement. The
+  // all-in run-out deals through here too, so a board nobody could bet on
+  // comes out exactly like one that was played - three cards for the flop,
+  // one burn a street, and the same line in the log and the replay.
+  _dealStreet(street) {
+    this.deck.pop(); // burn
+    if (street === 'flop') {
+      this.communityCards.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
+    } else {
+      this.communityCards.push(this.deck.pop());
+    }
+    this.phase = street;
+
+    // A flop is read as a whole; a turn or river is the one new card, against
+    // the board that was already sitting there.
+    const dealt =
+      street === 'flop'
+        ? this._cards(this.communityCards)
+        : this._card(this.communityCards[this.communityCards.length - 1]);
+    const label = street[0].toUpperCase() + street.slice(1);
+    this.emitMessage(`── ${label} ── ${dealt}`, { kind: 'street', street });
+    this._log(
+      street === 'flop'
+        ? `🂠 flop: ${dealt} (pot:${this.pot})`
+        : `🂠 ${street}: ${dealt} → ${this._cards(this.communityCards)} (pot:${this.pot})`
+    );
+    this._logEvent(
+      'street_advance',
+      { street, communityCards: this.communityCards.map((card) => this._card(card)) },
+      'info',
+      `Street advanced to ${street}`
+    );
+    this.handHistory.recordCommunityCards(this.communityCards);
+  }
+
   // Betting is over for good: nobody left in the hand can put another chip in,
   // whatever the board brings. That is the moment a real table turns the hands
   // face up, and watching the run-out blind is the difference between a hand
-  // and a slot machine. Two live hands are needed for it to mean anything -
-  // one player left is not a showdown, it is a fold, and nobody is owed a look
-  // at the cards.
+  // and a slot machine.
+  //
+  // It asks the table rather than trusting the caller, so it can be called
+  // from every route that might have closed the betting and only fires on the
+  // one that did. Two conditions: two live hands, because one player left is a
+  // fold and nobody is owed a look at the cards; and at most one seat that
+  // could still bet, because a lone player with chips has nobody to bet
+  // against and the hand is just as settled as if they were all in.
   _exposeHands() {
     if (this.cardsExposed) return;
     if (this.players.filter((p) => !p.folded).length < 2) return;
+    if (this.players.filter((p) => !p.folded && !p.allIn && p.chips > 0).length > 1) return;
     this.cardsExposed = true;
   }
 
@@ -970,8 +1016,8 @@ class PokerGame {
       this.showdown();
       return;
     }
-    this.deck.pop(); // burn
-    this.communityCards.push(this.deck.pop());
+    const n = this.communityCards.length;
+    this._dealStreet(n === 0 ? 'flop' : n === 3 ? 'turn' : 'river');
     this.emitUpdate();
     this._afterStreetPause(() => this.dealRemainingCards());
   }
@@ -996,6 +1042,9 @@ class PokerGame {
   }
 
   nextPhase() {
+    // The street is closing. If it closed the betting for the whole hand, this
+    // is the frame the hands come up on - whichever route got here.
+    this._exposeHands();
     const phaseIdx = PHASES.indexOf(this.phase);
     if (phaseIdx >= 4) {
       // The river's betting is over. Hold the same beat before the cards are
@@ -1036,63 +1085,7 @@ class PokerGame {
     this.minRaise = this.bigBlind;
     this.raiseCount = 0;
 
-    switch (PHASES[phaseIdx + 1]) {
-      case 'flop':
-        this.deck.pop(); // burn
-        this.communityCards.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
-        this.phase = 'flop';
-        this.emitMessage(`── Flop ── ${this._cards(this.communityCards)}`, {
-          kind: 'street',
-          street: 'flop',
-        });
-        this._log(`🂠 flop: ${this._cards(this.communityCards)} (pot:${this.pot})`);
-        this._logEvent(
-          'street_advance',
-          { street: 'flop', communityCards: this.communityCards.map((card) => this._card(card)) },
-          'info',
-          'Street advanced to flop'
-        );
-        break;
-      case 'turn':
-        this.deck.pop();
-        this.communityCards.push(this.deck.pop());
-        this.phase = 'turn';
-        this.emitMessage(`── Turn ── ${this._card(this.communityCards[3])}`, {
-          kind: 'street',
-          street: 'turn',
-        });
-        this._log(
-          `🂠 turn: ${this._card(this.communityCards[3])} → ${this._cards(this.communityCards)} (pot:${this.pot})`
-        );
-        this._logEvent(
-          'street_advance',
-          { street: 'turn', communityCards: this.communityCards.map((card) => this._card(card)) },
-          'info',
-          'Street advanced to turn'
-        );
-        break;
-      case 'river':
-        this.deck.pop();
-        this.communityCards.push(this.deck.pop());
-        this.phase = 'river';
-        this.emitMessage(`── River ── ${this._card(this.communityCards[4])}`, {
-          kind: 'street',
-          street: 'river',
-        });
-        this._log(
-          `🂠 river: ${this._card(this.communityCards[4])} → ${this._cards(this.communityCards)} (pot:${this.pot})`
-        );
-        this._logEvent(
-          'street_advance',
-          { street: 'river', communityCards: this.communityCards.map((card) => this._card(card)) },
-          'info',
-          'Street advanced to river'
-        );
-        break;
-    }
-
-    // Record community cards for replay
-    this.handHistory.recordCommunityCards(this.communityCards);
+    this._dealStreet(PHASES[phaseIdx + 1]);
 
     // First to act is after dealer
     this.currentPlayerIndex = this.getNextActiveIndex(this.dealerIndex);
@@ -1102,7 +1095,12 @@ class PokerGame {
     const canAct = this.players.filter((p) => !p.folded && !p.allIn && p.chips > 0);
     if (canAct.length <= 1) {
       if (this.communityCards.length < 5) {
-        this.dealRemainingCards();
+        // This street has just been dealt and nobody can bet on it. It gets
+        // its own frame regardless: handing straight to the run-out puts the
+        // flop and the turn on the felt together and the flop is never seen.
+        this._exposeHands();
+        this.emitUpdate();
+        this._afterStreetPause(() => this.dealRemainingCards());
         return;
       }
       this.phase = 'showdown';
