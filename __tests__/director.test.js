@@ -714,6 +714,116 @@ describe('Lobby phase 0: pre-start summary, avatars, tournament clock', () => {
     expect(d.tables[2].players).toHaveLength(9);
   });
 
+  // A running tournament lives only in memory, so a crash used to take the
+  // field with it: the server came back in a second and every seat found the
+  // tournament simply gone. A snapshot taken between hands is enough to seat
+  // everyone again with the stacks they had.
+  test('a field survives a snapshot and restore with its chips intact', () => {
+    const d = makeDirector(12, { tableSize: 6, startChips: 1000 });
+    d.start();
+    expect(d.tables.length).toBe(2);
+
+    // Move some chips around so the restore has something to get wrong.
+    const t0 = d.tables[0];
+    t0.players[0].chips += 700;
+    t0.players[1].chips -= 700;
+    const before = d.totalChips();
+    const seatsBefore = d.tables.map((t) => t.players.map((p) => `${p.uid}:${p.chips}`).join(','));
+
+    // Move the button off zero so a restore that ignores it is visible.
+    d.tables[0].dealerIndex = 3;
+    const buttonBefore = d.tables.map((t) => t.dealerIndex);
+
+    const snap = d.snapshot();
+    expect(snap.tables).toHaveLength(2);
+
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: snap.tableSize,
+      startChips: snap.startChips,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    expect(revived.restoreFrom(snap)).toBe(true);
+
+    expect(revived.tables).toHaveLength(2);
+    expect(revived.totalChips()).toBe(before);
+    expect(
+      revived.tables.map((t) => t.players.map((p) => `${p.uid}:${p.chips}`).join(','))
+    ).toEqual(seatsBefore);
+    expect(revived.isRunning).toBe(true);
+    expect(revived.tables.map((t) => t.dealerIndex)).toEqual(buttonBefore);
+    // Every restored seat is sitting out until its player comes back to it.
+    for (const table of revived.tables) {
+      for (const p of table.players) expect(p.autoPlay).toBe(true);
+    }
+    // And the field can be dealt again.
+    expect(revived.canStartHand(revived.tables[0])).toBe(true);
+    revived.stop();
+    d.stop();
+  });
+
+  test('a table mid-hand keeps the roster it had, and is restored to before that hand', () => {
+    const d = makeDirector(12, { tableSize: 6, startChips: 1000 });
+    d.start();
+    const [a, b] = d.tables;
+
+    // Table A is recorded while idle, then starts dealing.
+    d._captureIdleTables();
+    const stacksBeforeHand = a.players.map((p) => p.chips);
+    a.startRound();
+    expect(a.isRunning).toBe(true);
+    // Blinds are now in the pot, so the live stacks are short.
+    expect(a.players.map((p) => p.chips)).not.toEqual(stacksBeforeHand);
+
+    // Snapshotting now must not record the short stacks.
+    const snap = d.snapshot();
+    const entryA = snap.tables.find((t) => t.tableNumber === a.tableNumber);
+    expect(entryA.players.map((p) => p.chips)).toEqual(stacksBeforeHand);
+    // The idle table is recorded live.
+    const entryB = snap.tables.find((t) => t.tableNumber === b.tableNumber);
+    expect(entryB.players.map((p) => p.chips)).toEqual(b.players.map((p) => p.chips));
+
+    // The whole field still balances: the hand in flight is simply undone.
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: snap.tableSize,
+      startChips: snap.startChips,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    revived.restoreFrom(snap);
+    expect(revived.totalChips()).toBe(12 * 1000);
+    revived.stop();
+    d.stop();
+  });
+
+  test('the blind clock resumes where it stopped, not where it would have been', () => {
+    const d = makeDirector(4, { tableSize: 4, startChips: 1000, levelDuration: 300 });
+    d.start();
+    d.tournament.currentLevel = 2;
+    d.tournament.startTime = Date.now() - 700 * 1000; // deep into level 2
+    const snap = d.snapshot();
+    expect(snap.clock.currentLevel).toBe(2);
+    expect(snap.clock.elapsedMs).toBeGreaterThan(600 * 1000);
+
+    // The server is "down" for a long time before the restore.
+    snap.clock.elapsedMs = 700 * 1000;
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: snap.tableSize,
+      startChips: snap.startChips,
+      levelDuration: 300,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    revived.restoreFrom(snap);
+    // Level 2 still, not level 5: downtime is not charged to the field.
+    expect(revived.tournament.currentLevel).toBe(2);
+    expect(revived.tables[0].smallBlind).toBe(revived.tournament.getCurrentBlinds().sb);
+    revived.stop();
+    d.stop();
+  });
+
   test('director tables run the tournament action clock', () => {
     const d = makeDirector(2, { gameOptions: {} });
     d.start();

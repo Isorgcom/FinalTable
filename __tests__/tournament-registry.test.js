@@ -274,7 +274,7 @@ describe('tournament registry', () => {
     });
   });
 
-  test('registering tournaments persist and are restored; running ones are not written', () => {
+  test('registering tournaments persist and are restored, and so do running ones', () => {
     const store = makeStore();
     const first = createTournamentRegistry({
       io,
@@ -321,11 +321,65 @@ describe('tournament registry', () => {
     expect(second.findByUid('g')).toBe(back);
     second.bind(back, 'g', makeSocket('sg2'), { resumed: true });
     expect(back.registrations.get('g').socketId).toBe('sg2');
-    // ...and the sweep starts it at its time, after which it leaves the file.
+    // ...and the sweep starts it at its time.
     jest.advanceTimersByTime(9000);
     expect(back.status).toBe('running');
+
+    // A running tournament stays in the file now, carrying the field. It used
+    // to be dropped, on the grounds that a hand in progress cannot be rebuilt
+    // — which is true, and is why the field is recorded between hands instead.
     second.flush();
-    expect(store.load()).toHaveLength(0);
+    const saved = store.load();
+    expect(saved).toHaveLength(1);
+    expect(saved[0].status).toBe('running');
+    expect(saved[0].field.tables[0].players.map((p) => p.uid).sort()).toEqual(['g', 'h']);
+    second.stop();
+  });
+
+  test('a tournament that was mid-play is seated again after a restart', () => {
+    const store = makeStore();
+    const first = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    const { entry } = first.create(
+      'h',
+      { name: 'Crashed', startsAt: Date.now() + 1000 },
+      makeSocket('sh')
+    );
+    first.join('g', { code: entry.code }, makeSocket('sg'));
+    jest.advanceTimersByTime(2000);
+    expect(entry.status).toBe('running');
+
+    // Give the field a shape a restore could get wrong.
+    const table = entry.director.tables[0];
+    table.players[0].chips += 1200;
+    table.players[1].chips -= 1200;
+    const stacks = table.players.map((p) => `${p.uid}:${p.chips}`);
+    const total = entry.director.totalChips();
+    first.flush();
+    first.stop();
+
+    // The process comes back.
+    const second = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back.status).toBe('running');
+    expect(back.director.isRunning).toBe(true);
+    expect(back.director.tables).toHaveLength(1);
+    expect(back.director.totalChips()).toBe(total);
+    expect(back.director.tables[0].players.map((p) => `${p.uid}:${p.chips}`)).toEqual(stacks);
+    // Nobody is back at the keyboard yet, so every seat is sitting out.
+    for (const p of back.director.tables[0].players) expect(p.autoPlay).toBe(true);
     second.stop();
   });
 });

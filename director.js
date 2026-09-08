@@ -45,6 +45,9 @@ class TournamentDirector {
     // Late registration stays open through this many levels (0 = closes at start).
     this.lateRegLevels = Number.isInteger(options.lateRegLevels) ? options.lateRegLevels : 3;
     this._lateRegClosedAnnounced = false;
+    // tableNumber -> the last state that table was in while it was not
+    // dealing. See _captureIdleTables for why it is kept per table.
+    this._tableSnapshots = new Map();
     this._bubbleAnnounced = false;
     this._inTheMoneyAnnounced = false;
 
@@ -78,6 +81,9 @@ class TournamentDirector {
     // Fired when a player changes table, so a host can tell that player
     // specifically rather than making them notice their seat changed.
     this.onPlayerMoved = options.onPlayerMoved || null;
+    // Called when the field has settled after a hand, so the host can persist
+    // whatever snapshot() now returns.
+    this.onSnapshot = options.onSnapshot || null;
     // Fired whenever the field summary changes in a way worth pushing.
     this.onFieldUpdate = options.onFieldUpdate || null;
     // Fired for a human who busts, with their place, before they leave the
@@ -287,21 +293,7 @@ class TournamentDirector {
     this._expectedChips = this.totalChips();
     this.tournament.start(this.entrants.length);
 
-    // Push every level change to every table, so a player moved at level 6
-    // does not find themselves playing level 3 blinds.
-    this.tournament.onLevelUp = (level, blinds) => {
-      for (const table of this.tables) {
-        table.smallBlind = blinds.sb;
-        table.bigBlind = blinds.bb;
-      }
-      this._say(`Blinds up: ${blinds.sb}/${blinds.bb} (level ${level + 1})`);
-      if (this.lateRegLevels > 0 && !this._lateRegClosedAnnounced && !this.lateRegOpen()) {
-        this._lateRegClosedAnnounced = true;
-        this._say(
-          `Late registration closed: ${this.entrants.length} entrants, ${this.paidPlaces} paid`
-        );
-      }
-    };
+    this._wireLevelUp();
 
     const blinds = this.tournament.getCurrentBlinds();
     for (const table of this.tables) {
@@ -501,6 +493,12 @@ class TournamentDirector {
     // deal never fires another round end, so only somebody else's round end
     // will ever get its players unstuck.
     this.rebalanceField();
+
+    // The field has settled: busts are out, moves are done, chips are checked.
+    // Record every table that is not mid-hand, and tell the host so it can be
+    // written somewhere that survives this process.
+    this._captureIdleTables();
+    if (this.onSnapshot) this.onSnapshot(this);
     if (this.onFieldUpdate) this.onFieldUpdate();
   }
 
@@ -772,6 +770,134 @@ class TournamentDirector {
       inTheMoney: this.paidPlaces ? this.playersRemaining() <= this.paidPlaces : false,
       tournament: this.tournament.getState(),
     };
+  }
+
+  // Push every level change to every table, so a player moved at level 6 does
+  // not find themselves playing level 3 blinds. Shared by start and restore:
+  // a resumed tournament needs the same wiring a fresh one gets.
+  _wireLevelUp() {
+    this.tournament.onLevelUp = (level, blinds) => {
+      for (const table of this.tables) {
+        table.smallBlind = blinds.sb;
+        table.bigBlind = blinds.bb;
+      }
+      this._say(`Blinds up: ${blinds.sb}/${blinds.bb} (level ${level + 1})`);
+      if (this.lateRegLevels > 0 && !this._lateRegClosedAnnounced && !this.lateRegOpen()) {
+        this._lateRegClosedAnnounced = true;
+        this._say(
+          `Late registration closed: ${this.entrants.length} entrants, ${this.paidPlaces} paid`
+        );
+      }
+    };
+  }
+
+  // A table is only worth recording between hands: mid-hand its stacks are
+  // short by whatever is in the pot, and restoring that would quietly destroy
+  // chips. So each table's entry is rewritten whenever it is idle and left
+  // alone while it deals.
+  //
+  // That is enough for the field as a whole to stay consistent, because chips
+  // only cross tables through _movePlayer, which refuses unless both ends are
+  // idle. A table that is dealing cannot have gained or lost a player since
+  // its entry was written; only its stacks are stale, by exactly the hand it
+  // is playing. Restoring therefore costs at most the hand in flight, per
+  // table, and never a torn field.
+  _captureIdleTables() {
+    for (const table of this.tables) {
+      if (table.isRunning) continue;
+      this._tableSnapshots.set(table.tableNumber, {
+        tableNumber: table.tableNumber,
+        dealerIndex: table.dealerIndex || 0,
+        broken: !!table._broken,
+        players: table.players.map((p) => ({
+          uid: p.uid,
+          name: p.name,
+          avatar: p.avatar || null,
+          chips: p.chips,
+          autoPlay: !!p.autoPlay,
+          sitOutReason: p.sitOutReason || null,
+        })),
+      });
+    }
+  }
+
+  // Everything needed to seat this field again after a restart. No deck, no
+  // hole cards, no timers, no socket ids: a hand in progress is not restorable
+  // and is not attempted.
+  snapshot() {
+    this._captureIdleTables();
+    return {
+      version: 1,
+      id: this.id,
+      tableSize: this.tableSize,
+      startChips: this.startChips,
+      buyIn: this.buyIn,
+      lateRegLevels: this.lateRegLevels,
+      payoutPct: this.payoutPct,
+      paidPlaces: this.paidPlaces,
+      breakOrder: [...(this.breakOrder || [])],
+      expectedChips: this._expectedChips,
+      entrants: this.entrants.map((e) => ({ uid: e.uid, name: e.name, avatar: e.avatar || null })),
+      tables: [...this._tableSnapshots.values()].map((t) => ({
+        ...t,
+        players: t.players.map((p) => ({ ...p })),
+      })),
+      clock: this.tournament.snapshotClock(),
+    };
+  }
+
+  // Seat a stored field and start its clock again. The inverse of snapshot,
+  // and deliberately not a variant of start(): there is no draw here, every
+  // seat and stack is already decided.
+  restoreFrom(snap) {
+    if (!snap || !Array.isArray(snap.tables) || snap.tables.length === 0) return false;
+    this.entrants = (snap.entrants || []).map((e) => ({ ...e }));
+    this.payoutPct = snap.payoutPct || this.payoutPct;
+    this.paidPlaces = snap.paidPlaces || (this.payoutPct ? this.payoutPct.length : 0);
+
+    for (const entry of snap.tables) {
+      const table = this._createTable(entry.tableNumber - 1);
+      if (entry.broken) table._broken = true;
+      const roster = entry.players || [];
+      roster.forEach((p, i) => {
+        // Seated explicitly and in the recorded order. Without a seat index
+        // addPlayer draws for position, which would reshuffle the table and
+        // move the button and the blinds onto different people.
+        const seated = table.addPlayer({
+          id: p.uid, // rebound to a socket id when the player reconnects
+          uid: p.uid,
+          name: p.name,
+          avatar: p.avatar || null,
+          chips: p.chips,
+          seatIndex: i,
+        });
+        if (seated) {
+          // Nobody is connected yet, so every restored seat starts sitting out
+          // and is taken back by its player when they return.
+          seated.autoPlay = true;
+          seated.sitOutReason = p.sitOutReason || 'disconnect';
+        }
+      });
+      // After seating: inserting a seat at or before the button moves it, so
+      // setting it first would leave the button somewhere else entirely.
+      table.dealerIndex = Math.min(entry.dealerIndex || 0, Math.max(0, table.players.length - 1));
+      this._tableSnapshots.set(table.tableNumber, { ...entry });
+    }
+
+    this.breakOrder =
+      snap.breakOrder && snap.breakOrder.length
+        ? [...snap.breakOrder]
+        : [...this.tables].reverse().map((t) => t.tableNumber);
+    this.isRunning = true;
+    this._expectedChips = this.totalChips();
+    this.tournament.resumeFrom(snap.clock || {});
+    this._wireLevelUp();
+    const blinds = this.tournament.getCurrentBlinds();
+    for (const table of this.tables) {
+      table.smallBlind = blinds.sb;
+      table.bigBlind = blinds.bb;
+    }
+    return true;
   }
 
   _say(message) {

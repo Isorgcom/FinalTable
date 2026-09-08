@@ -56,6 +56,42 @@ class Tournament {
     return this.getCurrentBlinds();
   }
 
+  // The clock as a plain object. Elapsed rather than the absolute start, so a
+  // restore resumes where the field left off instead of charging it for the
+  // time the server was down: a tournament that crashed at level 3 and came
+  // back ten minutes later is still at level 3.
+  snapshotClock() {
+    return {
+      currentLevel: this.currentLevel,
+      elapsedMs: this.startTime ? Date.now() - this.startTime : 0,
+      levelDuration: this.levelDuration,
+      startingPlayers: this.startingPlayers,
+      eliminations: this.eliminations.map((e) => ({ ...e })),
+    };
+  }
+
+  // Pick the clock back up mid-tournament. Everything start() does except the
+  // draw: the level and the eliminations already happened and are restored,
+  // not recomputed.
+  resumeFrom(snap = {}) {
+    this.isActive = true;
+    this.currentLevel = Number.isInteger(snap.currentLevel) ? snap.currentLevel : 0;
+    this.startingPlayers = snap.startingPlayers || 0;
+    this.eliminations = Array.isArray(snap.eliminations)
+      ? snap.eliminations.map((e) => ({ ...e }))
+      : [];
+    if (snap.levelDuration) this.levelDuration = snap.levelDuration;
+    const elapsed = Math.max(0, Number(snap.elapsedMs) || 0);
+    this.startTime = Date.now() - elapsed;
+
+    if (this.timer) clearInterval(this.timer);
+    this.timer = setInterval(() => {
+      this.checkLevelUp();
+    }, 1000);
+    if (this.timer.unref) this.timer.unref();
+    return this.getCurrentBlinds();
+  }
+
   stop() {
     this.isActive = false;
     if (this.timer) {

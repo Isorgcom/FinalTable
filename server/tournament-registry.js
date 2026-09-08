@@ -78,6 +78,11 @@ function createTournamentRegistry(deps = {}) {
         uid,
         joinedAt: r.joinedAt,
       })),
+      status: entry.status,
+      // A running tournament carries the field as it stood between hands, so a
+      // restart seats everyone again instead of the tournament ceasing to
+      // exist. Registrations alone are enough for one that has not dealt.
+      field: entry.status === 'running' ? entry.director.snapshot() : null,
     };
   }
 
@@ -87,7 +92,9 @@ function createTournamentRegistry(deps = {}) {
       persistTimer = null;
     }
     if (!store) return;
-    const list = [...tournaments.values()].filter((e) => e.status === 'registering').map(serialize);
+    const list = [...tournaments.values()]
+      .filter((e) => e.status === 'registering' || e.status === 'running')
+      .map(serialize);
     try {
       store.save(list);
     } catch (_err) {
@@ -405,6 +412,8 @@ function createTournamentRegistry(deps = {}) {
       onTableCreated: (table) => wireTable(entry, table),
       onMessage: (msg) => emitAll(entry, 'gameMessage', msg),
       onPlayerMoved: (move) => emitTo(entry, move.uid, 'tableMoved', move),
+      // The field has settled after a hand: write it down.
+      onSnapshot: () => persist(),
       onFieldUpdate: () => {
         repointWatchers(entry);
         emitState(entry);
@@ -661,6 +670,24 @@ function createTournamentRegistry(deps = {}) {
     return { entry };
   }
 
+  // Everything start() does except the draw: the field is already seated from
+  // a snapshot, so only the clock and the tick need starting.
+  function resume(entry) {
+    entry.status = 'running';
+    entry.startedAt = entry.startedAt || now();
+    entry.waitingReason = null;
+    entry.timer = timers.setInterval(() => {
+      try {
+        entry.director.tick();
+        emitState(entry);
+      } catch (err) {
+        emitAll(entry, 'gameMessage', `Tournament halted: ${err.message}`);
+        remove(entry, 'halted');
+      }
+    }, TICK_MS);
+    if (entry.timer && entry.timer.unref) entry.timer.unref();
+  }
+
   function start(entry) {
     entry.director.start();
     entry.status = 'running';
@@ -826,6 +853,21 @@ function createTournamentRegistry(deps = {}) {
       if (entry.registrations.size === 0) continue;
       if (!entry.registrations.has(entry.hostUid)) {
         entry.hostUid = [...entry.registrations.keys()][0];
+      }
+      // A tournament that was mid-play when the process went down is seated
+      // again from the field it recorded between hands. Every seat comes back
+      // sitting out and is taken over by its player when they reconnect, so a
+      // field nobody returns to plays itself out rather than hanging.
+      if (saved.status === 'running' && saved.field) {
+        try {
+          if (entry.director.restoreFrom(saved.field)) {
+            for (const table of entry.director.tables) wireTable(entry, table);
+            resume(entry);
+          }
+        } catch (_err) {
+          // A field that will not seat is not worth taking the whole
+          // tournament down for; it falls back to its registrations.
+        }
       }
       tournaments.set(entry.id, entry);
       restored++;
