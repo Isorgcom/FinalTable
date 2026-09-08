@@ -98,6 +98,28 @@ function init() {
     });
   window.showTextPromptDialog = (config) => openAppDialog({ ...config, kind: 'prompt' });
 
+  // Folding when checking is free throws the hand away for nothing: there is no
+  // price to escape and no information to protect, so it is never what somebody
+  // meant to do. Every other fold goes straight through — being asked to
+  // confirm an ordinary fold, on a clock, would be worse than the mistake.
+  async function foldWithGuard() {
+    const free = !!(gameState && gameState.isMyTurn && gameState.canCheck);
+    if (!free) return sendAction('fold');
+    if (typeof window.showConfirmDialog !== 'function') return sendAction('fold');
+    const ok = await window.showConfirmDialog({
+      title: 'Fold for nothing?',
+      message: 'Checking costs you nothing here. Folding gives the hand up.',
+      confirmLabel: 'Fold anyway',
+      cancelLabel: 'Go back',
+    });
+    if (!ok) return;
+    // The table does not wait for an answer, so the turn may have moved on or
+    // the price may have changed while the question was up. Fold only if
+    // folding still means what it meant when it was asked.
+    if (!gameState || !gameState.isMyTurn || !gameState.canCheck) return;
+    sendAction('fold');
+  }
+
   function closeMenu() {
     const menu = document.getElementById('menuDropdown');
     if (menu) menu.classList.remove('open');
@@ -131,7 +153,7 @@ function init() {
     document.getElementById('resultModal').classList.add('hidden');
     if (window.Lobby) Lobby.leave();
   });
-  document.getElementById('btnFold').addEventListener('click', () => sendAction('fold'));
+  document.getElementById('btnFold').addEventListener('click', () => foldWithGuard());
   document.getElementById('btnCheck').addEventListener('click', () => sendAction('check'));
   document.getElementById('btnCall').addEventListener('click', () => sendAction('call'));
   document.getElementById('btnRaise').addEventListener('click', () => {
@@ -413,7 +435,7 @@ function init() {
     switch (e.key) {
       case 'f':
       case 'F':
-        sendAction('fold');
+        foldWithGuard();
         break;
       case 'k':
       case 'K': // check

@@ -612,6 +612,73 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
   expect(pageErrors).toEqual([]);
 });
 
+test('folding when checking is free asks first, and folding to a bet does not', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  const pageErrors = await seatAtTournamentTable(page, 'FoldGuard');
+  await deal(page);
+
+  // Get to a spot where checking is free. Heads-up the viewer is often facing
+  // the blind first, so act until nothing is owed.
+  const owed = () =>
+    page.evaluate(() => {
+      const me = gameState.players.find((p) => p.id === myId);
+      return gameState.isMyTurn ? Math.max(0, gameState.currentBet - (me.bet || 0)) : -1;
+    });
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    const o = await owed();
+    if (o === 0) break;
+    // o === -1 means it is not our turn yet; anything above zero is a price to
+    // pay to stay in. Only click a button that is actually on screen.
+    if (
+      o > 0 &&
+      (await page
+        .locator('#btnCall')
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await page
+        .locator('#btnCall')
+        .click({ timeout: 2000 })
+        .catch(() => {});
+    }
+    await page.waitForTimeout(300);
+  }
+  expect(await owed()).toBe(0);
+
+  // Folding here would give the hand up for nothing, so it is questioned.
+  await page.locator('#btnFold').click();
+  await expect(page.locator('#appDialogModal')).not.toHaveClass(/hidden/);
+  await expect(page.locator('#appDialogTitle')).toContainText(/fold/i);
+
+  // Backing out leaves the hand exactly as it was: still your turn, still in.
+  await page.locator('#btnAppDialogCancel').click();
+  await expect(page.locator('#appDialogModal')).toHaveClass(/hidden/);
+  expect(
+    await page.evaluate(() => {
+      const me = gameState.players.find((p) => p.id === myId);
+      return me.folded;
+    })
+  ).toBe(false);
+
+  // Going through with it does fold.
+  await page.locator('#btnFold').click();
+  await expect(page.locator('#appDialogModal')).not.toHaveClass(/hidden/);
+  await page.locator('#btnAppDialogConfirm').click();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const me = gameState.players.find((p) => p.id === myId);
+        return me ? me.folded : false;
+      })
+    )
+    .toBe(true);
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('picking a hand in the replay panel opens it', async ({ page }) => {
   // Same shape of wait as the showdown test: a hand has to finish before there
   // is anything to replay, and how long that takes is the luck of the deal.
