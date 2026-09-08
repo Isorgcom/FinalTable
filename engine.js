@@ -232,9 +232,7 @@ class PokerGame {
     const idx = this.players.findIndex((p) => p.id === playerId);
     if (idx === -1) return;
     const removed = this.players[idx];
-    this._log(
-      `📤 left ${removed.name} chips:${removed.chips}`
-    );
+    this._log(`📤 left ${removed.name} chips:${removed.chips}`);
     this.players.splice(idx, 1);
     // Adjust dealerIndex if removed player was before or at dealer position
     if (this.players.length > 0) {
@@ -296,12 +294,7 @@ class PokerGame {
     this.clearActionTimeout();
     if (!this.isRunning || this.isPaused) return;
     const current = this.players[this.currentPlayerIndex];
-    if (
-      !current ||
-      current.folded ||
-      current.allIn ||
-      this.isAutomatedPlayer(current)
-    ) {
+    if (!current || current.folded || current.allIn || this.isAutomatedPlayer(current)) {
       return;
     }
     this.armActionTimeout(current, this.getHumanActionTimeoutMs());
@@ -451,7 +444,9 @@ class PokerGame {
     // Post blinds — heads-up special rule: dealer posts SB
     const activePlayers = this.players.filter((p) => p.chips > 0);
     this.handStartPlayerCount = activePlayers.length;
-    this.handStartStacks = Object.fromEntries(activePlayers.map((player) => [player.id, player.chips]));
+    this.handStartStacks = Object.fromEntries(
+      activePlayers.map((player) => [player.id, player.chips])
+    );
     let sbIdx, bbIdx;
     if (activePlayers.length === 2) {
       // Heads-up: dealer IS the small blind
@@ -646,7 +641,9 @@ class PokerGame {
             this.pot += capCall;
             if (player.chips === 0) player.allIn = true;
           }
-          this.emitMessage(`${this.getPublicName(player)} calls ${capCall} (raise cap)`, { kind: 'action' });
+          this.emitMessage(`${this.getPublicName(player)} calls ${capCall} (raise cap)`, {
+            kind: 'action',
+          });
           recordedAmount = capCall;
           action = 'call';
           break;
@@ -681,7 +678,9 @@ class PokerGame {
               this.minRaise = Math.max(this.bigBlind, raiseIncrement);
             }
           }
-          this.emitMessage(`${this.getPublicName(player)} all-in ${shortAllInAmount}!`, { kind: 'action' });
+          this.emitMessage(`${this.getPublicName(player)} all-in ${shortAllInAmount}!`, {
+            kind: 'action',
+          });
           recordedAmount = player.bet;
           action = 'allin';
           break;
@@ -699,10 +698,14 @@ class PokerGame {
         this.lastRaiserIndex = playerIdx;
         if (player.chips === 0) {
           player.allIn = true;
-          this.emitMessage(`${this.getPublicName(player)} all-in ${raiseAmount}!`, { kind: 'action' });
+          this.emitMessage(`${this.getPublicName(player)} all-in ${raiseAmount}!`, {
+            kind: 'action',
+          });
           recordedAmount = player.bet;
         } else {
-          this.emitMessage(`${this.getPublicName(player)} raises to ${player.bet}`, { kind: 'action' });
+          this.emitMessage(`${this.getPublicName(player)} raises to ${player.bet}`, {
+            kind: 'action',
+          });
           recordedAmount = player.bet;
         }
         break;
@@ -727,7 +730,9 @@ class PokerGame {
           // but lastRaiserIndex stays unchanged (doesn't reopen action for
           // players who already acted — they only need to match or fold)
         }
-        this.emitMessage(`${this.getPublicName(player)} all-in ${allInAmount}!`, { kind: 'action' });
+        this.emitMessage(`${this.getPublicName(player)} all-in ${allInAmount}!`, {
+          kind: 'action',
+        });
         recordedAmount = player.bet;
         break;
 
@@ -1225,7 +1230,9 @@ class PokerGame {
             `↩ ${this.getPublicName(r.player)} unmatched chips returned ${r._awarded}`,
             { kind: 'refund' }
           );
-          this._log(`💰 ${this.getPublicName(r.player)} refund ${r._awarded} bal:${r.player.chips}`);
+          this._log(
+            `💰 ${this.getPublicName(r.player)} refund ${r._awarded} bal:${r.player.chips}`
+          );
         }
       }
     }

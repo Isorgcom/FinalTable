@@ -227,7 +227,9 @@ function animateChipMovement(prevBets, prevWinnerKey, sweeps) {
       const delta = (p.bet || 0) - prevBets.get(p.id);
       if (delta <= 0) return; // a between-streets reset, not a bet
       const seat = seatElementForPlayer(p.id);
-      const stack = document.querySelector(`#feltBets .felt-bet[data-player-id="${CSS.escape(p.id)}"]`);
+      const stack = document.querySelector(
+        `#feltBets .felt-bet[data-player-id="${CSS.escape(p.id)}"]`
+      );
       if (seat) flyChips(seat, stack || potTarget(), chipCountForAmount(delta));
     });
   }
@@ -578,10 +580,7 @@ function updateSeatDynamic(seat, player, ctx) {
   // The seat that took the pot. At showdown the cards carry the story, but a
   // hand won by everyone folding reveals nothing, and that ending should not
   // be silent.
-  seat.classList.toggle(
-    'hand-winner',
-    !!(ctx.winnerIds && ctx.winnerIds.includes(player.id))
-  );
+  seat.classList.toggle('hand-winner', !!(ctx.winnerIds && ctx.winnerIds.includes(player.id)));
   seat.classList.toggle(
     'active-turn',
     ctx.isRunning && player.originalIndex === ctx.currentPlayerIndex
@@ -1011,7 +1010,9 @@ function updateActionsPanel() {
     timeBtn.classList.toggle('hidden', !hasClock);
     timeBtn.disabled = !(hasClock && bank.extensionsLeft > 0);
     timeBtn.textContent = `+${Math.round(((bank && bank.grantMs) || 30000) / 1000)}s`;
-    timeBtn.title = timeBtn.disabled ? 'No time left to request this hand' : 'Add time to your clock';
+    timeBtn.title = timeBtn.disabled
+      ? 'No time left to request this hand'
+      : 'Add time to your clock';
   }
 
   const toCall = gameState.currentBet - me.bet;
@@ -1408,9 +1409,7 @@ function showResult(options = {}) {
     title.textContent = iWon ? 'You cleared the table!' : `${winnerName} cleared the table`;
     title.classList.add('result-title-winner');
     details.appendChild(document.createElement('hr')).className = 'result-separator';
-    const rematchGuests = gameState.players.filter(
-      (player) => player.uid !== gameState.hostId
-    );
+    const rematchGuests = gameState.players.filter((player) => player.uid !== gameState.hostId);
     const readyGuests = rematchGuests.filter((player) => player.isReady);
     details.appendChild(
       createTextElement(

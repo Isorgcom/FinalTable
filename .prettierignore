@@ -1,0 +1,10 @@
+# Third-party, shipped as published. Reformatting a minified build would blow
+# 600 KB onto thousands of lines and make the vendored copy undiffable against
+# upstream's.
+public/vendor/
+
+# Build and run output, not source.
+graphify-out/
+test-results/
+playwright-report/
+coverage/

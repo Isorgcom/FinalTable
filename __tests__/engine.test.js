@@ -130,9 +130,9 @@ describe('Poker Engine Core Rules & Pot Distribution', () => {
   });
 
   test('Scenario 3: Short-stack big blind all-in', () => {
-    const randomSpy = jest.spyOn(random, 'randomInt').mockImplementation((max) =>
-      Number.isInteger(max) && max > 0 ? max - 1 : 0
-    );
+    const randomSpy = jest
+      .spyOn(random, 'randomInt')
+      .mockImplementation((max) => (Number.isInteger(max) && max > 0 ? max - 1 : 0));
     try {
       const p1 = game.addPlayer({ id: 'p1', name: 'SB' });
       const p2 = game.addPlayer({ id: 'p2', name: 'BB_Short' });
@@ -913,7 +913,7 @@ describe('Hand History & Replay Data', () => {
 
     const replayAfter = game.handHistory.getHandForReplay(1);
     expect(replayAfter).toEqual(replayBefore);
-});
+  });
 
   test('auto-play human seats can execute an automated action on their turn', async () => {
     jest.useFakeTimers();
@@ -1186,7 +1186,12 @@ describe('Hand History & Replay Data', () => {
   // through and the only place an arm is played.
 
   function armedTable(name, opts = {}) {
-    const game = new PokerGame(name, { smallBlind: 10, bigBlind: 20, actionTimeoutMs: 30, ...opts });
+    const game = new PokerGame(name, {
+      smallBlind: 10,
+      bigBlind: 20,
+      actionTimeoutMs: 30,
+      ...opts,
+    });
     game.onMessage = () => {};
     game.onUpdate = () => {};
     game.onChat = () => {};
@@ -1959,9 +1964,7 @@ describe('Extreme Side Pot Scenarios', () => {
       for (const player of players) {
         expect(player.chips).toBeGreaterThanOrEqual(0);
       }
-      expect(
-        new Set(game.lastRoundWinnerIds).size === game.lastRoundWinnerIds.length
-      ).toBeTruthy();
+      expect(new Set(game.lastRoundWinnerIds).size === game.lastRoundWinnerIds.length).toBeTruthy();
       for (const refund of game.lastRoundRefunds) {
         expect(refund.amount).toBeGreaterThan(0);
       }

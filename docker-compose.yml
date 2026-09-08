@@ -12,7 +12,7 @@ services:
     ports:
       # Loopback only. A reverse proxy fronts this; the port is here for
       # debugging over an SSH tunnel.
-      - "127.0.0.1:${PORT_PUBLISH:-8091}:2026"
+      - '127.0.0.1:${PORT_PUBLISH:-8091}:2026'
     volumes:
       - finaltable-data:/app/data
     environment:
@@ -31,7 +31,7 @@ services:
     mem_limit: 512m
     cpus: 0.75
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2026/api/status"]
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:2026/api/status']
       interval: 30s
       timeout: 5s
       retries: 3

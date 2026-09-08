@@ -380,13 +380,7 @@ function init() {
       closeMenu();
       return;
     }
-    const modals = [
-      'lbPanel',
-      'replayPanel',
-      'hintModal',
-      'resultModal',
-      'appDialogModal',
-    ];
+    const modals = ['lbPanel', 'replayPanel', 'hintModal', 'resultModal', 'appDialogModal'];
     for (const id of modals) {
       if (closeOverlayById(id)) return;
     }
@@ -394,13 +388,7 @@ function init() {
     if (window.SidePanel) SidePanel.close();
   });
 
-  [
-    'lbPanel',
-    'replayPanel',
-    'hintModal',
-    'resultModal',
-    'appDialogModal',
-  ].forEach((id) => {
+  ['lbPanel', 'replayPanel', 'hintModal', 'resultModal', 'appDialogModal'].forEach((id) => {
     const overlay = document.getElementById(id);
     if (!overlay) return;
     overlay.addEventListener('click', (e) => {

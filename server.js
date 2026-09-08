@@ -88,7 +88,10 @@ app.get(['/', '/index.html'], (req, res) => {
 });
 
 app.use(express.static(publicDir));
-app.use('/api', createRateLimiter({ limit: config.httpRateLimit, windowMs: config.httpRateWindow }));
+app.use(
+  '/api',
+  createRateLimiter({ limit: config.httpRateLimit, windowMs: config.httpRateWindow })
+);
 
 app.get('/api/tournaments', (req, res) => {
   res.json(tournamentLayer.publicList());
@@ -160,7 +163,9 @@ function startServer(options = {}) {
   return new Promise((resolve) => {
     server.listen(port, host, () => {
       if (restoredTournaments) {
-        console.log(`Restored ${restoredTournaments} scheduled tournament(s) from ${tournamentStore.file}`);
+        console.log(
+          `Restored ${restoredTournaments} scheduled tournament(s) from ${tournamentStore.file}`
+        );
       }
       if (unrefServer && typeof server.unref === 'function') server.unref();
       const address = server.address();
