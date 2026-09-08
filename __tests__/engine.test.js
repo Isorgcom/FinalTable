@@ -1114,6 +1114,72 @@ describe('Hand History & Replay Data', () => {
     }
   });
 
+  // The big blind has already put the price in before anyone acts, so a walk
+  // that only asks "has everybody matched?" closes the street on top of them.
+  // Poker says the blind is live: a limped pot still owes them the option to
+  // raise, and the engine has to hand them the turn to give it.
+  test('the big blind gets its option when the pot is limped', () => {
+    for (const seats of [2, 3, 4, 6]) {
+      const game = armedTable(`bb_option_${seats}`, { actionTimeoutMs: 0 });
+      for (let i = 0; i < seats; i++) {
+        game.addPlayer({ id: `p${i}`, name: `P${i}`, chips: 5000 });
+      }
+      game.startRound();
+      const bb = game.players[game.bbIndex];
+
+      // Everybody limps in front of the blind.
+      let guard = 0;
+      while (game.phase === 'preflop' && guard++ < 12) {
+        const cur = game.players[game.currentPlayerIndex];
+        if (cur.id === bb.id) break;
+        expect(game.handleAction(cur.id, 'call')).toBe(true);
+      }
+
+      expect(game.phase).toBe('preflop');
+      expect(game.players[game.currentPlayerIndex].id).toBe(bb.id);
+      // And the option is real: they can still put in a raise.
+      expect(game.handleAction(bb.id, 'raise', 60)).toBe(true);
+      expect(game.currentBet).toBe(60);
+      game.stop();
+    }
+  });
+
+  test('a big blind that checks its option closes the street', () => {
+    const game = armedTable('bb_option_check', { actionTimeoutMs: 0 });
+    for (let i = 0; i < 3; i++) game.addPlayer({ id: `p${i}`, name: `P${i}`, chips: 5000 });
+    game.startRound();
+    const bb = game.players[game.bbIndex];
+    let guard = 0;
+    while (game.phase === 'preflop' && guard++ < 12) {
+      const cur = game.players[game.currentPlayerIndex];
+      if (cur.id === bb.id) break;
+      game.handleAction(cur.id, 'call');
+    }
+    expect(game.handleAction(bb.id, 'check')).toBe(true);
+    // Taking the option ends it: the option is offered once, not every orbit.
+    expect(game.phase).toBe('flop');
+  });
+
+  test('a raised pot gives the big blind no free option, only a call to make', () => {
+    const game = armedTable('bb_option_raised', { actionTimeoutMs: 0 });
+    for (let i = 0; i < 3; i++) game.addPlayer({ id: `p${i}`, name: `P${i}`, chips: 5000 });
+    game.startRound();
+    const bb = game.players[game.bbIndex];
+    const first = game.players[game.currentPlayerIndex];
+    game.handleAction(first.id, 'raise', 60);
+    let guard = 0;
+    while (game.phase === 'preflop' && guard++ < 12) {
+      const cur = game.players[game.currentPlayerIndex];
+      if (cur.id === bb.id) break;
+      game.handleAction(cur.id, 'call');
+    }
+    // They act because they owe 40, not because the blind is live.
+    expect(game.players[game.currentPlayerIndex].id).toBe(bb.id);
+    expect(game.currentBet - bb.bet).toBe(40);
+    game.handleAction(bb.id, 'call');
+    expect(game.phase).toBe('flop');
+  });
+
   // ── Pre-actions ────────────────────────────────────────────────────────────
   // A line armed before the turn opens. Every one of these drives the arm
   // through beginCurrentTurn, because that is the only door a turn opens

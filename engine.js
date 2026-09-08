@@ -849,6 +849,21 @@ class PokerGame {
     return true;
   }
 
+  // The big blind is live: it went in before anybody chose anything, so having
+  // matched the price does not mean having acted on it. A limped pot still owes
+  // that seat the option to raise. lastRaiserIndex starts the hand pointing at
+  // the big blind, so the walk below would otherwise read the posted blind as
+  // the last aggressive action and close the street on top of them.
+  _isLiveBlindOption(player) {
+    return (
+      this.phase === 'preflop' &&
+      !!player &&
+      player.seatIndex === this.bbIndex &&
+      !player.lastAction &&
+      player.bet >= this.currentBet
+    );
+  }
+
   advanceAction() {
     // Check if only one player left
     const activePlayers = this.getPlayersInHand();
@@ -856,6 +871,25 @@ class PokerGame {
       this.awardPot(activePlayers.filter((p) => !p.folded));
       this.endRound();
       return;
+    }
+
+    // The big blind has just taken its option. The walk below has only one
+    // terminator preflop — the big blind itself — and it has just stepped past
+    // it, so left alone it would break at the first seat that can act and deal
+    // a whole second orbit. If the option was checked rather than raised,
+    // everybody has matched and the street is finished here. A raise leaves
+    // seats owing chips, and those seats get their turn through the walk.
+    if (this.phase === 'preflop' && this.currentPlayerIndex === this.bbIndex) {
+      const blind = this.players[this.bbIndex];
+      if (blind && blind.lastAction && this.lastRaiserIndex === this.bbIndex) {
+        const owed = this.players.some(
+          (p) => !p.folded && !p.allIn && p.chips > 0 && p.bet < this.currentBet
+        );
+        if (!owed) {
+          this.nextPhase();
+          return;
+        }
+      }
     }
 
     // Find next player who can act
@@ -870,6 +904,10 @@ class PokerGame {
           // but didn't reopen action. We still need to match or fold.
           if (p.bet < this.currentBet) {
             break; // Let this player act (fold/call to match)
+          }
+          // A limped pot owes the big blind its option before the flop.
+          if (this._isLiveBlindOption(p)) {
+            break;
           }
           this.nextPhase();
           return;
@@ -887,7 +925,7 @@ class PokerGame {
           return;
         }
         // If their bet < currentBet (short all-in raised the price), they must act
-        if (lp.bet >= this.currentBet) {
+        if (lp.bet >= this.currentBet && !this._isLiveBlindOption(lp)) {
           this.nextPhase();
           return;
         }
