@@ -1056,6 +1056,64 @@ describe('Hand History & Replay Data', () => {
     }
   });
 
+  // The preflop live-blind branch in advanceAction is not reachable in ordinary
+  // play: with the big blind still unacted, either nobody raised — in which case
+  // lastRaiserIndex is the big blind and the actor walk exits through nextPhase
+  // before it — or somebody did, in which case the blind has not matched the
+  // price and the branch's own guard fails. The state below is therefore built
+  // by hand. It is pinned anyway because the pre-action fire path assumes every
+  // turn opens through beginCurrentTurn, and a branch that opened one without a
+  // clock would strand the table if it ever became reachable.
+  test('a turn opened on the big blind option arms a clock like any other', () => {
+    jest.useFakeTimers();
+    try {
+      const game = new PokerGame('bb_option_clock', {
+        smallBlind: 10,
+        bigBlind: 20,
+        actionTimeoutMs: 30,
+      });
+      game.onMessage = () => {};
+      game.onUpdate = () => {};
+      game.onChat = () => {};
+      game.onRoundEnd = () => {};
+
+      const folder = game.addPlayer({ id: 'p1', name: 'Folder' });
+      const bb = game.addPlayer({ id: 'p2', name: 'BigBlind' });
+      const shover = game.addPlayer({ id: 'p3', name: 'Shover' });
+      game.startRound();
+
+      game.phase = 'preflop';
+      game.bbIndex = bb.seatIndex;
+      game.currentBet = 100;
+      game.lastRaiserIndex = shover.seatIndex;
+      game.currentPlayerIndex = shover.seatIndex;
+      folder.folded = true;
+      shover.folded = false;
+      shover.allIn = true;
+      shover.bet = 100;
+      // The blind has matched the price and has not acted: the option is live.
+      bb.folded = false;
+      bb.allIn = false;
+      bb.chips = 500;
+      bb.bet = 100;
+      bb.lastAction = null;
+      game.isRunning = true;
+      // handleAction clears the acting seat's clock before it advances, so the
+      // branch under test is reached with no timer running. Without that the
+      // assertion below would pass on the clock startRound already armed.
+      game.clearActionTimeout();
+      expect(game.actionTimeout).toBeFalsy();
+
+      game.advanceAction();
+
+      expect(game.currentPlayerIndex).toBe(bb.seatIndex);
+      expect(game.actionTimeout).toBeTruthy();
+      expect(game.turnExpiresAt).toBeGreaterThan(Date.now());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('requesting time defers the auto-play switch by the grant, once per hand', () => {
     jest.useFakeTimers();
     try {

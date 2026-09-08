@@ -853,8 +853,11 @@ class PokerGame {
         this.phase === 'preflop' && canAct[0].seatIndex === this.bbIndex && !canAct[0].lastAction; // BB hasn't acted yet this hand
       if (isBBLiveBlind) {
         this.currentPlayerIndex = canAct[0].seatIndex;
-        this.emitUpdate();
-        this.processAutoTurn();
+        // beginCurrentTurn rather than emitUpdate + processAutoTurn: an
+        // automated seat takes the same path either way, but a human big blind
+        // needs a clock, and processAutoTurn returns without arming one for a
+        // seat that is not automated. Every turn opens through here.
+        this.beginCurrentTurn();
         return;
       }
       this.nextPhase();
