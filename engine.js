@@ -65,12 +65,9 @@ class PokerGame {
     this.onUpdate = null;
     this.onMessage = null;
 
-    // Player behavior tracking
-    this.handActionHistory = {};
-    this.handActionLog = [];
+    // Hand-shape tracking, used by the chip-conservation assertions.
     this.handStartPlayerCount = 0;
     this.handStartStacks = {};
-    this.preflopRaiserId = null;
 
     // Winner tracking (authoritative, sent to client)
     this.lastRoundWinnerIds = [];
@@ -419,12 +416,8 @@ class PokerGame {
     this.roundBets = {};
     this.raiseCount = 0; // Raise cap: max 4 raises per betting round
 
-    // v4: Initialize hand tracking for opponent modeling
-    this.handActionHistory = {};
-    this.handActionLog = [];
     this.handStartPlayerCount = 0;
     this.handStartStacks = {};
-    this.preflopRaiserId = null;
     this.lastRoundWinnerIds = [];
     this.lastRoundRefunds = [];
     this.showdownWinningCards = [];
@@ -494,12 +487,6 @@ class PokerGame {
     }
     this.lastRaiserIndex = bbIdx;
     this.isRunning = true;
-
-    // Start tracking this hand
-    const activeIds = this.players.filter((p) => !p.folded).map((p) => p.id);
-    for (const id of activeIds) {
-      this.handActionHistory[id] = [];
-    }
 
     // Hand history recording
     this.handHistory.startHand(
@@ -603,10 +590,9 @@ class PokerGame {
     if (player.folded || player.allIn) return false;
 
     const toCall = this.currentBet - player.bet;
-    const potBeforeAction = this.pot;
+    // Kept for the pre-action sweep below, which disarms every line that was
+    // armed against a price this action is about to raise.
     const currentBetBeforeAction = this.currentBet;
-    const playerBetBeforeAction = player.bet;
-    const chipsBeforeAction = player.chips;
 
     // ── FIX: Action Validation ──
     // If all other non-folded players are all-in, you can only call or fold.
@@ -754,26 +740,6 @@ class PokerGame {
 
     this.clearActionTimeout();
 
-    if (this.handActionHistory[playerId]) {
-      this.handActionHistory[playerId].push({ phase: this.phase, action, amount: recordedAmount });
-    }
-    this.handActionLog.push({
-      phase: this.phase,
-      playerId,
-      action,
-      amount: recordedAmount,
-      contribution: Math.max(0, player.bet - playerBetBeforeAction),
-      potBeforeAction,
-      potAfterAction: this.pot,
-      currentBetBeforeAction,
-      currentBetAfterAction: this.currentBet,
-      playerBetBeforeAction,
-      playerBetAfterAction: player.bet,
-      toCallBeforeAction: toCall,
-      chipsBeforeAction,
-      chipsAfterAction: player.chips,
-    });
-
     {
       const actStr =
         action === 'raise'
@@ -787,11 +753,6 @@ class PokerGame {
         `👤 ${player.name}: ${actStr} (chips:${player.chips} invested:${player.totalBet} pot:${this.pot})`
       );
     }
-    // Track preflop raiser for c-bet detection
-    if (this.phase === 'preflop' && (action === 'raise' || action === 'allin')) {
-      this.preflopRaiserId = playerId;
-    }
-
     // Hand history recording
     const p = this.players.find((pp) => pp.id === playerId);
     if (p) p.lastAction = { action, amount: recordedAmount, time: Date.now() };
@@ -818,13 +779,6 @@ class PokerGame {
       'info',
       'Player action applied'
     );
-
-    // v7: Track recent actions for self-image awareness (keep last 30)
-    if (p) {
-      if (!p._recentActions) p._recentActions = [];
-      p._recentActions.push({ action, phase: this.phase });
-      if (p._recentActions.length > 30) p._recentActions.shift();
-    }
 
     // Acting spends whatever this seat had armed, however the action arrived.
     // The fire path clears the arm it plays, but a player who clicks during the
