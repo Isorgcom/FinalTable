@@ -73,6 +73,7 @@ Not built, in the order they are likely to matter:
 
 ## Licence
 
-GNU GPL v3.0 with an appended anti-gambling restriction inherited from
-upstream. Read [LICENSE](./LICENSE) and the caution in
-[FORK.md](./FORK.md) before deploying anywhere money changes hands.
+GNU GPL v3.0. See [LICENSE](./LICENSE) for the full text. An anti-gambling
+restriction inherited from upstream has been removed under section 7 of that
+licence; [FORK.md](./FORK.md) explains the reasoning and what it does not
+change.

@@ -20,7 +20,7 @@
     "docker"
   ],
   "author": "FinalTable contributors",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Isorgcom/FinalTable.git"
