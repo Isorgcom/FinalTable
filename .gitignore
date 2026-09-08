@@ -1,23 +1,14 @@
 node_modules/
+
+# Saved tournaments and anything else the server writes at runtime. This is
+# SAVE_DIR (see .env.example), and the container mounts it as a volume.
 data/*
-!data/solver/
-data/solver/*
-!data/solver/README.md
+
 *.log
 .env
 .DS_Store
 Thumbs.db
-__pycache__/
-*.py[cod]
-.venv-bootstrap/
 .cache/
-
-.phase1-btn-vs-bb-srp-50bb-full/
-raw/*.json
-runtime/*.json
-reports/*.json
-retry-recovery-scripts/
-final-single-script/
 
 # graphify build output (regenerate with /graphify)
 graphify-out/
