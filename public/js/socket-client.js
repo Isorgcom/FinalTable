@@ -42,7 +42,15 @@ function ensureSocket() {
     if (window.Lobby) Lobby.setConnection(false);
     if (gameState) addLog('⚠️ Disconnected, reconnecting...');
   });
+  // Whether this server has an admin surface at all. The password is never
+  // sent here and neither is any claim about being logged in; that is decided
+  // per socket on the server and only ever answered to adminLogin.
+  socket.on('adminStatus', (st) => {
+    if (window.Admin) Admin.onStatus(st);
+  });
+
   socket.on('identified', (ident) => {
+    if (window.Admin) Admin.onIdentified(ident);
     if (window.Lobby) Lobby.onIdentified(ident);
   });
   socket.on('sessionReplaced', () => {

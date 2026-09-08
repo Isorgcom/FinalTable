@@ -10,6 +10,15 @@ function boolFromEnv(name, fallback = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
 }
 
+// The operator's password for the admin controls, straight from the
+// environment and never written anywhere else. Empty or unset disables the
+// admin surface completely rather than falling back to a default, because a
+// default password on a self-hosted box is worse than no password at all.
+function adminPasswordFromEnv() {
+  const raw = process.env.ADMIN_PASSWORD;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
 function loadConfig() {
   const rawCorsOrigin = process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.trim();
   const corsOrigin = rawCorsOrigin || '*';
@@ -22,6 +31,7 @@ function loadConfig() {
           .filter(Boolean);
 
   return {
+    adminPassword: adminPasswordFromEnv(),
     port: process.env.PORT || 2026,
     host: process.env.HOST || '0.0.0.0',
     logLevel: process.env.LOG_LEVEL || 'info',

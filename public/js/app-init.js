@@ -44,6 +44,7 @@ function init() {
       defaultValue = '',
       placeholder = '',
       maxLength = 32,
+      masked = false,
       showCancel = kind !== 'notice',
     } = config;
     if (!dialogModal || !dialogTitle || !dialogBody || !dialogConfirm) {
@@ -71,9 +72,13 @@ function init() {
       dialogInput.value = defaultValue;
       dialogInput.placeholder = placeholder;
       dialogInput.maxLength = String(maxLength);
+      // A password asked for at a poker table is asked for in front of the
+      // table, so it is not put on the screen in plain sight.
+      dialogInput.type = masked ? 'password' : 'text';
     } else if (dialogInput) {
       dialogInput.classList.add('hidden');
       dialogInput.value = '';
+      dialogInput.type = 'text';
     }
     dialogModal.classList.remove('hidden');
     return new Promise((resolve) => {
@@ -171,6 +176,89 @@ function init() {
     renderReplayList();
     document.getElementById('replayPanel').classList.remove('hidden');
   });
+  // ── Operator controls ──────────────────────────────────────────────────
+  //
+  // Hidden unless the server says it has an admin password configured, and the
+  // cancel item stays hidden until this socket has actually authenticated. The
+  // page holds no password and no privilege: every check is on the server, and
+  // showing the item early would only reveal a control that refuses.
+  window.Admin = (() => {
+    let available = false;
+    let authed = false;
+    const btnAdmin = () => document.getElementById('btnAdmin');
+    const btnCancel = () => document.getElementById('btnAdminCancel');
+    function paint() {
+      const a = btnAdmin();
+      const c = btnCancel();
+      if (a) a.classList.toggle('hidden', !available || authed);
+      if (c) c.classList.toggle('hidden', !authed);
+    }
+    return {
+      onIdentified(ident) {
+        available = !!(ident && ident.adminAvailable);
+        paint();
+      },
+      onStatus(st) {
+        if (!st) return;
+        available = st.available !== false;
+        authed = !!st.ok;
+        paint();
+        if (st.ok) {
+          window.showNoticeDialog &&
+            window.showNoticeDialog({ title: 'Admin', message: 'Operator controls unlocked.' });
+          return;
+        }
+        if (st.lockedOut) {
+          window.showNoticeDialog &&
+            window.showNoticeDialog({
+              title: 'Admin',
+              message: 'Too many attempts on this connection. Reload to try again.',
+            });
+          return;
+        }
+        if (st.available === false) return;
+        window.showNoticeDialog &&
+          window.showNoticeDialog({
+            title: 'Admin',
+            message:
+              typeof st.attemptsLeft === 'number'
+                ? `Wrong password. ${st.attemptsLeft} attempt(s) left.`
+                : 'Wrong password.',
+          });
+      },
+      isAuthed: () => authed,
+    };
+  })();
+
+  document.getElementById('btnAdmin').addEventListener('click', async () => {
+    closeMenu();
+    if (!window.showTextPromptDialog) return;
+    const password = await window.showTextPromptDialog({
+      title: 'Operator login',
+      message: 'Password for the admin controls.',
+      hint: 'Sent over this connection as typed; the server is plain HTTP on your network.',
+      confirmLabel: 'Unlock',
+      placeholder: 'password',
+      maxLength: 128,
+      masked: true,
+    });
+    if (password && socket) socket.emit('adminLogin', { password });
+  });
+
+  document.getElementById('btnAdminCancel').addEventListener('click', async () => {
+    closeMenu();
+    let ok = true;
+    if (typeof window.showConfirmDialog === 'function') {
+      ok = await window.showConfirmDialog({
+        title: 'Cancel this tournament?',
+        message: 'It ends now and everyone still in it is sent back to the lobby.',
+        confirmLabel: 'Cancel it',
+        cancelLabel: 'Keep it',
+      });
+    }
+    if (ok && socket) socket.emit('adminCancelTournament');
+  });
+
   document.getElementById('btnAutoPlay').addEventListener('click', () => setSitOut(true));
   document.getElementById('btnSitIn').addEventListener('click', () => setSitOut(false));
   // Delegated, like the raise presets: the buttons are relabelled and hidden on

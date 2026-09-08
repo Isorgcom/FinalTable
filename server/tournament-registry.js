@@ -663,6 +663,16 @@ function createTournamentRegistry(deps = {}) {
     return { entry };
   }
 
+  // Cancel without the host check. The host of a running tournament may be a
+  // seat that has long since busted or dropped, so an operator needs a way in
+  // that does not depend on who happens to hold that role. Authorisation is the
+  // caller's business and is done at the socket, not here.
+  function forceCancel(entry, reason = 'cancelled by the operator') {
+    if (!entry || entry.status === 'finished') return { error: 'Already finished' };
+    cancelEntry(entry, reason);
+    return { entry };
+  }
+
   function cancel(entry, uid) {
     if (!requireHost(entry, uid)) return { error: 'Only the host can cancel the tournament' };
     if (entry.status === 'finished') return { error: 'Already finished' };
@@ -888,6 +898,7 @@ function createTournamentRegistry(deps = {}) {
     leave,
     startNow,
     cancel,
+    forceCancel,
     stateFor,
     listFor,
     publicList,

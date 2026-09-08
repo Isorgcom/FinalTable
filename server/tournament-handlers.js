@@ -9,11 +9,32 @@
 // socket.io room, so a player moved between tables simply starts receiving
 // state from the new table. There is no room membership to migrate.
 
+const crypto = require('crypto');
 const { createTournamentRegistry } = require('./tournament-registry');
+
+// How many wrong passwords a single socket may offer before it stops being
+// asked. Low, because there is nothing to guess at but one string, and a
+// self-hosted box has no other brake on a client hammering an event.
+const ADMIN_MAX_ATTEMPTS = 5;
+const ADMIN_FAIL_DELAY_MS = 400;
+
+// Compared through a hash so the two sides are always the same length, and
+// through timingSafeEqual so the comparison does not leak the password one
+// character at a time to somebody measuring it.
+function passwordMatches(given, expected) {
+  if (typeof given !== 'string' || typeof expected !== 'string' || !expected) return false;
+  const a = crypto.createHash('sha256').update(given, 'utf8').digest();
+  const b = crypto.createHash('sha256').update(expected, 'utf8').digest();
+  return crypto.timingSafeEqual(a, b);
+}
 
 function registerTournamentHandlers(deps) {
   const { io, identity } = deps;
   const registry = createTournamentRegistry(deps);
+  // Unset means the admin surface does not exist, rather than existing with a
+  // default password. It is never sent to a client, logged, or put in state.
+  const adminPassword = typeof deps.adminPassword === 'string' ? deps.adminPassword.trim() : '';
+  const adminEnabled = adminPassword.length > 0;
 
   function fail(socket, error) {
     socket.emit('error', { message: error });
@@ -58,7 +79,10 @@ function registerTournamentHandlers(deps) {
         registry.bind(entry, ident.uid, socket, { resumed: true });
         resume = { id: entry.id, code: entry.code, name: entry.name, status: entry.status };
       }
-      socket.emit('identified', { ...ident, resume });
+      // Whether the admin surface exists at all, so a client can decide
+      // whether to offer it. Never the password, and never whether this socket
+      // has already authenticated — that lives on the server.
+      socket.emit('identified', { ...ident, resume, adminAvailable: adminEnabled });
       // The list this socket got on connect was built before it had a uid, so
       // none of its cards knew they were this player's. Send it again.
       socket.emit('tournamentList', registry.listFor(ident.uid));
@@ -225,6 +249,48 @@ function registerTournamentHandlers(deps) {
       if (!!player.sitOutNextHand === enabled) return;
       player.sitOutNextHand = enabled;
       socket.emit('gameState', table.getStateForPlayer(player.id, { includeHistory: false }));
+    });
+
+    // ── Operator controls ────────────────────────────────────────────────
+    //
+    // Caution worth stating: this server is meant to be reachable over plain
+    // HTTP on a LAN, so the password crosses the wire in the clear. It is a
+    // guard against the other people at the table, not against somebody who
+    // can watch the network.
+    socket.on('adminLogin', (payload = {}) => {
+      if (!adminEnabled) return socket.emit('adminStatus', { ok: false, available: false });
+      socket.data.adminAttempts = socket.data.adminAttempts || 0;
+      if (socket.data.adminAttempts >= ADMIN_MAX_ATTEMPTS) {
+        return socket.emit('adminStatus', { ok: false, available: true, lockedOut: true });
+      }
+      const ok = passwordMatches(String(payload.password || ''), adminPassword);
+      if (ok) {
+        socket.data.isAdmin = true;
+        socket.data.adminAttempts = 0;
+        return socket.emit('adminStatus', { ok: true, available: true });
+      }
+      socket.data.adminAttempts += 1;
+      // A wrong answer costs a moment, so guessing is not free.
+      setTimeout(() => {
+        socket.emit('adminStatus', {
+          ok: false,
+          available: true,
+          attemptsLeft: Math.max(0, ADMIN_MAX_ATTEMPTS - socket.data.adminAttempts),
+        });
+      }, ADMIN_FAIL_DELAY_MS);
+    });
+
+    // End a tournament that is already running. The host control for this only
+    // exists in the waiting room, and the host of a running field may be a seat
+    // that busted an hour ago, so without this there is no way to stop one
+    // short of shell access.
+    socket.on('adminCancelTournament', (payload = {}) => {
+      if (!adminEnabled || !socket.data.isAdmin) return;
+      const entry =
+        (payload.id && registry.tournaments.get(payload.id)) || entryFor(socket) || null;
+      if (!entry) return fail(socket, 'No tournament to cancel');
+      const result = registry.forceCancel(entry, 'cancelled by the operator');
+      if (result.error) return fail(socket, result.error);
     });
 
     socket.on('disconnect', () => {
