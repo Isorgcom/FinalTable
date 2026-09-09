@@ -634,10 +634,29 @@
   .action-row::-webkit-scrollbar {
     display: none;
   }
-  /* No height for a second row here: the bar would sit on the viewer's
-     plate. The slider keeps raising possible. */
+  /* The sizing presets are here too, on their own row above the action row
+     rather than folded into it: that row already scrolls sideways at this
+     size, and a control you have to scroll to find is one nobody uses with a
+     clock running. The row costs felt between the board and the viewer's seat,
+     not more of the seat - the bar's bottom edge is what sits over the plate
+     and that does not move. The hand readout gives up its place to make room;
+     the viewer's own plate carries the same words. */
   .action-presets {
+    display: flex;
+    justify-content: center;
+    min-height: 0;
+    gap: 4px;
+  }
+  .hand-strength {
     display: none;
+  }
+  .preset-group {
+    gap: 3px;
+  }
+  .preset-btn {
+    min-width: 0;
+    padding: 4px 10px;
+    font-size: 0.6rem;
   }
   /* No fixed slots here. The row already scrolls from the left inside a panel
      of its own fixed width, so a minimum width buys no stability and only

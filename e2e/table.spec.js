@@ -1109,3 +1109,41 @@ test('the action bar keeps its geometry, and the presets price the pot after the
 
   expect(pageErrors).toEqual([]);
 });
+
+test.describe('landscape phone', () => {
+  // The shape a phone is actually held in to play poker, and the one breakpoint
+  // where vertical room is genuinely scarce.
+  test.use({ viewport: { width: 844, height: 390 } });
+
+  test('the sizing presets are on the bar here too, and take felt rather than seat', async ({
+    page,
+  }) => {
+    const pageErrors = await seatAtTournamentTable(page, 'Land');
+    await deal(page);
+
+    await expect(page.locator('.action-presets')).toBeVisible();
+    await expect(page.locator('#presetGroup .preset-btn')).toHaveCount(4);
+
+    const panel = await page.locator('#actionsPanel').boundingBox();
+    const board = await page.locator('#communityCards').boundingBox();
+    const row = await page.locator('.action-row').boundingBox();
+    const view = page.viewportSize();
+
+    // The row they cost grows upward into the empty felt between the board and
+    // the viewer's seat. The action row keeps the bottom of the panel, so the
+    // bar covers no more of the viewer's own plate than it did without them.
+    expect(panel.y).toBeGreaterThan(board.y + board.height);
+    expect(row.y + row.height).toBeLessThanOrEqual(view.height);
+    expect(panel.x).toBeGreaterThanOrEqual(0);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(view.width + 1);
+
+    // Small, but still something a thumb can find.
+    for (const pill of await page.locator('#presetGroup .preset-btn').all()) {
+      const b = await pill.boundingBox();
+      expect(b.height).toBeGreaterThanOrEqual(18);
+      expect(b.width).toBeGreaterThanOrEqual(36);
+    }
+
+    expect(pageErrors).toEqual([]);
+  });
+});
