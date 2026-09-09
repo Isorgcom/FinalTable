@@ -573,9 +573,9 @@
   line-height: 1.3;
   text-align: left;
   /* A two-hundred-character message is a paragraph. The panel has the whole
-     thing; the bubble is a glance, so it stops at three lines. */
+     thing; the bubble is a glance, so it stops at two lines. */
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -617,17 +617,17 @@
   transform: none;
 }
 
-.player-seat[data-slot='3'] .seat-bubble,
+/* Only the two chairs at the top of the ring. The upper side chairs sit low
+   enough that a bubble above them is still on the stage, and flipping those
+   down as well pointed them straight at the bubble of the chair below, which
+   opens upward - so two people talking at once on the same side collided. */
 .player-seat[data-slot='4'] .seat-bubble,
-.player-seat[data-slot='5'] .seat-bubble,
-.player-seat[data-slot='6'] .seat-bubble {
+.player-seat[data-slot='5'] .seat-bubble {
   bottom: auto;
   top: calc(100% + 6px);
 }
-.player-seat[data-slot='3'] .seat-bubble::after,
 .player-seat[data-slot='4'] .seat-bubble::after,
-.player-seat[data-slot='5'] .seat-bubble::after,
-.player-seat[data-slot='6'] .seat-bubble::after {
+.player-seat[data-slot='5'] .seat-bubble::after {
   top: auto;
   bottom: 100%;
   border-top-color: transparent;
