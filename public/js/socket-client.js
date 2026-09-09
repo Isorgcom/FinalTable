@@ -148,6 +148,6 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onError(message);
   });
 
-  document.addEventListener('click', () => SFX.init(), { once: true });
+  SFX.listen();
   return socket;
 }

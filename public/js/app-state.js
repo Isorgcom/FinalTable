@@ -200,6 +200,32 @@ const SFX = {
     const shuffle = document.getElementById('sfxShuffle');
     this.loadSample('shuffle', shuffle ? shuffle.getAttribute('href') : '/audio/shuffle.mp3');
   },
+  // iOS hands back a suspended AudioContext unless it is created inside a
+  // gesture Safari recognises, and suspends it again every time the tab goes to
+  // the background or the device locks. Nothing here used to call resume(), and
+  // the one unlock attempt was spent on whichever click happened to come first,
+  // so a context that started or ended up suspended stayed that way and the
+  // table went quiet for the rest of the session. Every gesture is another
+  // chance now, and coming back to the tab is one too.
+  unlock() {
+    this.init();
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+  },
+  listen() {
+    if (this._listening) return;
+    this._listening = true;
+    const wake = () => this.unlock();
+    // Deliberately not { once: true }: the first gesture is not reliably the
+    // one that works, and there is no cost to checking a context that is
+    // already running.
+    for (const ev of ['pointerdown', 'touchend', 'keydown']) {
+      document.addEventListener(ev, wake, { passive: true });
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.unlock();
+    });
+  },
   loadSample(name, url) {
     if (!this.ctx || !url) return;
     fetch(url)
@@ -291,6 +317,12 @@ const SFX = {
   play(type) {
     if (!this.ctx) this.init();
     if (!this.ctx) return;
+    // Scheduling into a parked context is silence with extra steps. Ask for it
+    // back and give up on this one sound; the next will have somewhere to go.
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+      return;
+    }
     try {
       const now = this.ctx.currentTime;
       switch (type) {

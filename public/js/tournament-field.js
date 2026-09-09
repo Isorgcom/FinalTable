@@ -65,7 +65,7 @@
       .map((r) => `${ordinal(r.place)} ${r.name}`)
       .join('  ·  ');
 
-    if (won && window.SFX) SFX.play('win');
+    if (won && typeof SFX !== 'undefined') SFX.play('win');
     window.showNoticeDialog({
       title: won ? '🏆 You won the tournament' : `${payload.winner || 'Nobody'} won`,
       message: `${standing}${prize}`,

@@ -1395,3 +1395,30 @@ test('right-clicking a chair turns the table so you are sitting in it', async ({
 
   expect(pageErrors).toEqual([]);
 });
+
+test('a parked audio context is woken by the next gesture, not lost for the session', async ({
+  page,
+}) => {
+  const pageErrors = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await seatAtTournamentTable(page, 'Sound');
+  await deal(page);
+
+  // A gesture starts it, and the recordings decode.
+  await page.mouse.click(5, 5);
+  await expect.poll(() => page.evaluate(() => (SFX.ctx ? SFX.ctx.state : null))).toBe('running');
+  await expect
+    .poll(() => page.evaluate(() => Object.keys(SFX.samples).sort().join(',')))
+    .toBe('card,chips,shuffle');
+
+  // iOS parks the context whenever the tab goes to the background or the phone
+  // locks. Nothing used to bring it back, and the single once:true unlock had
+  // already been spent, so the table stayed silent for the rest of the session.
+  await page.evaluate(() => SFX.ctx.suspend());
+  expect(await page.evaluate(() => SFX.ctx.state)).toBe('suspended');
+
+  await page.mouse.click(6, 6);
+  await expect.poll(() => page.evaluate(() => SFX.ctx.state)).toBe('running');
+
+  expect(pageErrors).toEqual([]);
+});
