@@ -981,41 +981,100 @@ describe('Hand History & Replay Data', () => {
     }
   });
 
-  test('human turn timeout switches the seat to auto-play and acts', async () => {
+  // Letting the clock go once is a moment of inattention and costs that hand.
+  // Twice in a row is somebody who has walked away, and only then is the seat
+  // sat out - a player who comes back to find themselves sitting out has to
+  // notice that before they can undo it.
+  function timeoutTable() {
+    const game = new PokerGame('turn_timeout', {
+      smallBlind: 10,
+      bigBlind: 20,
+      actionTimeoutMs: 30,
+    });
+    game.onMessage = () => {};
+    game.onUpdate = () => {};
+    game.onChat = () => {};
+    game.onRoundEnd = () => {};
+    const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
+    const villain = game.addPlayer({ id: 'p2', name: 'Villain' });
+    game.startRound();
+    hero.holeCards = [Card('spades', 14), Card('hearts', 12)];
+    villain.holeCards = [Card('clubs', 7), Card('diamonds', 6)];
+    return { game, hero, villain };
+  }
+
+  // Put the hero back on the clock facing a bet, whatever the hand did next.
+  function heroToAct(game, hero) {
+    hero.folded = false;
+    hero.allIn = false;
+    hero.chips = 990;
+    hero.bet = 10;
+    hero.totalBet = 10;
+    game.isRunning = true;
+    game.currentPlayerIndex = hero.seatIndex;
+    game.currentBet = 20;
+    game.beginCurrentTurn();
+  }
+
+  test('a first timeout folds the hand but leaves the seat in', async () => {
     jest.useFakeTimers();
     try {
-      const game = new PokerGame('turn_timeout', {
-        smallBlind: 10,
-        bigBlind: 20,
-        actionTimeoutMs: 30,
-      });
-      game.onMessage = () => {};
-      game.onUpdate = () => {};
-      game.onChat = () => {};
-      game.onRoundEnd = () => {};
-
-      const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
-      const villain = game.addPlayer({ id: 'p2', name: 'Villain' });
-      game.startRound();
-
-      hero.holeCards = [Card('spades', 14), Card('hearts', 12)];
-      villain.holeCards = [Card('clubs', 7), Card('diamonds', 6)];
+      const { game, hero } = timeoutTable();
       hero.autoPlay = false;
-      hero.folded = false;
-      hero.allIn = false;
-      hero.chips = 990;
-      hero.bet = 10;
-      hero.totalBet = 10;
-      game.currentPlayerIndex = hero.seatIndex;
-      game.currentBet = 20;
-
-      game.beginCurrentTurn();
+      heroToAct(game, hero);
       jest.advanceTimersByTime(35);
+
+      expect(hero.timeoutStrikes).toBe(1);
+      expect(hero.autoPlay).toBe(false);
+      expect(hero.sitOutReason).toBeNull();
+      expect(hero.folded).toBe(true);
+      expect(hero.lastAction.action).toBe('fold');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('a second timeout in a row sits the seat out', async () => {
+    jest.useFakeTimers();
+    try {
+      const { game, hero } = timeoutTable();
+      hero.autoPlay = false;
+      heroToAct(game, hero);
+      jest.advanceTimersByTime(35);
+      expect(hero.autoPlay).toBe(false);
+
+      heroToAct(game, hero);
+      jest.advanceTimersByTime(35);
+      expect(hero.timeoutStrikes).toBe(2);
       expect(hero.autoPlay).toBe(true);
+      expect(hero.sitOutReason).toBe('timeout');
 
       jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
       expect(hero.lastAction).toBeTruthy();
-      expect(hero.lastAction.action).toBe('fold');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('acting for yourself clears the strike, so two must be consecutive', async () => {
+    jest.useFakeTimers();
+    try {
+      const { game, hero } = timeoutTable();
+      hero.autoPlay = false;
+      heroToAct(game, hero);
+      jest.advanceTimersByTime(35);
+      expect(hero.timeoutStrikes).toBe(1);
+
+      // A hand they play themselves puts the slate back.
+      heroToAct(game, hero);
+      game.handleAction(hero.id, 'call');
+      expect(hero.timeoutStrikes).toBe(0);
+
+      // So the next one they let go is a first strike again, not a second.
+      heroToAct(game, hero);
+      jest.advanceTimersByTime(35);
+      expect(hero.timeoutStrikes).toBe(1);
+      expect(hero.autoPlay).toBe(false);
     } finally {
       jest.useRealTimers();
     }
@@ -1306,11 +1365,15 @@ describe('Hand History & Replay Data', () => {
   // through beginCurrentTurn, because that is the only door a turn opens
   // through and the only place an arm is played.
 
+  // A clock long enough to stay out of the way. These tests are about what a
+  // pre-action does when the turn opens, and they advance past the auto-turn
+  // beat to see it; a 30ms action clock fires inside that window and folds the
+  // seat, which is the timeout being tested, not the arm.
   function armedTable(name, opts = {}) {
     const game = new PokerGame(name, {
       smallBlind: 10,
       bigBlind: 20,
-      actionTimeoutMs: 30,
+      actionTimeoutMs: 5000,
       ...opts,
     });
     game.onMessage = () => {};
@@ -1671,7 +1734,7 @@ describe('Hand History & Replay Data', () => {
     }
   });
 
-  test('requesting time defers the auto-play switch by the grant, once per hand', () => {
+  test('requesting time defers the clock by the grant, once per hand', () => {
     jest.useFakeTimers();
     try {
       const game = new PokerGame('time_bank', {
@@ -1707,12 +1770,18 @@ describe('Hand History & Replay Data', () => {
       expect(game.getStateForPlayer('p1').timeBank.extensionsLeft).toBe(0);
       expect(game.turnDurationMs).toBe(300);
 
-      // The original deadline passes without a switch...
+      // The original deadline passes without the clock firing...
       jest.advanceTimersByTime(60);
-      expect(hero.autoPlay).toBe(false);
-      // ...and the extended one triggers it: 40ms remained plus the 200ms grant.
+      expect(hero.timeoutStrikes).toBe(0);
+      expect(hero.lastAction).toBeNull();
+      // ...and the extended one fires it: 40ms remained plus the 200ms grant.
+      // One strike folds the hand; the seat is only sat out on the second.
       jest.advanceTimersByTime(190);
-      expect(hero.autoPlay).toBe(true);
+      expect(hero.timeoutStrikes).toBe(1);
+      // Checked rather than folded: nothing was owed at that point. Either way
+      // the hand is given up and the seat stays in.
+      expect(hero.lastAction.action).toBe('check');
+      expect(hero.autoPlay).toBe(false);
     } finally {
       jest.useRealTimers();
     }

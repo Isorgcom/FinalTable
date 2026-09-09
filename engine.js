@@ -34,6 +34,8 @@ const CASH_IDLE_TIMEOUT_MS = 90000;
 // Request Time: each seat may add TIME_BANK_GRANT_MS to its clock this many
 // times per hand.
 const TIME_BANK_GRANT_MS = 30000;
+// How many turns in a row a seat may let go before it is sat out.
+const TIMEOUT_STRIKES_BEFORE_SITOUT = 2;
 const TIME_BANK_PER_HAND = 1;
 const structuredEngineLog = createStructuredLogger('engine');
 
@@ -191,6 +193,10 @@ class PokerGame {
       isConnected: true,
       isReady: false,
       autoPlay: false,
+      // Consecutive turns let go on the clock. One is a moment of inattention
+      // and costs only that hand; two in a row is somebody who has walked away.
+      // Any action they take themselves puts it back to nought.
+      timeoutStrikes: 0,
       // Why this seat is sitting out: 'requested' when the player asked for
       // it, 'timeout' | 'disconnect' | 'left' when it was decided for them.
       // Only the first survives their return: see bind() in the registry.
@@ -333,12 +339,36 @@ class PokerGame {
       ) {
         return;
       }
+      liveCurrent.timeoutStrikes = (liveCurrent.timeoutStrikes || 0) + 1;
+      const name = this.getPublicName(liveCurrent);
+
+      // First one is forgiven. Losing a hand to a moment of inattention is a
+      // fair price; losing the rest of the tournament to it is not, and a
+      // player who comes back to find themselves sitting out has to notice
+      // that before they can undo it.
+      if (liveCurrent.timeoutStrikes < TIMEOUT_STRIKES_BEFORE_SITOUT) {
+        const free = this.currentBet - liveCurrent.bet <= 0;
+        this.emitMessage(`${name} ran out of time and ${free ? 'checks' : 'folds'}`, {
+          kind: 'timebank',
+        });
+        this._log(`⏱ ${name} timed out -> ${free ? 'check' : 'fold'} (strike 1)`);
+        // Flagged so the action below is not mistaken for the player acting,
+        // which would clear the very strike it is being given.
+        this._actingForTimeout = true;
+        try {
+          this.handleAction(liveCurrent.id, free ? 'check' : 'fold');
+        } finally {
+          this._actingForTimeout = false;
+        }
+        return;
+      }
+
       liveCurrent.autoPlay = true;
       liveCurrent.sitOutReason = 'timeout';
-      this.emitMessage(`${this.getPublicName(liveCurrent)} timed out and is sitting out`, {
+      this.emitMessage(`${name} timed out twice and is sitting out`, {
         kind: 'timebank',
       });
-      this._log(`⏱ ${this.getPublicName(liveCurrent)} timed out -> sitting out`);
+      this._log(`⏱ ${name} timed out twice -> sitting out`);
       this.emitUpdate();
       this.processAutoTurn();
     }, timeoutMs);
@@ -798,6 +828,9 @@ class PokerGame {
     );
 
     player.actedThisStreet = true;
+    // Acting under your own steam clears the strikes; the clock running out and
+    // acting for you does not, or the second strike could never land.
+    if (!this._actingForTimeout) player.timeoutStrikes = 0;
 
     // Acting spends whatever this seat had armed, however the action arrived.
     // The fire path clears the arm it plays, but a player who clicks during the

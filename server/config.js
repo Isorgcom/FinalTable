@@ -53,7 +53,10 @@ function loadConfig() {
     // frame is too fast to follow, so the table holds a beat between them, and
     // another between one hand and the next.
     streetPauseMs: intFromEnv('STREET_PAUSE_MS', 1600, 0, 15000),
-    handPauseMs: intFromEnv('HAND_PAUSE_MS', 3500, 0, 60000),
+    // The wait between one hand ending and the next being dealt. The director
+    // only deals on its tick, so the felt sits idle for this plus up to one
+    // tick - 3500 read as five seconds of nothing at the table.
+    handPauseMs: intFromEnv('HAND_PAUSE_MS', 2000, 0, 60000),
   };
 }
 

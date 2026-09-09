@@ -591,6 +591,7 @@ class TournamentDirector {
     seated.autoPlay = player.autoPlay;
     seated.sitOutReason = player.sitOutReason;
     seated.sitOutNextHand = player.sitOutNextHand;
+    seated.timeoutStrikes = player.timeoutStrikes || 0;
     // preAction is deliberately not carried: it is armed against one street's
     // price, and a move only happens between hands.
     from.removePlayer(player.id);
@@ -752,6 +753,7 @@ class TournamentDirector {
       seated.autoPlay = player.autoPlay;
       seated.sitOutReason = player.sitOutReason;
       seated.sitOutNextHand = player.sitOutNextHand;
+      seated.timeoutStrikes = player.timeoutStrikes || 0;
       table.removePlayer(player.id);
       this._say(`${player.name} moves to table ${target.tableNumber}`);
     }
