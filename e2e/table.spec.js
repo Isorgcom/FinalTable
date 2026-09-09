@@ -1434,15 +1434,37 @@ test('the table can be muted from the menu, and stays muted after a reload', asy
   await mute.click();
   expect(await page.evaluate(() => SFX.isMuted())).toBe(true);
 
-  // Muted means nothing is scheduled, not that the context is torn down: the
-  // sound has to come straight back on.
-  expect(
-    await page.evaluate(() => {
-      const before = SFX.ctx ? SFX.ctx.state : null;
-      SFX.play('check');
-      return before;
-    })
-  ).toBe('running');
+  // Every way in, not just the one that is easiest to reach from a test. The
+  // action sounds go through play(); the chips, the deck and the cards do not,
+  // and gating only play() leaves a table that still rattles while muted.
+  const count = () =>
+    page.evaluate(() => {
+      let made = 0;
+      const ctx = SFX.ctx;
+      const osc = ctx.createOscillator.bind(ctx);
+      const buf = ctx.createBufferSource.bind(ctx);
+      ctx.createOscillator = () => {
+        made++;
+        return osc();
+      };
+      ctx.createBufferSource = () => {
+        made++;
+        return buf();
+      };
+      for (const t of ['turn', 'check', 'fold', 'allin', 'win']) SFX.play(t);
+      SFX.chipsMoved();
+      SFX.deckShuffled();
+      SFX.cardsPlaced([0, 0.1]);
+      SFX.playSample('card', 0.3);
+      ctx.createOscillator = osc;
+      ctx.createBufferSource = buf;
+      return made;
+    });
+
+  expect(await count()).toBe(0);
+  // Muted gates the sound, it does not tear the context down, so unmuting is
+  // immediate and needs no further gesture.
+  expect(await page.evaluate(() => SFX.ctx.state)).toBe('running');
   expect(await page.evaluate(() => localStorage.getItem('finaltable_muted'))).toBe('1');
 
   // Actually reloaded, rather than trusting the storage key: the state is read
@@ -1453,6 +1475,8 @@ test('the table can be muted from the menu, and stays muted after a reload', asy
 
   await page.evaluate(() => SFX.setMuted(false));
   expect(await page.evaluate(() => localStorage.getItem('finaltable_muted'))).toBeNull();
+  // And with the sound back on, the same sweep does reach the audio hardware.
+  expect(await count()).toBeGreaterThan(0);
   await page.reload();
   await expect.poll(() => page.evaluate(() => SFX.isMuted())).toBe(false);
 

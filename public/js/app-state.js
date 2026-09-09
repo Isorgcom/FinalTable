@@ -261,6 +261,7 @@ const SFX = {
   // at 55ms spacing audibly jitters. rate detunes a repeated sample so a deal
   // sounds like a deck rather than a machine.
   playSample(name, gain, whenOffset, rate) {
+    if (this.muted) return false;
     const buffer = this.samples[name];
     if (!this.ctx || !buffer) return false;
     try {
@@ -284,6 +285,10 @@ const SFX = {
   // copies of the same recording: one per burst is the sound of a table, nine
   // is a landslide.
   chipsMoved() {
+    // Gated here as well as in playSample: this one falls back to a
+    // synthesised burst when the recording is missing, and that route does not
+    // go past playSample at all.
+    if (this.muted) return;
     if (!this.ctx) this.init();
     if (!this.ctx) return;
     const now = Date.now();
@@ -301,6 +306,7 @@ const SFX = {
   // synthesised fallback on purpose: a synth shuffle is white noise with a
   // hopeful name, and a sample that failed to decode is better as nothing.
   deckShuffled() {
+    if (this.muted) return;
     if (!this.ctx) this.init();
     if (!this.ctx) return;
     const now = Date.now();
@@ -318,6 +324,7 @@ const SFX = {
   // visual is worse than one sound, and that decision belongs here rather than
   // at each call site.
   cardsPlaced(offsets) {
+    if (this.muted) return;
     if (!offsets || !offsets.length) return;
     if (!this.ctx) this.init();
     if (!this.ctx) return;
