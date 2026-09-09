@@ -1727,3 +1727,45 @@ test('the clock is an outline round the cards that escalates and warns once', as
 
   expect(pageErrors).toEqual([]);
 });
+
+test('the clock measures the turn, not the gap between two clocks', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Skew');
+  await deal(page);
+
+  // turnExpiresAt is an absolute time on the server's clock. A device several
+  // seconds behind reads it as more time left than the whole turn is worth, so
+  // the ratio clamps at one and the outline sits full and still until real time
+  // catches up - which is what "it does not start for eight seconds" is.
+  const seen = await page.evaluate(() => {
+    const me = gameState.players.findIndex((p) => p.id === myId);
+    gameState.isRunning = true;
+    gameState.gameMode = 'tournament';
+    gameState.currentPlayerIndex = me;
+    for (const p of gameState.players) {
+      p.folded = false;
+      p.allIn = false;
+    }
+
+    const SKEW = 8000;
+    const DURATION = 25000;
+    // Half the turn gone, on a clock eight seconds ahead of this device.
+    updateGameState({
+      ...gameState,
+      serverNow: Date.now() + SKEW,
+      turnDurationMs: DURATION,
+      turnExpiresAt: Date.now() + SKEW + DURATION / 2,
+    });
+    updateTurnClocks();
+    const rect = document
+      .querySelector(`#playerSeats .player-seat[data-player-id="${myId}"] .hole-clock`)
+      .querySelector('rect');
+    return { dash: parseFloat(rect.style.strokeDasharray) };
+  });
+
+  // Half gone is half drawn. Uncorrected it reads 82%, and would sit pinned at
+  // 100% for the first eight seconds of every turn.
+  expect(seen.dash).toBeGreaterThan(45);
+  expect(seen.dash).toBeLessThan(55);
+
+  expect(pageErrors).toEqual([]);
+});

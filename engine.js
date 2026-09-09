@@ -1741,6 +1741,11 @@ class PokerGame {
       viewerIsSpectator: this.isSpectatorPlayer(viewer),
       // No clock runs while the street beat is held: nobody is to act, and a
       // countdown ticking down on the last actor's seat reads as their turn.
+      // Stamped so the client can tell how far its own clock is from this one.
+      // turnExpiresAt is an absolute time on the server's clock, and a device a
+      // few seconds behind reads it as more time remaining than the whole turn
+      // is worth - which shows up as a clock that sits full and does not start.
+      serverNow: Date.now(),
       turnExpiresAt: this._streetTimer ? null : this.turnExpiresAt,
       turnDurationMs: this._streetTimer ? null : this.turnDurationMs,
       // The viewer's own hand in words, never anyone else's.

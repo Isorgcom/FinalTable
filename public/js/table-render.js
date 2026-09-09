@@ -278,6 +278,11 @@ function animateChipMovement(prevBets, prevWinnerKey, sweeps) {
 }
 
 function updateGameState(state) {
+  // Take the reading before anything else: every turn clock is measured
+  // against it.
+  if (state && Number.isFinite(state.serverNow)) {
+    _serverSkewMs = state.serverNow - Date.now();
+  }
   const oldRound = gameState ? gameState.roundCount : -1;
   const oldCommunityLen = gameState ? gameState.communityCards.length : 0;
   const hadGameOver = !!(gameState && gameState.gameOver);
@@ -1392,6 +1397,18 @@ function updateHandStrength() {
 const CLOCK_WARNING_MS = 10000;
 const CLOCK_URGENT_MS = 5000;
 
+// How far this device's clock is from the server's. turnExpiresAt is an
+// absolute time on the server's clock, so comparing it against a local
+// Date.now() measures the two clocks as much as it measures the turn: a device
+// several seconds behind computes more time remaining than the whole turn is
+// worth, the ratio clamps at one, and the clock sits full until real time
+// catches up. Re-read on every state; on a LAN the one-way latency baked into
+// it is a few milliseconds.
+let _serverSkewMs = 0;
+function serverNow() {
+  return Date.now() + _serverSkewMs;
+}
+
 // The warning fires once for a turn, not once per tick. Latched on the turn it
 // belongs to, the way the your-turn chime is latched on the edge into a turn.
 let _warnedTurnKey = null;
@@ -1405,7 +1422,7 @@ function updateTurnClocks(orderedPlayers) {
       player.originalIndex === gameState.currentPlayerIndex && !player.folded && !player.allIn
   );
   const live = gameState.turnExpiresAt && gameState.turnDurationMs;
-  const remainingMs = live ? Math.max(0, gameState.turnExpiresAt - Date.now()) : 0;
+  const remainingMs = live ? Math.max(0, gameState.turnExpiresAt - serverNow()) : 0;
   const ratio = live ? Math.max(0, Math.min(1, remainingMs / gameState.turnDurationMs)) : 0;
   const secondsLeft = Math.max(1, Math.ceil(remainingMs / 1000));
 
