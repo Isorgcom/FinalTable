@@ -12,7 +12,8 @@ Status: **playable.** Multi-table tournaments run end to end: a lobby where
 friends register by code or link, a scheduled start, tables that balance and
 break as players bust, late registration, payouts and hand-for-hand at the
 bubble, and rejoin after a dropped connection or a page reload. Registrations
-survive a server restart; a running tournament does not.
+survive a server restart, and so does a running field: it is recorded between
+hands, never during one, and seated again on the way back up.
 
 It is people only. There are no bots, so a tournament needs at least two
 players before it can deal. A seat whose player disconnects, leaves or runs
@@ -38,6 +39,44 @@ docker compose up -d --build
 The app listens on **2026** inside the container. The compose file publishes it
 to loopback only, on the assumption a reverse proxy sits in front.
 
+## Capacity
+
+Measured rather than estimated, against a container held to
+`--max-old-space-size=256` and a 384 MB limit - the settings a small VPS gets.
+Fields of bots, every seat acting without pausing to think, which is harder than
+the same number of people:
+
+| Field                  | Result                                                            |
+| ---------------------- | ----------------------------------------------------------------- |
+| 80 players, 10 tables  | Stable. 20 hands, memory levelled at 199-243 MB and stayed there. |
+| 150 players, 19 tables | Dies inside three minutes: `JavaScript heap out of memory`.       |
+
+So **about 80 players** at those settings. The limit is V8's heap, not the
+container - Docker never intervened, `oomKilled=false`; Node gave up first. It
+scales with concurrent _tables_ rather than with players alone, because a table
+costs a deck, a hand history, timers and per-player state, and every action fans
+out to everyone sitting at it.
+
+For a larger field, raise the two together:
+
+```yaml
+- NODE_OPTIONS=--max-old-space-size=384   # from 256
+mem_limit: 512m                            # from 384m
+```
+
+Raising one alone only changes which limit is hit first. 640 MB of heap carries a
+200 player field.
+
+One thing to know before reading `docker stats`: given headroom, Node grows into
+it and does not collect until it has to, so resident memory tracks the ceiling
+you set rather than the work being done. The same 80 player field sat at 298 MB
+and climbing under a 640 MB ceiling, and settled at 220 MB under a 256 MB one.
+Rising memory is not the signal - whether it levels off below the ceiling is.
+
+Tables seat up to 8. The figures above are memory; CPU was never the constraint,
+but they were taken on a host with more of it than a 1 vCPU VPS has, so treat 80
+as the memory ceiling and watch the clock separately on a small box.
+
 ## Layout
 
 | Path                                                         | Purpose                                                                                         |
@@ -59,14 +98,14 @@ to loopback only, on the assumption a reverse proxy sits in front.
 
 Done: the multi-table director (chips carried across tables under a
 conservation invariant, one shared clock, balancing and breaking, payouts and
-hand-for-hand at the bubble), the table redesign, and the tournament lobby
-(identity, scheduled starts, late registration, rejoin, persistence).
+hand-for-hand at the bubble), the table redesign, the tournament lobby
+(identity, scheduled starts, late registration, rejoin, persistence), and
+restoring a running field after a restart.
 
 Not built, in the order they are likely to matter:
 
 - A headless client that can fill a field, now that bots cannot
 - Railbird spectating for people who are not registered
-- Restoring a running tournament after a restart (between hands)
 - Re-entry during late registration; kicking a registrant
 - A GameNight-account login behind `server/identity.js`
 - Player chat in the Chat tab; custom blind schedules; an admin page
