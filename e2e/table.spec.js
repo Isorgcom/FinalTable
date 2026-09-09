@@ -1147,3 +1147,81 @@ test.describe('landscape phone', () => {
     expect(pageErrors).toEqual([]);
   });
 });
+
+// The action bar is a fixed box full of controls whose labels change every
+// turn. Overlap is the failure it actually has, so it is checked as overlap -
+// pairwise, at the sizes people hold - rather than by asserting widths that
+// would pass while two controls sat on top of each other.
+for (const vp of [
+  { name: 'a desktop window', width: 1440, height: 900 },
+  { name: 'an iPad in landscape', width: 1180, height: 700 },
+  { name: 'a small laptop', width: 1024, height: 640 },
+]) {
+  test.describe(`action bar on ${vp.name}`, () => {
+    test.use({ viewport: { width: vp.width, height: vp.height } });
+
+    test('no two of its controls overlap, and it stays one row', async ({ page }) => {
+      const pageErrors = await seatAtTournamentTable(page, 'Fit');
+      await deal(page);
+
+      const controls = await page.evaluate(() => {
+        const ids = [
+          'barStack',
+          'handStrength',
+          'presetGroup',
+          'btnFold',
+          'btnCheck',
+          'btnCall',
+          'raiseSlider',
+          'raiseInput',
+          'raiseNeedPay',
+          'btnRaise',
+          'btnAllIn',
+          'btnRequestTime',
+        ];
+        return ids
+          .map((id) => {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            const b = el.getBoundingClientRect();
+            return b.width > 0 && b.height > 0
+              ? { id, x: b.x, y: b.y, right: b.right, bottom: b.bottom }
+              : null;
+          })
+          .filter(Boolean);
+      });
+
+      // Every one of them is on screen at once, or the check below proves
+      // nothing: two hidden boxes never collide.
+      expect(controls.length).toBeGreaterThanOrEqual(9);
+
+      const collisions = [];
+      for (let i = 0; i < controls.length; i++) {
+        for (let j = i + 1; j < controls.length; j++) {
+          const a = controls[i];
+          const b = controls[j];
+          const ox = Math.min(a.right, b.right) - Math.max(a.x, b.x);
+          const oy = Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y);
+          if (ox > 1 && oy > 1) {
+            collisions.push(`${a.id} over ${b.id} by ${Math.round(ox)}x${Math.round(oy)}`);
+          }
+        }
+      }
+      expect(collisions).toEqual([]);
+
+      // One row of buttons, not two: the panel is anchored at the bottom, so a
+      // wrap grows it upward over the felt and the viewer's own cards.
+      const rowIds = ['btnFold', 'btnRaise', 'btnAllIn'];
+      const tops = controls.filter((c) => rowIds.includes(c.id)).map((c) => Math.round(c.y));
+      expect(new Set(tops).size).toBe(1);
+
+      // The bar covers the viewer's plate on a short screen, so it carries the
+      // stack itself - that is the one thing on the plate you cannot act
+      // without.
+      await expect(page.locator('#barStack')).toBeVisible();
+      await expect(page.locator('#barStack')).not.toHaveText('');
+
+      expect(pageErrors).toEqual([]);
+    });
+  });
+}

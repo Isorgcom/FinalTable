@@ -621,7 +621,7 @@
    pointer on every step of the drag. */
 .raise-need-pay {
   flex: 0 0 auto;
-  min-width: 104px;
+  min-width: 96px;
   font-variant-numeric: tabular-nums;
   font-size: 0.65rem;
   color: var(--smoke);

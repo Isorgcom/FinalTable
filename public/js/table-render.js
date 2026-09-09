@@ -324,6 +324,7 @@ function updateGameState(state) {
   updateActionsPanel();
   updatePreActionPanel();
   updateHandStrength();
+  updateBarStack();
   updateTopBar();
   updateBlindClock();
   if (window.SidePanel) {
@@ -1224,6 +1225,21 @@ function applyRaisePreset(value) {
   slider.setAttribute('aria-valuenow', v);
   const npEl = document.getElementById('raiseNeedPay');
   if (npEl) npEl.textContent = `to ${v} · +${Math.max(0, v - me.bet)}`;
+}
+
+// The viewer's own stack, on the bar. The bar sits over their plate on a short
+// screen, and the stack is the one thing on that plate they cannot act without.
+function updateBarStack() {
+  const el = document.getElementById('barStack');
+  if (!el) return;
+  const me = gameState ? gameState.players.find((p) => p.id === myId) : null;
+  const show = !!me && !!gameState.isMyTurn;
+  el.classList.toggle('hidden', !show);
+  if (!show) return;
+  el.textContent = Number(me.chips || 0).toLocaleString();
+  if (me.totalBet > 0) {
+    el.appendChild(createTextElement('span', 'bar-stack-in', `in ${me.totalBet}`));
+  }
 }
 
 // "You have ..." in the action bar, from the server's description of the

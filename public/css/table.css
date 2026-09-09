@@ -1147,7 +1147,7 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  width: min(94vw, 720px);
+  width: min(94vw, 800px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1155,18 +1155,25 @@
   gap: 6px;
   z-index: 100;
   padding: 10px 16px;
-  background: rgba(13, 31, 18, 0.92);
+  /* Opaque. The viewer's own plate sits at the bottom of the felt, directly
+     under this, and at 0.92 it ghosted through the bar and read as two things
+     drawn on top of each other. The stack it was carrying is on the bar now. */
+  background: rgb(13, 31, 18);
   border: 1px solid rgba(92, 61, 26, 0.3);
   border-radius: 8px;
-  backdrop-filter: blur(12px);
 }
 .actions-panel.hidden {
   display: none;
 }
+/* Wrapping is the safety valve, not the plan: at every size this bar is meant
+   for, the widths below add up to less than the panel. If a narrow window ever
+   beats them, a second line is the right failure - the controls overlapping
+   each other is not. */
 .action-row {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 /* Hand readout on the left, raise presets on the right, always one line. The
@@ -1180,6 +1187,20 @@
   flex-wrap: nowrap;
   gap: 6px 10px;
   min-height: 22px;
+}
+.bar-stack {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.bar-stack.hidden {
+  display: none;
+}
+.bar-stack .bar-stack-in {
+  color: var(--smoke);
+  margin-left: 6px;
 }
 .hand-strength {
   flex: 1 1 auto;
@@ -1262,7 +1283,7 @@
 
 .action-btn {
   flex: 0 0 auto;
-  min-width: 86px;
+  min-width: 76px;
   text-align: center;
   white-space: nowrap;
   padding: 10px 20px;
@@ -1279,7 +1300,7 @@
    "all-in call" and a five figure stack. */
 .btn-check,
 .btn-call {
-  min-width: 158px;
+  min-width: 148px;
 }
 .action-btn:active {
   opacity: 0.8;
@@ -1326,16 +1347,25 @@
   background: rgba(139, 58, 58, 0.4);
 }
 
+/* min-width is the sum of what it holds, not zero. Allowed to shrink past its
+   own contents it did not squeeze them - it kept them their size and let them
+   spill out over the call button on one side and raise on the other. The
+   slider is the one part that can give, so it is the one that does. */
 .raise-slider-group {
   display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
+  /* Basis is the minimum, not the natural width. Flex lays items into lines
+     from their basis and only shrinks within a line, so a basis of "as wide as
+     I would like to be" wraps the bar onto two rows in a space it would have
+     fitted in perfectly well once squeezed. */
+  flex: 1 1 226px;
+  min-width: 226px;
   justify-content: center;
   align-items: center;
   gap: 6px;
 }
 .raise-input {
-  width: 70px;
+  flex: 0 0 auto;
+  width: 64px;
   padding: 6px;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(92, 61, 26, 0.3);
@@ -1350,7 +1380,10 @@
   border-color: var(--gold);
 }
 .raise-slider {
-  width: 100px;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 54px;
+  max-width: 130px;
   accent-color: var(--gold);
 }
 
