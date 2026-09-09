@@ -1394,8 +1394,8 @@ function updateHandStrength() {
 // The depletion is set here rather than animated in CSS on purpose: under
 // prefers-reduced-motion every animation-duration collapses to 0.01ms, which
 // would send an animated outline straight to empty.
-const CLOCK_WARNING_MS = 10000;
-const CLOCK_URGENT_MS = 5000;
+const CLOCK_WARNING_MS = 15000;
+const CLOCK_URGENT_MS = 9000;
 
 // How far this device's clock is from the server's. turnExpiresAt is an
 // absolute time on the server's clock, so comparing it against a local

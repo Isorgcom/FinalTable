@@ -1646,20 +1646,20 @@ test('the clock is an outline round the cards that escalates and warns once', as
       row: box('.player-hole-cards'),
       plate: box('.player-info'),
     };
-    pose(8000, meIndex);
+    pose(12000, meIndex);
     const warning = read(myId);
     const quietSoFar = nodes;
-    pose(3000, meIndex);
+    pose(5000, meIndex);
     const urgent = read(myId);
     const afterFirstWarning = nodes;
-    // Same turn, still under five seconds: the warning must not repeat.
-    pose(2000, meIndex);
+    // Same turn, still inside the urgent band: the warning must not repeat.
+    pose(3000, meIndex);
     const afterSecondTick = nodes;
 
     // Somebody else's clock, running out. Not our problem and not our noise.
     _warnedTurnKey = null;
     gameState.roundCount += 1;
-    pose(3000, otherIndex);
+    pose(5000, otherIndex);
     const theirs = read(other.id);
     const afterTheirClock = nodes;
 
@@ -1667,7 +1667,7 @@ test('the clock is an outline round the cards that escalates and warns once', as
     SFX.setMuted(true);
     _warnedTurnKey = null;
     gameState.roundCount += 1;
-    pose(3000, meIndex);
+    pose(5000, meIndex);
     const afterMuted = nodes;
     SFX.setMuted(false);
 
