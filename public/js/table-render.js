@@ -118,7 +118,7 @@ function flyChips(from, to, count, extraClass, opts) {
   const b = flyPoint(to, wrapRect);
   if (!a || !b) return;
   const delayMs = (opts && opts.delayMs) || 0;
-  const durMs = (opts && opts.durMs) || 550;
+  const durMs = (opts && opts.durMs) || CHIP_FLY_MS;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   // Chips are actually going somewhere, so this is the one honest place to
@@ -161,7 +161,12 @@ const DEAL_LAND_S = 0.265;
 const FLIP_TURN_S = 0.173;
 
 const SWEEP_CHIP_BUDGET = 14;
-const SWEEP_DUR_MS = 420;
+// How long chips take to travel. A bet going in and a pot being pushed use the
+// first; a street sweeping to the middle uses the second, which is also what
+// the board waits for before it turns over and what the winner's push waits
+// for, so the three stay in step by construction.
+const CHIP_FLY_MS = 700;
+const SWEEP_DUR_MS = 540;
 
 function feltBetElementFor(playerId) {
   const layer = document.getElementById('feltBets');
