@@ -1599,6 +1599,7 @@ test('the clock is an outline round the cards that escalates and warns once', as
       const c = clockFor(id);
       return {
         dash: c.querySelector('rect').style.strokeDasharray,
+        offset: c.querySelector('rect').style.strokeDashoffset,
         cls: c.getAttribute('class'),
         shown: shownCount(),
       };
@@ -1632,6 +1633,19 @@ test('the clock is an outline round the cards that escalates and warns once', as
     gameState.currentPlayerIndex = meIndex;
     pose(20000, meIndex);
     const plenty = read(myId);
+    // The box, against the things it must not sit on. An svg with a viewBox is
+    // a replaced element with an intrinsic ratio, so sizing it by four insets
+    // gave it its own width as a height and hung it over the plate below.
+    const seat = document.querySelector(`#playerSeats .player-seat[data-player-id="${myId}"]`);
+    const box = (sel) => {
+      const r = seat.querySelector(sel).getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, w: r.width, h: r.height };
+    };
+    const fit = {
+      clock: box('.hole-clock'),
+      row: box('.player-hole-cards'),
+      plate: box('.player-info'),
+    };
     pose(8000, meIndex);
     const warning = read(myId);
     const quietSoFar = nodes;
@@ -1664,6 +1678,7 @@ test('the clock is an outline round the cards that escalates and warns once', as
 
     ctx.createOscillator = osc;
     return {
+      fit,
       plenty,
       warning,
       urgent,
@@ -1680,6 +1695,17 @@ test('the clock is an outline round the cards that escalates and warns once', as
   // One clock on the felt at a time, on the seat that is to act.
   expect(seen.plenty.shown).toBe(1);
   expect(seen.theirs.shown).toBe(1);
+
+  // It hugs the cards and stops short of the plate.
+  expect(seen.fit.clock.h).toBeLessThan(seen.fit.row.h + 14);
+  expect(seen.fit.clock.w).toBeLessThan(seen.fit.row.w + 14);
+  expect(seen.fit.clock.bottom).toBeLessThanOrEqual(seen.fit.plate.top);
+
+  // The gap opens on the top edge and travels clockwise. Drawing the remaining
+  // arc forward from the start instead eats the left edge first, which reads as
+  // the clock not moving at all for the first several seconds.
+  expect(parseFloat(seen.plenty.offset)).toBeCloseTo(parseFloat(seen.plenty.dash) - 100, 0);
+  expect(parseFloat(seen.plenty.offset)).toBeLessThan(0);
 
   // It depletes, and it steps through the three states by seconds remaining.
   expect(parseFloat(seen.plenty.dash)).toBeGreaterThan(parseFloat(seen.warning.dash));

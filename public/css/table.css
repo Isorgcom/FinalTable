@@ -918,9 +918,14 @@
    0.01ms, and an animated outline would jump straight to empty. */
 .hole-clock {
   position: absolute;
-  inset: -4px;
-  width: auto;
-  height: auto;
+  /* Sized explicitly rather than by four insets. An svg with a viewBox is a
+     replaced element with an intrinsic 1:1 ratio, so `height: auto` took the
+     width instead of the box - 96x96 around a 88x59 card row, hanging 27px over
+     the plate below. */
+  top: -5px;
+  left: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
   overflow: visible;
   fill: none;
   pointer-events: none;
@@ -931,23 +936,30 @@
 }
 .hole-clock rect {
   stroke: #7bca95;
-  stroke-width: 2.5;
+  /* Thick enough to read as a tube round the cards rather than a hairline, with
+     round caps so the shrinking end stays blunt instead of tapering. */
+  stroke-width: 6;
   stroke-linecap: round;
-  /* Start at twelve o'clock and deplete clockwise. */
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
-  transform-box: fill-box;
+  filter: drop-shadow(0 0 3px rgba(123, 202, 149, 0.55));
+  /* The clock is set from JS every 250ms; this carries it between ticks so it
+     reads as a sweep rather than a staircase. Collapses under
+     prefers-reduced-motion, which leaves the steps - the right trade there. */
+  transition:
+    stroke-dashoffset 260ms linear,
+    stroke-dasharray 260ms linear;
 }
 /* Ten seconds. Amber, the same warning tone the bubble banner uses. */
 .hole-clock.is-warning rect {
   stroke: #ffb74d;
+  filter: drop-shadow(0 0 4px rgba(255, 183, 77, 0.6));
   animation: clockPulse 1.1s ease-in-out infinite;
 }
 /* Five. The red the old pill used at its own critical threshold, so nothing new
    enters the felt's vocabulary. */
 .hole-clock.is-urgent rect {
   stroke: #d97059;
-  stroke-width: 3;
+  stroke-width: 7;
+  filter: drop-shadow(0 0 6px rgba(217, 112, 89, 0.7));
   animation: clockPulse 0.55s ease-in-out infinite;
 }
 @keyframes clockPulse {

@@ -1424,7 +1424,14 @@ function updateTurnClocks(orderedPlayers) {
     if (!shouldShow) return;
 
     const rect = clock.querySelector('rect');
-    if (rect) rect.style.strokeDasharray = `${ratio * 100} 100`;
+    if (rect) {
+      // The gap opens at the top-left and travels clockwise, so the top edge -
+      // the one being looked at - starts going immediately. Drawing the
+      // remaining arc forward from the start instead ate the left edge first,
+      // which read as the clock not moving for the first several seconds.
+      rect.style.strokeDasharray = `${ratio * 100} 100`;
+      rect.style.strokeDashoffset = `${ratio * 100 - 100}`;
+    }
     clock.classList.toggle('is-warning', remainingMs <= CLOCK_WARNING_MS);
     clock.classList.toggle('is-urgent', remainingMs <= CLOCK_URGENT_MS);
     clock.setAttribute('aria-label', `${secondsLeft} seconds left to act`);
