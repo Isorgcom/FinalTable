@@ -139,6 +139,37 @@ describe('tournament registry', () => {
     ).toEqual(['sg', 'sh']);
   });
 
+  // Demo seats fill a table for a person who wants to see the game move. They
+  // are entrants, so the field can start; they are not registrations, so they
+  // neither hold the tournament open nor stand between it and the reaper.
+  test('the bot option seats five demo entrants that do not count as people', () => {
+    const hostSocket = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000, bots: true }, hostSocket);
+    expect(entry.director.entrants.length).toBe(6);
+    expect(entry.registrations.size).toBe(1);
+    const bots = entry.director.entrants.filter((e) => e.isBot);
+    expect(bots.length).toBe(5);
+    expect(new Set(bots.map((b) => b.uid)).size).toBe(5);
+    // A demo seat is played here, so it carries an id from the start rather
+    // than waiting for a socket the way a person's seat does.
+    expect(bots.every((b) => b.id === b.uid)).toBe(true);
+
+    // One person is enough to start a field of six.
+    expect(registry.startNow(entry, 'h').error).toBeUndefined();
+    expect(entry.status).toBe('running');
+
+    // And when that person goes, the bots do not keep it alive.
+    registry.unbind(entry, 'h', hostSocket);
+    jest.advanceTimersByTime(4000);
+    expect(registry.tournaments.has(entry.id)).toBe(false);
+  });
+
+  test('without the bot option a tournament is people only', () => {
+    const { entry } = create({ startsAt: Date.now() + 60000 });
+    expect(entry.director.entrants.length).toBe(1);
+    expect(entry.director.entrants.some((e) => e.isBot)).toBe(false);
+  });
+
   test('the host passes to the next connected human after the grace, or at once on unregister', () => {
     const { entry, socket } = create({ startsAt: Date.now() + 60000 });
     const guest = makeSocket('sg');
@@ -612,6 +643,44 @@ describe('tournament registry', () => {
     expect(back.director.tables[0].players.map((p) => `${p.uid}:${p.chips}`)).toEqual(stacks);
     // Nobody is back at the keyboard yet, so every seat is sitting out.
     for (const p of back.director.tables[0].players) expect(p.autoPlay).toBe(true);
+    second.stop();
+  });
+
+  test('demo seats come back from a restart still playing', () => {
+    const store = makeStore();
+    const first = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    const { entry } = first.create(
+      'h',
+      { name: 'Donkey Show', startsAt: Date.now() + 1000, bots: true },
+      makeSocket('sh')
+    );
+    jest.advanceTimersByTime(2000);
+    expect(entry.status).toBe('running');
+    first.flush();
+    first.stop();
+
+    const second = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    const seats = back.director.tables[0].players;
+    const bots = seats.filter((p) => p.isBot);
+    expect(bots).toHaveLength(5);
+    // A demo seat has nobody to wait for, so unlike the human seats around it
+    // it is not sat out on the way back up.
+    for (const p of bots) expect(p.autoPlay).toBe(false);
+    expect(seats.find((p) => !p.isBot).autoPlay).toBe(true);
     second.stop();
   });
 });

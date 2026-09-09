@@ -17,6 +17,10 @@ const random = require('../random');
 const TICK_MS = 1200;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const START_CHIPS = [1000, 2000, 5000, 10000];
+// Seats the server plays, for filling a table to try something out. Named for
+// what they are: a donkey calls too much and raises for no reason, which is the
+// whole behaviour. Five, because that plus a host is a table worth looking at.
+const DEMO_BOT_NAMES = ['Burro', 'Jenny', 'Moke', 'Neddy', 'Hinny'];
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function createTournamentRegistry(deps = {}) {
@@ -96,6 +100,7 @@ function createTournamentRegistry(deps = {}) {
         uid: e.uid,
         name: e.name,
         avatar: e.avatar || null,
+        isBot: !!e.isBot,
       })),
       registrations: [...entry.registrations.entries()].map(([uid, r]) => ({
         uid,
@@ -307,7 +312,8 @@ function createTournamentRegistry(deps = {}) {
       return {
         ...row,
         isHost: row.uid === entry.hostUid,
-        connected: !!(r && r.socketId),
+        // A demo seat has no socket to lose, so it is always here.
+        connected: row.isBot || !!(r && r.socketId),
       };
     });
     const placeByUid = new Map();
@@ -458,6 +464,22 @@ function createTournamentRegistry(deps = {}) {
       joinedAt: now(),
       left: false,
     });
+    // Demo seats, if asked for. They are entrants and nothing else: no
+    // registration row, so connectedHumans does not count them and a field of
+    // bots whose only human has gone still gets reaped like any other.
+    if (payload.bots) {
+      DEMO_BOT_NAMES.forEach((botName, i) => {
+        const botUid = `bot:${entry.id}:${i + 1}`;
+        entry.director.register({
+          id: botUid,
+          uid: botUid,
+          name: botName,
+          avatar: '🫏',
+          isBot: true,
+        });
+      });
+    }
+
     tournaments.set(entry.id, entry);
     if (socket) bind(entry, uid, socket);
     persist();
@@ -958,7 +980,15 @@ function createTournamentRegistry(deps = {}) {
         // A file written before the bots were removed carries them; skip those
         // rows rather than choking on a tournament that is otherwise fine.
         if (e.isNPC) continue;
-        entry.director.register({ id: null, uid: e.uid, name: e.name, avatar: e.avatar || null });
+        entry.director.register({
+          // A demo seat is played by the server, so it keeps an id of its own;
+          // a person's seat waits for the socket they come back on.
+          id: e.isBot ? e.uid : null,
+          uid: e.uid,
+          name: e.name,
+          avatar: e.avatar || null,
+          isBot: !!e.isBot,
+        });
       }
       for (const r of saved.registrations || []) {
         if (!r || !r.uid) continue;

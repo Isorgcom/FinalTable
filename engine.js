@@ -192,6 +192,10 @@ class PokerGame {
       seatIndex: this.players.length,
       isConnected: true,
       isReady: false,
+      // A seat played by the server for testing. Unlike autoPlay, which is a
+      // human stepping away and must never put chips in on their behalf, a bot
+      // is meant to play - badly, but genuinely.
+      isBot: !!playerData.isBot,
       autoPlay: false,
       // Consecutive turns let go on the clock. One is a moment of inattention
       // and costs only that hand; two in a row is somebody who has walked away.
@@ -1526,7 +1530,7 @@ class PokerGame {
   }
 
   isAutomatedPlayer(player) {
-    return !!(player && player.autoPlay);
+    return !!(player && (player.autoPlay || player.isBot));
   }
 
   getPublicName(player) {
@@ -1573,10 +1577,61 @@ class PokerGame {
         return;
       }
       const canCheck = this.currentBet <= live.bet;
-      live.lastAction = { action: canCheck ? 'check' : 'fold', amount: 0, time: Date.now() };
-      this.handleAction(live.id, canCheck ? 'check' : 'fold');
+      // A bot plays its hand; a seat that is sitting out gives it up. The
+      // distinction matters - sitting out is a person who stepped away, and
+      // putting their chips in for them is the one thing it must never do.
+      const move = live.isBot
+        ? this._donkeyMove(live)
+        : { action: canCheck ? 'check' : 'fold', amount: 0 };
+      live.lastAction = { action: move.action, amount: move.amount || 0, time: Date.now() };
+      this.handleAction(live.id, move.action, move.amount);
     }, delay);
     if (this._autoTurnTimer.unref) this._autoTurnTimer.unref();
+  }
+
+  // A donkey: calls far too much, raises without a reason, folds only when the
+  // price is most of what it has left. Deliberately not a poker player - these
+  // exist so a table can be filled for testing, and a good one would make that
+  // testing worse by ending hands quickly and folding the interesting spots.
+  //
+  // Everything it does goes through handleAction, so it cannot make a move the
+  // rules do not allow: the raise below is clamped there, and a call larger
+  // than the stack becomes an all-in.
+  _donkeyMove(player) {
+    const toCall = Math.max(0, this.currentBet - player.bet);
+    const roll = random.randomInt(100);
+
+    if (toCall <= 0) {
+      // Nothing owed. Mostly check, occasionally put a bet in for no reason.
+      if (roll < 20 && this.canAnyoneRespond(player)) {
+        return { action: 'raise', amount: this._donkeyRaise() };
+      }
+      return { action: 'check', amount: 0 };
+    }
+
+    // Facing a bet. A donkey pays it unless it is most of the stack, and even
+    // then it pays sometimes.
+    const priceShare = toCall / Math.max(1, player.chips);
+    if (priceShare > 0.6 && roll < 70) return { action: 'fold', amount: 0 };
+    if (roll < 10 && this.canAnyoneRespond(player)) {
+      return { action: 'raise', amount: this._donkeyRaise() };
+    }
+    return { action: 'call', amount: 0 };
+  }
+
+  // Half the pot on top of the current bet, or the minimum if that is more.
+  // Sizing off the pot rather than off the minimum matters at a table of five
+  // of them: min-raises get called round and round and the street barely
+  // closes, where a raise worth making ends it.
+  _donkeyRaise() {
+    return this.currentBet + Math.max(this.minRaise, Math.round(this.pot / 2));
+  }
+
+  // Is there anybody left who could answer a raise? Raising into a table where
+  // everyone else is all in or folded is not a move, and handleAction refuses
+  // it - better to ask before making one.
+  canAnyoneRespond(player) {
+    return this.players.some((p) => p.id !== player.id && !p.folded && !p.allIn && p.chips > 0);
   }
 
   // What an armed line comes to at the price the table actually reached. Null

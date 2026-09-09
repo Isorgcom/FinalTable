@@ -953,6 +953,85 @@ describe('Hand History & Replay Data', () => {
     }
   });
 
+  test('a demo bot plays its hand where a sit-out would give it up', async () => {
+    jest.useFakeTimers();
+    try {
+      const game = new PokerGame('bot_turn', { smallBlind: 10, bigBlind: 20 });
+      game.onMessage = () => {};
+      game.onUpdate = () => {};
+      game.onChat = () => {};
+      game.onRoundEnd = () => {};
+
+      const bot = game.addPlayer({ id: 'p1', name: 'Burro', isBot: true });
+      const villain = game.addPlayer({ id: 'p2', name: 'Villain' });
+      game.startRound();
+
+      bot.holeCards = [Card('clubs', 2), Card('diamonds', 7)];
+      villain.holeCards = [Card('spades', 14), Card('hearts', 14)];
+      game.currentPlayerIndex = bot.seatIndex;
+      game.currentBet = 20;
+      bot.bet = 10;
+      bot.totalBet = 10;
+      bot.folded = false;
+      bot.allIn = false;
+      bot.chips = 990;
+      game.isRunning = true;
+
+      game.processAutoTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 100);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // The same spot the sit-out test folds in: 10 to call into a 990 stack.
+      // Nothing about the cards matters here - a donkey pays a small price.
+      expect(bot.lastAction).toBeTruthy();
+      expect(bot.lastAction.action).not.toBe('fold');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('a donkey folds only when the price is most of what it has', () => {
+    const game = new PokerGame('donkey_move', { smallBlind: 10, bigBlind: 20 });
+    game.onMessage = () => {};
+    game.onUpdate = () => {};
+    game.onChat = () => {};
+    game.onRoundEnd = () => {};
+    const bot = game.addPlayer({ id: 'p1', name: 'Burro', isBot: true });
+    game.addPlayer({ id: 'p2', name: 'Villain' });
+    game.startRound();
+    game.isRunning = true;
+
+    const roll = jest.spyOn(random, 'randomInt');
+    try {
+      // 80 to call with 100 behind. Most rolls give it up; some pay anyway.
+      bot.chips = 100;
+      bot.bet = 0;
+      game.currentBet = 80;
+      roll.mockReturnValue(0);
+      expect(game._donkeyMove(bot).action).toBe('fold');
+      roll.mockReturnValue(99);
+      expect(game._donkeyMove(bot).action).toBe('call');
+
+      // 20 to call with 1000 behind: never a fold, whatever the roll.
+      bot.chips = 1000;
+      game.currentBet = 20;
+      for (let r = 0; r < 100; r++) {
+        roll.mockReturnValue(r);
+        expect(game._donkeyMove(bot).action).not.toBe('fold');
+      }
+
+      // Nothing owed: it checks, apart from the odd bet out of nowhere.
+      game.currentBet = 0;
+      roll.mockReturnValue(50);
+      expect(game._donkeyMove(bot).action).toBe('check');
+      roll.mockReturnValue(0);
+      expect(game._donkeyMove(bot).action).toBe('raise');
+    } finally {
+      roll.mockRestore();
+    }
+  });
+
   test('automated turns expose visible timer metadata while thinking', () => {
     jest.useFakeTimers();
     try {

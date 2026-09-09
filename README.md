@@ -15,11 +15,14 @@ bubble, and rejoin after a dropped connection or a page reload. Registrations
 survive a server restart, and so does a running field: it is recorded between
 hands, never during one, and seated again on the way back up.
 
-It is people only. There are no bots, so a tournament needs at least two
-players before it can deal. A seat whose player disconnects, leaves or runs
-out their clock sits out rather than being played for them: it checks when
-that is free and folds to a bet, and the stack blinds down until they come
-back or bust.
+It is people, unless you ask for otherwise: a tournament needs two entrants
+before it can deal, and the create form has a box that adds five demo seats so
+you can fill a table on your own and watch it play. They are donkeys on
+purpose - they call far too much and raise for no reason - and they are there
+to show the game moving, not to be beaten. A seat whose player disconnects,
+leaves or runs out their clock is never played for them: it sits out, checking
+when that is free and folding to a bet, and the stack blinds down until they
+come back or bust.
 
 ## Running it
 
@@ -104,7 +107,6 @@ restoring a running field after a restart.
 
 Not built, in the order they are likely to matter:
 
-- A headless client that can fill a field, now that bots cannot
 - Railbird spectating for people who are not registered
 - Re-entry during late registration; kicking a registrant
 - A GameNight-account login behind `server/identity.js`

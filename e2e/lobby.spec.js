@@ -52,11 +52,12 @@ async function identifyAs(page, name) {
   await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
 }
 
-async function createTournament(page, { name = 'Friday Night', minutes = 15 } = {}) {
+async function createTournament(page, { name = 'Friday Night', minutes = 15, bots = false } = {}) {
   await page.click('#btnCreateTournament');
   await expect(page.locator('#lobbyCreate')).toBeVisible();
   await page.fill('#tName', name);
   await page.click(`#tStartQuick button[data-min="${minutes}"]`);
+  if (bots) await page.check('#tBots');
   await page.click('#btnCreateSubmit');
   await expect(page.locator('#lobbyWaiting')).toBeVisible();
   const code = (await page.locator('#wrCode').textContent()).trim();
@@ -136,6 +137,30 @@ test('a second player joins by link, both see each other, and the host starts fo
   await expect(guest.locator('#panelInfoBody')).toContainText('Host');
   expect(guestErrors).toEqual([]);
   await guestContext.close();
+});
+
+test('the bot option fills the table so one person can start', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await identifyAs(page, 'Solo');
+  await createTournament(page, { name: 'Donkey Show', minutes: 15, bots: true });
+
+  // Five demo seats and the one person, badged so nobody mistakes a bot for a
+  // friend who turned up, and none of them showing as away.
+  await expect(page.locator('#wrRoster .wr-row')).toHaveCount(6);
+  await expect(page.locator('#wrRoster .wr-badge', { hasText: 'bot' })).toHaveCount(5);
+  await expect(page.locator('#wrRoster .wr-dot.on')).toHaveCount(6);
+  await expect(page.locator('#btnStartNow')).toBeEnabled();
+
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(6);
+  // And they play: chips go in without anyone touching the controls. The
+  // blinds alone are 30, so a pot past that is a bot that has acted.
+  await expect
+    .poll(() => page.evaluate(() => gameState && gameState.pot), { timeout: 20000 })
+    .toBeGreaterThan(30);
+  expect(errors).toEqual([]);
 });
 
 test('unregistering before the start returns to the lobby', async ({ page }) => {

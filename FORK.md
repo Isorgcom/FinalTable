@@ -51,6 +51,17 @@ Phase 2:
   since the tournament rewrite and bot-dependent throughout.
 - A tournament now needs two people before it can deal.
 
+Phase 3:
+
+- Added five demo seats behind a checkbox on the create form, which is not a
+  reversal of Phase 2. There is no poker AI here: `_donkeyMove` is thirty
+  lines that call almost everything and raise half the pot at random, and it
+  is reachable only when the person creating the tournament ticks the box.
+  What Phase 2 removed was a bot playing a disconnected person's stack, and
+  that stays removed - a sit-out is still a sit-out, and the two paths are
+  separate in `processAutoTurn`. The demo seats exist so one person can see
+  the table move without rounding up five friends first.
+
 ## Relationship to GameNight
 
 None. FinalTable is a wholly separate project with its own repository,

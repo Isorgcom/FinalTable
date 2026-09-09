@@ -408,6 +408,7 @@
       levelDuration: parseInt($('tLevelDuration').value, 10),
       lateRegLevels: parseInt($('tLateRegLevels').value, 10),
       buyIn: Math.max(0, Math.min(10000, parseInt($('tBuyIn').value, 10) || 0)),
+      bots: !!$('tBots').checked,
     };
     if (identity && socket && socket.connected) {
       socket.emit('createTournament', payload);
@@ -455,6 +456,12 @@
       const badge = document.createElement('span');
       badge.className = 'wr-badge';
       badge.textContent = 'host';
+      line.appendChild(badge);
+    }
+    if (row.isBot) {
+      const badge = document.createElement('span');
+      badge.className = 'wr-badge';
+      badge.textContent = 'bot';
       line.appendChild(badge);
     }
     if (row.place) {

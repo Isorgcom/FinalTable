@@ -139,6 +139,32 @@
 .form-row.form-row-3 {
   grid-template-columns: 1fr 1fr 1fr;
 }
+/* The bot opt-in. A checkbox on its own line rather than in the two-column
+   grid above: the label is a sentence, not a field name. */
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--smoke);
+  line-height: 1.35;
+}
+.check-row input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+.check-row em {
+  display: block;
+  font-style: normal;
+  font-size: 0.72rem;
+  opacity: 0.65;
+}
+
 .identity-status {
   font-size: 0.72rem;
   color: var(--gold);

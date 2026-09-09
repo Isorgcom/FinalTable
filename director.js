@@ -232,6 +232,7 @@ class TournamentDirector {
       name: entrant.name,
       avatar: entrant.avatar || null,
       chips: this.startChips,
+      isBot: !!entrant.isBot,
     });
     if (!seated) {
       this._expectedChips -= this.startChips;
@@ -281,6 +282,7 @@ class TournamentDirector {
         table: seat ? seat.table.tableNumber : null,
         place: placeByUid.get(e.uid) || null,
         autoPlay: seat ? !!seat.player.autoPlay : false,
+        isBot: !!e.isBot,
       };
     });
   }
@@ -303,6 +305,7 @@ class TournamentDirector {
         name: entrant.name,
         avatar: entrant.avatar || null,
         chips: this.startChips,
+        isBot: !!entrant.isBot,
       });
     });
 
@@ -581,6 +584,7 @@ class TournamentDirector {
       name: player.name,
       avatar: player.avatar || null,
       chips: player.chips,
+      isBot: !!player.isBot,
       seatIndex,
     });
     if (!seated) return false;
@@ -747,6 +751,7 @@ class TournamentDirector {
         name: player.name,
         avatar: player.avatar || null,
         chips: player.chips,
+        isBot: !!player.isBot,
       });
       if (!seated) return;
       // Same carry as _movePlayer: a collapse must not sit a player back in.
@@ -870,6 +875,7 @@ class TournamentDirector {
           chips: p.chips,
           autoPlay: !!p.autoPlay,
           sitOutReason: p.sitOutReason || null,
+          isBot: !!p.isBot,
         })),
       });
     }
@@ -891,7 +897,12 @@ class TournamentDirector {
       paidPlaces: this.paidPlaces,
       breakOrder: [...(this.breakOrder || [])],
       expectedChips: this._expectedChips,
-      entrants: this.entrants.map((e) => ({ uid: e.uid, name: e.name, avatar: e.avatar || null })),
+      entrants: this.entrants.map((e) => ({
+        uid: e.uid,
+        name: e.name,
+        avatar: e.avatar || null,
+        isBot: !!e.isBot,
+      })),
       tables: [...this._tableSnapshots.values()].map((t) => ({
         ...t,
         players: t.players.map((p) => ({ ...p })),
@@ -923,11 +934,13 @@ class TournamentDirector {
           name: p.name,
           avatar: p.avatar || null,
           chips: p.chips,
+          isBot: !!p.isBot,
           seatIndex: i,
         });
-        if (seated) {
+        if (seated && !seated.isBot) {
           // Nobody is connected yet, so every restored seat starts sitting out
-          // and is taken back by its player when they return.
+          // and is taken back by its player when they return. A demo seat has
+          // nobody to wait for and carries on where it left off.
           seated.autoPlay = true;
           seated.sitOutReason = p.sitOutReason || 'disconnect';
         }
