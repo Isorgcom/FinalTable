@@ -19,6 +19,7 @@ Open `http://localhost:2026`. Changes to files take effect after restarting the 
 npm test
 npm run lint
 npm run format:check
+npx playwright test
 ```
 
 All checks must pass before submitting a PR.
@@ -30,14 +31,29 @@ All checks must pass before submitting a PR.
 - **Server & networking**: `server.js`, `server/config.js`, `server/http-middleware.js`
 - **Frontend**: `public/index.html`, `public/css/`, `public/js/` (`lobby.js` and `socket-client.js` for the lobby; `table-render.js`, `ui-panels.js`, `side-panel.js` for the table)
 - **Tests**: `__tests__/` (Jest) and `e2e/` (Playwright; `npx playwright install chromium` once)
+- **Docs**: `README.md` (what it does and how to run it), `CHANGELOG.md` (what changed), `FORK.md` (lineage and licence), `CLAUDE.md` (the working rules)
+
+## The Changelog
+
+Anything a player or an operator would notice goes in
+[CHANGELOG.md](./CHANGELOG.md) under `## Unreleased`, in the same commit as the
+change. Write it from the outside - what is different at the table or in the
+lobby, not which module moved. Refactors, renames, test-only work and
+formatting do not earn an entry; the commit message is the right place for
+those.
+
+Releases are cut by moving `## Unreleased` under a `## X.Y.Z - YYYY-MM-DD`
+heading, matching `version` in `package.json`, and pushing a `vX.Y.Z` tag,
+which is what publishes a container image.
 
 ## Pull Request Guidelines
 
 1. One feature or fix per PR
 2. Add tests for new game logic
-3. Preserve self-hosted deployment assumptions: do not force HTTPS in a way that breaks NAS/LAN HTTP setups
-4. Code comments in English
-5. Run `npm test`, `npm run lint`, and `npm run format:check` before submitting
+3. A CHANGELOG.md entry for anything a player or an operator would notice
+4. Preserve self-hosted deployment assumptions: do not force HTTPS in a way that breaks NAS/LAN HTTP setups
+5. Code comments in English
+6. Run `npm test`, `npm run lint`, `npm run format:check` and `npx playwright test` before submitting
 
 ## Reporting Bugs
 

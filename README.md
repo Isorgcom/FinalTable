@@ -6,7 +6,8 @@ FinalTable is a fork of [LONICERA](https://github.com/Evostructs/LONICERA), a
 single-table Texas Hold'em engine, extended to run tournaments across several
 tables at once: seating a field, balancing and breaking tables as players bust,
 and merging down to a final table. See [FORK.md](./FORK.md) for lineage, what
-was removed, and an important licence caution.
+was removed, and an important licence caution, and
+[CHANGELOG.md](./CHANGELOG.md) for what has changed since.
 
 Status: **playable.** Multi-table tournaments run end to end: a lobby where
 friends register by code or link, a scheduled start, tables that balance and
