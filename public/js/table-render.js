@@ -448,6 +448,7 @@ let _builtPlayerCount = -1;
 let _builtCapacity = -1;
 let _builtPhase = '';
 let _builtHostId = '';
+let _builtMyId = null;
 let _builtIdentityKey = '';
 let _dealAnimationRound = -1;
 let _builtBoardKey = '';
@@ -489,6 +490,14 @@ function renderPlayersIncremental() {
     _builtPlayerCount !== playerCount ||
     _builtCapacity !== capacity ||
     _builtHostId !== (gameState.hostId || '') ||
+    // Who the viewer is decides which chair everyone is drawn in, and it is
+    // not part of any player's state, so nothing else here notices when it
+    // changes. It changes on every reconnect: a refresh mid-hand lands a game
+    // state before tournamentJoined has said who we are, the seats get built
+    // unrotated, and then no later push has any reason to build them again -
+    // the felt bets are redrawn every time and would be correct while the
+    // plates under them stayed wrong, until the next deal forced a rebuild.
+    _builtMyId !== myId ||
     _builtIdentityKey !== identityKey ||
     (_builtPhase === 'showdown' && gameState.phase !== 'showdown') ||
     (_builtPhase !== 'showdown' && gameState.phase === 'showdown') ||
@@ -500,6 +509,7 @@ function renderPlayersIncremental() {
     _builtCapacity = capacity;
     _builtPhase = gameState.phase;
     _builtHostId = gameState.hostId || '';
+    _builtMyId = myId;
     _builtIdentityKey = identityKey;
     renderPlayersFull(container);
     return;

@@ -1498,3 +1498,51 @@ test('the table can be muted from the menu, and stays muted after a reload', asy
 
   expect(pageErrors).toEqual([]);
 });
+
+test('learning who you are after the seats are built still puts you in your chair', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Late');
+  await deal(page);
+
+  const me = await page.evaluate(() => ({
+    id: myId,
+    index: gameState.players.findIndex((p) => p.id === myId),
+  }));
+  const slotOf = () =>
+    page.evaluate((id) => {
+      const el = document.querySelector(`#playerSeats .player-seat[data-player-id="${id}"]`);
+      return el ? el.dataset.slot : null;
+    }, me.id);
+
+  expect(await slotOf()).toBe('0');
+
+  // Both halves in one turn of the event loop. The table is live, so a real
+  // push landing between them would rebuild the seats for its own reasons and
+  // repair the very thing under test.
+  const seen = await page.evaluate((id) => {
+    const at = () => {
+      const el = document.querySelector(`#playerSeats .player-seat[data-player-id="${id}"]`);
+      return el ? el.dataset.slot : null;
+    };
+    // What a refresh in the middle of a hand does: a game state lands before
+    // tournamentJoined has said who we are, so the seats are built for a
+    // viewer the table does not contain and nobody is rotated to the front.
+    myId = 'not-yet-known';
+    _builtIdentityKey = '';
+    renderPlayersIncremental();
+    const unrotated = at();
+    // Then we learn who we are. No player's state changed, so nothing in the
+    // identity key moves - only the viewer. The seats have to be built again
+    // anyway, or the plates stay put while the felt bets, redrawn on every
+    // push, are already going to the right chairs.
+    myId = id;
+    renderPlayersIncremental();
+    return { unrotated, afterLearning: at() };
+  }, me.id);
+
+  expect(seen.unrotated).toBe(String(me.index));
+  expect(seen.afterLearning).toBe('0');
+
+  expect(pageErrors).toEqual([]);
+});
