@@ -1266,6 +1266,29 @@ function renderRaisePresets(me, minRaiseTo, maxRaiseTo) {
     btn.dataset.to = p.value;
     btn.title = p.disabled ? `Below the minimum raise (${minRaiseTo})` : `Raise to ${p.value}`;
   });
+  markPickedPreset();
+}
+
+// Light the preset the slider is actually holding, and put out the rest. Called
+// from everything that can move the amount - a preset, the slider, the number
+// field - so the lit one is always the one loaded rather than the one last
+// pressed.
+function markPickedPreset() {
+  const group = document.getElementById('presetGroup');
+  const input = document.getElementById('raiseInput');
+  if (!group || !input) return;
+  const current = parseInt(input.value, 10);
+  // At most one. Two sizings can land on the same number - everything above
+  // the stack clamps to all-in, and a small pot rounds a third and a half to
+  // the same chip - and two lit buttons is not an answer to which one is
+  // loaded. The first that matches wins, which is the smallest.
+  let claimed = false;
+  for (const btn of group.querySelectorAll('.preset-btn')) {
+    const to = parseInt(btn.dataset.to, 10);
+    const hit = !claimed && !btn.disabled && Number.isFinite(to) && to === current;
+    if (hit) claimed = true;
+    btn.classList.toggle('is-picked', hit);
+  }
 }
 
 // A preset fills the slider and the input; the raise button still sends.
@@ -1283,6 +1306,7 @@ function applyRaisePreset(value) {
   slider.setAttribute('aria-valuenow', v);
   const npEl = document.getElementById('raiseNeedPay');
   if (npEl) npEl.textContent = `to ${v} · +${Math.max(0, v - me.bet)}`;
+  markPickedPreset();
 }
 
 // The viewer's own stack, on the bar. The bar sits over their plate on a short

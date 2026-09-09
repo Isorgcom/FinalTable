@@ -1546,3 +1546,33 @@ test('learning who you are after the seats are built still puts you in your chai
 
   expect(pageErrors).toEqual([]);
 });
+
+test('the buttons answer a press, and the presets show which sizing is loaded', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Press');
+  await deal(page);
+
+  // Pressing says so straight away - fold and check take the bar with them on
+  // the same frame, so the flash starts on pointerdown rather than on click.
+  const fold = page.locator('#btnFold');
+  await fold.dispatchEvent('pointerdown');
+  await expect(fold).toHaveClass(/is-pressed/);
+
+  // The preset the slider is holding is lit, and only that one.
+  const presets = page.locator('#presetGroup .preset-btn:enabled');
+  const chosen = presets.first();
+  await chosen.click();
+  await expect(chosen).toHaveClass(/is-picked/);
+  await expect(page.locator('#presetGroup .preset-btn.is-picked')).toHaveCount(1);
+  expect(await page.evaluate(() => document.getElementById('raiseInput').value)).toBe(
+    await chosen.getAttribute('data-to')
+  );
+
+  // Drag away and the light goes out: it tracks the amount, not the last click.
+  const max = await page.locator('#raiseSlider').getAttribute('max');
+  await page.locator('#raiseSlider').fill(max);
+  await expect(page.locator('#presetGroup .preset-btn.is-picked')).toHaveCount(0);
+
+  expect(pageErrors).toEqual([]);
+});

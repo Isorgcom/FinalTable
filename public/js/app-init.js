@@ -244,6 +244,30 @@ function init() {
     window.addEventListener('resize', hide);
   }
 
+  // Every button on the felt flashes when it is pressed. One delegated
+  // listener rather than a handler per button: the bar's contents change with
+  // the street, and a control added later should not have to remember to ask
+  // for this. pointerdown, not click, because fold and check end the turn and
+  // take the bar with them on the same frame.
+  function wireButtonPress() {
+    const flash = (e) => {
+      const btn = e.target.closest('.action-btn, .preset-btn, .preaction-btn');
+      if (!btn || btn.disabled) return;
+      btn.classList.remove('is-pressed');
+      // Reading offsetWidth restarts the animation on a button pressed twice
+      // in a row; without it the class is already there and nothing replays.
+      void btn.offsetWidth;
+      btn.classList.add('is-pressed');
+      btn.addEventListener('animationend', () => btn.classList.remove('is-pressed'), {
+        once: true,
+      });
+    };
+    for (const id of ['actionsPanel', 'preActionPanel']) {
+      const panel = document.getElementById(id);
+      if (panel) panel.addEventListener('pointerdown', flash);
+    }
+  }
+
   // The menu item says what pressing it will do, not what the state is: "sound
   // off" on a silent table reads as a label rather than a button.
   function wireMuteToggle() {
@@ -319,6 +343,7 @@ function init() {
   });
   wireSeatMenu();
   wireMuteToggle();
+  wireButtonPress();
 
   document.getElementById('btnLeaderboard').addEventListener('click', () => {
     closeMenu();
@@ -468,6 +493,8 @@ function init() {
     slider.value = clampedValue;
     slider.setAttribute('aria-valuenow', clampedValue);
     raiseNeedPay.textContent = formatRaiseSummary(clampedValue, me.bet);
+    // Dragging off a preset puts its light out; landing back on one lights it.
+    if (typeof markPickedPreset === 'function') markPickedPreset();
   }
 
   slider.addEventListener('input', () => {

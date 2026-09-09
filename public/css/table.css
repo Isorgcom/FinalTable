@@ -1422,6 +1422,35 @@
 .action-btn:active {
   opacity: 0.8;
 }
+/* A press has to say so. The action bar can vanish on the same frame the click
+   lands - fold and check end your turn outright - so a button that gives
+   nothing back leaves you unsure whether the table heard you at all. Fired on
+   pointerdown rather than click, so the flash starts before the bar goes.
+   Under prefers-reduced-motion responsive.css collapses the duration and the
+   press simply reads as an instant highlight. */
+@keyframes btnPress {
+  0% {
+    box-shadow: 0 0 0 0 rgba(201, 168, 76, 0.55);
+    filter: brightness(1.75);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(201, 168, 76, 0);
+    filter: brightness(1);
+  }
+}
+.action-btn.is-pressed,
+.preset-btn.is-pressed,
+.preaction-btn.is-pressed {
+  animation: btnPress 0.42s ease-out;
+}
+/* Which sizing the slider is currently holding. The presets set a number that
+   is then shown three controls away, so without this there is nothing saying
+   the 50% you pressed is the 50% now loaded. */
+.preset-btn.is-picked {
+  background: rgba(201, 168, 76, 0.3);
+  border-color: rgba(201, 168, 76, 0.8);
+  color: var(--cream);
+}
 .btn-fold {
   background: transparent;
   border: 1px solid var(--wood);
