@@ -244,6 +244,23 @@ function init() {
     window.addEventListener('resize', hide);
   }
 
+  // The menu item says what pressing it will do, not what the state is: "sound
+  // off" on a silent table reads as a label rather than a button.
+  function wireMuteToggle() {
+    const btn = document.getElementById('btnMute');
+    if (!btn) return;
+    const label = () => {
+      btn.textContent = SFX.isMuted() ? 'unmute sound' : 'mute sound';
+      btn.setAttribute('aria-pressed', SFX.isMuted() ? 'true' : 'false');
+    };
+    label();
+    btn.addEventListener('click', () => {
+      SFX.setMuted(!SFX.isMuted());
+      label();
+      closeMenu();
+    });
+  }
+
   function closeMenu() {
     const menu = document.getElementById('menuDropdown');
     if (menu) menu.classList.remove('open');
@@ -301,6 +318,7 @@ function init() {
     if (window.Lobby) Lobby.leave();
   });
   wireSeatMenu();
+  wireMuteToggle();
 
   document.getElementById('btnLeaderboard').addEventListener('click', () => {
     closeMenu();

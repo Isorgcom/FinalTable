@@ -42,6 +42,9 @@ window.Store = {
 // Which chair the viewer has asked to be shown in, per device.
 const VIEWER_SLOT_KEY = 'finaltable_my_slot';
 
+// Whether the table is silent, per device.
+const MUTED_KEY = 'finaltable_muted';
+
 // ── Where the seats go ───────────────────────────────────────────────────
 //
 // Eight chairs around the felt: two across the top, two a side, two along the
@@ -183,6 +186,20 @@ const SFX = {
   samples: {},
   _lastChipSound: 0,
   _lastShuffleSound: 0,
+  // Read once, from the same store the seat preference uses. A table people
+  // play at work or next to a sleeping house needs an off switch, and it has
+  // to still be off after a reload.
+  muted: window.Store ? Store.get(MUTED_KEY) === '1' : false,
+  isMuted() {
+    return !!this.muted;
+  },
+  setMuted(on) {
+    this.muted = !!on;
+    if (window.Store) Store.set(MUTED_KEY, this.muted ? '1' : null);
+    // Coming off mute is a gesture like any other, and the context may have
+    // been parked the whole time it was silent.
+    if (!this.muted) this.unlock();
+  },
   init() {
     if (this.ctx) return;
     try {
@@ -315,6 +332,7 @@ const SFX = {
   },
 
   play(type) {
+    if (this.muted) return;
     if (!this.ctx) this.init();
     if (!this.ctx) return;
     // Scheduling into a parked context is silence with extra steps. Ask for it

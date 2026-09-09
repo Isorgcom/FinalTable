@@ -1422,3 +1422,39 @@ test('a parked audio context is woken by the next gesture, not lost for the sess
 
   expect(pageErrors).toEqual([]);
 });
+
+test('the table can be muted from the menu, and stays muted after a reload', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Quiet');
+  await deal(page);
+  await page.mouse.click(5, 5);
+
+  await page.click('#menuToggle');
+  const mute = page.locator('#btnMute');
+  await expect(mute).toHaveText('mute sound');
+  await mute.click();
+  expect(await page.evaluate(() => SFX.isMuted())).toBe(true);
+
+  // Muted means nothing is scheduled, not that the context is torn down: the
+  // sound has to come straight back on.
+  expect(
+    await page.evaluate(() => {
+      const before = SFX.ctx ? SFX.ctx.state : null;
+      SFX.play('check');
+      return before;
+    })
+  ).toBe('running');
+  expect(await page.evaluate(() => localStorage.getItem('finaltable_muted'))).toBe('1');
+
+  // Actually reloaded, rather than trusting the storage key: the state is read
+  // once when the sound system is defined, and reading it wrong there is the
+  // way a remembered preference quietly stops being remembered.
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => SFX.isMuted())).toBe(true);
+
+  await page.evaluate(() => SFX.setMuted(false));
+  expect(await page.evaluate(() => localStorage.getItem('finaltable_muted'))).toBeNull();
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => SFX.isMuted())).toBe(false);
+
+  expect(pageErrors).toEqual([]);
+});
