@@ -211,6 +211,24 @@ test('a line surfaces over the head of whoever said it, then goes', async ({ bro
   // It is decoration, so it must never eat a click meant for the chair.
   expect(await bubble.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
 
+  // A paragraph stops at two lines, and stops cleanly. The clamp has to sit on
+  // an element with no padding of its own, or overflow: hidden cuts at the
+  // padding edge and hands back a sliver of the line it just hid.
+  await page.fill('#chatInput', 'that river was absolutely disgusting and I want everyone to know');
+  await page.press('#chatInput', 'Enter');
+  await expect(bubble).toContainText('that river');
+  const clamp = await bubble.evaluate((el) => {
+    const text = el.querySelector('.seat-bubble-text');
+    const line = parseFloat(getComputedStyle(text).lineHeight);
+    return {
+      lines: text.getBoundingClientRect().height / line,
+      overflows: text.scrollHeight > text.clientHeight,
+    };
+  });
+  expect(clamp.lines).toBeLessThanOrEqual(2.05);
+  // There is more text than fits, which is what makes the cut worth checking.
+  expect(clamp.overflows).toBe(true);
+
   // A second line replaces the first rather than stacking up.
   await page.fill('#chatInput', 'and again');
   await page.press('#chatInput', 'Enter');
@@ -219,8 +237,8 @@ test('a line surfaces over the head of whoever said it, then goes', async ({ bro
 
   // And it clears itself without anyone doing anything.
   await expect(bubble).toBeHidden({ timeout: 12000 });
-  // The panel still has both lines: the bubble is a glance, not the record.
-  await expect(guest.page.locator('#panelChatBody .log-entry[data-kind="chat"]')).toHaveCount(2);
+  // The panel still has all three: the bubble is a glance, not the record.
+  await expect(guest.page.locator('#panelChatBody .log-entry[data-kind="chat"]')).toHaveCount(3);
 
   expect(guest.errors).toEqual([]);
   await guest.context.close();

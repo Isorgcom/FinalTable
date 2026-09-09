@@ -22,6 +22,9 @@ what publishes a container image.
   server restart.
 - The host can mute a player from the waiting-room roster, and unmute them
   again. A muted player is told why rather than typing into nothing.
+- A message also surfaces as a small bubble over the chair of whoever said it,
+  for a few seconds, so a line is noticed without looking away from the felt
+  or opening the panel. The panel is still the record.
 - Chat can be turned off for the whole server with `CHAT_ENABLED=false`, which
   removes the surface rather than hiding the box. `CHAT_HISTORY`,
   `CHAT_MAX_LEN`, `CHAT_RATE` and `CHAT_RATE_WINDOW_MS` tune what is kept and
