@@ -434,7 +434,10 @@ test('the chip sound is served, decoded, and played when chips move', async ({ p
     // still counting, so this test would pass over a broken call.
     SFX.playSample = (...args) => {
       const ok = real(...args);
-      if (ok) window.__played++;
+      // Only the chips. The felt plays cards and checks through the same call,
+      // and counting all of them makes this a test of how many sounds a hand
+      // happens to contain.
+      if (ok && args[0] === 'chips') window.__played++;
       return ok;
     };
   });
@@ -1431,7 +1434,7 @@ test('a parked audio context is woken by the next gesture, not lost for the sess
   await expect.poll(() => page.evaluate(() => (SFX.ctx ? SFX.ctx.state : null))).toBe('running');
   await expect
     .poll(() => page.evaluate(() => Object.keys(SFX.samples).sort().join(',')))
-    .toBe('card,chips,shuffle');
+    .toBe('card,check,chips,shuffle');
 
   // iOS parks the context whenever the tab goes to the background or the phone
   // locks. Nothing used to bring it back, and the single once:true unlock had
@@ -1766,6 +1769,60 @@ test('the clock measures the turn, not the gap between two clocks', async ({ pag
   // 100% for the first eight seconds of every turn.
   expect(seen.dash).toBeGreaterThan(45);
   expect(seen.dash).toBeLessThan(55);
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('the check sound is served, trimmed and levelled before it is used', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await seatAtTournamentTable(page, 'Checker');
+  await deal(page);
+  await page.mouse.click(5, 5); // unlock the audio context
+
+  await expect
+    .poll(() => page.evaluate(() => !!(SFX.samples && SFX.samples.check)), { timeout: 10000 })
+    .toBe(true);
+
+  const sample = await page.evaluate(() => {
+    const b = SFX.samples.check;
+    // Across both channels: the recording is lopsided, and normalising to the
+    // loudest one is what keeps it from clipping.
+    let peak = 0;
+    let firstLoud = -1;
+    for (let c = 0; c < b.numberOfChannels; c++) {
+      const data = b.getChannelData(c);
+      for (let i = 0; i < data.length; i++) {
+        const v = Math.abs(data[i]);
+        if (v > peak) peak = v;
+        if (v > 0.02 && (firstLoud < 0 || i < firstLoud)) firstLoud = i;
+      }
+    }
+    return { duration: b.duration, peak, startsAt: firstLoud / b.sampleRate };
+  });
+
+  // As delivered it is 187ms of sound inside 1.13s, starting 0.371s in and
+  // peaking at 0.043. A check that lands a third of a second late and cannot be
+  // heard is not feedback.
+  expect(sample.duration).toBeLessThan(0.4);
+  expect(sample.startsAt).toBeLessThan(0.02);
+  expect(sample.peak).toBeGreaterThan(0.5);
+
+  // And it is the recording that plays, not the synthesised tap it replaced.
+  expect(
+    await page.evaluate(() => {
+      let buffers = 0;
+      const ctx = SFX.ctx;
+      const real = ctx.createBufferSource.bind(ctx);
+      ctx.createBufferSource = () => {
+        buffers++;
+        return real();
+      };
+      SFX.play('check');
+      ctx.createBufferSource = real;
+      return buffers;
+    })
+  ).toBe(1);
 
   expect(pageErrors).toEqual([]);
 });

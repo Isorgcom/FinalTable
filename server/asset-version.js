@@ -25,6 +25,7 @@ const ASSET_VERSION_FILES = [
   'public/audio/chips.mp3',
   'public/audio/card.mp3',
   'public/audio/shuffle.mp3',
+  'public/audio/check.m4a',
   'public/vendor/fonts/google-fonts.css',
   'public/vendor/three/three.r128.min.js',
 ];

@@ -216,6 +216,14 @@ const SFX = {
     this.loadSample('card', card ? card.getAttribute('href') : '/audio/card.mp3');
     const shuffle = document.getElementById('sfxShuffle');
     this.loadSample('shuffle', shuffle ? shuffle.getAttribute('href') : '/audio/shuffle.mp3');
+    const check = document.getElementById('sfxCheck');
+    // Trimmed and levelled: as delivered it is 187ms of sound inside 1.13s,
+    // starting a third of a second in and peaking at 0.043 - late and inaudible
+    // beside the others.
+    this.loadSample('check', check ? check.getAttribute('href') : '/audio/check.m4a', {
+      dress: true,
+      peak: 0.7,
+    });
   },
   // iOS hands back a suspended AudioContext unless it is created inside a
   // gesture Safari recognises, and suspends it again every time the tab goes to
@@ -243,13 +251,48 @@ const SFX = {
       if (!document.hidden) this.unlock();
     });
   },
-  loadSample(name, url) {
+  // A recording made on a phone is not a sound effect yet: it arrives with
+  // silence at both ends and a peak far below the others. Rather than keeping a
+  // converted copy beside the original, the file is taken as delivered and the
+  // silence and the level are dealt with here, once, at decode time.
+  _dress(decoded, peakTarget) {
+    const channels = decoded.numberOfChannels;
+    const threshold = 0.01;
+    let first = decoded.length;
+    let last = -1;
+    let peak = 0;
+    for (let c = 0; c < channels; c++) {
+      const data = decoded.getChannelData(c);
+      for (let i = 0; i < data.length; i++) {
+        const v = Math.abs(data[i]);
+        if (v > peak) peak = v;
+        if (v > threshold) {
+          if (i < first) first = i;
+          if (i > last) last = i;
+        }
+      }
+    }
+    if (last < first || !peak) return decoded;
+    // A couple of milliseconds of run-up, so the first sample is not a step.
+    const pad = Math.round(decoded.sampleRate * 0.002);
+    const start = Math.max(0, first - pad);
+    const end = Math.min(decoded.length, last + pad);
+    const gain = peakTarget ? peakTarget / peak : 1;
+    const out = this.ctx.createBuffer(channels, end - start, decoded.sampleRate);
+    for (let c = 0; c < channels; c++) {
+      const src = decoded.getChannelData(c);
+      const dst = out.getChannelData(c);
+      for (let i = 0; i < dst.length; i++) dst[i] = src[start + i] * gain;
+    }
+    return out;
+  },
+  loadSample(name, url, opts) {
     if (!this.ctx || !url) return;
     fetch(url)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
       .then((buf) => this.ctx.decodeAudioData(buf))
       .then((decoded) => {
-        this.samples[name] = decoded;
+        this.samples[name] = opts && opts.dress ? this._dress(decoded, opts.peak) : decoded;
       })
       .catch(() => {
         // No sample: play() falls back to the synthesised version.
@@ -352,7 +395,10 @@ const SFX = {
       const now = this.ctx.currentTime;
       switch (type) {
         case 'check':
-          this._tap(now, 400, 0.03);
+          // The recording if it decoded, the synthesised tap if it did not -
+          // the same fallback chipsMoved uses, so a missing or undecodable file
+          // costs the sound rather than the table.
+          if (!this.playSample('check', 0.5)) this._tap(now, 400, 0.03);
           break;
         case 'fold':
           this._swoosh(now);

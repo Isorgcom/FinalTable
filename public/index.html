@@ -41,6 +41,16 @@
       href="/audio/card.mp3?v=__ASSET_VERSION__"
       crossorigin="anonymous"
     />
+    <!-- A check. A recording rather than the synthesised tap it replaced;
+         m4a because that is what it arrived as, and AAC decodes everywhere
+         this runs, iPadOS included. -->
+    <link
+      rel="preload"
+      as="audio"
+      id="sfxCheck"
+      href="/audio/check.m4a?v=__ASSET_VERSION__"
+      crossorigin="anonymous"
+    />
     <!-- The deck being shuffled, played once as a hand is dealt: it starts with
          the deal animation and its tail runs under the first cards landing. -->
     <link
