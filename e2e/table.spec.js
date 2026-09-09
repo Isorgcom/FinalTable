@@ -1373,6 +1373,20 @@ test('right-clicking a chair turns the table so you are sitting in it', async ({
   // Remembered on the device, so it is the same chair next time.
   expect(await page.evaluate(() => localStorage.getItem('finaltable_my_slot'))).toBe('3');
 
+  // The submenu offers every chair this table has, named for where it sits,
+  // so you can send yourself somewhere other than the chair under the pointer.
+  await page.locator('#playerSeats .player-seat[data-slot="3"]').click({ button: 'right' });
+  await page.click('#seatMenuPick');
+  await expect(page.locator('#seatMenuList')).toBeVisible();
+  const chairs = await page.locator('#seatMenuList .seat-menu-chair').allTextContents();
+  expect(chairs).toHaveLength(8);
+  expect(chairs[0]).toContain('bottom right');
+  expect(chairs[5]).toContain('top right');
+  // The one you are in says so.
+  await expect(page.locator('#seatMenuList .seat-menu-chair.is-current')).toHaveText(/here now/);
+  await page.locator('#seatMenuList .seat-menu-chair[data-slot="6"]').click();
+  expect(await mySlot()).toBe('6');
+
   // And it can be given back.
   await page.locator('#playerSeats .player-seat[data-slot="3"]').click({ button: 'right' });
   await expect(page.locator('#seatMenuReset')).toBeVisible();

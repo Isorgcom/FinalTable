@@ -131,30 +131,70 @@ function init() {
     const seats = document.getElementById('playerSeats');
     const menu = document.getElementById('seatMenu');
     const here = document.getElementById('seatMenuHere');
+    const pick = document.getElementById('seatMenuPick');
+    const list = document.getElementById('seatMenuList');
     const reset = document.getElementById('seatMenuReset');
-    if (!seats || !menu || !here || !reset) return;
+    if (!seats || !menu || !here || !pick || !list || !reset) return;
     let pendingSlot = null;
     let pressTimer = null;
 
-    const hide = () => {
+    function closeSub() {
+      list.classList.add('hidden');
+      pick.setAttribute('aria-expanded', 'false');
+    }
+
+    function hide() {
       menu.classList.add('hidden');
+      closeSub();
       pendingSlot = null;
-    };
+    }
+
+    function applySlot(slot) {
+      if (window.Store) Store.set(VIEWER_SLOT_KEY, slot === null ? null : String(slot));
+      hide();
+      if (typeof renderPlayersIncremental === 'function' && gameState) {
+        // Every plate moves, so the skeleton is rebuilt rather than updated.
+        _builtIdentityKey = '';
+        renderPlayersIncremental();
+      }
+    }
+
+    // The chairs this table has, by the name of the place they sit in. Built
+    // when the menu opens: the table can change size under it.
+    function fillChairList() {
+      list.textContent = '';
+      const count =
+        gameState && typeof seatCapacity === 'function'
+          ? seatCapacity(gameState.players ? gameState.players.length : 0)
+          : 0;
+      const names = typeof seatSlotNames === 'function' ? seatSlotNames(count) : [];
+      const current = typeof viewerSlot === 'function' ? viewerSlot(names.length) : 0;
+      names.forEach((name, slot) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'seat-menu-item seat-menu-chair' + (slot === current ? ' is-current' : '');
+        item.dataset.slot = String(slot);
+        item.setAttribute('role', 'menuitem');
+        item.textContent = slot === current ? `${name} \u00b7 here now` : name;
+        item.addEventListener('click', () => applySlot(slot));
+        list.appendChild(item);
+      });
+    }
 
     function openAt(seat, clientX, clientY) {
       const slot = parseInt(seat.dataset.slot, 10);
       if (!Number.isFinite(slot)) return;
       pendingSlot = slot;
+      closeSub();
       const stage = document.getElementById('tableStage');
-      const box = stage ? stage.getBoundingClientRect() : { left: 0, top: 0 };
+      const box = stage ? stage.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
       menu.classList.remove('hidden');
       reset.classList.toggle('hidden', !(window.Store && Store.get(VIEWER_SLOT_KEY)));
-      // Placed after it is shown, so its measured size is the real one, then
+      // Placed after it is shown, so the size measured is the real one, then
       // pulled back inside the stage if it would hang off an edge.
       const m = menu.getBoundingClientRect();
-      const stageBox = stage ? stage.getBoundingClientRect() : { width: 0, height: 0 };
-      const x = Math.max(0, Math.min(clientX - box.left, stageBox.width - m.width));
-      const y = Math.max(0, Math.min(clientY - box.top, stageBox.height - m.height));
+      const x = Math.max(0, Math.min(clientX - box.left, box.width - m.width));
+      const y = Math.max(0, Math.min(clientY - box.top, box.height - m.height));
       menu.style.left = `${x}px`;
       menu.style.top = `${y}px`;
     }
@@ -166,7 +206,7 @@ function init() {
       openAt(seat, e.clientX, e.clientY);
     });
 
-    // Long press, for the devices that have no second mouse button.
+    // Long press, for the devices with no second mouse button.
     seats.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'mouse') return;
       const seat = e.target.closest('.player-seat');
@@ -179,15 +219,19 @@ function init() {
     seats.addEventListener('pointermove', cancelPress);
     seats.addEventListener('pointercancel', cancelPress);
 
-    function applySlot(slot) {
-      if (window.Store) Store.set(VIEWER_SLOT_KEY, slot === null ? null : String(slot));
-      hide();
-      if (typeof renderPlayersIncremental === 'function' && gameState) {
-        // The seats are rebuilt from scratch: every plate moves.
-        _builtIdentityKey = '';
-        renderPlayersIncremental();
+    pick.addEventListener('click', () => {
+      if (!list.classList.contains('hidden')) return closeSub();
+      fillChairList();
+      list.classList.remove('hidden');
+      pick.setAttribute('aria-expanded', 'true');
+      // Out to the right unless the stage runs out first.
+      const stage = document.getElementById('tableStage');
+      list.classList.remove('flip-left');
+      if (stage) {
+        const edge = stage.getBoundingClientRect().right;
+        if (list.getBoundingClientRect().right > edge) list.classList.add('flip-left');
       }
-    }
+    });
 
     here.addEventListener('click', () => applySlot(pendingSlot));
     reset.addEventListener('click', () => applySlot(null));

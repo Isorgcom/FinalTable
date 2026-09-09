@@ -308,15 +308,30 @@
              of who happened to be dealt in first. -->
         <div class="seat-menu hidden" id="seatMenu" role="menu" aria-label="Seat view">
           <button class="seat-menu-item" type="button" id="seatMenuHere" role="menuitem">
-            Show me here
+            show me here
           </button>
+          <div class="seat-menu-branch">
+            <button
+              class="seat-menu-item seat-menu-parent"
+              type="button"
+              id="seatMenuPick"
+              role="menuitem"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              pick a chair<span class="seat-menu-arrow" aria-hidden="true">&#9656;</span>
+            </button>
+            <!-- Filled from the chairs this table actually has, so a six-max
+                 table does not offer two that are not there. -->
+            <div class="seat-menu-list hidden" id="seatMenuList" role="menu"></div>
+          </div>
           <button
             class="seat-menu-item seat-menu-reset hidden"
             type="button"
             id="seatMenuReset"
             role="menuitem"
           >
-            Back to my usual chair
+            back to my usual chair
           </button>
         </div>
 

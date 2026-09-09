@@ -72,6 +72,20 @@ const SEAT_SLOTS = [
   { dx: 1.16, dy: 0.4 }, // 7 lower right
 ];
 
+// What each chair is called, in the same order as SEAT_SLOTS. A menu that says
+// "chair 5" tells you nothing; one that says "top right" tells you where you
+// will be sitting.
+const SEAT_SLOT_NAMES = [
+  'bottom right',
+  'bottom left',
+  'lower left',
+  'upper left',
+  'top left',
+  'top right',
+  'upper right',
+  'lower right',
+];
+
 // A table for fewer than eight uses a spread of the same chairs rather than a
 // ring of its own, so a six-max table is the eight-max table with two chairs
 // taken out and everyone still sits where they would have sat.
@@ -82,6 +96,13 @@ function slotsForCapacity(capacity) {
   for (let i = 0; i < n; i++)
     picks.push(Math.round((i * SEAT_SLOTS.length) / n) % SEAT_SLOTS.length);
   return picks;
+}
+
+// The chairs a table of this size actually has, named. Indexed the way the
+// stored preference is - by place in the ring, not by which of the eight
+// physical chairs it happens to be.
+function seatSlotNames(capacity) {
+  return slotsForCapacity(capacity).map((physical) => SEAT_SLOT_NAMES[physical]);
 }
 
 // The ring radii, read from CSS so a breakpoint can pull them in. Cached: this
