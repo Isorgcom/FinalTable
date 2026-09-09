@@ -1136,11 +1136,19 @@
   color: var(--bg-deep);
 }
 
+/* Fixed width, not shrink-to-fit. The panel is centred with translateX(-50%),
+   so anything that changes its width slides the entire bar sideways under the
+   pointer: a call price gaining a digit, check swapping for call, the readout
+   counting up while the slider is dragged, a preset relabelling itself "All
+   in". Pinning the box means every control keeps the position it had last
+   hand, and the contents below are sized so nothing moves inside it either. */
 .actions-panel {
   position: absolute;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
+  width: min(94vw, 720px);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -1158,23 +1166,26 @@
 .action-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
-/* Hand readout on the left, raise presets on the right. It wraps because the
-   readout names five cards and .actions-panel is shrink-to-fit with no
-   max-width: a line too long for the row would otherwise widen the whole panel
-   and push the presets off the felt rather than moving to its own line. */
+/* Hand readout on the left, raise presets on the right, always one line. The
+   panel is a fixed width now, so a long readout can neither widen it nor wrap
+   the presets onto a second row and change its height: it gives up its own
+   tail instead. */
 .action-presets {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px 10px;
   min-height: 22px;
-  max-width: min(92vw, 620px);
 }
 .hand-strength {
-  margin-right: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 0.72rem;
   color: var(--smoke);
   letter-spacing: 0.03em;
@@ -1207,9 +1218,14 @@
 }
 .preset-group {
   display: flex;
+  flex: 0 0 auto;
   gap: 4px;
 }
 .preset-btn {
+  flex: 0 0 auto;
+  /* Wide enough for "All in", which is what every one of these becomes when
+     the sizing it names is more than the stack. */
+  min-width: 54px;
   padding: 3px 10px;
   border-radius: 999px;
   border: 1px solid rgba(201, 168, 76, 0.28);
@@ -1245,6 +1261,10 @@
 }
 
 .action-btn {
+  flex: 0 0 auto;
+  min-width: 86px;
+  text-align: center;
+  white-space: nowrap;
   padding: 10px 20px;
   border-radius: 4px;
   font-size: 0.85rem;
@@ -1253,6 +1273,13 @@
   cursor: pointer;
   transition: all 0.2s;
   letter-spacing: 0.05em;
+}
+/* One slot for the two of them: they swap by street and by price, and they
+   must swap in place. Sized for the longest thing either can say, which is
+   "all-in call" and a five figure stack. */
+.btn-check,
+.btn-call {
+  min-width: 158px;
 }
 .action-btn:active {
   opacity: 0.8;
@@ -1301,6 +1328,9 @@
 
 .raise-slider-group {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
   align-items: center;
   gap: 6px;
 }

@@ -1156,16 +1156,35 @@ function updatePreActionPanel() {
 // Raise presets are raise-TO amounts, like the slider. One below the table
 // minimum is disabled rather than silently bumped up, and one at or past the
 // stack becomes "All in". Pot: call first, then raise by the pot that makes.
+// The four sizings offered above the slider. Postflop the unit that means
+// anything is the pot, so they are fractions of it; preflop the pot is two
+// blinds and a limp or two, where "50% pot" is a number nobody thinks in and
+// multiples of the big blind are how the bet is actually chosen. Four either
+// way, so the row is the same width on every street.
+//
+// A fraction f of the pot is the standard raise: call first, then bet f of
+// what the pot has become. Hence currentBet + f x (pot + toCall) - and at
+// f = 1 that is the pot-sized raise the Pot button has always sent.
 function computeRaisePresets(me, minRaiseTo, maxRaiseTo) {
   const toCall = Math.max(0, gameState.currentBet - me.bet);
   const bb = gameState.bigBlind || 20;
-  const potRaiseTo = gameState.currentBet + toCall + gameState.pot;
-  return [
-    { id: '3bb', label: '3bb', to: 3 * bb },
-    { id: '4bb', label: '4bb', to: 4 * bb },
-    { id: '5bb', label: '5bb', to: 5 * bb },
-    { id: 'pot', label: 'Pot', to: potRaiseTo },
-  ].map((p) => ({
+  const potAfterCall = (gameState.pot || 0) + toCall;
+  const fraction = (f) => gameState.currentBet + Math.round(f * potAfterCall);
+  const specs =
+    gameState.phase === 'preflop'
+      ? [
+          { id: '3bb', label: '3bb', to: 3 * bb },
+          { id: '4bb', label: '4bb', to: 4 * bb },
+          { id: '5bb', label: '5bb', to: 5 * bb },
+          { id: 'pot', label: 'Pot', to: fraction(1) },
+        ]
+      : [
+          { id: '33', label: '33%', to: fraction(1 / 3) },
+          { id: '50', label: '50%', to: fraction(1 / 2) },
+          { id: '75', label: '75%', to: fraction(3 / 4) },
+          { id: 'pot', label: 'Pot', to: fraction(1) },
+        ];
+  return specs.map((p) => ({
     ...p,
     value: Math.min(p.to, maxRaiseTo),
     isAllIn: p.to >= maxRaiseTo,
@@ -1173,14 +1192,18 @@ function computeRaisePresets(me, minRaiseTo, maxRaiseTo) {
   }));
 }
 
+// Filled by position rather than by looking each id up in the markup: the four
+// slots are fixed, what sits in them changes with the street.
 function renderRaisePresets(me, minRaiseTo, maxRaiseTo) {
   const group = document.getElementById('presetGroup');
   if (!group) return;
-  computeRaisePresets(me, minRaiseTo, maxRaiseTo).forEach((p) => {
-    const btn = group.querySelector(`[data-preset="${p.id}"]`);
+  const buttons = group.querySelectorAll('.preset-btn');
+  computeRaisePresets(me, minRaiseTo, maxRaiseTo).forEach((p, i) => {
+    const btn = buttons[i];
     if (!btn) return;
     btn.textContent = p.isAllIn ? 'All in' : p.label;
     btn.disabled = p.disabled;
+    btn.dataset.preset = p.id;
     btn.dataset.to = p.value;
     btn.title = p.disabled ? `Below the minimum raise (${minRaiseTo})` : `Raise to ${p.value}`;
   });

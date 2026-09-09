@@ -1062,3 +1062,50 @@ test('the end of a tournament fires a result screen for the winner and the rest'
 
   expect(pageErrors).toEqual([]);
 });
+
+test('the action bar keeps its geometry, and the presets price the pot after the flop', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Steady');
+  await deal(page);
+
+  const panelBox = () => page.locator('#actionsPanel').boundingBox();
+  const raiseBox = () => page.locator('#btnRaise').boundingBox();
+  const panelBefore = await panelBox();
+  const raiseBefore = await raiseBox();
+
+  // Preflop the sizings are multiples of the blind, which is how a preflop
+  // raise is actually chosen.
+  await expect(page.locator('#presetGroup .preset-btn')).toHaveCount(4);
+  await expect(page.locator('#presetGroup')).toContainText('3bb');
+
+  // Drag the slider the whole way: the readout under it goes from the minimum
+  // raise to the entire stack, several digits wider. Nothing may move.
+  const max = await page.locator('#raiseSlider').getAttribute('max');
+  await page.locator('#raiseSlider').fill(max);
+  await expect(page.locator('#raiseNeedPay')).toContainText(`to ${max}`);
+  expect((await panelBox()).width).toBeCloseTo(panelBefore.width, 0);
+  expect((await panelBox()).x).toBeCloseTo(panelBefore.x, 0);
+  expect((await raiseBox()).x).toBeCloseTo(raiseBefore.x, 0);
+
+  // Call to the flop. The opponent is sitting out, so it checks behind.
+  await page.click('#btnCall');
+  await expect(page.locator('#communityCards .card')).toHaveCount(3, { timeout: 20000 });
+  await expect(page.locator('#actionsPanel')).not.toHaveClass(/hidden/, { timeout: 20000 });
+
+  // Postflop the pot is the unit, so the same four slots price fractions of
+  // it - and the panel is the same box it was preflop.
+  await expect(page.locator('#presetGroup')).toContainText('33%');
+  await expect(page.locator('#presetGroup')).toContainText('50%');
+  await expect(page.locator('#presetGroup')).toContainText('75%');
+  const potTo = Number(
+    await page.locator('#presetGroup .preset-btn').last().getAttribute('data-to')
+  );
+  const halfTo = Number(
+    await page.locator('#presetGroup .preset-btn').nth(1).getAttribute('data-to')
+  );
+  expect(potTo).toBeGreaterThan(halfTo);
+  expect((await panelBox()).width).toBeCloseTo(panelBefore.width, 0);
+
+  expect(pageErrors).toEqual([]);
+});

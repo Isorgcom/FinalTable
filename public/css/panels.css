@@ -616,7 +616,13 @@
   color: var(--smoke);
   margin: 8px 0;
 }
+/* Counts up as the slider is dragged, so it is given a fixed slot and figures
+   of one width. Left to size itself it pushed the raise button along under the
+   pointer on every step of the drag. */
 .raise-need-pay {
+  flex: 0 0 auto;
+  min-width: 104px;
+  font-variant-numeric: tabular-nums;
   font-size: 0.65rem;
   color: var(--smoke);
   white-space: nowrap;

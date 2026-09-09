@@ -639,8 +639,14 @@
   .action-presets {
     display: none;
   }
-  .action-btn {
+  /* No fixed slots here. The row already scrolls from the left inside a panel
+     of its own fixed width, so a minimum width buys no stability and only
+     pushes raise and all-in further off the end. */
+  .action-btn,
+  .btn-check,
+  .btn-call {
     flex: 0 0 auto;
+    min-width: 0;
     padding: 5px 8px;
     font-size: 0.62rem;
   }
