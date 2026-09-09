@@ -697,17 +697,43 @@
   flex-direction: column;
   gap: 1px;
 }
+/* One line, always. The badges are appended into this node, so a seat that is
+   sitting out AND offline used to wrap the name onto three lines and stand the
+   plate up to 84px - which is what put neighbouring plates on top of each other
+   on a short felt. The status line underneath already says what a wrapped badge
+   would, and the seat's own dimming and ring say it again. */
 .player-name {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
   font-family: var(--font-body);
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--cream);
   line-height: 1.2;
-  white-space: normal;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+}
+/* The name is what gives way when the badges need the room, and it gives way
+   with an ellipsis rather than being cut through a letter. The :not() matters:
+   a bare `.player-name > span` outranks `.player-name-text` and would pin the
+   name at its natural width, leaving the badges to overflow instead. */
+/* Everything on this line can give way, so nothing ever escapes the plate.
+   The name yields first and furthest, but it keeps a couple of characters:
+   a plate showing two badges and no name at all names nobody. */
+.player-name > span:not(.player-name-text) {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-name-text {
+  flex: 1 1 auto;
+  min-width: 3ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .seat-caption {
   font-size: 0.6rem;

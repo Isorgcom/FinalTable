@@ -1249,17 +1249,27 @@ async function paintFullTable(page, count = 8) {
     const me = gameState.players.find((p) => p.id === myId) || gameState.players[0];
     const made = [];
     for (let i = 0; i < n; i++) {
+      // Worst case on purpose. A plate is only as wide as what it carries, and
+      // the widest it gets is a full-length name with the badges and the status
+      // line a disconnected seat shows - which is exactly the state a table is
+      // in for the seconds after somebody refreshes. Sizing the felt against
+      // narrow plates is how a plate ends up hanging off the screen.
       made.push({
         ...me,
         id: i === 0 ? me.id : `synthetic-${i}`,
         uid: i === 0 ? me.uid : `u-synthetic-${i}`,
-        name: i === 0 ? me.name : `Player${i}`,
+        name: 'Wenceslas' + i,
         seatIndex: i,
         chips: 5000 - i * 100,
         bet: 20,
         totalBet: 20,
         folded: false,
         allIn: false,
+        // Half dropped (a status line, no badge), half sitting out while still
+        // connected (a badge, no status). Between them they cover the widest
+        // and the tallest a plate gets.
+        autoPlay: true,
+        isConnected: i % 2 === 0,
         holeCards: i === 0 ? me.holeCards : null,
       });
     }

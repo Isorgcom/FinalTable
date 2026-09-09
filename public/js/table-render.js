@@ -701,13 +701,24 @@ function getPlayerDisplayName(player) {
 function appendPlayerIdentity(info, text, player) {
   info.appendChild(createTextElement('span', 'seat-avatar', player.avatar || '🧑'));
 
-  const name = createTextElement('div', 'player-name', player.name);
+  const name = document.createElement('div');
+  name.className = 'player-name';
+  // Its own element, not a bare text node: an anonymous flex item cannot take
+  // text-overflow, so a name beside two badges was being cut mid-letter.
+  name.appendChild(createTextElement('span', 'player-name-text', player.name));
   if (player.uid && player.uid === gameState.hostId) {
     const hostBadge = createTextElement('span', 'player-host-badge', 'host');
     hostBadge.title = 'Tournament host';
     name.appendChild(hostBadge);
   }
-  if (player.autoPlay) {
+  // A badge that repeats the status line directly under it is not worth the
+  // width. The plate is one line now, and a name beside three badges does not
+  // fit one - it used to wrap to three lines instead, standing the plate up
+  // tall enough to land on its neighbour. seatStatus() already says "Sitting
+  // out" for a spectator and "Disconnected" for a seat that has dropped, and
+  // both of those are sat out by definition.
+  const statusSpeaksForIt = !!player.isSpectator || player.isConnected === false;
+  if (player.autoPlay && !statusSpeaksForIt) {
     const autoBadge = createTextElement('span', 'player-auto-badge', 'sitting out');
     autoBadge.title = 'Sitting out: checks when free, folds to a bet';
     name.appendChild(autoBadge);
@@ -717,7 +728,9 @@ function appendPlayerIdentity(info, text, player) {
     spectatorBadge.title = 'Spectating this hand';
     name.appendChild(spectatorBadge);
   }
-  if (player.isConnected === false) {
+  // Only when the status line is busy saying something else: on its own, a
+  // dropped seat already reads "Disconnected" underneath.
+  if (player.isConnected === false && player.isSpectator) {
     const offlineBadge = createTextElement('span', 'player-offline-badge', 'offline');
     offlineBadge.title = 'Disconnected';
     name.appendChild(offlineBadge);

@@ -2,9 +2,11 @@
 @media (max-width: 1440px) {
   .poker-table-wrapper {
     /* The last term keeps a plate at the seat ring's widest point inside the
-       stage. The chairs sit 16% of a radius past the felt edge now, so it
-       reserves a whole plate a side rather than half of one. */
-    width: min(74%, 760px, var(--table-fit-height), calc(92% - 200px));
+       stage. The chairs sit 16% of a radius past the felt edge, and a plate is
+       only as wide as what it carries - a full-length name with the badges and
+       status a disconnected seat shows reaches the 140px cap. It reserves that
+       whole plate a side, not the narrow one a quiet table happens to draw. */
+    width: min(74%, 760px, var(--table-fit-height), calc(92% - 230px));
   }
   .poker-table-wrapper::after {
     top: 80%;
