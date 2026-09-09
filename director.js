@@ -77,6 +77,7 @@ class TournamentDirector {
     // Hooks the host (a server, or a test) supplies.
     this.onMessage = options.onMessage || null;
     this.onTableCreated = options.onTableCreated || null;
+    this.onTableBroken = options.onTableBroken || null;
     this.onFinished = options.onFinished || null;
     // Fired when a player changes table, so a host can tell that player
     // specifically rather than making them notice their seat changed.
@@ -774,6 +775,10 @@ class TournamentDirector {
     if (table._broken) return;
     table._broken = true;
     this._say(`Table ${table.tableNumber} is broken`);
+    // Nobody sits here again - the table keeps its number but never takes a
+    // player - so anything held on its behalf can go now rather than waiting
+    // for the whole tournament to be reaped.
+    if (this.onTableBroken) this.onTableBroken(table);
   }
 
   assertChipConservation() {

@@ -866,6 +866,80 @@
   border-top: 1px solid rgba(92, 61, 26, 0.35);
   padding: 8px 10px;
 }
+.composer-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.composer-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(92, 61, 26, 0.5);
+  border-radius: 6px;
+  color: var(--cream);
+  padding: 7px 9px;
+  /* Not a design choice: iOS zooms the whole page in on focusing an input
+     under 16px and never zooms back out, which on the table screen leaves the
+     felt half off the edge. */
+  font-size: 16px;
+  font-family: var(--font-body);
+}
+.composer-row input:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: -2px;
+}
+.composer-row input:disabled {
+  opacity: 0.5;
+}
+.composer-send {
+  flex: 0 0 auto;
+  background: rgba(201, 168, 76, 0.16);
+  border: 1px solid rgba(201, 168, 76, 0.5);
+  color: var(--gold);
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.composer-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.composer-note {
+  margin: 6px 0 0;
+  font-size: 0.7rem;
+  color: var(--smoke);
+}
+
+/* A chat line is an author and a sentence, where a dealer line is one string. */
+.log-entry.chat-line {
+  color: var(--cream);
+}
+.chat-who {
+  color: var(--gold);
+  font-weight: 600;
+}
+.chat-who::after {
+  content: ':';
+  margin-right: 4px;
+  color: var(--smoke);
+}
+.chat-text {
+  /* Two hundred characters with no spaces in them must not widen the panel. */
+  overflow-wrap: anywhere;
+}
+.log-entry.chat-line.mine .chat-who {
+  color: var(--cream);
+}
+.log-entry.chat-sep {
+  text-align: center;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--smoke);
+  opacity: 0.7;
+}
 
 .side-panel-close {
   display: none;
@@ -959,7 +1033,10 @@
     position: fixed;
     top: 0;
     right: 0;
-    bottom: 0;
+    /* dvh rather than bottom: 0, so the panel ends where the on-screen
+       keyboard starts. Pinned to the viewport bottom the composer would sit
+       behind the keys on iOS, which does not shrink the layout viewport. */
+    height: 100dvh;
     width: var(--panel-w);
     max-width: 100%;
     z-index: 120;

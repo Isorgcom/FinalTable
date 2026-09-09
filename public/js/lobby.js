@@ -230,6 +230,11 @@
     if (log) log.textContent = '';
     const ticker = $('logLast');
     if (ticker) ticker.textContent = 'Waiting...';
+    // The chat watermark goes with the log it was counting. Without this a
+    // player who leaves and rejoins the same tournament is sent a backlog
+    // whose every line is below the watermark left over from last time, and
+    // renders nothing at all.
+    if (window.TableChat) TableChat.reset();
     ['tournamentBanner', 'resultModal'].forEach((id) => {
       const node = $(id);
       if (node) node.classList.add('hidden');
@@ -463,6 +468,21 @@
       badge.className = 'wr-badge';
       badge.textContent = 'bot';
       line.appendChild(badge);
+    }
+    // The host's moderation, and only the host's: the server checks this again
+    // and this button is merely how it gets asked.
+    if (current && current.isHost && !row.isHost && !row.isBot) {
+      const mute = document.createElement('button');
+      mute.type = 'button';
+      mute.className = 'wr-mute' + (row.muted ? ' on' : '');
+      mute.textContent = row.muted ? 'Unmute' : 'Mute';
+      mute.title = row.muted ? `Let ${row.name} chat again` : `Stop ${row.name} chatting`;
+      mute.addEventListener('click', () => {
+        if (socket && socket.connected) {
+          socket.emit('muteChat', { uid: row.uid, muted: !row.muted });
+        }
+      });
+      line.appendChild(mute);
     }
     if (row.place) {
       const badge = document.createElement('span');

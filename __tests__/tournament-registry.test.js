@@ -646,6 +646,164 @@ describe('tournament registry', () => {
     second.stop();
   });
 
+  // ── Chat ───────────────────────────────────────────────────────────────
+  describe('chat', () => {
+    // Three people and two seats to a table: two at table 1, one at table 2,
+    // which is the arrangement that shows a message staying where it belongs.
+    function twoTables() {
+      const hostSocket = makeSocket('sh', 'h');
+      const { entry } = create({ startsAt: Date.now() + 60000, tableSize: 2 }, hostSocket);
+      const guest = makeSocket('sg', 'g');
+      const third = makeSocket('st', 't');
+      registry.join('g', { code: entry.code }, guest);
+      registry.join('t', { code: entry.code }, third);
+      registry.startNow(entry, 'h');
+      jest.advanceTimersByTime(1300);
+      entry.director.holdField();
+      return { entry, sockets: { h: hostSocket, g: guest, t: third } };
+    }
+
+    const chatSent = () => io.sent.filter((m) => m.event === 'chatMessage');
+
+    test('a message reaches its own table and no other', () => {
+      const { entry, sockets } = twoTables();
+      const mine = entry.director.playerByUid('h').table;
+      const atMyTable = entry.director.entrants
+        .map((e) => e.uid)
+        .filter((uid) => {
+          const seat = entry.director.playerByUid(uid);
+          return seat && seat.table.tableNumber === mine.tableNumber;
+        });
+      const elsewhere = ['h', 'g', 't'].filter((uid) => !atMyTable.includes(uid));
+
+      io.sent.length = 0;
+      const result = registry.postChat(entry, 'h', 'anyone there?', sockets.h);
+      expect(result.error).toBeUndefined();
+
+      // One emit, not one per recipient. socket.io encodes per emit and a chat
+      // line is identical for everyone getting it, so a per-socket loop here
+      // is the shape that cost this server 5 MB a tick before it was found.
+      const sent = chatSent();
+      expect(sent).toHaveLength(1);
+      expect(Array.isArray(sent[0].to)).toBe(true);
+
+      const reached = new Set(sent[0].to);
+      for (const uid of atMyTable) {
+        expect(reached.has(entry.registrations.get(uid).socketId)).toBe(true);
+      }
+      for (const uid of elsewhere) {
+        expect(reached.has(entry.registrations.get(uid).socketId)).toBe(false);
+      }
+    });
+
+    test('before the start it is one room for everyone registered', () => {
+      const hostSocket = makeSocket('sh', 'h');
+      const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+      registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+      io.sent.length = 0;
+      registry.postChat(entry, 'h', 'starting in five', hostSocket);
+      const sent = chatSent();
+      expect(sent).toHaveLength(1);
+      expect(sent[0].payload.room).toMatch(/:lobby$/);
+      expect([...sent[0].to].sort()).toEqual(['sg', 'sh']);
+    });
+
+    test('the name is looked up, never taken from the sender', () => {
+      const hostSocket = makeSocket('sh', 'h');
+      const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+      const { message } = registry.postChat(entry, 'h', 'hello', hostSocket);
+      expect(message.name).toBe('Host');
+    });
+
+    test('a seat that has busted reads its table but cannot type into it', () => {
+      const { entry, sockets } = twoTables();
+      const seat = entry.director.playerByUid('g');
+      const table = seat.table;
+      // Bust them: no seat, watching the table they were at.
+      entry.director.tables.forEach((t) => t.removePlayer(seat.player.id));
+      entry.watching.set('g', table.id);
+      const denied = registry.postChat(entry, 'g', 'nice fold', sockets.g);
+      expect(denied.error).toMatch(/still in the tournament/);
+      // But they are still in the room, so they see what is said there.
+      expect(registry.chat.roomFor(entry, 'g')).toBe(`${entry.id}:t${table.tableNumber}`);
+    });
+
+    test('the host can mute and unmute, and nobody else can', () => {
+      const { entry, sockets } = twoTables();
+      expect(registry.setChatMute(entry, 'g', 'h', true).error).toMatch(/host/);
+      expect(registry.setChatMute(entry, 'h', 'g', true).ok).toBe(true);
+      expect(registry.postChat(entry, 'g', 'hello', sockets.g).error).toMatch(/muted/);
+      expect(registry.setChatMute(entry, 'h', 'g', false).ok).toBe(true);
+      expect(registry.postChat(entry, 'g', 'hello', sockets.g).error).toBeUndefined();
+      // The host cannot silence themselves into a corner.
+      expect(registry.setChatMute(entry, 'h', 'h', true).error).toMatch(/host/);
+    });
+
+    test('a mute survives the tournament being written down and read back', () => {
+      const store = makeStore();
+      const first = createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        sweepMs: 1000,
+        store,
+        tableOptions: { actionTimeoutMs: 0 },
+      });
+      const { entry } = first.create(
+        'h',
+        { name: 'Muted', startsAt: Date.now() + 60000 },
+        makeSocket('sh')
+      );
+      first.join('g', { code: entry.code }, makeSocket('sg'));
+      first.setChatMute(entry, 'h', 'g', true);
+      first.flush();
+      first.stop();
+
+      const second = createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        sweepMs: 1000,
+        store,
+        tableOptions: { actionTimeoutMs: 0 },
+      });
+      second.restore();
+      const back = second.tournaments.get(entry.id);
+      expect(back.mutedUids.has('g')).toBe(true);
+      second.stop();
+    });
+
+    test('arriving at a table sends the recent chat, once', () => {
+      const { entry, sockets } = twoTables();
+      registry.postChat(entry, 'h', 'said before you got here', sockets.h);
+      io.sent.length = 0;
+      registry.bind(entry, 'h', makeSocket('sh2', 'h'), { resumed: true });
+      const history = io.sent.filter((m) => m.event === 'chatHistory');
+      expect(history).toHaveLength(1);
+      expect(history[0].payload.messages.map((m) => m.text)).toContain('said before you got here');
+      expect(history[0].payload.canSend).toBe(true);
+    });
+
+    test('an empty message and a flood are both refused', () => {
+      const hostSocket = makeSocket('sh', 'h');
+      const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+      expect(registry.postChat(entry, 'h', '   ', hostSocket).error).toBeTruthy();
+      const outcomes = [];
+      for (let i = 0; i < 8; i++) {
+        outcomes.push(registry.postChat(entry, 'h', 'spam ' + i, hostSocket).error);
+      }
+      expect(outcomes.filter((e) => !e).length).toBeLessThanOrEqual(4);
+      expect(outcomes.some((e) => /slow down/i.test(e || ''))).toBe(true);
+    });
+
+    test('reaping a tournament takes its chat with it', () => {
+      const hostSocket = makeSocket('sh', 'h');
+      const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+      registry.postChat(entry, 'h', 'gone soon', hostSocket);
+      expect(registry.chat.history(`${entry.id}:lobby`)).toHaveLength(1);
+      registry.cancel(entry, 'h');
+      expect(registry.chat.history(`${entry.id}:lobby`)).toEqual([]);
+    });
+  });
+
   test('demo seats come back from a restart still playing', () => {
     const store = makeStore();
     const first = createTournamentRegistry({

@@ -28,6 +28,7 @@ All checks must pass before submitting a PR.
 
 - **Poker**: `engine.js` (one table), `director.js` (many tables on one clock), `tournament.js` (blind clock and ledger), `hand-eval.js`, `hand-describe.js`
 - **Tournament lifecycle**: `server/tournament-registry.js` (the state machine), `server/tournament-handlers.js` (socket shim), `server/identity.js` (who a player is), `server/tournament-store.js` (what survives a restart)
+- **Chat**: `server/chat-rooms.js` (who may say what, and what is kept), `server/chat-store.js` (chat that survives a restart), `public/js/chat.js` (the composer and the message rows)
 - **Server & networking**: `server.js`, `server/config.js`, `server/http-middleware.js`
 - **Frontend**: `public/index.html`, `public/css/`, `public/js/` (`lobby.js` and `socket-client.js` for the lobby; `table-render.js`, `ui-panels.js`, `side-panel.js` for the table)
 - **Tests**: `__tests__/` (Jest) and `e2e/` (Playwright; `npx playwright install chromium` once)

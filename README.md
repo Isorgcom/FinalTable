@@ -106,12 +106,18 @@ hand-for-hand at the bubble), the table redesign, the tournament lobby
 (identity, scheduled starts, late registration, rejoin, persistence), and
 restoring a running field after a restart.
 
+Chat is the first thing the server keeps that people wrote rather than played:
+the last hundred lines of each room are held in memory and written to
+`data/chat/<tournament>.json`, and both go when the tournament is reaped.
+`CHAT_ENABLED=false` turns the whole surface off, and `CHAT_HISTORY=0` keeps
+the chat without keeping any of it.
+
 Not built, in the order they are likely to matter:
 
 - Railbird spectating for people who are not registered
 - Re-entry during late registration; kicking a registrant
 - A GameNight-account login behind `server/identity.js`
-- Player chat in the Chat tab; custom blind schedules; an admin page
+- Custom blind schedules; an admin page
 
 ## Licence
 

@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const { createIdentityStore } = require('./server/identity');
 const { createTournamentStore } = require('./server/tournament-store');
+const { createChatStore } = require('./server/chat-store');
 const { loadLocalEnv } = require('./server/load-env');
 const { loadConfig } = require('./server/config');
 const { applySecurityHeaders, createRateLimiter } = require('./server/http-middleware');
@@ -115,6 +116,13 @@ const tournamentStore = createTournamentStore({
   saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
 });
 
+// Chat, in its own file per tournament so it never rides along with the
+// registration writes. Absent when chat is switched off, which is what stops
+// an operator who disabled it from finding files still appearing.
+const chatStore = config.chatEnabled
+  ? createChatStore({ saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data') })
+  : null;
+
 const tournamentLayer = registerTournamentHandlers({
   io,
   identity,
@@ -130,6 +138,12 @@ const tournamentLayer = registerTournamentHandlers({
   handPauseMs: config.handPauseMs,
   adminPassword: config.adminPassword,
   tableOptions: { streetPauseMs: config.streetPauseMs },
+  chatStore,
+  chatEnabled: config.chatEnabled,
+  chatHistory: config.chatHistory,
+  chatMaxLength: config.chatMaxLength,
+  chatRatePerWindow: config.chatRatePerWindow,
+  chatRateWindowMs: config.chatRateWindowMs,
 });
 // Registrations survive a restart; a running tournament does not.
 const restoredTournaments = tournamentLayer.registry.restore();
@@ -144,6 +158,11 @@ function flushStores() {
   }
   try {
     tournamentLayer.registry.flush();
+  } catch (_err) {
+    /* as above */
+  }
+  try {
+    if (chatStore) chatStore.flush();
   } catch (_err) {
     /* as above */
   }

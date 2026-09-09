@@ -293,6 +293,34 @@ function registerTournamentHandlers(deps) {
       if (result.error) return fail(socket, result.error);
     });
 
+    // Chat. Deliberately its own event rather than a kind of gameMessage: the
+    // client picks sound effects and the result modal off substrings of a
+    // gameMessage, so somebody typing "all-in" would play the all-in sound for
+    // the whole table and "wins" would pop the winner screen.
+    socket.on('chat', (payload = {}) => {
+      if (!registry.chatEnabled) return;
+      if (typeof payload.text !== 'string') return;
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const result = registry.postChat(entry, socket.data.tournamentUid, payload.text, socket);
+      // A refusal goes back on its own event, not through fail(): the client
+      // routes 'error' to a lobby dialog, and a rate limit is not a dialog.
+      if (result.error) socket.emit('chatDenied', { reason: result.error });
+    });
+
+    socket.on('muteChat', (payload = {}) => {
+      if (!registry.chatEnabled) return;
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const result = registry.setChatMute(
+        entry,
+        socket.data.tournamentUid,
+        String(payload.uid || ''),
+        payload.muted === true
+      );
+      if (result.error) return fail(socket, result.error);
+    });
+
     socket.on('disconnect', () => {
       const entry = entryFor(socket);
       if (!entry) return;

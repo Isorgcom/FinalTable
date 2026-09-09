@@ -12,6 +12,7 @@
 // need the same loop anyway. `now` and `timers` are injectable for tests.
 
 const { TournamentDirector } = require('../director');
+const { createChatRooms } = require('./chat-rooms');
 const random = require('../random');
 
 const TICK_MS = 1200;
@@ -48,6 +49,14 @@ function createTournamentRegistry(deps = {}) {
     sweepMs = 1000,
     now = () => Date.now(),
     store = null,
+    // Chat. Disabled means the events are not registered at all and no buffer
+    // is ever allocated, rather than a box that is hidden client-side.
+    chatEnabled = true,
+    chatStore = null,
+    chatHistory = 100,
+    chatMaxLength = 200,
+    chatRatePerWindow = 4,
+    chatRateWindowMs = 10 * 1000,
   } = deps;
   const timers = deps.timers || {
     setInterval: (...a) => setInterval(...a),
@@ -79,6 +88,13 @@ function createTournamentRegistry(deps = {}) {
 
   // id -> entry
   const tournaments = new Map();
+  const chat = createChatRooms({
+    historyLimit: chatHistory,
+    maxLength: chatMaxLength,
+    ratePerWindow: chatRatePerWindow,
+    rateWindowMs: chatRateWindowMs,
+    now,
+  });
   let sweepTimer = null;
   let sweeps = 0;
   let persistTimer = null;
@@ -106,6 +122,7 @@ function createTournamentRegistry(deps = {}) {
         uid,
         joinedAt: r.joinedAt,
       })),
+      mutedUids: [...entry.mutedUids],
       status: entry.status,
       // How many times this field has been seated again without getting a hand
       // out. See the guard in restore().
@@ -122,6 +139,10 @@ function createTournamentRegistry(deps = {}) {
       clearTimeout(persistTimer);
       persistTimer = null;
     }
+    // Chat has a debounce of its own, and flush means everything is on disk
+    // now - a shutdown that wrote the field but not the last thing anyone said
+    // would be a strange thing to have built on purpose.
+    if (chatStore) chatStore.flush();
     if (!store) return;
     const list = [...tournaments.values()]
       .filter((e) => e.status === 'registering' || e.status === 'running')
@@ -215,7 +236,7 @@ function createTournamentRegistry(deps = {}) {
   function rosterSignature(roster) {
     let sig = '';
     for (const r of roster) {
-      sig += `${r.uid}:${r.chips}:${r.table}:${r.place}:${r.autoPlay ? 1 : 0}:${r.connected ? 1 : 0}|`;
+      sig += `${r.uid}:${r.chips}:${r.table}:${r.place}:${r.autoPlay ? 1 : 0}:${r.connected ? 1 : 0}:${r.muted ? 1 : 0}|`;
     }
     return sig;
   }
@@ -314,6 +335,7 @@ function createTournamentRegistry(deps = {}) {
         isHost: row.uid === entry.hostUid,
         // A demo seat has no socket to lose, so it is always here.
         connected: row.isBot || !!(r && r.socketId),
+        muted: entry.mutedUids.has(row.uid),
       };
     });
     const placeByUid = new Map();
@@ -405,6 +427,89 @@ function createTournamentRegistry(deps = {}) {
         io.to(r.socketId).emit('gameMessage', msg, meta || null);
       }
     };
+  }
+
+  // ── Chat ─────────────────────────────────────────────────────────────────
+  // The room a message belongs to is resolved from the sender, never taken
+  // from them, so there is nothing to spoof. See server/chat-rooms.js.
+
+  function tableForRoom(entry, room) {
+    const prefix = `${entry.id}:t`;
+    if (!room || !room.startsWith(prefix)) return null;
+    const number = parseInt(room.slice(prefix.length), 10);
+    return entry.director.tables.find((t) => t.tableNumber === number) || null;
+  }
+
+  // One array, one emit. A chat line is byte-identical for everyone who gets
+  // it, and socket.io encodes per emit, so a per-socket loop here would be the
+  // thing that cost this server 5 MB a tick before it was found. A Set because
+  // an eliminated player is briefly both a seat and a watcher.
+  function chatRecipients(entry, room) {
+    const ids = new Set();
+    if (room === chat.lobbyRoom(entry.id)) {
+      for (const reg of entry.registrations.values()) if (reg.socketId) ids.add(reg.socketId);
+      return [...ids];
+    }
+    const table = tableForRoom(entry, room);
+    if (!table) return [];
+    for (const r of recipientsFor(entry, table)) ids.add(r.socketId);
+    return [...ids];
+  }
+
+  function persistChat(entry) {
+    if (chatStore) chatStore.record(entry.id, chat.snapshot(entry.id));
+  }
+
+  // Sent whenever a client attaches to a room: a fresh join, a reconnect, a
+  // reload, or the balancer moving them to a table mid-conversation. One path
+  // for all four, so none of them can be the one that was forgotten.
+  function sendChatHistory(entry, uid, socketId = null) {
+    if (!chatEnabled) return;
+    const reg = entry.registrations.get(uid);
+    const target = socketId || (reg && reg.socketId);
+    if (!target) return;
+    const room = chat.roomFor(entry, uid);
+    if (!room) return;
+    io.to(target).emit('chatHistory', {
+      room,
+      canSend: chat.canPost(entry, uid).ok,
+      messages: chat.history(room),
+    });
+  }
+
+  function postChat(entry, uid, text, socket) {
+    if (!chatEnabled) return { error: 'Chat is switched off' };
+    const allowed = chat.canPost(entry, uid);
+    if (!allowed.ok) return { error: allowed.reason };
+    if (!socket.data.chatBucket) socket.data.chatBucket = {};
+    if (!chat.takeToken(socket.data.chatBucket)) {
+      return { error: 'Slow down a moment' };
+    }
+    const room = chat.roomFor(entry, uid);
+    if (!room) return { error: 'You are not at a table yet' };
+    // The name is looked up, never taken from the payload: otherwise anyone
+    // can sign a message with somebody else's name.
+    const who = identity.get(uid);
+    const message = chat.post(room, { uid, name: who ? who.name : 'Player', text });
+    if (!message) return { error: 'Nothing to send' };
+    const ids = chatRecipients(entry, room);
+    if (ids.length) io.to(ids).emit('chatMessage', message);
+    persistChat(entry);
+    return { message };
+  }
+
+  function setChatMute(entry, hostUid, targetUid, muted) {
+    if (!requireHost(entry, hostUid)) return { error: 'Only the host can do that' };
+    if (!targetUid || !entry.registrations.has(targetUid)) {
+      return { error: 'They are not in this tournament' };
+    }
+    if (targetUid === entry.hostUid) return { error: 'You cannot mute the host' };
+    if (muted) entry.mutedUids.add(targetUid);
+    else entry.mutedUids.delete(targetUid);
+    persist();
+    emitTo(entry, targetUid, 'chatMuted', { muted });
+    emitState(entry);
+    return { ok: true, muted };
   }
 
   // A watcher whose table emptied moves to the biggest table left.
@@ -507,6 +612,9 @@ function createTournamentRegistry(deps = {}) {
       timer: null,
       waitingReason: null,
       noHumansSince: null,
+      // Host moderation. Small enough to ride along in the tournament file, so
+      // a mute survives a restart the way the field it was aimed at does.
+      mutedUids: new Set(),
     };
     const director = new TournamentDirector({
       id: id || undefined,
@@ -518,8 +626,14 @@ function createTournamentRegistry(deps = {}) {
       handPauseMs,
       gameOptions: { gameMode: 'tournament', ...tableOptions },
       onTableCreated: (table) => wireTable(entry, table),
+      onTableBroken: (table) => chat.dropRoom(chat.tableRoom(entry.id, table.tableNumber)),
       onMessage: (msg) => emitAll(entry, 'gameMessage', msg),
-      onPlayerMoved: (move) => emitTo(entry, move.uid, 'tableMoved', move),
+      onPlayerMoved: (move) => {
+        emitTo(entry, move.uid, 'tableMoved', move);
+        // They have landed among different people mid-conversation, so send
+        // the new table's recent chat the same way a reload would get it.
+        sendChatHistory(entry, move.uid);
+      },
       // The field has settled after a hand: write it down.
       onSnapshot: () => {
         // Long enough on its feet to call the field viable, so the restore
@@ -680,6 +794,7 @@ function createTournamentRegistry(deps = {}) {
       const table = entry.director.tables.find((t) => t.id === entry.watching.get(uid));
       if (table) socket.emit('gameState', table.getStateForPlayer(socket.id));
     }
+    sendChatHistory(entry, uid, socket.id);
     if (resumed) emitState(entry);
     return true;
   }
@@ -847,6 +962,8 @@ function createTournamentRegistry(deps = {}) {
       entry.timer = null;
     }
     entry.director.stop();
+    chat.dropTournament(entry.id);
+    if (chatStore) chatStore.remove(entry.id);
     tournaments.delete(entry.id);
     persist();
     emitList();
@@ -1003,6 +1120,13 @@ function createTournamentRegistry(deps = {}) {
       if (!entry.registrations.has(entry.hostUid)) {
         entry.hostUid = [...entry.registrations.keys()][0];
       }
+      for (const uid of saved.mutedUids || []) entry.mutedUids.add(uid);
+      // Chat comes back before, and regardless of, whether the field is seated
+      // again. The rooms are keyed by a string and need no table object to
+      // exist - and a field held by the restore guard below is precisely the
+      // one somebody is trying to work out what happened to, so its chat is
+      // the last thing that should vanish.
+      if (chatStore) chat.hydrate(chatStore.load(saved.id));
       // A tournament that was mid-play when the process went down is seated
       // again from the field it recorded between hands. Every seat comes back
       // sitting out and is taken over by its player when they reconnect, so a
@@ -1032,6 +1156,13 @@ function createTournamentRegistry(deps = {}) {
       restored++;
     }
     if (restored) emitList();
+    // Chat files whose tournament did not come back - it finished, or was
+    // reaped while the process was down - have nothing left to belong to.
+    if (chatStore) {
+      for (const id of chatStore.listIds()) {
+        if (!tournaments.has(id)) chatStore.remove(id);
+      }
+    }
     return restored;
   }
 
@@ -1054,6 +1185,11 @@ function createTournamentRegistry(deps = {}) {
     findByUid,
     byCode,
     requireHost,
+    postChat,
+    setChatMute,
+    sendChatHistory,
+    chat,
+    chatEnabled,
     sweep,
     restore,
     flush,

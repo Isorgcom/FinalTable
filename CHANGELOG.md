@@ -13,7 +13,27 @@ what publishes a container image.
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- Chat. Players at the same table can talk to each other, and everyone in the
+  waiting room can talk before the cards are out - it hands over to the table
+  you are seated at once the tournament starts. The last hundred lines of a
+  room come back after a reload, a rejoin, being moved to another table, or a
+  server restart.
+- The host can mute a player from the waiting-room roster, and unmute them
+  again. A muted player is told why rather than typing into nothing.
+- Chat can be turned off for the whole server with `CHAT_ENABLED=false`, which
+  removes the surface rather than hiding the box. `CHAT_HISTORY`,
+  `CHAT_MAX_LEN`, `CHAT_RATE` and `CHAT_RATE_WINDOW_MS` tune what is kept and
+  how fast anyone can talk.
+
+### Changed
+
+- The Chat tab no longer scrolls itself to the bottom while you are reading
+  back through it, and keeps 200 lines rather than 50 - a conversation and the
+  dealer's narration now share the pane.
+- A player who busts can still read their table's chat, but not post to it.
+- Only players still in the tournament can talk once it is running.
 
 ## 0.1.0 - 2026-09-09
 

@@ -17,15 +17,27 @@ function addLog(msg, meta) {
     entry.classList.add('highlight');
   if (displayMsg.includes('↩') || displayMsg.includes('returned')) entry.classList.add('muted');
   entry.textContent = displayMsg;
+  // Stay where the reader put the pane. Snapping to the bottom on every line
+  // was harmless while this was a log nobody read; now that people talk in it,
+  // scrolling back to catch up would be undone by the next fold.
+  const pinned = body.scrollHeight - body.scrollTop - body.clientHeight <= LOG_NEAR_BOTTOM_PX;
   body.appendChild(entry);
-  body.scrollTop = body.scrollHeight;
+  if (pinned) body.scrollTop = body.scrollHeight;
 
   // The ticker shows the last line; CSS clamps it to a few lines.
   last.textContent = displayMsg.replace(/💬\s*/, '');
   if (window.SidePanel) SidePanel.notify('chat');
 
-  // Keep only last 50
-  while (body.children.length > 50) body.removeChild(body.firstChild);
+  trimLog(body);
+}
+
+// Deep enough that a backlog of chat is not wiped by the next two hands, which
+// is what 50 did once dealer narration and conversation shared the pane.
+const LOG_MAX_ROWS = 200;
+const LOG_NEAR_BOTTOM_PX = 48;
+
+function trimLog(body) {
+  while (body.children.length > LOG_MAX_ROWS) body.removeChild(body.firstChild);
 }
 
 function getReplayPlayerDisplayName(player) {

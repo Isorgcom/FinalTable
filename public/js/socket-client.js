@@ -138,6 +138,26 @@ function ensureSocket() {
     }
   });
 
+  // Chat rides its own event rather than gameMessage, because the handler
+  // above keys sound effects and the winner screen off substrings: somebody
+  // typing "all-in" would otherwise play the all-in sound for the whole table.
+  socket.on('chatMessage', (message) => {
+    if (window.TableChat) TableChat.render(message);
+  });
+
+  socket.on('chatHistory', (payload) => {
+    if (window.TableChat) TableChat.renderHistory(payload);
+  });
+
+  socket.on('chatDenied', (payload) => {
+    if (window.TableChat) TableChat.denied((payload && payload.reason) || 'Not sent');
+  });
+
+  socket.on('chatMuted', (payload) => {
+    if (!window.TableChat) return;
+    TableChat.setCanSend(!(payload && payload.muted), 'The host has muted you');
+  });
+
   socket.on('nameChanged', (data) => {
     addLog(`✅ Name changed to: ${data.name}`);
   });

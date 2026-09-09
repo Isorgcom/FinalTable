@@ -18,6 +18,7 @@ const ASSET_VERSION_FILES = [
   'public/js/lobby.js',
   'public/js/table-render.js',
   'public/js/ui-panels.js',
+  'public/js/chat.js',
   'public/js/side-panel.js',
   'public/js/tournament-field.js',
   'public/js/app.js',

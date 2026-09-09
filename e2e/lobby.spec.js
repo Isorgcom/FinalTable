@@ -157,8 +157,13 @@ test('the bot option fills the table so one person can start', async ({ page }) 
   await expect(page.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(6);
   // And they play: chips go in without anyone touching the controls. The
   // blinds alone are 30, so a pot past that is a bot that has acted.
+  //
+  // Generous on time because the seat draw decides how long this takes. If the
+  // one human is first to act, nothing moves until their turn clock runs out,
+  // and that is thirty seconds on a tournament table - so anything under it
+  // fails on the hands where the draw puts them under the gun.
   await expect
-    .poll(() => page.evaluate(() => gameState && gameState.pot), { timeout: 20000 })
+    .poll(() => page.evaluate(() => gameState && gameState.pot), { timeout: 45000 })
     .toBeGreaterThan(30);
   expect(errors).toEqual([]);
 });

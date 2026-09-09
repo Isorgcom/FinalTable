@@ -224,6 +224,24 @@
           </div>
           <div class="wr-roster" id="wrRoster" aria-label="Registered players"></div>
           <div class="wr-settings" id="wrSettings"></div>
+          <!-- Before the cards are out there is no table to talk at, so the
+               waiting room carries the conversation until one exists. -->
+          <div class="wr-chat" id="wrChat">
+            <div class="wr-chat-log" id="wrChatLog" role="log" aria-label="Waiting room chat"></div>
+            <form class="composer-row" id="wrChatForm">
+              <input
+                id="wrChatInput"
+                type="text"
+                maxlength="200"
+                autocomplete="off"
+                enterkeyhint="send"
+                aria-label="Message the waiting room"
+                placeholder="Say something"
+              />
+              <button class="composer-send" id="wrChatSend" type="submit">Send</button>
+            </form>
+            <p class="composer-note hidden" id="wrChatNote"></p>
+          </div>
           <div class="wr-host hidden" id="wrHostControls">
             <button class="btn-enter" id="btnStartNow" type="button">Start now</button>
             <button class="btn-danger" id="btnCancelTournament" type="button">
@@ -515,8 +533,21 @@
         <div class="side-panel-bodies">
           <section class="side-tabpanel" id="panelChat" role="tabpanel" aria-labelledby="tabChat">
             <div class="panel-scroll" id="panelChatBody" role="log" aria-label="Dealer log"></div>
-            <!-- Reserved for a player chat composer -->
-            <div class="panel-composer hidden" id="panelComposer"></div>
+            <div class="panel-composer hidden" id="panelComposer">
+              <form class="composer-row" id="chatForm">
+                <input
+                  id="chatInput"
+                  type="text"
+                  maxlength="200"
+                  autocomplete="off"
+                  enterkeyhint="send"
+                  aria-label="Message your table"
+                  placeholder="Message your table"
+                />
+                <button class="composer-send" id="chatSend" type="submit">Send</button>
+              </form>
+              <p class="composer-note hidden" id="chatNote"></p>
+            </div>
           </section>
           <section
             class="side-tabpanel hidden"
@@ -698,6 +729,7 @@
     <script defer src="/js/socket-client.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/table-render.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/ui-panels.js?v=__ASSET_VERSION__"></script>
+    <script defer src="/js/chat.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/tournament-field.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/lobby.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/app.js?v=__ASSET_VERSION__"></script>

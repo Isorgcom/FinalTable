@@ -538,6 +538,46 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
+/* The waiting room's own chat: there is no table to talk at yet. */
+.wr-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.wr-chat-log {
+  max-height: 148px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.wr-chat-log:empty {
+  display: none;
+}
+.wr-mute {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid rgba(201, 168, 76, 0.4);
+  color: var(--smoke);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.wr-mute.on {
+  color: var(--bg-deep);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
 .wr-settings {
   font-size: 0.72rem;
   color: var(--smoke);
