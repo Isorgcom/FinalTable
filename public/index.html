@@ -146,9 +146,9 @@
             <div class="form-group">
               <label for="tTableSize">Table size</label>
               <select id="tTableSize">
+                <option value="2">Heads-up</option>
                 <option value="6">6-max</option>
-                <option value="9" selected>9-max</option>
-                <option value="10">10-max</option>
+                <option value="8" selected>8-max</option>
               </select>
             </div>
             <div class="form-group">
@@ -272,11 +272,12 @@
            it, so the felt centres beside the panel rather than under it. -->
       <div class="table-stage" id="tableStage">
         <div class="tournament-banner hidden" id="tournamentBanner">
-          <div class="tb-level">Tournament Level <span id="tbLevel">1</span></div>
+          <div class="tb-level">
+            Level <span id="tbLevel">1</span> &middot; <span id="tbBlinds">10/20</span>
+          </div>
           <div>
-            Blinds <span id="tbBlinds">10/20</span> |
-            <span class="tb-timer">Next: <span id="tbTimer">3:00</span></span> |
-            <span class="tb-alive">Alive: <span id="tbAlive">0</span></span>
+            <span class="tb-timer">next <span id="tbTimer">3:00</span></span> &middot;
+            <span class="tb-alive"><span id="tbAlive">0</span> left</span>
           </div>
           <!-- The bubble was a line in a side panel that is often closed. It is
                the one moment in a tournament where how you play changes, so it
@@ -300,6 +301,23 @@
           </div>
           <div class="felt-bets" id="feltBets"></div>
           <div id="playerSeats"></div>
+        </div>
+
+        <!-- Which chair you are shown in. The table has fixed places now, so
+             where you sit on screen is a preference rather than a consequence
+             of who happened to be dealt in first. -->
+        <div class="seat-menu hidden" id="seatMenu" role="menu" aria-label="Seat view">
+          <button class="seat-menu-item" type="button" id="seatMenuHere" role="menuitem">
+            Show me here
+          </button>
+          <button
+            class="seat-menu-item seat-menu-reset hidden"
+            type="button"
+            id="seatMenuReset"
+            role="menuitem"
+          >
+            Back to my usual chair
+          </button>
         </div>
 
         <!-- Sitting out is a state you have to be able to leave, so the way

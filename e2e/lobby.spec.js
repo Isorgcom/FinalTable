@@ -88,7 +88,7 @@ test('creating a tournament lands in the waiting room with roster, code and sett
   await expect(page.locator('#wrRoster .wr-row')).toHaveCount(1);
   await expect(page.locator('#wrRoster .wr-row').first()).toContainText('Host');
   await expect(page.locator('#wrRoster .wr-badge').first()).toHaveText('host');
-  await expect(page.locator('#wrSettings')).toContainText('9-max');
+  await expect(page.locator('#wrSettings')).toContainText('8-max');
   await expect(page.locator('#wrSettings')).toContainText('late registration through level 3');
   await expect(page.locator('#wrHostControls')).toBeVisible();
   // A field of one cannot deal, so the host waits for a second person.
@@ -130,7 +130,7 @@ test('a second player joins by link, both see each other, and the host starts fo
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
-  await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(2);
+  await expect(guest.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(2);
   await guest.click('#tabInfo');
   await expect(guest.locator('#panelInfoBody')).toContainText('Multi-table');
   await expect(guest.locator('#panelInfoBody')).toContainText('Host');

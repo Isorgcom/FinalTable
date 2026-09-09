@@ -16,8 +16,10 @@ const envInt = (name, fallback) => {
   const raw = parseInt(process.env[name], 10);
   return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
 };
-// Seats per table.
-const DEFAULT_MAX_PLAYERS = 10;
+// Seats per table. Eight is the shape the felt is laid out for: two seats
+// across the top, two a side and two along the bottom, with the top and bottom
+// centre lanes left clear for the level banner and the action bar.
+const DEFAULT_MAX_PLAYERS = 8;
 
 // A seat on auto-play pauses this long before it acts, divided by the table's
 // speed multiplier. The pause is cosmetic: there is nothing to decide, but the

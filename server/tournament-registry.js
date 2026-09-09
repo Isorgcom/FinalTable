@@ -428,7 +428,7 @@ function createTournamentRegistry(deps = {}) {
     return {
       startsAt,
       settings: {
-        tableSize: Math.max(2, Math.min(10, int(payload.tableSize, 9))),
+        tableSize: Math.max(2, Math.min(8, int(payload.tableSize, 8))),
         startChips: START_CHIPS.includes(startChips) ? startChips : 5000,
         levelDuration: Math.max(30, Math.min(3600, int(payload.levelDuration, 300))),
         lateRegLevels: Math.max(0, Math.min(8, int(payload.lateRegLevels, 3))),
@@ -936,6 +936,15 @@ function createTournamentRegistry(deps = {}) {
     for (const saved of store.load()) {
       if (!saved || !saved.id || tournaments.has(saved.id)) continue;
       const { settings } = clampSettings({ ...saved.settings, startsAt: saved.startsAt });
+      // A tournament that was already dealing keeps the table size it was dealt
+      // with. Re-clamping it here would hand a running field a smaller ceiling
+      // than the tables it already has: seats past the new limit can be shed
+      // but never refilled, and the break arithmetic in _breakIfPossible would
+      // be counting capacity that does not exist.
+      const savedSize = parseInt(saved.settings && saved.settings.tableSize, 10);
+      if (saved.status === 'running' && Number.isFinite(savedSize) && savedSize >= 2) {
+        settings.tableSize = savedSize;
+      }
       const entry = buildEntry({
         id: saved.id,
         code: saved.code,

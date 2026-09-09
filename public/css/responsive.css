@@ -1,9 +1,10 @@
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1440px) {
   .poker-table-wrapper {
-    /* The last term keeps a plate at the seat ring's widest point (3% past the
-       felt edge, half a 140px plate, a 10px position chip) inside the stage. */
-    width: min(82%, 780px, var(--table-fit-height), calc(92% - 140px));
+    /* The last term keeps a plate at the seat ring's widest point inside the
+       stage. The chairs sit 16% of a radius past the felt edge now, so it
+       reserves a whole plate a side rather than half of one. */
+    width: min(74%, 760px, var(--table-fit-height), calc(92% - 200px));
   }
   .poker-table-wrapper::after {
     top: 80%;
@@ -90,7 +91,7 @@
   .poker-table-wrapper {
     --table-fit-height: 84vh;
     top: 47%;
-    width: min(95%, var(--table-fit-height));
+    width: min(88%, var(--table-fit-height));
   }
   .poker-table-wrapper::after {
     top: 82%;
@@ -99,14 +100,15 @@
     filter: blur(20px);
     transform: translateX(-50%) scaleY(0.6);
   }
-  /* A 95%-wide felt leaves no margin for a 53% ring: seats at the sides
-     would hang off a portrait tablet or a large phone. Pull the ring and
-     the bet ring in. --bet-ry goes the other way: on a short felt the pot now
-     sits above the board, and a bet ring at 30 puts the far seat's chips into
-     it. Pushing the ring out also reads better, since a bet belongs in front
-     of the player who made it rather than halfway to the middle. */
+  /* A felt this wide leaves no margin for a full-size ring: the side chairs
+     would hang off a portrait tablet or a large phone, which is what happened
+     before a48b505 and again when the chairs moved outside the felt. The felt
+     and the ring both come in. --bet-ry goes the other way: on a short felt
+     the pot sits above the board, and a bet ring at 30 puts the far seat's
+     chips into it. Pushing it out also reads better, since a bet belongs in
+     front of the player who made it rather than halfway to the middle. */
   :root {
-    --seat-rx: 41;
+    --seat-rx: 34;
     --bet-rx: 29;
     --bet-ry: 37;
   }
@@ -306,7 +308,8 @@
     font-size: 0.55rem;
     padding: 3px 10px;
     top: 62px;
-    max-width: calc(100vw - 16px);
+    /* Narrow enough to stay in the lane between the two top chairs. */
+    max-width: min(46vw, 240px);
   }
   .result-content,
   .lb-content,
@@ -436,9 +439,16 @@
 }
 @media (max-width: 932px) and (max-height: 560px) and (orientation: landscape) {
   .poker-table-wrapper {
-    --table-fit-height: 92vh;
+    /* Two rows of chairs and an action bar do not fit around a full-height
+       felt on a 390px-tall screen. The felt is what gives way, and the ring
+       comes in with it. */
+    --table-fit-height: 80vh;
     width: min(70%, calc(var(--table-fit-height) * 1.68));
     top: 47.5%;
+  }
+  :root {
+    --seat-ry: 34;
+    --bet-ry: 26;
   }
   .poker-table-wrapper::after {
     top: 81%;
@@ -565,7 +575,9 @@
     top: 30px;
     font-size: 0.48rem;
     padding: 2px 8px;
-    max-width: min(58vw, 340px);
+    /* The lane here is about 220px wide; a banner past that reaches the
+       top-left chair, which is how it used to sit on top of it. */
+    max-width: min(24vw, 200px);
   }
   .dealer-ticker {
     width: min(28vw, 150px);

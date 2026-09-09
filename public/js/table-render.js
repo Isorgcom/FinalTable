@@ -152,8 +152,8 @@ function flyChips(from, to, count, extraClass, opts) {
 // window.__identity, which the Playwright specs already read.
 window.__anim = { sweeps: 0, deals: 0, flips: 0 };
 
-// How much of the felt a single street end may throw at the pot. Nine seats
-// at five chips each would be forty-five nodes and a visible hitch on a phone.
+// How much of the felt a single street end may throw at the pot. Eight seats
+// at five chips each would be forty nodes and a visible hitch on a phone.
 // Where in each animation the card is heard. A dealt card reaches its seat at
 // 78% of the 0.34s flight, and a board card swaps faces at 48% of the 0.36s
 // fold: that is the moment it reads as placed, not the moment it sets off.
@@ -454,6 +454,9 @@ function getPlayerIdentityKey(players) {
         p.autoPlay ? 'auto' : '',
         p.isConnected === false ? 'offline' : 'online',
         p.isSpectator ? 'spectator' : '',
+        // Rotating the view changes no player's state, so without this the
+        // incremental path would leave every plate exactly where it was.
+        String(viewerSlot(players.length)),
         // Whether this seat's cards are face up. The skeleton holds the cards,
         // so the moment the server tables a hand - at showdown, or on an
         // all-in run-out - the seats have to be built again to show them.
@@ -497,20 +500,30 @@ function renderPlayersIncremental() {
     const seat = seatElementForPlayer(player.id);
     if (seat) updateSeatDynamic(seat, player, ctx);
   });
-  renderFeltBets(ordered, getSeatPositions(seatCapacity(ordered.length)));
+  const betCapacity = seatCapacity(ordered.length);
+  renderFeltBets(ordered, getSeatPositions(betCapacity, viewerSlot(betCapacity)));
   updateTurnTimerBars(ordered);
 }
 
-// How many seats to lay out. Before a room's first deal the table shows its
-// full capacity so open seats read as open. Once play starts the engine
-// compacts seat indices when someone leaves, so an outline could only trail
-// the arc and would lie about where a player sat; the arc is then laid out
-// for the players present. Practice tables are solo and never show outlines.
+// How many chairs to lay out: the table's full size, always. The chairs are
+// fixed positions now rather than an arc redrawn to fit whoever is left, so a
+// player keeps their place on screen as the table empties and the seats that
+// nobody is in read as empty seats. The engine compacts its seat indices when
+// somebody leaves, so those empty chairs collect at the end of the order
+// rather than staying where the player who left was sitting.
 function seatCapacity(playerCount) {
   if (!gameState) return playerCount;
-  const waiting =
-    !gameState.isRunning && gameState.roundCount === 0 && gameState.gameMode !== 'practice';
-  return waiting ? Math.max(playerCount, gameState.maxPlayers || 0) : playerCount;
+  return Math.max(playerCount, gameState.maxPlayers || 0);
+}
+
+// Which chair the viewer has asked to be shown in. Persisted per device, and
+// clamped on the way out: a 7 stored from an eight-max table must not blank
+// the felt on a six-max one.
+function viewerSlot(capacity) {
+  const n = Math.max(1, capacity || 1);
+  const raw = window.Store ? Store.get(VIEWER_SLOT_KEY) : null;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed < n ? parsed : 0;
 }
 
 // ── Seat state ────────────────────────────────────────────────────────────
@@ -542,6 +555,7 @@ let _seatRelayoutTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(_seatRelayoutTimer);
   _seatRelayoutTimer = setTimeout(() => {
+    if (typeof invalidateRingCache === 'function') invalidateRingCache();
     if (!gameState) return;
     _builtIdentityKey = '';
     renderPlayersIncremental();
@@ -827,7 +841,8 @@ function applyDealFlight(ordered) {
 function renderPlayersFull(container) {
   container.textContent = '';
   const ordered = getOrderedPlayersForView();
-  const seatPositions = getSeatPositions(seatCapacity(ordered.length));
+  const capacity = seatCapacity(ordered.length);
+  const seatPositions = getSeatPositions(capacity, viewerSlot(capacity));
   const animateDeal =
     _dealAnimationRound === gameState.roundCount &&
     gameState.phase === 'preflop' &&
@@ -855,6 +870,9 @@ function renderPlayersFull(container) {
 function buildEmptySeat(pos) {
   const seat = document.createElement('div');
   seat.className = 'player-seat seat-empty';
+  // An empty chair is right-clickable too: it is a place to ask to be shown,
+  // and often the one you want.
+  if (pos.slot !== undefined) seat.dataset.slot = String(pos.slot);
   seat.style.left = pos.left;
   seat.style.top = pos.top;
   seat.style.transform = pos.transform;
@@ -874,6 +892,7 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   // depending on display ordering, which is rotated so the viewer always sits
   // at the bottom.
   seat.dataset.playerId = player.id;
+  if (pos.slot !== undefined) seat.dataset.slot = String(pos.slot);
   seat.style.left = pos.left;
   seat.style.top = pos.top;
   seat.style.transform = pos.transform;

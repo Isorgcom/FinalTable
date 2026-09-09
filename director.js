@@ -256,7 +256,7 @@ class TournamentDirector {
 
   // uid -> where that player is sitting, in one pass over the field. Callers
   // that need this for every entrant used to reach for playerByUid each time,
-  // which walks every table: fine for nine players, quadratic for two hundred,
+  // which walks every table: fine for eight players, quadratic for two hundred,
   // and the roster and the field summary are both built from it on every push.
   seatIndex() {
     const index = new Map();
@@ -613,7 +613,7 @@ class TournamentDirector {
   // Break a table when the field fits on one fewer, then balance what is left.
   // Balance keeps every table within one seat of every other, which is the
   // standard rule and the thing that stops one table playing five-handed while
-  // another plays nine.
+  // another plays eight.
   rebalanceField() {
     if (!this.isRunning || this.finished) return;
     this._breakIfPossible();

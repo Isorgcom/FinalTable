@@ -120,6 +120,86 @@ function init() {
     sendAction('fold');
   }
 
+  // Right-click a chair to be shown in it, and the table turns so you are.
+  //
+  // Nothing about this reaches the server: it rotates which physical chair the
+  // viewer is drawn in, and everyone else follows clockwise from there, so the
+  // order of play on screen is unchanged. A touch device has no right-click,
+  // and iPadOS Safari will not fire contextmenu on a plain div, so a long
+  // press opens the same menu.
+  function wireSeatMenu() {
+    const seats = document.getElementById('playerSeats');
+    const menu = document.getElementById('seatMenu');
+    const here = document.getElementById('seatMenuHere');
+    const reset = document.getElementById('seatMenuReset');
+    if (!seats || !menu || !here || !reset) return;
+    let pendingSlot = null;
+    let pressTimer = null;
+
+    const hide = () => {
+      menu.classList.add('hidden');
+      pendingSlot = null;
+    };
+
+    function openAt(seat, clientX, clientY) {
+      const slot = parseInt(seat.dataset.slot, 10);
+      if (!Number.isFinite(slot)) return;
+      pendingSlot = slot;
+      const stage = document.getElementById('tableStage');
+      const box = stage ? stage.getBoundingClientRect() : { left: 0, top: 0 };
+      menu.classList.remove('hidden');
+      reset.classList.toggle('hidden', !(window.Store && Store.get(VIEWER_SLOT_KEY)));
+      // Placed after it is shown, so its measured size is the real one, then
+      // pulled back inside the stage if it would hang off an edge.
+      const m = menu.getBoundingClientRect();
+      const stageBox = stage ? stage.getBoundingClientRect() : { width: 0, height: 0 };
+      const x = Math.max(0, Math.min(clientX - box.left, stageBox.width - m.width));
+      const y = Math.max(0, Math.min(clientY - box.top, stageBox.height - m.height));
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+    }
+
+    seats.addEventListener('contextmenu', (e) => {
+      const seat = e.target.closest('.player-seat');
+      if (!seat) return;
+      e.preventDefault();
+      openAt(seat, e.clientX, e.clientY);
+    });
+
+    // Long press, for the devices that have no second mouse button.
+    seats.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      const seat = e.target.closest('.player-seat');
+      if (!seat) return;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => openAt(seat, e.clientX, e.clientY), 500);
+    });
+    const cancelPress = () => clearTimeout(pressTimer);
+    seats.addEventListener('pointerup', cancelPress);
+    seats.addEventListener('pointermove', cancelPress);
+    seats.addEventListener('pointercancel', cancelPress);
+
+    function applySlot(slot) {
+      if (window.Store) Store.set(VIEWER_SLOT_KEY, slot === null ? null : String(slot));
+      hide();
+      if (typeof renderPlayersIncremental === 'function' && gameState) {
+        // The seats are rebuilt from scratch: every plate moves.
+        _builtIdentityKey = '';
+        renderPlayersIncremental();
+      }
+    }
+
+    here.addEventListener('click', () => applySlot(pendingSlot));
+    reset.addEventListener('click', () => applySlot(null));
+    document.addEventListener('click', (e) => {
+      if (!menu.contains(e.target)) hide();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hide();
+    });
+    window.addEventListener('resize', hide);
+  }
+
   function closeMenu() {
     const menu = document.getElementById('menuDropdown');
     if (menu) menu.classList.remove('open');
@@ -176,6 +256,8 @@ function init() {
     closeMenu();
     if (window.Lobby) Lobby.leave();
   });
+  wireSeatMenu();
+
   document.getElementById('btnLeaderboard').addEventListener('click', () => {
     closeMenu();
     // The Stats tab, in the docked panel or the phone drawer.

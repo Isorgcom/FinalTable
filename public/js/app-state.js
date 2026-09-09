@@ -17,70 +17,122 @@ const RANK_NAMES = {
   2: 'Two',
 };
 
-// Seat positions (percentages relative to table wrapper) for up to 10 players
-// Dynamic seat positions: evenly distributed around the ellipse based on player count
-// Position 0 is always bottom center (the viewing player)
-// Other positions are evenly spread around the remaining arc
-function getSeatPositions(playerCount) {
-  // betLeft/betTop: where this seat's street bet sits on the felt, on an
-  // inner ellipse concentric with the seat ring so it scales with the table.
-  const me = {
-    left: '50%',
-    top: '105%',
-    betLeft: '50%',
-    betTop: '88%',
-    transform: 'translate(-50%, -20px)',
-  };
-  if (playerCount <= 1) return [me];
+// Browser storage, behind a guard. Private-mode Safari throws on the accessor
+// itself, and a poker table is not worth a blank screen over a remembered
+// preference. The lobby has carried its own copy of this since before there
+// was anywhere shared to put it.
+window.Store = {
+  get(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (_err) {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      if (value === null || value === undefined) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch (_err) {
+      /* a preference that cannot be saved is not worth an error */
+    }
+  },
+};
 
-  const positions = [me];
+// Which chair the viewer has asked to be shown in, per device.
+const VIEWER_SLOT_KEY = 'finaltable_my_slot';
 
-  // Remaining players: spread evenly around the arc above the viewer.
-  //
-  // Angles below are standard math convention, NOT CSS. `top` is computed as
-  // cy - ry*sin(a), so 0deg=right, 90deg=TOP, 180deg=left, 270deg=bottom, and
-  // an INCREASING angle sweeps counter-clockwise on screen.
-  //
-  // Seat order must run CLOCKWISE, because poker action moves to the left of
-  // the button. table-render.js maps display slot i to engine seat
-  // (myIndex + i), and the engine advances by increasing seat index, so slot
-  // i+1 is always the next player to act. Sweeping the other way makes the
-  // action visibly run backwards around the table.
-  const others = playerCount - 1;
-  const arcStart = 225; // bottom-left: the seat immediately clockwise of the viewer
-  const arcSpan = -270; // clockwise over 3/4 of the ellipse, leaving the bottom free
+// ── Where the seats go ───────────────────────────────────────────────────
+//
+// Eight chairs around the felt: two across the top, two a side, two along the
+// bottom. What matters as much as where they are is where they are NOT - there
+// is deliberately nothing at top centre and nothing at bottom centre, because
+// those two lanes belong to the tournament level banner and the action bar,
+// and every collision between the furniture and a plate has come from a seat
+// parked in one of them.
+//
+// Each chair is an offset from the felt's centre in units of the seat ring's
+// radii, so every per-breakpoint override of --seat-rx / --seat-ry still pulls
+// the whole arrangement in on a narrow screen. That is what keeps plates on
+// the display: a fixed percentage would put the side chairs off the edge of an
+// iPad in portrait, which is the bug commit a48b505 fixed once already.
+//
+// Order is CLOCKWISE from chair 0, and it has to be. table-render.js maps
+// display slot i to engine seat (myIndex + i) and the engine advances by
+// increasing seat index, so slot i+1 must be the next player to act. Sweeping
+// the other way makes the action visibly run backwards around the table.
+const SEAT_SLOTS = [
+  { dx: 0.55, dy: 1.06 }, // 0 bottom right - the viewer, by default
+  { dx: -0.55, dy: 1.06 }, // 1 bottom left
+  { dx: -1.16, dy: 0.4 }, // 2 lower left
+  { dx: -1.16, dy: -0.62 }, // 3 upper left
+  { dx: -0.55, dy: -1.16 }, // 4 top left
+  { dx: 0.55, dy: -1.16 }, // 5 top right
+  { dx: 1.16, dy: -0.62 }, // 6 upper right
+  { dx: 1.16, dy: 0.4 }, // 7 lower right
+];
 
-  // Radii come from CSS so a breakpoint can pull the ring in on a narrow
-  // felt (tokens.css --seat-rx / --seat-ry; responsive.css overrides).
+// A table for fewer than eight uses a spread of the same chairs rather than a
+// ring of its own, so a six-max table is the eight-max table with two chairs
+// taken out and everyone still sits where they would have sat.
+function slotsForCapacity(capacity) {
+  const n = Math.max(1, Math.min(SEAT_SLOTS.length, capacity));
+  if (n === SEAT_SLOTS.length) return SEAT_SLOTS.map((_, i) => i);
+  const picks = [];
+  for (let i = 0; i < n; i++)
+    picks.push(Math.round((i * SEAT_SLOTS.length) / n) % SEAT_SLOTS.length);
+  return picks;
+}
+
+// The ring radii, read from CSS so a breakpoint can pull them in. Cached: this
+// is a forced style read, and it used to happen on every call - several times
+// per render, every render.
+let _ringCache = null;
+function ringRadii() {
+  if (_ringCache) return _ringCache;
   const rootStyle = getComputedStyle(document.documentElement);
-  const rx = parseFloat(rootStyle.getPropertyValue('--seat-rx')) || 53; // horizontal radius %
-  const ry = parseFloat(rootStyle.getPropertyValue('--seat-ry')) || 52; // vertical radius %
-  const betRx = parseFloat(rootStyle.getPropertyValue('--bet-rx')) || 34;
-  const betRy = parseFloat(rootStyle.getPropertyValue('--bet-ry')) || 30;
-  const cx = 50; // center x %
-  const cy = 44; // center y %
+  const num = (name, fallback) => parseFloat(rootStyle.getPropertyValue(name)) || fallback;
+  _ringCache = {
+    rx: num('--seat-rx', 53),
+    ry: num('--seat-ry', 52),
+    betRx: num('--bet-rx', 34),
+    betRy: num('--bet-ry', 36),
+  };
+  return _ringCache;
+}
+function invalidateRingCache() {
+  _ringCache = null;
+}
 
-  for (let i = 0; i < others; i++) {
-    const frac = others === 1 ? 0.5 : i / (others - 1);
-    const angleDeg = arcStart + arcSpan * frac;
-    const rad = ((angleDeg % 360) * Math.PI) / 180;
+// Positions in DISPLAY order: index 0 is wherever the viewer has asked to be
+// shown, and the rest follow clockwise from there. Callers index by display
+// order and never need to know which physical chair that is.
+function getSeatPositions(capacity, mySlot = 0) {
+  const slots = slotsForCapacity(capacity);
+  const n = slots.length;
+  const start = ((Math.round(mySlot) % n) + n) % n;
+  const { rx, ry, betRx, betRy } = ringRadii();
+  const cx = 50; // felt centre x, %
+  const cy = 44; // felt centre y, % - the ring rides a little high on the stage
 
-    const left = cx + rx * Math.cos(rad);
-    const top = cy - ry * Math.sin(rad); // CSS y is inverted
-
-    // Same angle, smaller ellipse: clear of the plate and of the board.
-    const betLeft = cx + betRx * Math.cos(rad);
-    const betTop = cy - betRy * Math.sin(rad);
-
+  const positions = [];
+  for (let i = 0; i < n; i++) {
+    const slotIndex = slots[(start + i) % n];
+    const { dx, dy } = SEAT_SLOTS[slotIndex];
     positions.push({
-      left: left + '%',
-      top: top + '%',
-      betLeft: betLeft + '%',
-      betTop: betTop + '%',
+      // Which chair this is, so a seat element can carry it and a right-click
+      // can name it. Display order changes with the viewer's choice; this does
+      // not.
+      slot: (start + i) % n,
+      left: cx + dx * rx + '%',
+      top: cy + dy * ry + '%',
+      // The street bet sits on the same bearing but well inside, on the cloth
+      // rather than under the plate.
+      betLeft: cx + dx * betRx + '%',
+      betTop: cy + dy * betRy + '%',
       transform: 'translate(-50%, -50%)',
     });
   }
-
   return positions;
 }
 

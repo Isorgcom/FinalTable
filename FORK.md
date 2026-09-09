@@ -29,7 +29,9 @@ Phase 1:
   offline solver tooling that no runtime path reaches. About 6,500 lines.
 - Kept the NPC decision path intact, on the grounds that bots were what made
   it practical to simulate a full field in tests without twenty-four humans.
-- Default table size raised from 8 to 10 seats.
+- Table size settled at 8 seats. It was briefly raised to 10, then brought
+  back once the felt was laid out for eight: two seats across the top, two a
+  side, two along the bottom, and the top and bottom centre lanes left clear.
 - Node base image moved from 18 (end of life) to 22.
 - Renamed the package and replaced the container and compose definitions.
 

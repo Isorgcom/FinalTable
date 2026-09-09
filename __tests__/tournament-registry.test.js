@@ -277,6 +277,51 @@ describe('tournament registry', () => {
     });
   });
 
+  test('table size is clamped to the eight the felt is laid out for', () => {
+    // One tournament per identity, so each bound is asked by a different host.
+    const big = registry.create('h', { name: 'Big', tableSize: 10 }, makeSocket('sa', 'h'));
+    const small = registry.create('g', { name: 'Small', tableSize: 1 }, makeSocket('sb', 'g'));
+    const plain = registry.create('t', { name: 'Plain' }, makeSocket('sc', 't'));
+    expect(big.entry.settings.tableSize).toBe(8);
+    expect(small.entry.settings.tableSize).toBe(2);
+    expect(plain.entry.settings.tableSize).toBe(8);
+  });
+
+  test('a running tournament keeps the table size it was dealt with', () => {
+    // A field seated at nine that comes back after the ceiling dropped to eight
+    // must not be re-clamped: seats past the new limit could be shed but never
+    // refilled, and _breakIfPossible would count capacity that is not there.
+    const store = makeStore();
+    store.save([
+      {
+        id: 't_old',
+        code: 'OLD99',
+        name: 'Nine handed',
+        createdAt: Date.now() - 60000,
+        startsAt: Date.now() - 30000,
+        hostUid: 'h',
+        settings: { tableSize: 9, startChips: 5000, levelDuration: 300, lateRegLevels: 3 },
+        entrants: [
+          { uid: 'h', name: 'Host', avatar: null },
+          { uid: 'g', name: 'Guest', avatar: null },
+        ],
+        registrations: [{ uid: 'h', joinedAt: Date.now() }],
+        status: 'running',
+        field: null,
+      },
+    ]);
+    const reg = createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+    });
+    reg.restore();
+    expect(reg.tournaments.get('t_old').settings.tableSize).toBe(9);
+    reg.stop();
+  });
+
   test('registering tournaments persist and are restored, and so do running ones', () => {
     const store = makeStore();
     const first = createTournamentRegistry({

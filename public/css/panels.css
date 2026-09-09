@@ -627,18 +627,24 @@
   color: var(--smoke);
   white-space: nowrap;
 }
+/* The banner lives in the lane between the two top chairs, which is the whole
+   reason nothing is seated at top centre. It is kept narrow enough to stay
+   there - a wide one reaches across both of them, which is how it used to sit
+   on top of whoever was in the top-left seat. */
 .tournament-banner {
   position: absolute;
   top: 46px;
   left: 50%;
   transform: translateX(-50%);
+  max-width: min(30vw, 220px);
   background: rgba(13, 31, 18, 0.9);
   border: 1px solid var(--wood);
   border-radius: 4px;
-  padding: 4px 16px;
+  padding: 4px 12px;
   z-index: 55;
   text-align: center;
   font-size: 0.7rem;
+  white-space: nowrap;
   color: var(--cream);
 }
 /* The bubble. Amber because it is a warning and not good news, and loud enough

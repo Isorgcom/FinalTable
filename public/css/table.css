@@ -75,7 +75,10 @@
   top: 48%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(82%, 840px, var(--table-fit-height));
+  /* The felt gives up width so the plates have somewhere to sit. They ride
+     outside its edge now, so the stage has to hold the felt plus a whole plate
+     either side rather than the felt alone. */
+  width: min(74%, 760px, var(--table-fit-height));
   aspect-ratio: var(--table-ratio);
   height: auto;
   overflow: visible;
@@ -545,6 +548,50 @@
   align-items: center;
   z-index: 20;
   transition: opacity 0.3s;
+}
+/* The chair menu. Anchored in the stage rather than the felt, so it can open
+   over a plate that sits outside the felt's edge. */
+.seat-menu {
+  position: absolute;
+  z-index: 140;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 4px;
+  gap: 2px;
+  border: 1px solid rgba(92, 61, 26, 0.5);
+  border-radius: 6px;
+  background: rgb(13, 31, 18);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+}
+.seat-menu.hidden {
+  display: none;
+}
+.seat-menu-item {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.seat-menu-item:hover {
+  background: rgba(201, 168, 76, 0.16);
+  color: var(--gold);
+}
+.seat-menu-reset {
+  color: var(--smoke);
+}
+.seat-menu-item.hidden {
+  display: none;
+}
+/* A chair is something you can act on now, so it says so under the pointer. */
+.player-seat {
+  cursor: context-menu;
 }
 .player-seat:hover {
   z-index: 100;

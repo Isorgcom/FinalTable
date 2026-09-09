@@ -125,7 +125,7 @@ async function seatAtTournamentTable(page, name) {
   // The game screen opens on tournamentJoined, before the first gameState
   // arrives; clicking sit-out any earlier is a no-op because the client has no
   // seat to toggle yet.
-  await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(2);
+  await expect(guest.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(2);
   await guest.click('#btnAutoPlay');
   await expect(guest.locator('#seatBanner')).toBeVisible({ timeout: 10000 });
   return pageErrors;
@@ -140,7 +140,7 @@ test('a tournament table seats every player, deals, and hands the viewer the act
 }) => {
   const pageErrors = await seatAtTournamentTable(page, 'TableTester');
 
-  await expect(page.locator('#playerSeats .player-seat')).toHaveCount(2);
+  await expect(page.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(2);
 
   await deal(page);
 
@@ -358,7 +358,7 @@ test('the hole cards are dealt from the button, one at a time, twice round', asy
       order: Number(el.dataset.dealOrder),
       seat: el.closest('.player-seat').dataset.playerId,
     })),
-    seats: [...document.querySelectorAll('#playerSeats .player-seat')].map(
+    seats: [...document.querySelectorAll('#playerSeats .player-seat:not(.seat-empty)')].map(
       (el) => el.dataset.playerId
     ),
     dealer: (document.querySelector('#playerSeats .player-seat:has(.dealer-chip)') || {}).dataset
@@ -1225,3 +1225,159 @@ for (const vp of [
     });
   });
 }
+
+// ── The seat template ────────────────────────────────────────────────────
+//
+// Eight fixed chairs, two across the top, two a side, two along the bottom,
+// with the top and bottom centre lanes deliberately empty. What that buys is
+// checked here as geometry: every collision this table has had came from a
+// plate landing on something, and a rule about widths passes happily while two
+// things sit on top of each other.
+const SEAT_VIEWPORTS = [
+  { name: 'desktop', width: 1440, height: 900 },
+  { name: 'iPad landscape', width: 1180, height: 700 },
+  { name: 'iPad portrait', width: 834, height: 1000 },
+  { name: 'small laptop', width: 1024, height: 640 },
+  { name: 'phone landscape', width: 844, height: 390 },
+  { name: 'phone portrait', width: 390, height: 844 },
+];
+
+// The e2e harness only ever seats two, and a two-handed table proves nothing
+// about eight chairs. Paint a full one straight into the renderer.
+async function paintFullTable(page, count = 8) {
+  await page.evaluate((n) => {
+    const me = gameState.players.find((p) => p.id === myId) || gameState.players[0];
+    const made = [];
+    for (let i = 0; i < n; i++) {
+      made.push({
+        ...me,
+        id: i === 0 ? me.id : `synthetic-${i}`,
+        uid: i === 0 ? me.uid : `u-synthetic-${i}`,
+        name: i === 0 ? me.name : `Player${i}`,
+        seatIndex: i,
+        chips: 5000 - i * 100,
+        bet: 20,
+        totalBet: 20,
+        folded: false,
+        allIn: false,
+        holeCards: i === 0 ? me.holeCards : null,
+      });
+    }
+    gameState.players = made;
+    gameState.maxPlayers = 8;
+    gameState.isRunning = true;
+    _builtIdentityKey = '';
+    renderPlayersIncremental();
+  }, count);
+}
+
+// Everything a plate is not allowed to touch, measured rather than assumed.
+async function seatCollisions(page) {
+  return page.evaluate(() => {
+    const r = (el) => el.getBoundingClientRect();
+    const hit = (a, b) =>
+      Math.min(a.right, b.right) - Math.max(a.x, b.x) > 1 &&
+      Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y) > 1;
+    const stage = r(document.querySelector('.table-stage'));
+    const plates = [...document.querySelectorAll('#playerSeats .player-seat')].map((el) => ({
+      slot: el.dataset.slot,
+      box: r(el.querySelector('.player-info')),
+    }));
+    const out = { offStage: [], plateOnPlate: [], overActionBar: [], overBanner: [] };
+    for (const p of plates) {
+      if (
+        p.box.x < stage.x - 1 ||
+        p.box.right > stage.right + 1 ||
+        p.box.y < stage.y - 1 ||
+        p.box.bottom > stage.bottom + 1
+      ) {
+        out.offStage.push(`slot ${p.slot}`);
+      }
+    }
+    for (let i = 0; i < plates.length; i++) {
+      for (let j = i + 1; j < plates.length; j++) {
+        if (hit(plates[i].box, plates[j].box)) {
+          out.plateOnPlate.push(`slot ${plates[i].slot} on slot ${plates[j].slot}`);
+        }
+      }
+    }
+    const bar = document.querySelector('#actionsPanel');
+    if (bar && !bar.classList.contains('hidden')) {
+      out.overActionBar = plates.filter((p) => hit(p.box, r(bar))).map((p) => `slot ${p.slot}`);
+    }
+    const banner = document.querySelector('.tournament-banner');
+    if (banner && !banner.classList.contains('hidden')) {
+      out.overBanner = plates.filter((p) => hit(p.box, r(banner))).map((p) => `slot ${p.slot}`);
+    }
+    return out;
+  });
+}
+
+for (const vp of SEAT_VIEWPORTS) {
+  test.describe(`eight seats on ${vp.name}`, () => {
+    test.use({ viewport: { width: vp.width, height: vp.height } });
+
+    test('every plate is on the stage, clear of its neighbours and of the furniture', async ({
+      page,
+    }) => {
+      const pageErrors = await seatAtTournamentTable(page, 'Geo');
+      await deal(page);
+      await paintFullTable(page, 8);
+
+      await expect(page.locator('#playerSeats .player-seat')).toHaveCount(8);
+      expect(await seatCollisions(page)).toEqual({
+        offStage: [],
+        plateOnPlate: [],
+        overActionBar: [],
+        overBanner: [],
+      });
+      expect(pageErrors).toEqual([]);
+    });
+  });
+}
+
+test('an eight-max table lays out eight chairs and fills the empty ones in', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Chairs');
+  await deal(page);
+
+  // Two players at an eight-max table: two plates and six empty chairs, rather
+  // than a ring redrawn to fit whoever happens to be sitting down.
+  await expect(page.locator('#playerSeats .player-seat')).toHaveCount(8);
+  await expect(page.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(2);
+  await expect(page.locator('#playerSeats .seat-empty')).toHaveCount(6);
+
+  // Every chair knows which chair it is, empty ones included - that is what a
+  // right-click has to name.
+  const slots = await page
+    .locator('#playerSeats .player-seat')
+    .evaluateAll((els) => els.map((el) => el.dataset.slot).sort((a, b) => a - b));
+  expect(slots).toEqual(['0', '1', '2', '3', '4', '5', '6', '7']);
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('right-clicking a chair turns the table so you are sitting in it', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Turner');
+  await deal(page);
+
+  const mySlot = () =>
+    page.locator('#playerSeats .player-seat:not(.seat-empty)').first().getAttribute('data-slot');
+  expect(await mySlot()).toBe('0');
+
+  await page.locator('#playerSeats .player-seat[data-slot="3"]').click({ button: 'right' });
+  await expect(page.locator('#seatMenu')).toBeVisible();
+  await page.click('#seatMenuHere');
+  await expect(page.locator('#seatMenu')).toBeHidden();
+  expect(await mySlot()).toBe('3');
+
+  // Remembered on the device, so it is the same chair next time.
+  expect(await page.evaluate(() => localStorage.getItem('finaltable_my_slot'))).toBe('3');
+
+  // And it can be given back.
+  await page.locator('#playerSeats .player-seat[data-slot="3"]').click({ button: 'right' });
+  await expect(page.locator('#seatMenuReset')).toBeVisible();
+  await page.click('#seatMenuReset');
+  expect(await mySlot()).toBe('0');
+
+  expect(pageErrors).toEqual([]);
+});

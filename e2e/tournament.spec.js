@@ -76,7 +76,7 @@ test('two players reach one table, and one comes back to it after a reload', asy
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
-  await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(2);
+  await expect(guest.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(2);
 
   const before = await guest.evaluate(() => ({
     uid: window.__identity.uid,
@@ -87,7 +87,7 @@ test('two players reach one table, and one comes back to it after a reload', asy
 
   await guest.reload();
   await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 15000 });
-  await expect(guest.locator('#playerSeats .player-seat')).toHaveCount(2);
+  await expect(guest.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(2);
   const after = await guest.evaluate(() => ({
     uid: window.__identity.uid,
     table: gameState.id,
