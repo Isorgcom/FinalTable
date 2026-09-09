@@ -89,6 +89,12 @@
     const last = el('logLast');
     if (last && where.body.id === 'panelChatBody') {
       last.textContent = message.name + ': ' + message.text;
+      // Over the head of whoever said it, so a line is noticed without looking
+      // away from the felt. Not for a backlog: replaying six bubbles at once
+      // on arrival would cover the table with things nobody just said.
+      if (!(opts && opts.quiet) && typeof showSeatBubble === 'function') {
+        showSeatBubble(message.uid, message.text);
+      }
     }
     // A dot for your own message is noise, and so is one for a backlog you
     // asked for by arriving.

@@ -549,6 +549,64 @@
   z-index: 20;
   transition: opacity 0.3s;
 }
+/* A chat line over the head of whoever said it. Above the seat by default;
+   for the chairs in the top half of the ring that would put it off the top of
+   the stage, so those flip to hang below instead - toward the middle of the
+   felt, which is empty enough for the couple of seconds this lasts. */
+.seat-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  /* Never in the way of a click, a right-click on the chair, or a card. */
+  pointer-events: none;
+  max-width: min(190px, 40vw);
+  width: max-content;
+  padding: 5px 9px;
+  border-radius: 10px;
+  background: rgba(14, 32, 20, 0.96);
+  border: 1px solid rgba(201, 168, 76, 0.55);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  color: var(--cream);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-align: left;
+  /* A two-hundred-character message is a paragraph. The panel has the whole
+     thing; the bubble is a glance, so it stops at three lines. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* The tail. */
+.seat-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(201, 168, 76, 0.55);
+}
+.player-seat[data-slot='3'] .seat-bubble,
+.player-seat[data-slot='4'] .seat-bubble,
+.player-seat[data-slot='5'] .seat-bubble,
+.player-seat[data-slot='6'] .seat-bubble {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+.player-seat[data-slot='3'] .seat-bubble::after,
+.player-seat[data-slot='4'] .seat-bubble::after,
+.player-seat[data-slot='5'] .seat-bubble::after,
+.player-seat[data-slot='6'] .seat-bubble::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: rgba(201, 168, 76, 0.55);
+}
+
 /* The chair menu. Anchored in the stage rather than the felt, so it can open
    over a plate that sits outside the felt's edge. */
 .seat-menu {

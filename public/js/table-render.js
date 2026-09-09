@@ -960,6 +960,9 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   // depending on display ordering, which is rotated so the viewer always sits
   // at the bottom.
   seat.dataset.playerId = player.id;
+  // The identity, as well as the socket id above. Chat is addressed by uid
+  // because that is what survives a reconnect, where the socket id does not.
+  if (player.uid) seat.dataset.uid = player.uid;
   if (pos.slot !== undefined) seat.dataset.slot = String(pos.slot);
   seat.style.left = pos.left;
   seat.style.top = pos.top;
@@ -1029,8 +1032,48 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
     info.appendChild(bc);
   }
 
+  // Where a chat line surfaces on the felt. Part of the skeleton, like the
+  // hole clock, so showing one is a class change rather than a build.
+  const bubble = document.createElement('div');
+  bubble.className = 'seat-bubble hidden';
+  seat.appendChild(bubble);
+
   seat.appendChild(info);
   return seat;
+}
+
+// How long a line hangs over its seat. Long enough to read a sentence at a
+// glance, short enough that it is gone before the next street.
+const SEAT_BUBBLE_MS = 6500;
+const seatBubbleTimers = new Map();
+
+// A chat line, over the head of whoever said it. The panel keeps the whole
+// conversation; this is only so you notice one arriving without looking away
+// from the table. A second line from the same seat replaces the first rather
+// than queueing, because a queue would still be playing back after the hand
+// it belonged to is over.
+function showSeatBubble(uid, text) {
+  if (!uid || !text) return;
+  const seats = document.getElementById('playerSeats');
+  if (!seats) return;
+  const seat = seats.querySelector('.player-seat[data-uid="' + CSS.escape(uid) + '"]');
+  if (!seat) return;
+  const bubble = seat.querySelector('.seat-bubble');
+  if (!bubble) return;
+  bubble.textContent = text;
+  bubble.classList.remove('hidden');
+  const previous = seatBubbleTimers.get(uid);
+  if (previous) clearTimeout(previous);
+  seatBubbleTimers.set(
+    uid,
+    setTimeout(function () {
+      seatBubbleTimers.delete(uid);
+      // The seats may have been rebuilt under it, in which case this node is
+      // no longer the one on screen and hiding it is harmless.
+      bubble.classList.add('hidden');
+      bubble.textContent = '';
+    }, SEAT_BUBBLE_MS)
+  );
 }
 
 function getOrderedPlayersForView() {

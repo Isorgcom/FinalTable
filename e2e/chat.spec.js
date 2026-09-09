@@ -180,6 +180,52 @@ test('chat follows you to the table, and a reload gets it back', async ({ browse
   await guest.context.close();
 });
 
+test('a line surfaces over the head of whoever said it, then goes', async ({ browser, page }) => {
+  await identifyAs(page, 'Host');
+  const code = await hostCreates(page, 'Bubbles');
+  const guest = await guestJoins(browser, code, 'Guest');
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // Wait for the chairs to exist before saying anything. A bubble is hung on a
+  // seat, so a line that lands in the moment before the table is drawn has
+  // nowhere to go - the panel still gets it, but there is nothing to assert.
+  const hostUid = await page.evaluate(() => window.__identity.uid);
+  await expect(guest.page.locator(`#playerSeats .player-seat[data-uid="${hostUid}"]`)).toHaveCount(
+    1,
+    { timeout: 10000 }
+  );
+
+  await page.fill('#chatInput', 'over my head');
+  await page.press('#chatInput', 'Enter');
+
+  // On the guest's screen it belongs to the host's chair, and to no other.
+  const bubble = guest.page.locator(
+    `#playerSeats .player-seat[data-uid="${hostUid}"] .seat-bubble`
+  );
+  await expect(bubble).toBeVisible();
+  await expect(bubble).toHaveText('over my head');
+  await expect(guest.page.locator('#playerSeats .seat-bubble:visible')).toHaveCount(1);
+
+  // It is decoration, so it must never eat a click meant for the chair.
+  expect(await bubble.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
+
+  // A second line replaces the first rather than stacking up.
+  await page.fill('#chatInput', 'and again');
+  await page.press('#chatInput', 'Enter');
+  await expect(bubble).toHaveText('and again');
+  await expect(guest.page.locator('#playerSeats .seat-bubble:visible')).toHaveCount(1);
+
+  // And it clears itself without anyone doing anything.
+  await expect(bubble).toBeHidden({ timeout: 12000 });
+  // The panel still has both lines: the bubble is a glance, not the record.
+  await expect(guest.page.locator('#panelChatBody .log-entry[data-kind="chat"]')).toHaveCount(2);
+
+  expect(guest.errors).toEqual([]);
+  await guest.context.close();
+});
+
 test('on a phone the composer sits above the keyboard, at a size iOS will not zoom', async ({
   browser,
 }) => {
