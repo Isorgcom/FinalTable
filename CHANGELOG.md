@@ -30,6 +30,13 @@ what publishes a container image.
   `CHAT_MAX_LEN`, `CHAT_RATE` and `CHAT_RATE_WINDOW_MS` tune what is kept and
   how fast anyone can talk.
 
+### Fixed
+
+- A deploy could leave a browser on the previous build until someone thought to
+  hard-refresh. The page carries the cache-busting stamp for every script and
+  stylesheet, but was itself served without a cache header, so a browser was
+  free to hold a stale copy and keep asking for the old files.
+
 ### Changed
 
 - The Chat tab no longer scrolls itself to the bottom while you are reading

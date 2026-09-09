@@ -33,6 +33,27 @@ describe('UI smoke', () => {
     process.env = originalEnv;
   });
 
+  // The page carries the ?v= stamp for every script and stylesheet, so a stale
+  // copy of it pins the browser to the previous build and deploying changes
+  // nothing the player can see. It has to revalidate.
+  test('the page itself is never served stale', async () => {
+    const response = await fetch(`${baseUrl}/`);
+    expect(response.headers.get('cache-control')).toMatch(/no-cache|max-age=0/);
+    expect(response.headers.get('etag')).toBeTruthy();
+  });
+
+  // Every script the page loads has to be in the list the version hash is
+  // computed from, or editing that file never busts the cache.
+  test('every script the page loads is one the asset version watches', async () => {
+    const html = await (await fetch(`${baseUrl}/`)).text();
+    const { ASSET_VERSION_FILES } = require('../server/asset-version');
+    const referenced = [...html.matchAll(/src="\/(js\/[^?"]+)/g)].map((m) => m[1]);
+    expect(referenced.length).toBeGreaterThan(0);
+    for (const file of referenced) {
+      expect(ASSET_VERSION_FILES).toContain('public/' + file);
+    }
+  });
+
   test('served lobby html contains the tournament lobby shell and rendered asset version', async () => {
     const response = await fetch(`${baseUrl}/`);
     const html = await response.text();

@@ -85,6 +85,13 @@ const assetVersion = computeAssetVersion(__dirname);
 const renderedIndexHtml = renderIndexTemplate(__dirname, assetVersion);
 
 app.get(['/', '/index.html'], (req, res) => {
+  // Revalidate every time. Every script and stylesheet is cache-busted by a
+  // ?v= stamp that lives in this page, so a stale copy of it pins the browser
+  // to the previous build's URLs and no amount of deploying changes what the
+  // player sees. Express sets an ETag, so revalidating is a 304 and costs
+  // nothing; without this header the browser is free to guess a freshness
+  // lifetime, and it guesses wrong at exactly the wrong moment.
+  res.set('Cache-Control', 'no-cache');
   res.type('html').send(renderedIndexHtml);
 });
 

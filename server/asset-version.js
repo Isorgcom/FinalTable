@@ -51,4 +51,9 @@ function renderIndexTemplate(rootDir, assetVersion) {
   return template.replaceAll(ASSET_VERSION_TOKEN, assetVersion);
 }
 
-module.exports = { ASSET_VERSION_TOKEN, computeAssetVersion, renderIndexTemplate };
+module.exports = {
+  ASSET_VERSION_TOKEN,
+  ASSET_VERSION_FILES,
+  computeAssetVersion,
+  renderIndexTemplate,
+};
