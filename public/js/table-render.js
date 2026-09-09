@@ -154,10 +154,18 @@ window.__anim = { sweeps: 0, deals: 0, flips: 0 };
 
 // How much of the felt a single street end may throw at the pot. Eight seats
 // at five chips each would be forty nodes and a visible hitch on a phone.
-// Where in each animation the card is heard. A dealt card reaches its seat at
-// 78% of the 0.34s flight, and a board card swaps faces at 48% of the 0.36s
-// fold: that is the moment it reads as placed, not the moment it sets off.
-const DEAL_LAND_S = 0.265;
+// The deal. A card is in the air for DEAL_DUR_S and is heard at 78% of that,
+// which is the moment it reads as placed rather than the moment it sets off -
+// so the sound is derived from the flight rather than being a second number
+// that has to be remembered when the first one moves. The lead-in gives the
+// shuffle a moment of its own before the first card leaves the deck; without
+// it the two land on top of each other and the hand starts in a rush.
+const DEAL_DUR_S = 0.44;
+const DEAL_LAND_S = Number((DEAL_DUR_S * 0.78).toFixed(3));
+const DEAL_LEAD_S = 0.12;
+const DEAL_STEP_S = 0.11; // between one card and the next
+const DEAL_STEP_TIGHT_S = 0.07; // a full table, where the queue is long enough to drag
+// A board card swaps faces at 48% of the 0.36s fold.
 const FLIP_TURN_S = 0.173;
 
 const SWEEP_CHIP_BUDGET = 14;
@@ -799,6 +807,7 @@ function clearDealClass(node, delaySeconds) {
     node.style.removeProperty('--deal-dy');
     node.style.removeProperty('--deal-rot');
     node.style.removeProperty('--deal-delay');
+    node.style.removeProperty('--deal-dur');
   };
   node.addEventListener('animationend', done, { once: true });
   // The animation fills both ways, so a card that never hears animationend
@@ -824,7 +833,7 @@ function applyDealFlight(ordered) {
     }
   }
 
-  const step = plan.length > 12 ? 0.055 : 0.085;
+  const step = plan.length > 12 ? DEAL_STEP_TIGHT_S : DEAL_STEP_S;
   const heard = [];
   plan.forEach((item, i) => {
     // Released before the early return below, so a card is revealed even when
@@ -838,10 +847,12 @@ function applyDealFlight(ordered) {
     item.node.style.setProperty('--deal-dx', Math.round(origin.x - cx) + 'px');
     item.node.style.setProperty('--deal-dy', Math.round(origin.y - cy) + 'px');
     item.node.style.setProperty('--deal-rot', (item.pass ? 16 : -20) + 'deg');
-    setAnimationDelay(item.node, Number((i * step).toFixed(3)));
+    item.node.style.setProperty('--deal-dur', DEAL_DUR_S + 's');
+    const at = DEAL_LEAD_S + i * step;
+    setAnimationDelay(item.node, Number(at.toFixed(3)));
     item.node.classList.add('dealing');
-    clearDealClass(item.node, i * step);
-    heard.push(i * step + DEAL_LAND_S);
+    clearDealClass(item.node, at);
+    heard.push(at + DEAL_LAND_S);
   });
   // One snap per card, on the same schedule the cards are flying to. Cards
   // that could not animate (no origin to fly from) get a single sound: they

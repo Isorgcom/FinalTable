@@ -375,11 +375,17 @@ test('the hole cards are dealt from the button, one at a time, twice round', asy
   const leftOfButton = info.seats[(info.seats.indexOf(info.dealer) + 1) % info.seats.length];
   expect(first.seat).toBe(leftOfButton);
 
+  // Sit back in before the checks below. While the seat is sitting out the
+  // table deals a fresh hand every second or two, and a deal now takes longer
+  // than that gap - so "nothing is mid-deal" is never true for long enough to
+  // observe. Sitting in holds the next hand on the viewer's clock instead.
+  await page.click('#btnSitIn');
+
   // Nothing left hidden or frozen. deal-pending is visibility:hidden, so a
   // stuck one would hide that player's cards for the whole hand, and the
   // animation fills both ways, so a stuck class would freeze the transform.
-  await expect(page.locator('.deal-pending')).toHaveCount(0, { timeout: 4000 });
-  await expect(page.locator('#playerSeats .dealing')).toHaveCount(0, { timeout: 4000 });
+  await expect(page.locator('.deal-pending')).toHaveCount(0, { timeout: 8000 });
+  await expect(page.locator('#playerSeats .dealing')).toHaveCount(0, { timeout: 8000 });
   const stuck = await page.$$eval('#playerSeats .player-hole-cards > *', (els) =>
     els.filter((el) => {
       const t = getComputedStyle(el).transform;

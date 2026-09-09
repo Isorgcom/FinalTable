@@ -518,7 +518,7 @@
 }
 .card.dealing,
 .card-back.dealing {
-  animation: dealFlight var(--deal-dur, 0.34s) cubic-bezier(0.22, 0.7, 0.3, 1) both;
+  animation: dealFlight var(--deal-dur, 0.44s) cubic-bezier(0.22, 0.7, 0.3, 1) both;
   animation-delay: var(--deal-delay, 0s);
   will-change: transform, opacity;
 }
