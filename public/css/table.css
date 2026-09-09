@@ -590,6 +590,33 @@
   border: 5px solid transparent;
   border-top-color: rgba(201, 168, 76, 0.55);
 }
+/* The chairs down the sides sit close enough to the edge that a bubble
+   centred on them hangs off the stage once the text is long enough to reach
+   the width cap. Those open inward, toward the felt, with the tail moved to
+   the seat rather than the middle of the bubble. */
+.player-seat[data-slot='2'] .seat-bubble,
+.player-seat[data-slot='3'] .seat-bubble {
+  left: 0;
+  transform: none;
+}
+.player-seat[data-slot='2'] .seat-bubble::after,
+.player-seat[data-slot='3'] .seat-bubble::after {
+  left: 26px;
+  transform: none;
+}
+.player-seat[data-slot='6'] .seat-bubble,
+.player-seat[data-slot='7'] .seat-bubble {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.player-seat[data-slot='6'] .seat-bubble::after,
+.player-seat[data-slot='7'] .seat-bubble::after {
+  left: auto;
+  right: 26px;
+  transform: none;
+}
+
 .player-seat[data-slot='3'] .seat-bubble,
 .player-seat[data-slot='4'] .seat-bubble,
 .player-seat[data-slot='5'] .seat-bubble,
