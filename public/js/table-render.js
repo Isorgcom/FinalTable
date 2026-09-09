@@ -165,8 +165,8 @@ const SWEEP_CHIP_BUDGET = 14;
 // first; a street sweeping to the middle uses the second, which is also what
 // the board waits for before it turns over and what the winner's push waits
 // for, so the three stay in step by construction.
-const CHIP_FLY_MS = 700;
-const SWEEP_DUR_MS = 540;
+const CHIP_FLY_MS = 900;
+const SWEEP_DUR_MS = 700;
 
 function feltBetElementFor(playerId) {
   const layer = document.getElementById('feltBets');

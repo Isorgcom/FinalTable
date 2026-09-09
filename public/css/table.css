@@ -1500,7 +1500,7 @@
     0 0 8px var(--gold-glow);
   pointer-events: none;
   opacity: 0;
-  animation: chipFly var(--fly-dur, 0.7s) cubic-bezier(0.35, 0.05, 0.2, 1) forwards;
+  animation: chipFly var(--fly-dur, 0.9s) cubic-bezier(0.35, 0.05, 0.2, 1) forwards;
 }
 
 /* Street bets sweeping to the middle: smaller and flatter than a bet going
