@@ -525,7 +525,7 @@ function renderPlayersIncremental() {
   });
   const betCapacity = seatCapacity(ordered.length);
   renderFeltBets(ordered, getSeatPositions(betCapacity, viewerSlot(betCapacity)));
-  updateTurnTimerBars(ordered);
+  updateTurnClocks(ordered);
 }
 
 // How many chairs to lay out: the table's full size, always. The chairs are
@@ -777,7 +777,9 @@ function appendPlayerIdentity(info, text, player) {
 
 function holeCardNodes(seat) {
   const row = seat.querySelector('.player-hole-cards');
-  return row ? Array.from(row.children) : [];
+  // Cards only. The row also holds the turn clock, which is not dealt and must
+  // not end up in the flight plan.
+  return row ? Array.from(row.querySelectorAll('.card, .card-back')) : [];
 }
 
 // Display order is rotated so the viewer sits at the bottom, so it is not
@@ -903,7 +905,29 @@ function renderPlayersFull(container) {
     applyDealFlight(ordered);
     _dealAnimationRound = -1;
   }
-  updateTurnTimerBars(ordered);
+  updateTurnClocks(ordered);
+}
+
+// pathLength normalises the perimeter to 100, so one dash figure draws the same
+// proportion whatever size the cards are; non-scaling-stroke keeps the line even
+// despite the box being stretched by preserveAspectRatio="none".
+function buildHoleClock() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'hole-clock hidden');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  const rect = document.createElementNS(ns, 'rect');
+  rect.setAttribute('x', '1');
+  rect.setAttribute('y', '1');
+  rect.setAttribute('width', '98');
+  rect.setAttribute('height', '98');
+  rect.setAttribute('rx', '4');
+  rect.setAttribute('pathLength', '100');
+  rect.setAttribute('vector-effect', 'non-scaling-stroke');
+  svg.appendChild(rect);
+  return svg;
 }
 
 function buildEmptySeat(pos) {
@@ -957,6 +981,10 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
     holeCardsDiv.appendChild(b1);
     holeCardsDiv.appendChild(b2);
   }
+  // The turn clock, round the cards. Part of the skeleton so it needs no
+  // rebuild trigger of its own: updateTurnClocks shows and hides it rather than
+  // building and destroying it every turn.
+  holeCardsDiv.appendChild(buildHoleClock());
   seat.appendChild(holeCardsDiv);
 
   // The plate: a square avatar beside a text column of name, caption, and
@@ -1351,7 +1379,24 @@ function updateHandStrength() {
   }
 }
 
-function updateTurnTimerBars(orderedPlayers) {
+// The clock, drawn round the cards of whoever is to act. An SVG rect with a
+// dash pattern rather than a border that shrinks: the card's own pseudo-elements
+// are already spent on linen and gloss (see .card.is-winning in table.css for
+// the same constraint), a conic gradient would need mask-composite to hollow it
+// out, and pathLength normalises the perimeter so one dash figure fits every
+// card size from a desktop's 100px row down to a landscape phone's 53px.
+//
+// The depletion is set here rather than animated in CSS on purpose: under
+// prefers-reduced-motion every animation-duration collapses to 0.01ms, which
+// would send an animated outline straight to empty.
+const CLOCK_WARNING_MS = 10000;
+const CLOCK_URGENT_MS = 5000;
+
+// The warning fires once for a turn, not once per tick. Latched on the turn it
+// belongs to, the way the your-turn chime is latched on the edge into a turn.
+let _warnedTurnKey = null;
+
+function updateTurnClocks(orderedPlayers) {
   const container = document.getElementById('playerSeats');
   if (!container || !gameState) return;
   const ordered = orderedPlayers || getOrderedPlayersForView();
@@ -1359,47 +1404,39 @@ function updateTurnTimerBars(orderedPlayers) {
     (player) =>
       player.originalIndex === gameState.currentPlayerIndex && !player.folded && !player.allIn
   );
-  const remainingMs =
-    gameState.turnExpiresAt && gameState.turnDurationMs
-      ? Math.max(0, gameState.turnExpiresAt - Date.now())
-      : 0;
-  const ratio =
-    gameState.turnExpiresAt && gameState.turnDurationMs
-      ? Math.max(0, Math.min(1, remainingMs / gameState.turnDurationMs))
-      : 0;
+  const live = gameState.turnExpiresAt && gameState.turnDurationMs;
+  const remainingMs = live ? Math.max(0, gameState.turnExpiresAt - Date.now()) : 0;
+  const ratio = live ? Math.max(0, Math.min(1, remainingMs / gameState.turnDurationMs)) : 0;
   const secondsLeft = Math.max(1, Math.ceil(remainingMs / 1000));
 
   ordered.forEach((player) => {
     const seat = seatElementForPlayer(player.id);
-    if (!seat) return;
-    let timer = seat.querySelector('.player-turn-timer');
+    const clock = seat && seat.querySelector('.hole-clock');
+    if (!clock) return;
     const shouldShow =
       !!currentSeat &&
       player.originalIndex === currentSeat.originalIndex &&
+      // A cash table has no clock to draw.
       gameState.gameMode !== 'cash' &&
       gameState.isRunning &&
       gameState.turnExpiresAt;
-    if (!shouldShow) {
-      if (timer) timer.remove();
-      return;
-    }
-    if (!timer) {
-      timer = document.createElement('div');
-      timer.className = 'player-turn-timer';
-      const icon = document.createElement('span');
-      icon.className = 'player-turn-timer-icon';
-      icon.textContent = '⌛';
-      const text = document.createElement('span');
-      text.className = 'player-turn-timer-text';
-      timer.append(icon, text);
-      seat.appendChild(timer);
-    }
-    timer.classList.toggle('is-critical', ratio <= 0.35);
-    timer.style.setProperty('--timer-ratio', `${Math.max(0, ratio)}`);
-    timer.title = `${secondsLeft}s left`;
-    timer.setAttribute('aria-label', `${secondsLeft} seconds left to act`);
-    const text = timer.querySelector('.player-turn-timer-text');
-    if (text) text.textContent = `${secondsLeft}s`;
+    clock.classList.toggle('hidden', !shouldShow);
+    if (!shouldShow) return;
+
+    const rect = clock.querySelector('rect');
+    if (rect) rect.style.strokeDasharray = `${ratio * 100} 100`;
+    clock.classList.toggle('is-warning', remainingMs <= CLOCK_WARNING_MS);
+    clock.classList.toggle('is-urgent', remainingMs <= CLOCK_URGENT_MS);
+    clock.setAttribute('aria-label', `${secondsLeft} seconds left to act`);
+
+    // Only the viewer's own clock is worth a noise. On a table of bots the
+    // action passes through six seats a hand, and a warning for each of them is
+    // not a warning.
+    if (player.id !== myId || remainingMs > CLOCK_URGENT_MS) return;
+    const key = `${gameState.roundCount}:${gameState.currentPlayerIndex}`;
+    if (_warnedTurnKey === key) return;
+    _warnedTurnKey = key;
+    if (typeof SFX !== 'undefined') SFX.play('warn');
   });
 }
 

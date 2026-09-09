@@ -366,6 +366,9 @@ const SFX = {
         case 'turn':
           this._bell(now);
           break;
+        case 'warn':
+          this._warn(now);
+          break;
       }
     } catch (e) {}
   },
@@ -430,6 +433,13 @@ const SFX = {
       o.start(t + i * 0.15);
       o.stop(t + i * 0.15 + 0.35);
     });
+  },
+  // The five-second warning. Deliberately not _bell: that rising pair is
+  // already "it is your turn", and a warning that sounds like the turn arriving
+  // is worse than no warning at all. This one falls instead, and sits lower.
+  _warn(t) {
+    this._click(t, 740, 0.1);
+    this._click(t + 0.14, 520, 0.16);
   },
   _bell(t) {
     this._click(t, 1200, 0.08);

@@ -354,7 +354,11 @@ test('the hole cards are dealt from the button, one at a time, twice round', asy
   await expect.poll(() => page.evaluate(() => window.__anim.deals)).toBeGreaterThan(0);
 
   const info = await page.evaluate(() => ({
-    cards: [...document.querySelectorAll('#playerSeats .player-hole-cards > *')].map((el) => ({
+    cards: [
+      ...document.querySelectorAll(
+        '#playerSeats .player-hole-cards > .card, #playerSeats .player-hole-cards > .card-back'
+      ),
+    ].map((el) => ({
       order: Number(el.dataset.dealOrder),
       seat: el.closest('.player-seat').dataset.playerId,
     })),
@@ -386,11 +390,13 @@ test('the hole cards are dealt from the button, one at a time, twice round', asy
   // animation fills both ways, so a stuck class would freeze the transform.
   await expect(page.locator('.deal-pending')).toHaveCount(0, { timeout: 8000 });
   await expect(page.locator('#playerSeats .dealing')).toHaveCount(0, { timeout: 8000 });
-  const stuck = await page.$$eval('#playerSeats .player-hole-cards > *', (els) =>
-    els.filter((el) => {
-      const t = getComputedStyle(el).transform;
-      return t !== 'none' && t !== 'matrix(1, 0, 0, 1, 0, 0)';
-    })
+  const stuck = await page.$$eval(
+    '#playerSeats .player-hole-cards > .card, #playerSeats .player-hole-cards > .card-back',
+    (els) =>
+      els.filter((el) => {
+        const t = getComputedStyle(el).transform;
+        return t !== 'none' && t !== 'matrix(1, 0, 0, 1, 0, 0)';
+      })
   );
   expect(stuck).toHaveLength(0);
   expect(pageErrors).toEqual([]);
@@ -1573,6 +1579,125 @@ test('the buttons answer a press, and the presets show which sizing is loaded', 
   const max = await page.locator('#raiseSlider').getAttribute('max');
   await page.locator('#raiseSlider').fill(max);
   await expect(page.locator('#presetGroup .preset-btn.is-picked')).toHaveCount(0);
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('the clock is an outline round the cards that escalates and warns once', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Clock');
+  await deal(page);
+  await page.mouse.click(5, 5); // unlock the audio context
+
+  // Everything in one turn of the event loop: the table is live, and a real
+  // push replaces gameState wholesale and would undo the clock being posed.
+  const seen = await page.evaluate(() => {
+    const clockFor = (id) =>
+      document.querySelector(`#playerSeats .player-seat[data-player-id="${id}"] .hole-clock`);
+    const shownCount = () =>
+      document.querySelectorAll('#playerSeats .hole-clock:not(.hidden)').length;
+    const read = (id) => {
+      const c = clockFor(id);
+      return {
+        dash: c.querySelector('rect').style.strokeDasharray,
+        cls: c.getAttribute('class'),
+        shown: shownCount(),
+      };
+    };
+
+    let nodes = 0;
+    const ctx = SFX.ctx;
+    const osc = ctx.createOscillator.bind(ctx);
+    ctx.createOscillator = () => {
+      nodes++;
+      return osc();
+    };
+
+    const meIndex = gameState.players.findIndex((p) => p.id === myId);
+    const otherIndex = meIndex === 0 ? 1 : 0;
+    const other = gameState.players[otherIndex];
+    gameState.isRunning = true;
+    gameState.gameMode = 'tournament';
+    gameState.turnDurationMs = 25000;
+    for (const p of gameState.players) {
+      p.folded = false;
+      p.allIn = false;
+    }
+
+    const pose = (msLeft, index) => {
+      gameState.currentPlayerIndex = index;
+      gameState.turnExpiresAt = Date.now() + msLeft;
+      updateTurnClocks();
+    };
+
+    gameState.currentPlayerIndex = meIndex;
+    pose(20000, meIndex);
+    const plenty = read(myId);
+    pose(8000, meIndex);
+    const warning = read(myId);
+    const quietSoFar = nodes;
+    pose(3000, meIndex);
+    const urgent = read(myId);
+    const afterFirstWarning = nodes;
+    // Same turn, still under five seconds: the warning must not repeat.
+    pose(2000, meIndex);
+    const afterSecondTick = nodes;
+
+    // Somebody else's clock, running out. Not our problem and not our noise.
+    _warnedTurnKey = null;
+    gameState.roundCount += 1;
+    pose(3000, otherIndex);
+    const theirs = read(other.id);
+    const afterTheirClock = nodes;
+
+    // Muted: nothing at all, on any path.
+    SFX.setMuted(true);
+    _warnedTurnKey = null;
+    gameState.roundCount += 1;
+    pose(3000, meIndex);
+    const afterMuted = nodes;
+    SFX.setMuted(false);
+
+    // Time added: the clock refills to full rather than overflowing it.
+    gameState.roundCount += 1;
+    pose(40000, meIndex);
+    const refilled = read(myId);
+
+    ctx.createOscillator = osc;
+    return {
+      plenty,
+      warning,
+      urgent,
+      theirs,
+      refilled,
+      quietSoFar,
+      afterFirstWarning,
+      afterSecondTick,
+      afterTheirClock,
+      afterMuted,
+    };
+  });
+
+  // One clock on the felt at a time, on the seat that is to act.
+  expect(seen.plenty.shown).toBe(1);
+  expect(seen.theirs.shown).toBe(1);
+
+  // It depletes, and it steps through the three states by seconds remaining.
+  expect(parseFloat(seen.plenty.dash)).toBeGreaterThan(parseFloat(seen.warning.dash));
+  expect(parseFloat(seen.warning.dash)).toBeGreaterThan(parseFloat(seen.urgent.dash));
+  expect(seen.plenty.cls).not.toMatch(/is-warning|is-urgent/);
+  expect(seen.warning.cls).toMatch(/is-warning/);
+  expect(seen.warning.cls).not.toMatch(/is-urgent/);
+  expect(seen.urgent.cls).toMatch(/is-urgent/);
+
+  // Adding time refills it rather than sending it past full.
+  expect(parseFloat(seen.refilled.dash)).toBe(100);
+
+  // The warning: once, on our own clock, and never when muted.
+  expect(seen.quietSoFar).toBe(0);
+  expect(seen.afterFirstWarning).toBeGreaterThan(0);
+  expect(seen.afterSecondTick).toBe(seen.afterFirstWarning);
+  expect(seen.afterTheirClock).toBe(seen.afterFirstWarning);
+  expect(seen.afterMuted).toBe(seen.afterFirstWarning);
 
   expect(pageErrors).toEqual([]);
 });

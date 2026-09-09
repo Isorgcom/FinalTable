@@ -908,62 +908,64 @@
   border: 1px solid rgba(201, 168, 76, 0.2);
   white-space: nowrap;
 }
-.player-turn-timer {
+/* The turn clock, drawn round the cards of whoever is to act. It replaced a pill
+   hanging off the corner of the seat: on a phone that was twenty pixels of
+   furniture nobody looked at, and five seconds left looked exactly like twenty
+   until you read the digits.
+
+   The depletion is a dash pattern set from JS on every tick, not a CSS
+   animation. Under prefers-reduced-motion every animation-duration collapses to
+   0.01ms, and an animated outline would jump straight to empty. */
+.hole-clock {
   position: absolute;
-  top: -12px;
-  right: -10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 48px;
-  height: 24px;
-  padding: 0 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(201, 168, 76, 0.3);
-  background:
-    linear-gradient(180deg, rgba(23, 42, 30, 0.97), rgba(12, 24, 18, 0.95)), rgba(0, 0, 0, 0.24);
+  inset: -4px;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  fill: none;
   pointer-events: none;
-  z-index: 34;
-  box-shadow:
-    0 6px 16px rgba(0, 0, 0, 0.24),
-    0 0 0 1px rgba(201, 168, 76, 0.08);
+  z-index: 2;
 }
-.player-turn-timer::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(201, 168, 76, 0.9), rgba(123, 202, 149, 0.9));
-  transform-origin: left center;
-  transform: scaleX(var(--timer-ratio, 1));
+.hole-clock.hidden {
+  display: none;
 }
-.player-turn-timer-icon {
-  position: relative;
-  z-index: 1;
-  font-size: 0.72rem;
-  line-height: 1;
+.hole-clock rect {
+  stroke: #7bca95;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  /* Start at twelve o'clock and deplete clockwise. */
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transform-box: fill-box;
 }
-.player-turn-timer-text {
-  position: relative;
-  z-index: 1;
-  color: var(--gold);
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 700;
-  line-height: 1;
+/* Ten seconds. Amber, the same warning tone the bubble banner uses. */
+.hole-clock.is-warning rect {
+  stroke: #ffb74d;
+  animation: clockPulse 1.1s ease-in-out infinite;
 }
-.player-turn-timer.is-critical {
-  border-color: rgba(217, 112, 89, 0.42);
-  box-shadow:
-    0 6px 18px rgba(0, 0, 0, 0.26),
-    0 0 0 1px rgba(217, 112, 89, 0.12);
+/* Five. The red the old pill used at its own critical threshold, so nothing new
+   enters the felt's vocabulary. */
+.hole-clock.is-urgent rect {
+  stroke: #d97059;
+  stroke-width: 3;
+  animation: clockPulse 0.55s ease-in-out infinite;
 }
-.player-turn-timer.is-critical::after {
-  background: linear-gradient(90deg, rgba(217, 112, 89, 0.96), rgba(255, 183, 77, 0.92));
+@keyframes clockPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
-.player-turn-timer.is-critical .player-turn-timer-text {
-  color: #ffd1b1;
+/* A pulsing outline is an accessibility problem for some people, and the colour
+   carries the message on its own - the same call panels.css makes for the
+   bubble badge, which is the app's only other looping pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .hole-clock rect {
+    animation: none;
+  }
 }
 .player-action-badge {
   position: absolute;
@@ -1020,6 +1022,7 @@
 }
 
 .player-hole-cards {
+  position: relative;
   display: flex;
   gap: 4px;
   margin-bottom: 6px;
