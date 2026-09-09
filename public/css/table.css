@@ -572,8 +572,13 @@
   font-size: 0.72rem;
   line-height: 1.3;
   text-align: left;
-  /* A two-hundred-character message is a paragraph. The panel has the whole
-     thing; the bubble is a glance, so it stops at two lines. */
+}
+/* A two-hundred-character message is a paragraph. The panel has the whole
+   thing; the bubble is a glance, so it stops at two lines. The clamp lives
+   here rather than on the bubble because overflow: hidden cuts at the padding
+   edge - clamping the padded box leaves the third line half-drawn in the
+   bottom padding instead of gone. */
+.seat-bubble-text {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

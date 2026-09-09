@@ -1036,6 +1036,12 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   // hole clock, so showing one is a class change rather than a build.
   const bubble = document.createElement('div');
   bubble.className = 'seat-bubble hidden';
+  // The text is its own element so the line clamp can live on something with
+  // no padding. overflow: hidden cuts at the padding edge, so clamping the
+  // padded box leaves the third line half-drawn in the bottom padding.
+  const bubbleText = document.createElement('span');
+  bubbleText.className = 'seat-bubble-text';
+  bubble.appendChild(bubbleText);
   seat.appendChild(bubble);
 
   seat.appendChild(info);
@@ -1059,8 +1065,9 @@ function showSeatBubble(uid, text) {
   const seat = seats.querySelector('.player-seat[data-uid="' + CSS.escape(uid) + '"]');
   if (!seat) return;
   const bubble = seat.querySelector('.seat-bubble');
-  if (!bubble) return;
-  bubble.textContent = text;
+  const label = bubble && bubble.querySelector('.seat-bubble-text');
+  if (!bubble || !label) return;
+  label.textContent = text;
   bubble.classList.remove('hidden');
   const previous = seatBubbleTimers.get(uid);
   if (previous) clearTimeout(previous);
@@ -1071,7 +1078,7 @@ function showSeatBubble(uid, text) {
       // The seats may have been rebuilt under it, in which case this node is
       // no longer the one on screen and hiding it is harmless.
       bubble.classList.add('hidden');
-      bubble.textContent = '';
+      label.textContent = '';
     }, SEAT_BUBBLE_MS)
   );
 }
