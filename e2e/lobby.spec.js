@@ -52,10 +52,15 @@ async function identifyAs(page, name) {
   await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
 }
 
-async function createTournament(page, { name = 'Friday Night', minutes = 15, bots = false } = {}) {
+async function createTournament(
+  page,
+  { name = 'Friday Night', minutes = 15, bots = false, visibility = null } = {}
+) {
   await page.click('#btnCreateTournament');
   await expect(page.locator('#lobbyCreate')).toBeVisible();
   await page.fill('#tName', name);
+  // Private is the default; a test that wants a listed game says so.
+  if (visibility) await page.click(`#tVisibility button[data-vis="${visibility}"]`);
   await page.click(`#tStartQuick button[data-min="${minutes}"]`);
   if (bots) await page.check('#tBots');
   await page.click('#btnCreateSubmit');
@@ -83,7 +88,11 @@ test('creating a tournament lands in the waiting room with roster, code and sett
   page,
 }) => {
   await identifyAs(page, 'Host');
-  const code = await createTournament(page, { name: 'Sunday Deepstack', minutes: 15 });
+  const code = await createTournament(page, {
+    name: 'Sunday Deepstack',
+    minutes: 15,
+    visibility: 'public',
+  });
   await expect(page.locator('#wrName')).toHaveText('Sunday Deepstack');
   await expect(page.locator('#wrStatus')).toContainText('Starts in');
   await expect(page.locator('#wrRoster .wr-row')).toHaveCount(1);
@@ -145,7 +154,11 @@ test('a guest joins from the lobby card without ever seeing the code', async ({
   page,
 }) => {
   await identifyAs(page, 'Host');
-  const code = await createTournament(page, { name: 'Open Door', minutes: 15 });
+  const code = await createTournament(page, {
+    name: 'Open Door',
+    minutes: 15,
+    visibility: 'public',
+  });
 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
@@ -202,7 +215,7 @@ test('the bot option fills the table so one person can start', async ({ page }) 
 
 test('unregistering before the start returns to the lobby', async ({ page }) => {
   await identifyAs(page, 'Solo');
-  await createTournament(page, { name: 'Changed My Mind', minutes: 30 });
+  await createTournament(page, { name: 'Changed My Mind', minutes: 30, visibility: 'public' });
   await page.click('#btnUnregister');
   await expect(page.locator('#lobbyHome')).toBeVisible();
   await expect(page.locator('#lobbyWaiting')).toBeHidden();
@@ -223,4 +236,94 @@ test('the lobby menu holds only the version when nothing else is configured', as
   await expect(page.locator('#btnOperator')).toBeHidden();
   await expect(page.locator('#btnGameNightSignOut')).toBeHidden();
   await expect(page.locator('#btnGameNight')).toBeHidden();
+});
+
+test('the create form is private by default, and the hint follows the choice', async ({ page }) => {
+  await identifyAs(page, 'Host');
+  await page.click('#btnCreateTournament');
+  await expect(page.locator('#tVisibility button.active')).toHaveAttribute('data-vis', 'private');
+  await expect(page.locator('#tVisibilityHint')).toContainText('Unlisted');
+  await page.click('#tVisibility button[data-vis="public"]');
+  await expect(page.locator('#tVisibilityHint')).toContainText('anyone can join');
+  await page.click('#tVisibility button[data-vis="invite"]');
+  await expect(page.locator('#tVisibilityHint')).toContainText('let them in');
+});
+
+test("a private game is nowhere on a stranger's lobby, and joins by link", async ({
+  browser,
+  page,
+}) => {
+  await identifyAs(page, 'Host');
+  const code = await createTournament(page, { name: 'Just Us', minutes: 15 });
+  await expect(page.locator('#wrSettings')).toContainText('private');
+  await expect(page.locator('#listYours .t-card-vis')).toHaveText('private');
+
+  const stranger = await browser.newContext();
+  const other = await stranger.newPage();
+  await identifyAs(other, 'Nosy');
+  // Earlier tests leave public games behind on the shared server, so the
+  // check is that this one is not among them, on the wire or on the page.
+  expect(JSON.stringify(await (await fetch(`${baseUrl}/api/tournaments`)).json())).not.toContain(
+    'Just Us'
+  );
+  await other.waitForTimeout(250); // the list push lands just after identified
+  await expect(other.locator('.t-card', { hasText: 'Just Us' })).toHaveCount(0);
+
+  // The link is the invitation.
+  await other.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
+  await expect(other.locator('#lobbyWaiting')).toBeVisible();
+  await expect(other.locator('#wrRoster .wr-row')).toHaveCount(2);
+  await stranger.close();
+});
+
+test('an invite-only game: the link knocks, the host lets you in', async ({ browser, page }) => {
+  await identifyAs(page, 'Host');
+  const code = await createTournament(page, { name: 'Doorman', minutes: 15, visibility: 'invite' });
+  await expect(page.locator('#wrCodeHint')).toContainText('you let them in');
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
+  await guest.fill('#playerName', 'Knocker');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyPending')).toBeVisible();
+  await expect(guest.locator('#pdName')).toHaveText('Doorman');
+  await expect(guest.locator('#pdStatus')).toContainText('Waiting for Host to let you in');
+  await expect(guest.locator('#lobbyWaiting')).toBeHidden();
+
+  const row = page.locator('#wrPendingList .wr-row', { hasText: 'Knocker' });
+  await expect(row).toBeVisible();
+  await row.locator('.wr-admit').click();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await expect(guest.locator('#lobbyPending')).toBeHidden();
+  for (const p of [page, guest]) {
+    await expect(p.locator('#wrRoster .wr-row')).toHaveCount(2);
+    await expect(p.locator('#wrRoster')).toContainText('Knocker');
+  }
+  await expect(page.locator('#wrPending')).toBeHidden();
+  await guestContext.close();
+});
+
+test('an invite-only game: turned away lands back in the lobby with a reason', async ({
+  browser,
+  page,
+}) => {
+  await identifyAs(page, 'Host');
+  const code = await createTournament(page, {
+    name: 'No Entry',
+    minutes: 15,
+    visibility: 'invite',
+  });
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
+  await guest.fill('#playerName', 'Hopeful');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyPending')).toBeVisible();
+  const row = page.locator('#wrPendingList .wr-row', { hasText: 'Hopeful' });
+  await row.locator('.wr-decline').click();
+  await expect(guest.locator('#lobbyHome')).toBeVisible();
+  await expect(guest.locator('#appDialogBody')).toContainText('did not let you in');
+  await expect(page.locator('#wrPending')).toBeHidden();
+  await guestContext.close();
 });

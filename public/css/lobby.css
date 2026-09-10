@@ -541,6 +541,73 @@
   padding-top: 16px;
 }
 
+/* Under a quick-pick strip: what the chosen option means. */
+.seg-hint {
+  font-size: 0.72rem;
+  color: var(--smoke);
+  opacity: 0.75;
+  margin-top: 6px;
+  min-height: 1em;
+}
+
+/* The door of an invite-only game. */
+.wr-code-hint {
+  font-size: 0.74rem;
+  color: var(--smoke);
+  margin: -6px 0 12px;
+}
+.wr-code-hint.hidden {
+  display: none;
+}
+.wr-pending {
+  margin-bottom: 12px;
+}
+.wr-pending.hidden {
+  display: none;
+}
+.wr-admit,
+.wr-decline {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 168, 76, 0.28);
+  background: rgba(201, 168, 76, 0.08);
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  white-space: nowrap;
+  cursor: pointer;
+  min-height: 32px;
+}
+.wr-admit:hover {
+  background: rgba(201, 168, 76, 0.2);
+  border-color: rgba(201, 168, 76, 0.5);
+}
+.wr-decline {
+  color: var(--smoke);
+  border-color: rgba(92, 61, 26, 0.35);
+  background: transparent;
+}
+.wr-decline:hover {
+  color: #f0b4b4;
+  border-color: rgba(139, 58, 58, 0.5);
+}
+.pd-status {
+  font-size: 0.9rem;
+  color: var(--gold);
+  margin: 6px 0 10px;
+}
+/* A card's private / invite-only mark, in the status tag's idiom. */
+.t-card-vis {
+  padding: 1px 6px;
+  border: 1px solid rgba(92, 61, 26, 0.45);
+  border-radius: 4px;
+  color: var(--smoke);
+  font-size: 0.55rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-left: 6px;
+}
+
 /* ── Waiting room ── */
 .wr-head {
   display: flex;

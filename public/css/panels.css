@@ -1087,3 +1087,18 @@
     display: -webkit-box;
   }
 }
+
+/* Host only, on a running invite-only game: who is asking to be let in. A
+   sibling of the scrolling body, which is rebuilt every tick and must never
+   take these buttons with it. */
+.panel-info-pending {
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid rgba(92, 61, 26, 0.35);
+}
+.panel-info-pending.hidden {
+  display: none;
+}
+.panel-info-pending .wr-row {
+  min-height: 38px;
+  font-size: 0.82rem;
+}

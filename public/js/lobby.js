@@ -34,6 +34,8 @@
   let pendingJoin = null;
   let pendingCreate = null;
   let pendingLastCheck = null; // a tournament we were in before this page load
+  let pendingRequest = null; // asked to join an invite-only game, not yet answered
+  const seenPending = new Set(); // uids the host has already been told about
   let view = 'home';
 
   const $ = (id) => document.getElementById(id);
@@ -163,6 +165,15 @@
     if (ident.resume) {
       store.set(LAST_KEY, null);
       return; // the server rebinds and sends tournamentJoined
+    }
+    if (ident.pending) {
+      return; // still at the door; tournamentPending has already drawn it
+    }
+    // We were at the door before this connect and the request did not come
+    // back: the grace ran out, or the server restarted.
+    if (view === 'pending') {
+      returnToLobby('Your request to join lapsed while you were away.');
+      return;
     }
     // We were in a tournament before this page load and it did not resume:
     // it finished, was cancelled, or the server restarted. The list says which.
@@ -525,9 +536,50 @@
     else enterTable();
   }
 
+  // Asked to join an invite-only game. Not in it: no LAST_KEY, no
+  // __tournamentActive. currentId is set so a cancel or a decline for this
+  // game is recognised as ours.
+  function onPending(info) {
+    if (!info || !info.id) return;
+    pendingRequest = info;
+    currentId = info.id;
+    window.__currentTournamentId = info.id;
+    $('pdName').textContent = info.name || '';
+    $('pdStatus').textContent = `Waiting for ${info.hostName || 'the host'} to let you in`;
+    showView('pending');
+  }
+
+  const DECLINE_TEXT = {
+    declined: 'The host did not let you in.',
+    closed: 'Registration closed before the host let you in.',
+    taken: 'Someone with your name is already in that tournament.',
+    lapsed: 'Your request to join lapsed.',
+  };
+
+  function onDeclined(data) {
+    if (!data || data.id !== currentId) return;
+    const text =
+      data.reason === 'cancelled'
+        ? `"${data.name}" was cancelled before you were let in.`
+        : DECLINE_TEXT[data.reason] || 'Your request to join ended.';
+    returnToLobby(text);
+  }
+
   function onState(state) {
     if (!state || state.id !== currentId) return;
     current = state;
+    // Somebody new at the door while the host is at the table: the Info tab
+    // is where the admit controls are, so light it up.
+    if (state.isHost && Array.isArray(state.pending)) {
+      let fresh = false;
+      for (const row of state.pending) {
+        if (!seenPending.has(row.uid)) {
+          seenPending.add(row.uid);
+          fresh = true;
+        }
+      }
+      if (fresh && tableShowing() && window.SidePanel) SidePanel.notify('info');
+    }
     if (window.TournamentField) TournamentField.render(state);
     if (state.status !== 'registering' && !tableShowing()) enterTable();
     if (view === 'waiting') renderWaiting();
@@ -578,7 +630,7 @@
 
   function showView(name) {
     view = name;
-    ['home', 'create', 'waiting', 'operator'].forEach((v) => {
+    ['home', 'create', 'waiting', 'pending', 'operator'].forEach((v) => {
       const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
       if (node) node.classList.toggle('hidden', v !== name);
     });
@@ -595,6 +647,8 @@
   function returnToLobby(notice) {
     current = null;
     currentId = null;
+    pendingRequest = null;
+    seenPending.clear();
     window.__currentTournamentId = null;
     window.__tournamentActive = false;
     window.mttField = null;
@@ -674,6 +728,14 @@
     tag.className = `room-status-tag room-status-tag-${t.status}`;
     tag.textContent = t.status;
     head.append(name, tag);
+    // A stranger never sees an unlisted card, so this is for its own people:
+    // a reminder of what the host made.
+    if (t.visibility && t.visibility !== 'public') {
+      const vis = document.createElement('span');
+      vis.className = 't-card-vis';
+      vis.textContent = t.visibility === 'invite' ? 'invite-only' : 'private';
+      head.appendChild(vis);
+    }
 
     const status = document.createElement('div');
     status.className = 't-card-status';
@@ -726,7 +788,16 @@
   let _drawnListSig = null;
   function renderList() {
     const sig = JSON.stringify(
-      list.map((t) => [t.id, t.status, t.players, t.entrants, t.level, t.startsAt, t.you])
+      list.map((t) => [
+        t.id,
+        t.status,
+        t.players,
+        t.entrants,
+        t.level,
+        t.startsAt,
+        t.you,
+        t.visibility,
+      ])
     );
     if (sig === _drawnListSig) return;
     _drawnListSig = sig;
@@ -770,8 +841,27 @@
     });
   }
 
+  const VISIBILITY_HINT = {
+    public: 'Listed in the lobby; anyone can join.',
+    private: 'Unlisted; join by code or link.',
+    invite: 'Unlisted; the link lets people ask, and you let them in.',
+  };
+
+  function setVisibility(vis) {
+    document.querySelectorAll('#tVisibility button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.vis === vis);
+    });
+    $('tVisibilityHint').textContent = VISIBILITY_HINT[vis] || '';
+  }
+
+  function currentVisibility() {
+    const active = document.querySelector('#tVisibility button.active');
+    return active ? active.dataset.vis : 'private';
+  }
+
   function openCreate() {
     if (!$('tName').value) $('tName').value = 'Game Night';
+    setVisibility('private');
     setQuick(10);
     document.querySelectorAll('#tStartQuick button').forEach((b) => b.classList.remove('active'));
     showView('create');
@@ -793,6 +883,7 @@
       lateRegLevels: parseInt($('tLateRegLevels').value, 10),
       buyIn: Math.max(0, Math.min(10000, parseInt($('tBuyIn').value, 10) || 0)),
       bots: !!$('tBots').checked,
+      visibility: currentVisibility(),
     };
     if (identity && socket && socket.connected) {
       socket.emit('createTournament', payload);
@@ -884,6 +975,59 @@
     return line;
   }
 
+  const VISIBILITY_LINE = {
+    public: 'listed in the lobby',
+    private: 'private, join by code or link',
+    invite: 'invite-only, the host lets people in',
+  };
+
+  function renderPendingRow(row) {
+    const line = document.createElement('div');
+    line.className = 'wr-row';
+    const dot = document.createElement('span');
+    dot.className = 'wr-dot' + (row.connected ? ' on' : '');
+    dot.title = row.connected ? 'Connected' : 'Not connected';
+    const avatar = document.createElement('span');
+    avatar.className = 'wr-avatar';
+    avatar.textContent = row.avatar || '🧑';
+    const name = document.createElement('span');
+    name.className = 'wr-name';
+    name.textContent = row.name;
+    line.append(dot, avatar, name);
+    if (row.provider === 'gamenight') {
+      const badge = document.createElement('span');
+      badge.className = 'wr-badge wr-badge-gn';
+      badge.textContent = 'GameNight';
+      line.appendChild(badge);
+    }
+    // The server checks the host again; these are merely how it gets asked.
+    const admit = document.createElement('button');
+    admit.type = 'button';
+    admit.className = 'wr-admit';
+    admit.textContent = 'Let in';
+    admit.addEventListener('click', () => {
+      if (socket && socket.connected) socket.emit('admitPlayer', { uid: row.uid });
+    });
+    const decline = document.createElement('button');
+    decline.type = 'button';
+    decline.className = 'wr-decline';
+    decline.textContent = 'Turn away';
+    decline.addEventListener('click', () => {
+      if (socket && socket.connected) socket.emit('declinePlayer', { uid: row.uid });
+    });
+    line.append(admit, decline);
+    return line;
+  }
+
+  function renderPendingList(t) {
+    const block = $('wrPending');
+    const list = $('wrPendingList');
+    const rows = t.isHost && Array.isArray(t.pending) ? t.pending : [];
+    block.classList.toggle('hidden', rows.length === 0);
+    list.textContent = '';
+    rows.forEach((row) => list.appendChild(renderPendingRow(row)));
+  }
+
   function renderWaiting() {
     const t = current;
     if (!t) return;
@@ -893,8 +1037,14 @@
     const roster = $('wrRoster');
     roster.textContent = '';
     (t.roster || []).forEach((row) => roster.appendChild(renderRosterRow(row)));
+    renderPendingList(t);
     const s = t.settings || {};
+    const hint = $('wrCodeHint');
+    const invite = s.visibility === 'invite';
+    hint.textContent = invite ? 'Anyone with this link asks to join; you let them in below.' : '';
+    hint.classList.toggle('hidden', !(invite && t.isHost));
     const parts = [
+      VISIBILITY_LINE[s.visibility] || null,
       `${s.tableSize}-max tables`,
       `${fmtChips(s.startChips)} starting stack`,
       fmtLevel(s.levelDuration),
@@ -1005,6 +1155,12 @@
     document.querySelectorAll('#tStartQuick button').forEach((b) => {
       b.addEventListener('click', () => setQuick(Number(b.dataset.min)));
     });
+    document.querySelectorAll('#tVisibility button').forEach((b) => {
+      b.addEventListener('click', () => setVisibility(b.dataset.vis));
+    });
+    $('btnCancelRequest').addEventListener('click', () => {
+      if (socket && socket.connected) socket.emit('cancelRequest');
+    });
     $('tStartAt').addEventListener('input', () => {
       delete $('tStartAt').dataset.quick;
       document.querySelectorAll('#tStartQuick button').forEach((b) => b.classList.remove('active'));
@@ -1104,6 +1260,9 @@
     onSessionReplaced,
     onList,
     onJoined,
+    onPending,
+    onDeclined,
+    pendingRow: renderPendingRow,
     onState,
     onLeft,
     onCancelled,

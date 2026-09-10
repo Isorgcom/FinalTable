@@ -13,6 +13,26 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- A game is now private unless you say otherwise. Private means unlisted: it is
+  not on the lobby list or the public API, and the only way in is the code or
+  the link, which is what a group passes around anyway. Public puts it on the
+  list for anyone to join, as every game used to be. Invite-only is unlisted
+  too, and the link lets somebody ask rather than walk in: they wait at the
+  door while the host sees them in the waiting room, or on the table's Info tab
+  once the cards are out, and lets them in or turns them away. A request
+  survives a short drop and lapses after a minute away; a game that is
+  cancelled or closes late registration tells whoever was still waiting. The
+  choice is made when the game is created and cannot be changed after. Games
+  saved before this come back private.
+
+### Changed
+
+- `GET /api/tournaments` lists public games only. An unlisted game answers
+  "Tournament not found" to its id without its code, so the lobby cannot be
+  used to guess at one.
+
 ## 0.3.0 - 2026-09-10
 
 ### Added

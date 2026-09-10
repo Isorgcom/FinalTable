@@ -149,6 +149,15 @@ describe('Tournament socket layer', () => {
     return Promise.all([hostDealt, guestDealt]);
   }
 
+  // A game still registering when its people disconnect is kept for them,
+  // not swept, and the server caps how many exist at once. A test that leaves
+  // one behind before the start takes it down on the way out.
+  async function cancelGame(host) {
+    const gone = waitFor(host, 'tournamentCancelled');
+    host.emit('cancelTournament');
+    await gone;
+  }
+
   async function until(check, timeoutMs = 4000, everyMs = 25) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -260,7 +269,8 @@ describe('Tournament socket layer', () => {
 
   test('two humans register by code and both see the roster with avatars', async () => {
     const host = await connectClient();
-    const created = await createTournament(host);
+    // Public, because the end of this test reads the game off /api/tournaments.
+    const created = await createTournament(host, { visibility: 'public' });
     expect(created.code).toMatch(/^[A-Z2-9]{5}$/);
     const guest = await connectClient();
     // The roster is broadcast on its own now, not carried in every personal
@@ -326,6 +336,111 @@ describe('Tournament socket layer', () => {
     expect(b.players.some((p) => p.name === 'Guest2')).toBe(true);
     const state = await waitFor(host, 'tournamentState', (st) => st.status === 'running');
     expect(state.startedAt).toBeGreaterThan(0);
+  });
+
+  test('a private game is off the public list and refuses an id, but a code gets in', async () => {
+    const host = await connectClient();
+    const created = await createTournament(host, { name: 'Quiet night' });
+    const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+    expect(list.find((t) => t.id === created.id)).toBeUndefined();
+    const guest = await connectClient();
+    await identify(guest, { name: 'Guest', avatar: '🐸' });
+    const refused = waitFor(guest, 'error');
+    guest.emit('joinTournament', { tournamentId: created.id });
+    expect((await refused).message).toBe('Tournament not found');
+    const joined = waitFor(guest, 'tournamentJoined');
+    guest.emit('joinTournament', { code: created.code });
+    expect((await joined).id).toBe(created.id);
+    await cancelGame(host);
+  });
+
+  test('an invite-only game: knock, the host lets you in, and you are seated like anyone', async () => {
+    const host = await connectClient();
+    const created = await createTournament(host, { visibility: 'invite' });
+    const guest = await connectClient();
+    await identify(guest, { name: 'Guest', avatar: '🐸' });
+
+    const knocked = waitFor(guest, 'tournamentPending');
+    const hostSees = waitFor(
+      host,
+      'tournamentState',
+      (st) => st.pending && st.pending.length === 1
+    );
+    guest.emit('joinTournament', { code: created.code });
+    const pending = await knocked;
+    expect(pending).toMatchObject({ id: created.id, hostName: 'Host' });
+    expect(pending).not.toHaveProperty('code');
+    const hostState = await hostSees;
+    expect(hostState.pending[0]).toMatchObject({ name: 'Guest', avatar: '🐸', connected: true });
+
+    const admitted = waitFor(guest, 'tournamentJoined');
+    // The host's state push (door now empty) lands before the roster does,
+    // so both listeners go on before the admit.
+    const cleared = waitFor(host, 'tournamentState', (st) => st.pending && st.pending.length === 0);
+    const roster = waitFor(host, 'tournamentRoster', (p) => p.roster.length === 2);
+    host.emit('admitPlayer', { uid: hostState.pending[0].uid });
+    expect((await admitted).id).toBe(created.id);
+    expect((await roster).roster.map((r) => r.name).sort()).toEqual(['Guest', 'Host']);
+    expect((await cleared).pending).toEqual([]);
+    await cancelGame(host);
+  });
+
+  test('an invite-only game: turned away, and giving up', async () => {
+    const host = await connectClient();
+    const created = await createTournament(host, { visibility: 'invite' });
+    const a = await connectClient();
+    await identify(a, { name: 'Ann', avatar: '🐸' });
+    const b = await connectClient();
+    await identify(b, { name: 'Bob', avatar: '🐸' });
+    const both = waitFor(host, 'tournamentState', (st) => st.pending && st.pending.length === 2);
+    a.emit('joinTournament', { code: created.code });
+    b.emit('joinTournament', { code: created.code });
+    const state = await both;
+    const annUid = state.pending.find((r) => r.name === 'Ann').uid;
+
+    const declined = waitFor(a, 'tournamentDeclined');
+    host.emit('declinePlayer', { uid: annUid });
+    expect(await declined).toMatchObject({ id: created.id, reason: 'declined' });
+
+    const left = waitFor(b, 'leftTournament');
+    b.emit('cancelRequest');
+    expect(await left).toMatchObject({ id: created.id, reason: 'withdrawn' });
+    const empty = await waitFor(
+      host,
+      'tournamentState',
+      (st) => st.pending && st.pending.length === 0
+    );
+    expect(empty.pending).toEqual([]);
+    await cancelGame(host);
+  });
+
+  test('a late knock on a running invite-only game is seated with the starting stack', async () => {
+    const host = await connectClient();
+    const created = await createTournament(host, { visibility: 'invite', lateRegLevels: 3 });
+    const guest = await connectClient();
+    await identify(guest, { name: 'Guest', avatar: '🐸' });
+    const hostSees = waitFor(
+      host,
+      'tournamentState',
+      (st) => st.pending && st.pending.length === 1
+    );
+    guest.emit('joinTournament', { code: created.code });
+    const { pending } = await hostSees;
+    const guestIn = waitFor(guest, 'tournamentJoined');
+    host.emit('admitPlayer', { uid: pending[0].uid });
+    await guestIn;
+    await startAndDeal(host, guest);
+
+    const late = await connectClient();
+    await identify(late, { name: 'Late', avatar: '🐸' });
+    const knock = waitFor(host, 'tournamentState', (st) => st.pending && st.pending.length === 1);
+    late.emit('joinTournament', { code: created.code });
+    const withLate = await knock;
+    const seated = waitFor(late, 'tournamentState', (st) => st.you && st.you.seated);
+    host.emit('admitPlayer', { uid: withLate.pending[0].uid });
+    const state = await seated;
+    expect(state.lateRegOpen).toBe(true);
+    expect(state.you.seated).toBe(true);
   });
 
   test('a late entrant is seated with the starting stack after the start', async () => {

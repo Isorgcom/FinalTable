@@ -65,6 +65,8 @@ describe('tournament registry', () => {
       sweepMs: 1000,
       tableOptions: { actionTimeoutMs: 0 },
       connectedSockets: () => live.values(),
+      socketById: (id) => live.get(id) || null,
+      pendingGraceMs: 4000,
     });
   });
 
@@ -224,7 +226,8 @@ describe('tournament registry', () => {
 
   test('the list carries no join code, and a card joins by id instead', () => {
     const hostSocket = makeSocket('sh', 'h');
-    const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+    // Public on purpose: a stranger only ever sees a card for a listed game.
+    const { entry } = create({ startsAt: Date.now() + 60000, visibility: 'public' }, hostSocket);
     expect(entry.code).toMatch(/^[A-Z2-9]{5}$/);
 
     // The HTTP list and the socket push are the same card, and the code is the
@@ -1005,5 +1008,321 @@ describe('tournament registry', () => {
     for (const p of bots) expect(p.autoPlay).toBe(false);
     expect(seats.find((p) => !p.isBot).autoPlay).toBe(true);
     second.stop();
+  });
+
+  // ── Visibility ──────────────────────────────────────────────────────────
+
+  const lastList = (socket) => {
+    jest.advanceTimersByTime(300);
+    const last = [...socket.emitted].reverse().find((m) => m.event === 'tournamentList');
+    return last ? last.payload : [];
+  };
+  const sent = (socket, event) => socket.emitted.filter((m) => m.event === event);
+  const ioSent = (to, event) => io.sent.filter((m) => m.to === to && m.event === event);
+
+  test('a new game is private unless the host says otherwise, and junk reads as private', () => {
+    expect(create({ startsAt: Date.now() + 60000 }).entry.settings.visibility).toBe('private');
+    registry.stop();
+    for (const [given, expected] of [
+      ['public', 'public'],
+      ['invite', 'invite'],
+      ['open', 'private'],
+      [42, 'private'],
+    ]) {
+      io = makeIo();
+      live.clear();
+      registry = createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        tableOptions: { actionTimeoutMs: 0 },
+        connectedSockets: () => live.values(),
+      });
+      const { entry } = create({ startsAt: Date.now() + 60000, visibility: given });
+      expect(entry.settings.visibility).toBe(expected);
+      registry.stop();
+    }
+  });
+
+  test('a stranger sees a public card and nothing else; a member sees their own', () => {
+    const host = makeSocket('sh', 'h');
+    const pub = create(
+      { name: 'Open', startsAt: Date.now() + 60000, visibility: 'public' },
+      host
+    ).entry;
+    registry.leave(pub, 'h', host);
+    registry.unregister(pub, 'h', host);
+    const priv = create({ name: 'Quiet', startsAt: Date.now() + 60000 }, host).entry;
+    const stranger = makeSocket('sx', 'x');
+    const seenByStranger = lastList(stranger).map((c) => c.name);
+    expect(seenByStranger).toEqual([]);
+    expect(registry.publicList().map((c) => c.name)).toEqual([]);
+    // The public one went when its only member unregistered; make another.
+    const host2 = makeSocket('sh2', 'g');
+    const pub2 = registry.create(
+      'g',
+      { name: 'Open again', startsAt: Date.now() + 60000, visibility: 'public' },
+      host2
+    ).entry;
+    expect(lastList(stranger).map((c) => c.name)).toEqual(['Open again']);
+    expect(registry.publicList().map((c) => c.name)).toEqual(['Open again']);
+    expect(registry.publicList()[0]).toMatchObject({ visibility: 'public' });
+    // The host of the private game sees it, marked, under their own.
+    const mine = lastList(host).find((c) => c.id === priv.id);
+    expect(mine).toMatchObject({ visibility: 'private', you: { registered: true } });
+    void pub2;
+  });
+
+  test('an unlisted game cannot be joined by id, only by code; its own host can rejoin by id', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000 });
+    const guest = makeSocket('sg', 'g');
+    expect(registry.join('g', { tournamentId: entry.id }, guest).error).toBe(
+      'Tournament not found'
+    );
+    expect(entry.registrations.has('g')).toBe(false);
+    expect(registry.join('g', { code: entry.code }, guest).error).toBeUndefined();
+    expect(entry.registrations.has('g')).toBe(true);
+    // The host's own card joins by id: the rejoin path comes before the gate.
+    registry.startNow(entry, 'h');
+    registry.leave(entry, 'h', host);
+    expect(registry.join('h', { tournamentId: entry.id }, host).error).toBeUndefined();
+    expect(entry.registrations.get('h').left).toBe(false);
+  });
+
+  test('knocking on an invite-only game waits at the door, and is none of the things a member is', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000, visibility: 'invite' }, host);
+    const guest = makeSocket('sg', 'g');
+    const result = registry.join('g', { code: entry.code }, guest);
+    expect(result.error).toBeUndefined();
+    expect(result.pending).toBe(true);
+    expect(entry.pending.has('g')).toBe(true);
+    expect(entry.registrations.has('g')).toBe(false);
+    expect(entry.director.entrants.map((e) => e.uid)).toEqual(['h']);
+    expect(guest.data.pendingTournamentId).toBe(entry.id);
+    expect(guest.data.tournamentId).toBeUndefined();
+    const told = sent(guest, 'tournamentPending');
+    expect(told).toHaveLength(1);
+    expect(told[0].payload).toMatchObject({ id: entry.id, name: 'Night', hostName: 'Host' });
+    expect(told[0].payload).not.toHaveProperty('code');
+    // The host sees who is at the door; the asker sees no state at all.
+    const hostView = registry.stateFor(entry, 'h');
+    expect(hostView.pending).toEqual([
+      expect.objectContaining({ uid: 'g', name: 'Guest', connected: true }),
+    ]);
+    expect(registry.stateFor(entry, 'g')).not.toHaveProperty('pending');
+    expect(sent(guest, 'tournamentState')).toHaveLength(0);
+    // A card summary counts entrants, not the queue.
+    expect(registry.listFor('h').find((c) => c.id === entry.id).entrants).toEqual({
+      humans: 1,
+      total: 1,
+    });
+    // And a stranger with the id gets nothing.
+    expect(registry.join('t', { tournamentId: entry.id }, makeSocket('st', 't')).error).toBe(
+      'Tournament not found'
+    );
+  });
+
+  test('the host lets somebody in, and they arrive as if they had joined by code', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000, visibility: 'invite' }, host);
+    const guest = makeSocket('sg', 'g');
+    registry.join('g', { code: entry.code }, guest);
+    expect(registry.admit(entry, 'g', 'g').error).toMatch(/only the host/i);
+    expect(registry.admit(entry, 'h', 'nobody').error).toMatch(/not waiting/i);
+    expect(registry.admit(entry, 'h', 'g').error).toBeUndefined();
+    expect(entry.pending.size).toBe(0);
+    expect(entry.registrations.get('g')).toMatchObject({ socketId: 'sg', left: false });
+    expect(entry.director.entrants.map((e) => e.uid)).toEqual(['h', 'g']);
+    expect(guest.data).toMatchObject({ tournamentId: entry.id, tournamentUid: 'g' });
+    expect(guest.data.pendingTournamentId).toBeNull();
+    expect(sent(guest, 'tournamentJoined')[0].payload).toMatchObject({
+      id: entry.id,
+      code: entry.code,
+    });
+    expect(lastList(guest).find((c) => c.id === entry.id).you.registered).toBe(true);
+  });
+
+  test('turned away, or giving up', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000, visibility: 'invite' }, host);
+    const g = makeSocket('sg', 'g');
+    registry.join('g', { code: entry.code }, g);
+    expect(registry.decline(entry, 'g', 'g').error).toMatch(/only the host/i);
+    expect(registry.decline(entry, 'h', 'g').ok).toBe(true);
+    expect(entry.pending.size).toBe(0);
+    expect(ioSent('sg', 'tournamentDeclined')[0].payload).toMatchObject({
+      id: entry.id,
+      reason: 'declined',
+    });
+    expect(g.data.pendingTournamentId).toBeNull();
+
+    const t = makeSocket('st', 't');
+    registry.join('t', { code: entry.code }, t);
+    expect(registry.withdraw(entry, 't', t).error).toBeUndefined();
+    expect(entry.pending.size).toBe(0);
+    expect(sent(t, 'leftTournament')[0].payload).toMatchObject({
+      id: entry.id,
+      reason: 'withdrawn',
+    });
+    expect(registry.withdraw(entry, 't', t).error).toMatch(/not waiting/i);
+  });
+
+  test('a name is checked at the door and again at the moment of letting in', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000, visibility: 'invite' }, host);
+    // 'h' is Host; a knock from somebody also called Host is refused outright.
+    const twin = makeSocket('sw', 'w');
+    names.w = 'Host';
+    expect(registry.join('w', { code: entry.code }, twin).error).toMatch(/name already taken/i);
+    delete names.w;
+    // Two people with the same free name knock; the first let in takes it.
+    names.a = 'Sam';
+    names.b = 'Sam';
+    const a = makeSocket('sa', 'a');
+    const b = makeSocket('sb', 'b');
+    registry.join('a', { code: entry.code }, a);
+    registry.join('b', { code: entry.code }, b);
+    expect(entry.pending.size).toBe(2);
+    expect(registry.admit(entry, 'h', 'a').error).toBeUndefined();
+    expect(registry.admit(entry, 'h', 'b').error).toMatch(/name already taken/i);
+    expect(entry.pending.size).toBe(0);
+    expect(ioSent('sb', 'tournamentDeclined')[0].payload.reason).toBe('taken');
+    delete names.a;
+    delete names.b;
+  });
+
+  test('a request survives a short drop and lapses after the grace', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 600000, visibility: 'invite' }, host);
+    const g = makeSocket('sg', 'g');
+    registry.join('g', { code: entry.code }, g);
+    registry.unbindPending(entry, 'g', g);
+    expect(entry.pending.get('g').socketId).toBeNull();
+    expect(registry.stateFor(entry, 'h').pending[0].connected).toBe(false);
+    // Back inside the grace, on a new socket: same request, new socket.
+    jest.advanceTimersByTime(2000);
+    const g2 = makeSocket('sg2', 'g');
+    expect(registry.findPendingByUid('g')).toBe(entry);
+    registry.bindPending(entry, 'g', g2, { resumed: true });
+    expect(entry.pending.get('g').socketId).toBe('sg2');
+    expect(sent(g2, 'tournamentPending')[0].payload.resumed).toBe(true);
+    // Gone past the grace: the sweep lets the request go.
+    registry.unbindPending(entry, 'g', g2);
+    jest.advanceTimersByTime(5000);
+    expect(entry.pending.has('g')).toBe(false);
+    expect(registry.findPendingByUid('g')).toBeNull();
+  });
+
+  test('the door does not hold a game open, start it, or make anyone host', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 5000, visibility: 'invite' }, host);
+    const g = makeSocket('sg', 'g');
+    registry.join('g', { code: entry.code }, g);
+    // One entrant plus one asker is not two entrants.
+    expect(registry.startNow(entry, 'h').error).toMatch(/2|two/i);
+    jest.advanceTimersByTime(6000);
+    expect(entry.status).toBe('registering');
+    // The host leaves: the game is empty and goes, and the asker is told.
+    registry.unregister(entry, 'h', host);
+    expect(registry.tournaments.has(entry.id)).toBe(false);
+    expect(ioSent('sg', 'tournamentDeclined')[0].payload.reason).toBe('cancelled');
+    expect(g.data.pendingTournamentId).toBeNull();
+  });
+
+  test('an overdue invite-only game nobody was let into is cancelled, and the door told', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 1000, visibility: 'invite' }, host);
+    const g = makeSocket('sg', 'g');
+    registry.join('g', { code: entry.code }, g);
+    jest.advanceTimersByTime(1000 + 20000 + 1500);
+    expect(registry.tournaments.has(entry.id)).toBe(false);
+    expect(ioSent('sg', 'tournamentDeclined')[0].payload.reason).toBe('cancelled');
+  });
+
+  test('knocking on a running game goes through late registration, until it closes', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create(
+      { startsAt: Date.now() + 60000, visibility: 'invite', lateRegLevels: 3 },
+      host
+    );
+    const g = makeSocket('sg', 'g');
+    registry.join('g', { code: entry.code }, g);
+    registry.admit(entry, 'h', 'g');
+    registry.startNow(entry, 'h');
+    expect(entry.status).toBe('running');
+    const late = makeSocket('sl', 't');
+    expect(registry.join('t', { code: entry.code }, late).pending).toBe(true);
+    expect(registry.admit(entry, 'h', 't').error).toBeUndefined();
+    expect(entry.director.playerByUid('t')).toBeTruthy();
+    // Late registration closes: whoever is still at the door is told.
+    const again = makeSocket('sa', 'a');
+    names.a = 'Late Sam';
+    registry.join('a', { code: entry.code }, again);
+    entry.director.lateRegLevels = 0;
+    jest.advanceTimersByTime(1500);
+    expect(entry.pending.size).toBe(0);
+    expect(ioSent('sa', 'tournamentDeclined')[0].payload.reason).toBe('closed');
+    expect(registry.join('a', { code: entry.code }, again).error).toMatch(
+      /late registration is closed/i
+    );
+    delete names.a;
+  });
+
+  test('the door is capped', () => {
+    const host = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000, visibility: 'invite' }, host);
+    for (let i = 0; i < 50; i++) {
+      names[`k${i}`] = `Knocker ${i}`;
+      expect(
+        registry.join(`k${i}`, { code: entry.code }, makeSocket(`sk${i}`, `k${i}`)).pending
+      ).toBe(true);
+    }
+    names.k50 = 'Knocker 50';
+    expect(registry.join('k50', { code: entry.code }, makeSocket('sk50', 'k50')).error).toMatch(
+      /too many/i
+    );
+    for (let i = 0; i <= 50; i++) delete names[`k${i}`];
+  });
+
+  test('visibility survives a restart; the door does not; an old file reads private', () => {
+    const store = makeStore();
+    registry.stop();
+    io = makeIo();
+    live.clear();
+    const make = () =>
+      createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        store,
+        sweepMs: 100000,
+        tableOptions: { actionTimeoutMs: 0 },
+        connectedSockets: () => live.values(),
+      });
+    registry = make();
+    const host = makeSocket('sh', 'h');
+    const inv = registry.create(
+      'h',
+      { name: 'Door', startsAt: Date.now() + 60000, visibility: 'invite' },
+      host
+    ).entry;
+    registry.join('g', { code: inv.code }, makeSocket('sg', 'g'));
+    expect(inv.pending.size).toBe(1);
+    registry.flush();
+    registry.stop();
+    // A file from before the setting existed: no visibility field at all.
+    const saved = store.load();
+    const legacy = JSON.parse(JSON.stringify(saved[0]));
+    legacy.id = 'legacy';
+    legacy.code = 'LEGCY';
+    delete legacy.settings.visibility;
+    store.save([...saved, legacy]);
+
+    registry = make();
+    registry.restore();
+    const back = registry.tournaments.get(inv.id);
+    expect(back.settings.visibility).toBe('invite');
+    expect(back.pending.size).toBe(0);
+    expect(registry.tournaments.get('legacy').settings.visibility).toBe('private');
   });
 });

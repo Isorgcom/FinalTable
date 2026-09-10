@@ -20,17 +20,6 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
-### Table visibility - public, private, invite-only
-
-Today every tournament is public: `GET /api/tournaments` is unauthenticated,
-and every game is listed on it. The list used to carry the join code as well,
-so anyone who could reach the server could walk into any game; that is fixed,
-and a lobby card now joins by id while the code stays in the waiting room.
-
-Three modes: **public** (listed, anyone joins), **private** (unlisted, joinable
-only with the code), **invite-only** (the host admits people, or the roster is
-fixed up front).
-
 ### A real blind structure
 
 There is a thirteen-level ladder in `tournament.js`, fixed, from 10/20 to
@@ -117,6 +106,11 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+Table visibility: public, private (the default) and invite-only, the last
+with a door the host works from the waiting room or the table's Info tab. A
+roster fixed up front, rather than admitting on request, is the variant left
+for the Game Night online-event work.
 
 Chat landed - table chat, a waiting-room channel before the cards are out, and
 a host mute. Reactions followed it: a fixed strip of six, thrown from the

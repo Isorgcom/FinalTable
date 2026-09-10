@@ -178,7 +178,29 @@ function fmtNum(n) {
   return typeof n === 'number' ? n.toLocaleString() : '-';
 }
 
+// The door of an invite-only game, for a host who is already at the table:
+// the waiting room is gone once the cards are out, and this is where they
+// look. Drawn into its own block, beside the body the tick rebuilds, and only
+// when who is waiting has changed, so a Let-in button is never replaced under
+// the cursor by a redraw that changed nothing.
+let _infoPendingSig = null;
+function renderInfoPending() {
+  const block = document.getElementById('panelInfoPending');
+  if (!block) return;
+  const field = window.mttField || null;
+  const rows = field && field.isHost && Array.isArray(field.pending) ? field.pending : [];
+  const sig = rows.map((r) => `${r.uid}:${r.connected ? 1 : 0}:${r.name}`).join('|');
+  if (sig === _infoPendingSig) return;
+  _infoPendingSig = sig;
+  block.textContent = '';
+  block.classList.toggle('hidden', rows.length === 0);
+  if (!rows.length || !window.Lobby || typeof Lobby.pendingRow !== 'function') return;
+  block.appendChild(createTextElement('div', 'info-section-title', 'Waiting to be let in'));
+  rows.forEach((row) => block.appendChild(Lobby.pendingRow(row)));
+}
+
 function renderInfoTab() {
+  renderInfoPending();
   const body = document.getElementById('panelInfoBody');
   if (!body) return;
   body.textContent = '';

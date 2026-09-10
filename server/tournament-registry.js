@@ -14,6 +14,12 @@
 const { TournamentDirector } = require('../director');
 const { createChatRooms } = require('./chat-rooms');
 const reactions = require('./reactions');
+
+// Who may see a tournament and who may walk in. Chosen once at creation.
+const VISIBILITIES = ['public', 'private', 'invite'];
+// How many people may wait on one invite-only game at once. A bound rather
+// than a rule: nobody runs a home game with fifty at the door.
+const MAX_PENDING = 50;
 const random = require('../random');
 
 const TICK_MS = 1200;
@@ -43,6 +49,13 @@ function createTournamentRegistry(deps = {}) {
     // Every connected socket, for the personalised tournament list. Injectable
     // so the registry tests can drive it without a real socket.io server.
     connectedSockets = () => (io && io.sockets ? io.sockets.sockets.values() : []),
+    // One socket by id, for admitting somebody who asked to join: their
+    // request holds the id, and binding wants the socket. Injectable for the
+    // same reason as connectedSockets.
+    socketById = (id) => (io && io.sockets ? io.sockets.sockets.get(id) || null : null),
+    // How long a request to join an invite-only game outlives its socket. A
+    // phone that locks for ten seconds should not lose its place at the door.
+    pendingGraceMs = 60 * 1000,
     finishedTtlMs = 10 * 60 * 1000,
     abandonGraceMs = 2 * 60 * 1000,
     hostTransferGraceMs = 2 * 60 * 1000,
@@ -301,6 +314,7 @@ function createTournamentRegistry(deps = {}) {
       startedAt: entry.startedAt,
       finishedAt: entry.finishedAt,
       hostName: hostName(entry),
+      visibility: entry.settings.visibility,
       entrants: { humans, total },
       tableSize: d.tableSize,
       startChips: d.startChips,
@@ -318,13 +332,18 @@ function createTournamentRegistry(deps = {}) {
     };
   }
 
+  // What GET /api/tournaments serves: the games their hosts chose to list.
   function publicList() {
-    return [...tournaments.values()].map(summarize);
+    return [...tournaments.values()].filter(isPublic).map(summarize);
   }
 
+  // A private or invite-only game is on the list for its own people only, so
+  // Open and Rejoin still work for them and a stranger never learns it exists.
+  // registrations.has covers a player who left, whose stack is still in play.
   function listFor(uid, shared = null) {
-    const rows =
-      shared || [...tournaments.values()].map((entry) => ({ entry, card: summarize(entry) }));
+    const rows = (
+      shared || [...tournaments.values()].map((entry) => ({ entry, card: summarize(entry) }))
+    ).filter(({ entry }) => isPublic(entry) || (!!uid && entry.registrations.has(uid)));
     return rows.map(({ entry, card }) => ({
       ...card,
       you: {
@@ -376,6 +395,9 @@ function createTournamentRegistry(deps = {}) {
       isHost: requireHost(entry, uid),
       settings: { ...entry.settings },
       ...(includeRoster ? { roster } : {}),
+      // Who is waiting at the door. The host's business and nobody else's, so
+      // it rides the personal push rather than the shared roster broadcast.
+      ...(requireHost(entry, uid) ? { pending: pendingRows(entry) } : {}),
       you: {
         uid,
         playerId: seat ? seat.player.id : reg && reg.socketId ? reg.socketId : null,
@@ -582,8 +604,17 @@ function createTournamentRegistry(deps = {}) {
         levelDuration: Math.max(30, Math.min(3600, int(payload.levelDuration, 300))),
         lateRegLevels: Math.max(0, Math.min(8, int(payload.lateRegLevels, 3))),
         buyIn: Math.max(0, Math.min(10000, int(payload.buyIn, 0))),
+        // Private unless the host says otherwise: on a server anyone can
+        // reach, a game a stranger can sit at should be a choice, not the
+        // default. A file written before this setting existed reads as
+        // private for the same reason.
+        visibility: VISIBILITIES.includes(payload.visibility) ? payload.visibility : 'private',
       },
     };
+  }
+
+  function isPublic(entry) {
+    return entry.settings.visibility === 'public';
   }
 
   function create(uid, payload = {}, socket) {
@@ -591,6 +622,7 @@ function createTournamentRegistry(deps = {}) {
     if (!who) return { error: 'Identify first' };
     if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
     if (tournaments.size >= maxTournaments) return { error: 'Too many tournaments running' };
+    withdrawAll(uid);
 
     const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
     const { startsAt, settings } = clampSettings(payload);
@@ -658,6 +690,11 @@ function createTournamentRegistry(deps = {}) {
       // Host moderation. Small enough to ride along in the tournament file, so
       // a mute survives a restart the way the field it was aimed at does.
       mutedUids: new Set(),
+      // People asking to join an invite-only game, waiting on the host:
+      // uid -> { socketId, askedAt, disconnectedAt }. Not an entrant, not a
+      // registration, not written to the file. A restart empties the queue
+      // and the asker's client falls back to the lobby.
+      pending: new Map(),
     };
     const director = new TournamentDirector({
       id: id || undefined,
@@ -730,7 +767,8 @@ function createTournamentRegistry(deps = {}) {
   function join(uid, { code, tournamentId } = {}, socket) {
     const who = identity.get(uid);
     if (!who) return { error: 'Identify first' };
-    const entry = (code ? byCode(code) : null) || tournaments.get(tournamentId) || null;
+    const fromCode = code ? byCode(code) : null;
+    const entry = fromCode || tournaments.get(tournamentId) || null;
     if (!entry) return { error: 'Tournament not found' };
 
     const existing = entry.registrations.get(uid);
@@ -743,12 +781,28 @@ function createTournamentRegistry(deps = {}) {
       emitList();
       return { entry };
     }
+    // A private or invite-only card never reaches a stranger, so an id arriving
+    // without the code is a guess. It gets the answer a wrong code gets, and
+    // nothing that says the game exists.
+    if (!fromCode && !isPublic(entry)) return { error: 'Tournament not found' };
     if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
     if (entry.status === 'finished') return { error: 'That tournament is over' };
+    if (entry.status === 'running' && !entry.director.lateRegOpen()) {
+      return { error: 'Late registration is closed' };
+    }
     const key = normalizeNameKey(who.name);
     if (entry.director.entrants.some((e) => normalizeNameKey(e.name) === key)) {
       return { error: 'Name already taken in this tournament' };
     }
+    withdrawAll(uid, entry);
+    if (entry.settings.visibility === 'invite') return ask(entry, uid, socket);
+    return enter(entry, uid, who, socket);
+  }
+
+  // The way in, once every check has passed: as an entrant, as a registration,
+  // bound to the socket if there is one. Shared by a code join and by the host
+  // admitting somebody who asked.
+  function enter(entry, uid, who, socket) {
     const entrant = {
       id: socket ? socket.id : null,
       uid,
@@ -778,6 +832,187 @@ function createTournamentRegistry(deps = {}) {
     emitState(entry);
     emitList();
     return { entry };
+  }
+
+  // ── Asking to join ───────────────────────────────────────────────────────
+  //
+  // An invite-only game has a door. Somebody with the code knocks, waits, and
+  // is let in or not by the host. While they wait they are none of the things
+  // a member is: not an entrant, not a registration, not in the chat room,
+  // not counted toward anything. Their request lives in entry.pending and
+  // nowhere else.
+
+  function pendingInfo(entry, { resumed = false } = {}) {
+    return {
+      id: entry.id,
+      name: entry.name,
+      hostName: hostName(entry),
+      status: entry.status,
+      resumed,
+    };
+  }
+
+  // The queue as the host sees it. Names looked up, never stored: the same
+  // rule as chat, so nobody can knock under somebody else's name.
+  function pendingRows(entry) {
+    return [...entry.pending].map(([uid, row]) => {
+      const who = identity.get(uid);
+      return {
+        uid,
+        name: who ? who.name : 'Player',
+        avatar: who ? who.avatar : null,
+        provider: who ? who.provider || 'guest' : 'guest',
+        askedAt: row.askedAt,
+        connected: !!row.socketId,
+      };
+    });
+  }
+
+  function ask(entry, uid, socket) {
+    if (entry.pending.has(uid)) {
+      // A second tab, a double tap, a reconnect that came in by the link:
+      // the same request, on the newest socket.
+      if (socket) bindPending(entry, uid, socket, { resumed: true });
+      return { entry, pending: true };
+    }
+    if (entry.pending.size >= MAX_PENDING) {
+      return { error: 'Too many people are waiting on this tournament' };
+    }
+    entry.pending.set(uid, { socketId: null, askedAt: now(), disconnectedAt: null });
+    if (socket) bindPending(entry, uid, socket);
+    emitState(entry);
+    return { entry, pending: true };
+  }
+
+  // Two fields on the socket rather than one keyed on socket.data.uid: a
+  // GameNight sign-in mid-wait changes the uid, and a disconnect that looked
+  // the row up by the new one would leave it holding a dead socket forever.
+  function bindPending(entry, uid, socket, { resumed = false } = {}) {
+    const row = entry.pending.get(uid);
+    if (!row) return false;
+    row.socketId = socket.id;
+    row.disconnectedAt = null;
+    socket.data.pendingTournamentId = entry.id;
+    socket.data.pendingUid = uid;
+    socket.emit('tournamentPending', pendingInfo(entry, { resumed }));
+    if (resumed) emitState(entry);
+    return true;
+  }
+
+  // The socket went; the request stays, for a while. The sweep lapses it.
+  function unbindPending(entry, uid, socket) {
+    const row = entry.pending.get(uid);
+    if (!row || row.socketId !== socket.id) return;
+    row.socketId = null;
+    row.disconnectedAt = now();
+    emitState(entry);
+  }
+
+  function clearPendingFields(socketId) {
+    const s = socketId ? socketById(socketId) : null;
+    if (s && s.data) {
+      s.data.pendingTournamentId = null;
+      s.data.pendingUid = null;
+    }
+  }
+
+  // Every end the asker did not choose: declined, closed, taken, cancelled,
+  // or lapsed after the grace. The reason is a short code the client turns
+  // into a sentence.
+  function endRequest(entry, uid, reason, { quiet = false } = {}) {
+    const row = entry.pending.get(uid);
+    if (!row) return false;
+    entry.pending.delete(uid);
+    if (row.socketId) {
+      io.to(row.socketId).emit('tournamentDeclined', { id: entry.id, name: entry.name, reason });
+      clearPendingFields(row.socketId);
+    }
+    if (!quiet) emitState(entry);
+    return true;
+  }
+
+  function flushPending(entry, reason) {
+    if (!entry.pending.size) return;
+    for (const uid of [...entry.pending.keys()]) endRequest(entry, uid, reason, { quiet: true });
+    emitState(entry);
+  }
+
+  // The asker gives up.
+  function withdraw(entry, uid, socket) {
+    if (!entry.pending.has(uid)) return { error: 'You are not waiting on this tournament' };
+    entry.pending.delete(uid);
+    if (socket) {
+      socket.data.pendingTournamentId = null;
+      socket.data.pendingUid = null;
+      socket.emit('leftTournament', { id: entry.id, reason: 'withdrawn' });
+    }
+    emitState(entry);
+    return { entry };
+  }
+
+  // A request left behind somewhere else, when its owner creates or joins a
+  // game. Bookkeeping, not a message: the asker is the one moving on.
+  function withdrawAll(uid, except = null) {
+    for (const entry of tournaments.values()) {
+      if (entry === except || !entry.pending.has(uid)) continue;
+      const row = entry.pending.get(uid);
+      entry.pending.delete(uid);
+      clearPendingFields(row.socketId);
+      emitState(entry);
+    }
+  }
+
+  function findPendingByUid(uid) {
+    if (!uid) return null;
+    for (const entry of tournaments.values()) {
+      if (entry.status !== 'finished' && entry.pending.has(uid)) return entry;
+    }
+    return null;
+  }
+
+  function admit(entry, hostUid, targetUid) {
+    if (!requireHost(entry, hostUid)) return { error: 'Only the host can do that' };
+    const row = entry.pending.get(targetUid);
+    if (!row) return { error: 'They are not waiting on this tournament' };
+    const who = identity.get(targetUid);
+    if (!who) {
+      endRequest(entry, targetUid, 'declined');
+      return { error: 'They are no longer here' };
+    }
+    const open =
+      entry.status === 'registering' ||
+      (entry.status === 'running' && entry.director.lateRegOpen());
+    if (!open) {
+      endRequest(entry, targetUid, 'closed');
+      return { error: 'Registration has closed' };
+    }
+    // Checked again here: a name that was free when they knocked may have been
+    // taken by somebody the host let in first.
+    const key = normalizeNameKey(who.name);
+    if (entry.director.entrants.some((e) => normalizeNameKey(e.name) === key)) {
+      endRequest(entry, targetUid, 'taken');
+      return { error: 'Name already taken in this tournament' };
+    }
+    const socket = row.socketId ? socketById(row.socketId) : null;
+    entry.pending.delete(targetUid);
+    clearPendingFields(row.socketId);
+    // A socket that is briefly gone is fine: the registration is created
+    // unbound and findByUid binds them on their next identify.
+    const result = enter(entry, targetUid, who, socket);
+    if (result.error) {
+      if (socket) {
+        socket.emit('tournamentDeclined', { id: entry.id, name: entry.name, reason: 'closed' });
+      }
+      emitState(entry);
+    }
+    return result;
+  }
+
+  function decline(entry, hostUid, targetUid) {
+    if (!requireHost(entry, hostUid)) return { error: 'Only the host can do that' };
+    if (!entry.pending.has(targetUid)) return { error: 'They are not waiting on this tournament' };
+    endRequest(entry, targetUid, 'declined');
+    return { ok: true };
   }
 
   // A seat sits out when its player drops, leaves or lets the clock run out.
@@ -1011,6 +1246,10 @@ function createTournamentRegistry(deps = {}) {
   }
 
   function remove(entry) {
+    // Every way a tournament goes comes through here, so this is where
+    // whoever was still waiting to be let in is told there is nothing to
+    // wait for.
+    flushPending(entry, 'cancelled');
     if (entry.timer) {
       timers.clearInterval(entry.timer);
       entry.timer = null;
@@ -1044,6 +1283,12 @@ function createTournamentRegistry(deps = {}) {
     persist();
     emitState(entry);
     emitList();
+    // Whoever is waiting at the door is waiting on a different person now.
+    for (const row of entry.pending.values()) {
+      if (row.socketId) {
+        io.to(row.socketId).emit('tournamentPending', pendingInfo(entry, { resumed: true }));
+      }
+    }
     return true;
   }
 
@@ -1062,6 +1307,20 @@ function createTournamentRegistry(deps = {}) {
   function sweep() {
     const t = now();
     for (const entry of [...tournaments.values()]) {
+      if (entry.pending.size) {
+        const open =
+          entry.status === 'registering' ||
+          (entry.status === 'running' && entry.director.lateRegOpen());
+        if (!open) {
+          flushPending(entry, 'closed');
+        } else {
+          for (const [uid, row] of [...entry.pending]) {
+            if (row.disconnectedAt !== null && t - row.disconnectedAt > pendingGraceMs) {
+              endRequest(entry, uid, 'lapsed');
+            }
+          }
+        }
+      }
       if (entry.status === 'registering') {
         if (entry.registrations.size === 0) {
           remove(entry, 'empty');
@@ -1256,8 +1515,14 @@ function createTournamentRegistry(deps = {}) {
     listFor,
     publicList,
     findByUid,
+    findPendingByUid,
     byCode,
     requireHost,
+    admit,
+    decline,
+    withdraw,
+    bindPending,
+    unbindPending,
     postChat,
     postReaction,
     setChatMute,

@@ -254,6 +254,15 @@
             <input type="text" id="tName" maxlength="24" value="Game Night" />
           </div>
           <div class="form-group">
+            <label>Who can join</label>
+            <div class="seg" id="tVisibility" role="group" aria-label="Who can join">
+              <button type="button" data-vis="public">Public</button>
+              <button type="button" data-vis="private" class="active">Private</button>
+              <button type="button" data-vis="invite">Invite-only</button>
+            </div>
+            <div class="seg-hint" id="tVisibilityHint">Unlisted; join by code or link.</div>
+          </div>
+          <div class="form-group">
             <label for="tStartAt">Starts</label>
             <div class="seg" id="tStartQuick" role="group" aria-label="Start time">
               <button type="button" data-min="0">As soon as we are 2</button>
@@ -334,7 +343,13 @@
             <span class="wr-code" id="wrCode"></span>
             <button class="btn-secondary" id="btnCopyLink" type="button">Copy link</button>
           </div>
+          <p class="wr-code-hint hidden" id="wrCodeHint"></p>
           <div class="wr-roster" id="wrRoster" aria-label="Registered players"></div>
+          <!-- Invite-only, host's view: who is at the door. -->
+          <div class="wr-pending hidden" id="wrPending">
+            <div class="lobby-title">Waiting to be let in</div>
+            <div class="wr-roster" id="wrPendingList" aria-label="Waiting to be let in"></div>
+          </div>
           <div class="wr-settings" id="wrSettings"></div>
           <!-- Before the cards are out there is no table to talk at, so the
                waiting room carries the conversation until one exists. -->
@@ -365,6 +380,27 @@
             <button class="btn-secondary" id="btnUnregister" type="button">Unregister</button>
             <button class="btn-secondary hidden" id="btnLeaveTournament" type="button">
               Leave
+            </button>
+          </div>
+        </section>
+
+        <!-- Asked to join an invite-only game; the host has not answered yet. -->
+        <section
+          class="lobby-view lobby-card hidden"
+          id="lobbyPending"
+          aria-label="Waiting to be let in"
+        >
+          <div class="wr-head">
+            <div class="wr-title" id="pdName"></div>
+          </div>
+          <div class="pd-status" id="pdStatus" aria-live="polite"></div>
+          <p class="op-help">
+            This game is invite-only. The host can see you asking and will let you in, or not. You
+            can leave the door at any time.
+          </p>
+          <div class="lobby-actions">
+            <button class="btn-secondary" id="btnCancelRequest" type="button">
+              Cancel request
             </button>
           </div>
         </section>
@@ -668,6 +704,9 @@
             role="tabpanel"
             aria-labelledby="tabInfo"
           >
+            <!-- Host only, invite-only, once the cards are out: who is at the
+                 door. A sibling of the body, which is rebuilt every tick. -->
+            <div class="panel-info-pending hidden" id="panelInfoPending"></div>
             <div class="panel-scroll" id="panelInfoBody"></div>
           </section>
           <section

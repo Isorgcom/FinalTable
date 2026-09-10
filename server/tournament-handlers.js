@@ -68,6 +68,11 @@ function registerTournamentHandlers(deps) {
       const entry = entryFor(socket);
       if (entry) registry.bind(entry, socket.data.tournamentUid, socket, { resumed: true });
     }
+    // The same for somebody who was waiting at the door of an invite-only game.
+    if (socket.recovered && socket.data.pendingTournamentId && socket.data.pendingUid) {
+      const waiting = registry.tournaments.get(socket.data.pendingTournamentId);
+      if (waiting) registry.bindPending(waiting, socket.data.pendingUid, socket, { resumed: true });
+    }
     // What this server offers, before the client has said who it is: whether
     // there is an operator surface, and whether a GameNight sign-in exists and
     // where it goes. Never the password, never the key.
@@ -135,14 +140,22 @@ function registerTournamentHandlers(deps) {
       socket.data.uid = ident.uid;
       const entry = registry.findByUid(ident.uid);
       let resume = null;
+      let pending = null;
       if (entry) {
         registry.bind(entry, ident.uid, socket, { resumed: true });
         resume = { id: entry.id, code: entry.code, name: entry.name, status: entry.status };
+      } else {
+        // Not in a game, but perhaps waiting to be let into one.
+        const waiting = registry.findPendingByUid(ident.uid);
+        if (waiting) {
+          registry.bindPending(waiting, ident.uid, socket, { resumed: true });
+          pending = { id: waiting.id, name: waiting.name };
+        }
       }
       // Whether the admin surface exists at all, so a client can decide
       // whether to offer it. Never the password, and never whether this socket
       // has already authenticated — that lives on the server.
-      socket.emit('identified', { ...ident, resume, adminAvailable: adminEnabled });
+      socket.emit('identified', { ...ident, resume, pending, adminAvailable: adminEnabled });
       // The list this socket got on connect was built before it had a uid, so
       // none of its cards knew they were this player's. Send it again.
       socket.emit('tournamentList', registry.listFor(ident.uid));
@@ -171,6 +184,33 @@ function registerTournamentHandlers(deps) {
       const entry = entryFor(socket);
       if (!entry) return;
       const { error } = registry.cancel(entry, socket.data.uid);
+      if (error) fail(socket, error);
+    });
+
+    // The door of an invite-only game. The asker can withdraw; the host lets
+    // people in or turns them away. Refusals go back on `error`, like the
+    // rest of the host's controls.
+    socket.on('cancelRequest', () => {
+      const waiting = registry.tournaments.get(socket.data.pendingTournamentId);
+      if (!waiting) return;
+      registry.withdraw(waiting, socket.data.pendingUid, socket);
+    });
+
+    socket.on('admitPlayer', (payload = {}) => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.admit(entry, socket.data.tournamentUid, String(payload.uid || ''));
+      if (error) fail(socket, error);
+    });
+
+    socket.on('declinePlayer', (payload = {}) => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.decline(
+        entry,
+        socket.data.tournamentUid,
+        String(payload.uid || '')
+      );
       if (error) fail(socket, error);
     });
 
@@ -454,6 +494,8 @@ function registerTournamentHandlers(deps) {
     });
 
     socket.on('disconnect', () => {
+      const waiting = registry.tournaments.get(socket.data.pendingTournamentId);
+      if (waiting) registry.unbindPending(waiting, socket.data.pendingUid, socket);
       const entry = entryFor(socket);
       if (!entry) return;
       registry.unbind(entry, socket.data.tournamentUid, socket);

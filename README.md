@@ -120,7 +120,9 @@ the chat without keeping any of it. Reactions ride the same rooms and the same
 mute: a few emoji thrown from the pre-action strip that float over the chair
 and are kept nowhere. `REACTIONS_ENABLED=false` removes them.
 
-Identity is now shared with Game Night, optionally: a server paired with one
+A game is private unless its host lists it: friends come in by code or link, a
+public game is on the lobby list for anyone, and an invite-only game has a door
+the host works. Identity is now shared with Game Night, optionally: a server paired with one
 (from the lobby's Operator page, behind the admin password; see
 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)) offers "Sign in with GameNight",
 and a player who signs in there is seated here under their Game Night

@@ -81,6 +81,13 @@ function ensureSocket() {
   socket.on('tournamentJoined', (info) => {
     if (window.Lobby) Lobby.onJoined(info);
   });
+  // Asked to join an invite-only game: waiting on the host, or answered.
+  socket.on('tournamentPending', (info) => {
+    if (window.Lobby) Lobby.onPending(info);
+  });
+  socket.on('tournamentDeclined', (data) => {
+    if (window.Lobby) Lobby.onDeclined(data);
+  });
   // The roster is one list, the same for everyone in the tournament, so the
   // server broadcasts it on its own when it changes rather than folding a copy
   // into every personal state push. Held here and put back on the state, so
