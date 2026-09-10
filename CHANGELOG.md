@@ -30,6 +30,14 @@ Release on GitHub to go with it.
   `CHAT_MAX_LEN`, `CHAT_RATE` and `CHAT_RATE_WINDOW_MS` tune what is kept and
   how fast anyone can talk.
 
+### Fixed
+
+- The lobby list, and `GET /api/tournaments` behind it, no longer carry each
+  game's join code. Anyone who could reach the server could read every code
+  and walk into any game; now the code is only shown in the waiting room of a
+  game you are in. Joining from a lobby card still works - it goes by the
+  game rather than the code - and the code box and `?t=` links are unchanged.
+
 ### Removed
 
 - The 3D room behind the felt, and the 589 KB WebGL library that drew it -

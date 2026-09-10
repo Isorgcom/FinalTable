@@ -19,7 +19,8 @@
   let list = [];
   let current = null; // latest tournamentState for our tournament
   let currentId = null;
-  let pendingJoinCode = null;
+  // A join waiting on a name: `{ code }` from the box or a link, `{ tournamentId }` from a card.
+  let pendingJoin = null;
   let pendingCreate = null;
   let pendingLastCheck = null; // a tournament we were in before this page load
   let view = 'home';
@@ -94,10 +95,10 @@
       socket.emit('createTournament', payload);
       return;
     }
-    if (pendingJoinCode) {
-      const code = pendingJoinCode;
-      pendingJoinCode = null;
-      socket.emit('joinTournament', { code });
+    if (pendingJoin) {
+      const payload = pendingJoin;
+      pendingJoin = null;
+      socket.emit('joinTournament', payload);
       return;
     }
     // Reconnected while on a table that no longer holds us.
@@ -284,7 +285,7 @@
   function tournamentCard(t) {
     const card = document.createElement('div');
     card.className = `t-card t-card-${t.status}`;
-    card.dataset.code = t.code;
+    card.dataset.id = t.id;
 
     const head = document.createElement('div');
     head.className = 't-card-head';
@@ -335,7 +336,7 @@
       btn.textContent = 'Results';
       btn.disabled = true;
     }
-    btn.addEventListener('click', () => joinCode(t.code));
+    btn.addEventListener('click', () => requestJoin({ tournamentId: t.id }));
 
     card.append(head, status, meta, btn);
     return card;
@@ -429,14 +430,19 @@
       .trim()
       .toUpperCase();
     if (!clean) return false;
+    return requestJoin({ code: clean });
+  }
+
+  // The list never carries a code - it is public - so a card joins by id.
+  function requestJoin(payload) {
     if (!nameValue()) {
-      pendingJoinCode = clean;
+      pendingJoin = payload;
       return needName();
     }
     if (identity && socket && socket.connected) {
-      socket.emit('joinTournament', { code: clean });
+      socket.emit('joinTournament', payload);
     } else {
-      pendingJoinCode = clean;
+      pendingJoin = payload;
       identify();
     }
     return true;
@@ -659,8 +665,9 @@
     const params = new URLSearchParams(location.search);
     const fromLink = params.get('t');
     if (fromLink) {
-      pendingJoinCode = fromLink.trim().toUpperCase();
-      $('joinCodeInput').value = pendingJoinCode;
+      const code = fromLink.trim().toUpperCase();
+      pendingJoin = { code };
+      $('joinCodeInput').value = code;
     }
     const savedName = store.get(NAME_KEY);
     if (savedName && !$('playerName').value) $('playerName').value = savedName;

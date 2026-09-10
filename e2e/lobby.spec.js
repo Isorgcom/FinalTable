@@ -95,10 +95,11 @@ test('creating a tournament lands in the waiting room with roster, code and sett
   // A field of one cannot deal, so the host waits for a second person.
   await expect(page.locator('#btnStartNow')).toBeDisabled();
   const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
-  expect(list.find((t) => t.code === code)).toMatchObject({
-    status: 'registering',
-    hostName: 'Host',
-  });
+  const card = list.find((t) => t.name === 'Sunday Deepstack');
+  expect(card).toMatchObject({ status: 'registering', hostName: 'Host' });
+  // Anyone can fetch this list, so the code the waiting room shows is not in it.
+  expect(card).not.toHaveProperty('code');
+  expect(JSON.stringify(list)).not.toContain(code);
 });
 
 test('a second player joins by link, both see each other, and the host starts for both', async ({
@@ -139,6 +140,37 @@ test('a second player joins by link, both see each other, and the host starts fo
   await guestContext.close();
 });
 
+test('a guest joins from the lobby card without ever seeing the code', async ({
+  browser,
+  page,
+}) => {
+  await identifyAs(page, 'Host');
+  const code = await createTournament(page, { name: 'Open Door', minutes: 15 });
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  const guestErrors = [];
+  guest.on('pageerror', (err) => guestErrors.push(err.message));
+  await identifyAs(guest, 'Walk-in');
+  const card = guest.locator('#listRegistering .t-card', { hasText: 'Open Door' });
+  await expect(card.locator('.t-card-btn')).toHaveText('Join');
+  // Nothing the lobby holds for this card is the code.
+  expect(await card.evaluate((el) => el.outerHTML)).not.toContain(code);
+  expect(await guest.evaluate(() => JSON.stringify(window.Lobby.current()))).not.toContain(code);
+
+  await card.locator('.t-card-btn').click();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await expect(guest.locator('#wrName')).toHaveText('Open Door');
+  // Once in, the waiting room shows the same code the host has, for sharing on.
+  await expect(guest.locator('#wrCode')).toHaveText(code);
+  for (const p of [page, guest]) {
+    await expect(p.locator('#wrRoster .wr-row')).toHaveCount(2);
+    await expect(p.locator('#wrRoster')).toContainText('Walk-in');
+  }
+  expect(guestErrors).toEqual([]);
+  await guestContext.close();
+});
+
 test('the bot option fills the table so one person can start', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
@@ -170,14 +202,14 @@ test('the bot option fills the table so one person can start', async ({ page }) 
 
 test('unregistering before the start returns to the lobby', async ({ page }) => {
   await identifyAs(page, 'Solo');
-  const code = await createTournament(page, { name: 'Changed My Mind', minutes: 30 });
+  await createTournament(page, { name: 'Changed My Mind', minutes: 30 });
   await page.click('#btnUnregister');
   await expect(page.locator('#lobbyHome')).toBeVisible();
   await expect(page.locator('#lobbyWaiting')).toBeHidden();
   await expect
     .poll(async () => {
       const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
-      return list.some((t) => t.code === code);
+      return list.some((t) => t.name === 'Changed My Mind');
     })
     .toBe(false);
 });

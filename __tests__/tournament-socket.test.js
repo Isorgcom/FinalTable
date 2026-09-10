@@ -294,12 +294,14 @@ describe('Tournament socket layer', () => {
     expect(state.entrants).toBe(2);
     expect(state.isHost).toBe(true);
     const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
-    expect(list.find((t) => t.id === created.id)).toMatchObject({
-      code: created.code,
+    const card = list.find((t) => t.id === created.id);
+    expect(card).toMatchObject({
       status: 'registering',
       hostName: 'Host',
       entrants: { humans: 2, total: 2 },
     });
+    // The list is public and the code is the way in, so it stays off the card.
+    expect(card).not.toHaveProperty('code');
   });
 
   test('a duplicate name is refused', async () => {

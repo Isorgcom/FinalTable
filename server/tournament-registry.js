@@ -278,9 +278,11 @@ function createTournamentRegistry(deps = {}) {
     const d = entry.director;
     const humans = entry.registrations.size;
     const total = d.entrants.length;
+    // No `code` here. The card goes to everyone connected and to anyone who
+    // asks GET /api/tournaments, and the code is the way in. A player who is
+    // in gets it from tournamentState; a card joins by id.
     return {
       id: entry.id,
-      code: entry.code,
       name: entry.name,
       status: entry.status,
       createdAt: entry.createdAt,

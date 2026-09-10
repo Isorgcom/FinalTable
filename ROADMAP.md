@@ -21,15 +21,14 @@ None of this waits on the split below, and all of it is visible to a player.
 
 ### Table visibility - public, private, invite-only
 
-Today every tournament is public, and more so than it sounds: `summarize()`
-puts the join code in the card, and `GET /api/tournaments` is unauthenticated,
-so anyone who can reach the server can list every running game _and_ the code
-to walk into it. On a box on the internet that is a hole, not a preference.
+Today every tournament is public: `GET /api/tournaments` is unauthenticated,
+and every game is listed on it. The list used to carry the join code as well,
+so anyone who could reach the server could walk into any game; that is fixed,
+and a lobby card now joins by id while the code stays in the waiting room.
 
 Three modes: **public** (listed, anyone joins), **private** (unlisted, joinable
 only with the code), **invite-only** (the host admits people, or the roster is
-fixed up front). The immediate fix is smaller than the feature - stop putting
-`code` in a list anybody can fetch - and is worth doing before the rest.
+fixed up front).
 
 ### A real blind structure
 
@@ -162,9 +161,7 @@ Suggested, for the split:
 6. Cancel and pause, the heartbeat, and seat-move requests
 
 The game-side work above is independent of all six and can be picked up in any
-order, with one exception worth taking first: the join code should stop being
-served to anybody who asks, which is a small change and does not need the rest
-of the visibility feature behind it.
+order.
 
 ## Not on either path
 

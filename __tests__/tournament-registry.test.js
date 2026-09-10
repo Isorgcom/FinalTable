@@ -222,6 +222,30 @@ describe('tournament registry', () => {
     expect(registry.tournaments.has(entry.id)).toBe(false);
   });
 
+  test('the list carries no join code, and a card joins by id instead', () => {
+    const hostSocket = makeSocket('sh', 'h');
+    const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
+    expect(entry.code).toMatch(/^[A-Z2-9]{5}$/);
+
+    // The HTTP list and the socket push are the same card, and the code is the
+    // way into the game, so neither can carry it.
+    const stranger = makeSocket('sx');
+    jest.advanceTimersByTime(300);
+    const pushed = [...stranger.emitted].reverse().find((m) => m.event === 'tournamentList');
+    for (const card of [...registry.publicList(), ...pushed.payload]) {
+      expect(card.id).toBe(entry.id);
+      expect(card).not.toHaveProperty('code');
+      expect(JSON.stringify(card)).not.toContain(entry.code);
+    }
+
+    // Which is fine, because a card has the id and that is enough to join.
+    const guest = makeSocket('sg', 'g');
+    expect(registry.join('g', { tournamentId: entry.id }, guest).error).toBeUndefined();
+    expect(entry.registrations.has('g')).toBe(true);
+    const joined = guest.emitted.find((m) => m.event === 'tournamentJoined');
+    expect(joined.payload).toMatchObject({ id: entry.id, code: entry.code });
+  });
+
   test('a card knows the tournament is yours, including after you leave', () => {
     const hostSocket = makeSocket('sh', 'h');
     const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);
