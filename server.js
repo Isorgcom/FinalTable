@@ -11,6 +11,7 @@ const { loadConfig } = require('./server/config');
 const { applySecurityHeaders, createRateLimiter } = require('./server/http-middleware');
 const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
+const { createAdminCredential } = require('./server/admin-credential');
 const { createSsoRuntime } = require('./server/gamenight-pairing');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
 const { createStructuredLogger } = require('./server/logger');
@@ -137,6 +138,14 @@ const settingsStore = createSettingsStore({
   saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
 });
 
+// The operator password: the environment's until somebody changes it from the
+// Operator page, after which the stored one wins.
+const adminCredential = createAdminCredential({
+  settingsStore,
+  envPassword: config.adminPassword,
+  log: structuredLog,
+});
+
 // The GameNight sign-in bridge. Paired from the Operator page, or seeded from
 // the environment on a first boot; unpaired, the lobby never offers the button.
 const sso = createSsoRuntime({ settingsStore, envConfig: config.gamenight, log: structuredLog });
@@ -157,7 +166,7 @@ const tournamentLayer = registerTournamentHandlers({
   hostTransferGraceMs: config.hostTransferGraceMs,
   sweepMs: config.tournamentSweepMs,
   handPauseMs: config.handPauseMs,
-  adminPassword: config.adminPassword,
+  adminCredential,
   tableOptions: { streetPauseMs: config.streetPauseMs },
   chatStore,
   chatEnabled: config.chatEnabled,
@@ -251,6 +260,7 @@ module.exports = {
   identity,
   sso,
   settingsStore,
+  adminCredential,
   flushStores,
   startServer,
   config,

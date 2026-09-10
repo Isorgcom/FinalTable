@@ -189,8 +189,47 @@
                 Refresh key
               </button>
               <button class="btn-secondary hidden" id="btnOpUnpair" type="button">Unpair</button>
-              <button class="btn-secondary" id="btnOpBack" type="button">Back</button>
             </div>
+          </div>
+
+          <div class="op-section op-divider">
+            <div class="op-heading">Operator password</div>
+            <p class="op-help">
+              The password for this page and for ending a tournament from the table menu. Changing
+              it signs out any other operator session.
+            </p>
+            <div class="op-status" id="opPwStatus" aria-live="polite"></div>
+            <div class="form-group">
+              <label for="opPwCurrent">Current password</label>
+              <input
+                type="password"
+                id="opPwCurrent"
+                autocomplete="current-password"
+                maxlength="128"
+              />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="opPwNext">New password</label>
+                <input type="password" id="opPwNext" autocomplete="new-password" maxlength="128" />
+              </div>
+              <div class="form-group">
+                <label for="opPwConfirm">New password again</label>
+                <input
+                  type="password"
+                  id="opPwConfirm"
+                  autocomplete="new-password"
+                  maxlength="128"
+                />
+              </div>
+            </div>
+            <div class="lobby-actions">
+              <button class="btn-enter" id="btnOpSetPassword" type="button">Change password</button>
+            </div>
+          </div>
+
+          <div class="lobby-actions op-divider">
+            <button class="btn-secondary" id="btnOpBack" type="button">Back to the lobby</button>
           </div>
         </section>
 

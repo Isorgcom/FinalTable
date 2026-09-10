@@ -26,6 +26,16 @@ Release on GitHub to go with it.
   same row. Guests are unchanged, and a server that is not paired has no
   button. Known limit: a guest and a GameNight member with the same name still
   cannot share a tournament; the second to arrive is refused as before.
+- The operator password can be changed from the Operator page, which is the
+  last thing there that needed a shell and a restart. It asks for the current
+  one first (a tab left open is not proof of who is at it), wants at least
+  eight characters, and signs out every other operator session, since whoever
+  is being locked out is usually the reason for changing it. What is stored is
+  a scrypt hash in `data/settings.json`, never the password. `ADMIN_PASSWORD`
+  still gives a server its first one - with no password there is no operator
+  surface and so no way in to set one - and after a change the stored one wins.
+  Forgotten it: remove `adminPassword` from `data/settings.json` and the one in
+  the environment works again.
 - An Operator page in the lobby, behind the admin password, where the
   GameNight pairing is made: enter the GameNight address and the app slug, and
   the signing key is fetched from it, nothing to paste. Refresh it after

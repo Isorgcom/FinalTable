@@ -215,6 +215,34 @@ test('the operator unpairs and re-pairs from the lobby', async ({ page }) => {
     await page.fill('#opGnUrl', 'http://127.0.0.1:1');
     await page.click('#btnOpPair');
     await expect(page.locator('#opGnStatus')).toContainText('Could not reach');
+
+    // The operator password, changed from the same page.
+    await page.fill('#opPwNext', 'a-longer-password');
+    await page.fill('#opPwConfirm', 'a-longer-password');
+    await page.click('#btnOpSetPassword');
+    await expect(page.locator('#opPwStatus')).toContainText('Enter the current password');
+
+    await page.fill('#opPwCurrent', OPERATOR_PASSWORD);
+    await page.fill('#opPwConfirm', 'mistyped-the-second-time');
+    await page.click('#btnOpSetPassword');
+    await expect(page.locator('#opPwStatus')).toContainText('do not match');
+
+    await page.fill('#opPwConfirm', 'a-longer-password');
+    await page.click('#btnOpSetPassword');
+    await expect(page.locator('#opPwStatus')).toContainText('Password changed');
+    await expect(page.locator('#opPwCurrent')).toHaveValue('');
+
+    // The new one is what unlocks now. Reload for a fresh socket and prove it.
+    await page.reload();
+    await page.click('#btnOperator');
+    await page.fill('#appDialogInput', OPERATOR_PASSWORD);
+    await page.click('#btnAppDialogConfirm');
+    await expect(page.locator('#appDialogBody')).toContainText('Wrong password');
+    await page.click('#btnAppDialogConfirm');
+    await page.click('#btnOperator');
+    await page.fill('#appDialogInput', 'a-longer-password');
+    await page.click('#btnAppDialogConfirm');
+    await expect(page.locator('#lobbyOperator')).toBeVisible();
   } finally {
     await new Promise((r) => fakeGn.s.close(r));
   }

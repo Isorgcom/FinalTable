@@ -9,7 +9,6 @@
 // socket.io room, so a player moved between tables simply starts receiving
 // state from the new table. There is no room membership to migrate.
 
-const crypto = require('crypto');
 const { createTournamentRegistry } = require('./tournament-registry');
 
 // How many wrong passwords a single socket may offer before it stops being
@@ -18,23 +17,15 @@ const { createTournamentRegistry } = require('./tournament-registry');
 const ADMIN_MAX_ATTEMPTS = 5;
 const ADMIN_FAIL_DELAY_MS = 400;
 
-// Compared through a hash so the two sides are always the same length, and
-// through timingSafeEqual so the comparison does not leak the password one
-// character at a time to somebody measuring it.
-function passwordMatches(given, expected) {
-  if (typeof given !== 'string' || typeof expected !== 'string' || !expected) return false;
-  const a = crypto.createHash('sha256').update(given, 'utf8').digest();
-  const b = crypto.createHash('sha256').update(expected, 'utf8').digest();
-  return crypto.timingSafeEqual(a, b);
-}
-
 function registerTournamentHandlers(deps) {
   const { io, identity } = deps;
   const registry = createTournamentRegistry(deps);
-  // Unset means the admin surface does not exist, rather than existing with a
-  // default password. It is never sent to a client, logged, or put in state.
-  const adminPassword = typeof deps.adminPassword === 'string' ? deps.adminPassword.trim() : '';
-  const adminEnabled = adminPassword.length > 0;
+  // The operator password: the environment's, or one an operator has since set
+  // from the Operator page. No password at all means the admin surface does
+  // not exist, rather than existing with a default. It is never sent to a
+  // client, logged, or put in state. See server/admin-credential.js.
+  const adminCredential = deps.adminCredential || { isEnabled: () => false, verify: () => false };
+  const adminEnabled = adminCredential.isEnabled();
   // The GameNight sign-in bridge. Read live on every use: the operator can
   // pair, refresh or unpair while the server runs. Unpaired, a GameNight
   // token is simply not a way in.
@@ -327,7 +318,7 @@ function registerTournamentHandlers(deps) {
       if (socket.data.adminAttempts >= ADMIN_MAX_ATTEMPTS) {
         return socket.emit('adminStatus', { ok: false, available: true, lockedOut: true });
       }
-      const ok = passwordMatches(String(payload.password || ''), adminPassword);
+      const ok = adminCredential.verify(String(payload.password || ''));
       if (ok) {
         socket.data.isAdmin = true;
         socket.data.adminAttempts = 0;
@@ -342,6 +333,26 @@ function registerTournamentHandlers(deps) {
           attemptsLeft: Math.max(0, ADMIN_MAX_ATTEMPTS - socket.data.adminAttempts),
         });
       }, ADMIN_FAIL_DELAY_MS);
+    });
+
+    // Change the operator password. Behind the unlock, and the current password
+    // is asked for again: the unlock lives as long as the socket, and a tab
+    // left open is not proof that the person at it knows the password. A
+    // change signs out every other operator session, because whoever is being
+    // locked out is the reason to change it.
+    socket.on('adminSetPassword', (payload = {}) => {
+      if (!adminEnabled || !socket.data.isAdmin) return;
+      const error = adminCredential.change(
+        String(payload.current || ''),
+        String(payload.next || '')
+      );
+      if (error) return socket.emit('adminPasswordResult', { ok: false, error });
+      for (const [id, other] of io.sockets.sockets) {
+        if (id === socket.id || !other.data.isAdmin) continue;
+        other.data.isAdmin = false;
+        other.emit('adminStatus', { ok: false, available: true, signedOut: true });
+      }
+      socket.emit('adminPasswordResult', { ok: true });
     });
 
     // End a tournament that is already running. The host control for this only

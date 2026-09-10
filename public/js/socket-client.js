@@ -54,6 +54,9 @@ function ensureSocket() {
   socket.on('adminGameNight', (data) => {
     if (window.Lobby) Lobby.onAdminGameNight(data);
   });
+  socket.on('adminPasswordResult', (data) => {
+    if (window.Lobby) Lobby.onAdminPasswordResult(data);
+  });
 
   // What the server offers, sent before identify: whether an operator surface
   // exists and whether a GameNight sign-in does. Nothing about this socket.

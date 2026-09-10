@@ -72,6 +72,25 @@ The clone is the deployment. `docker-compose.prod.yml` is committed and carries
 this host's specifics: the bind mount, the proxy network, `TRUST_PROXY`, and
 memory sized for a box that has other tenants.
 
+### The operator password
+
+`ADMIN_PASSWORD` in the host's `.env` is how a server gets its first one: with
+no password there is no operator surface, and so no way in to set one. After
+that it is changed from the **Operator** page in the lobby, and the new one is
+kept as a scrypt hash in `data/settings.json` and wins over the environment
+from then on - a password somebody typed into a browser should not be undone
+by a stale line in a compose file.
+
+Forgotten it, remove `adminPassword` from that file and the environment's works
+again:
+
+```bash
+docker exec finaltable node -e 'const f="/app/data/settings.json",fs=require("fs");
+const d=JSON.parse(fs.readFileSync(f));delete d.settings.adminPassword;
+fs.writeFileSync(f,JSON.stringify(d,null,2))'
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart
+```
+
 ### Pairing with GameNight
 
 Optional. Paired, the lobby offers "Sign in with GameNight" next to the guest

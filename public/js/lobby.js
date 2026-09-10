@@ -182,6 +182,7 @@
 
   async function openOperator() {
     if (window.Admin && Admin.isAuthed()) {
+      setPwStatus('');
       showView('operator');
       if (socket) socket.emit('adminGetGameNight');
       return;
@@ -274,6 +275,43 @@
     }
     renderOperator();
     setOpBusy(false);
+  }
+
+  function setPwStatus(text, kind) {
+    const el = $('opPwStatus');
+    el.textContent = text || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('err', kind === 'err');
+  }
+
+  function opSetPassword() {
+    if (!socket) return;
+    const current = $('opPwCurrent').value;
+    const next = $('opPwNext').value;
+    const confirm = $('opPwConfirm').value;
+    if (!current) {
+      setPwStatus('Enter the current password.', 'err');
+      $('opPwCurrent').focus();
+      return;
+    }
+    if (next !== confirm) {
+      setPwStatus('The two new passwords do not match.', 'err');
+      $('opPwConfirm').focus();
+      return;
+    }
+    $('btnOpSetPassword').disabled = true;
+    setPwStatus('Changing…');
+    socket.emit('adminSetPassword', { current, next });
+  }
+
+  function onAdminPasswordResult(data) {
+    $('btnOpSetPassword').disabled = false;
+    if (data && data.ok) {
+      ['opPwCurrent', 'opPwNext', 'opPwConfirm'].forEach((id) => ($(id).value = ''));
+      setPwStatus('Password changed. Any other operator session has been signed out.', 'ok');
+      return;
+    }
+    setPwStatus((data && data.error) || 'That did not work.', 'err');
   }
 
   function setOpBusy(busy) {
@@ -970,6 +1008,13 @@
     $('btnOpRefresh').addEventListener('click', opRefresh);
     $('btnOpUnpair').addEventListener('click', opUnpair);
     $('btnOpBack').addEventListener('click', () => showView('home'));
+    $('btnOpSetPassword').addEventListener('click', opSetPassword);
+    $('opPwConfirm').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        opSetPassword();
+      }
+    });
     $('opGnUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -1019,6 +1064,7 @@
     onServerInfo,
     onAdminStatus,
     onAdminGameNight,
+    onAdminPasswordResult,
     onIdentified,
     onIdentifyFailed,
     onSessionReplaced,

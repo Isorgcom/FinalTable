@@ -529,6 +529,12 @@
   display: none;
 }
 
+.op-divider {
+  border-top: 1px solid rgba(92, 61, 26, 0.3);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
 /* ── Waiting room ── */
 .wr-head {
   display: flex;

@@ -168,6 +168,82 @@ describe('pairing with GameNight from the Operator page', () => {
     });
   });
 
+  test('the operator password can be changed, and the change outlives a restart', async () => {
+    const { s } = await connect();
+    await unlock(s);
+
+    // The current password is asked for again, and a new one has to be worth
+    // having. None of these should change anything.
+    for (const [payload, expected] of [
+      [{ current: 'wrong', next: 'a-good-password' }, /not the current password/i],
+      [{ current: PASSWORD, next: 'short' }, /at least 8/i],
+      [{ current: PASSWORD, next: PASSWORD }, /already the password/i],
+    ]) {
+      const r = await ask(s, 'adminSetPassword', payload, 'adminPasswordResult');
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(expected);
+    }
+    expect(serverModule.adminCredential.verify(PASSWORD)).toBe(true);
+
+    // A second operator session, which the change should sign out.
+    const { s: other } = await connect();
+    expect((await unlock(other)).ok).toBe(true);
+    const signedOut = new Promise((r) => other.once('adminStatus', r));
+
+    const done = await ask(
+      s,
+      'adminSetPassword',
+      { current: PASSWORD, next: 'a-longer-password' },
+      'adminPasswordResult'
+    );
+    expect(done).toEqual({ ok: true });
+    expect(await signedOut).toMatchObject({ ok: false, available: true, signedOut: true });
+
+    // The old one is dead, the new one works, and nothing was stored in clear.
+    const { s: third } = await connect();
+    expect((await ask(third, 'adminLogin', { password: PASSWORD }, 'adminStatus')).ok).toBe(false);
+    expect(
+      (await ask(third, 'adminLogin', { password: 'a-longer-password' }, 'adminStatus')).ok
+    ).toBe(true);
+    const raw = fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf8');
+    expect(raw).not.toContain('a-longer-password');
+    expect(JSON.parse(raw).settings.adminPassword).toMatchObject({ algo: 'scrypt' });
+
+    // And it survives the process, with the environment still holding the old one.
+    await shutdown();
+    await boot();
+    const { s: afterRestart } = await connect();
+    expect((await ask(afterRestart, 'adminLogin', { password: PASSWORD }, 'adminStatus')).ok).toBe(
+      false
+    );
+    const back = await ask(
+      afterRestart,
+      'adminLogin',
+      { password: 'a-longer-password' },
+      'adminStatus'
+    );
+    expect(back.ok).toBe(true);
+    // Put it back, so the rest of the suite has the password it expects.
+    expect(
+      await ask(
+        afterRestart,
+        'adminSetPassword',
+        { current: 'a-longer-password', next: PASSWORD },
+        'adminPasswordResult'
+      )
+    ).toEqual({ ok: true });
+  });
+
+  test('a socket that has not unlocked cannot change the password', async () => {
+    const { s } = await connect();
+    let answered = false;
+    s.on('adminPasswordResult', () => (answered = true));
+    s.emit('adminSetPassword', { current: PASSWORD, next: 'sneaky-password' });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(answered).toBe(false);
+    expect(serverModule.adminCredential.verify(PASSWORD)).toBe(true);
+  });
+
   test('refresh answers, and unpair takes the button away for everyone', async () => {
     const { s } = await connect();
     await unlock(s);
