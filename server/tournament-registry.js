@@ -127,10 +127,15 @@ function createTournamentRegistry(deps = {}) {
       // How many times this field has been seated again without getting a hand
       // out. See the guard in restore().
       restoreCount: entry.restoreCount || 0,
+      // Written down so the next restart holds it too, rather than reading it
+      // back as a tournament that is merely waiting for its start time.
+      held: !!entry.held,
       // A running tournament carries the field as it stood between hands, so a
       // restart seats everyone again instead of the tournament ceasing to
-      // exist. Registrations alone are enough for one that has not dealt.
-      field: entry.status === 'running' ? entry.director.snapshot() : null,
+      // exist. Registrations alone are enough for one that has not dealt. A
+      // held field is carried untouched: those chips are the record of what
+      // happened, and keeping them is the whole point of holding it.
+      field: entry.status === 'running' ? entry.director.snapshot() : entry.heldField || null,
     };
   }
 
@@ -614,6 +619,10 @@ function createTournamentRegistry(deps = {}) {
       timer: null,
       waitingReason: null,
       noHumansSince: null,
+      // Set by the restore guard: the field would not stay up, so it is kept
+      // as it stood rather than seated, and heldField is what it stood as.
+      held: false,
+      heldField: null,
       // Host moderation. Small enough to ride along in the tournament file, so
       // a mute survives a restart the way the field it was aimed at does.
       mutedUids: new Set(),
@@ -894,6 +903,11 @@ function createTournamentRegistry(deps = {}) {
     if (!requireHost(entry, uid)) return { error: 'Only the host can start the tournament' };
     if (entry.status !== 'registering') return { error: 'Already started' };
     if (entry.director.entrants.length < 2) return { error: 'Need at least 2 entrants' };
+    // Starting a held tournament is the host deciding to play it out from the
+    // beginning rather than keep a field that would not seat. A decision,
+    // rather than something that happens to it while nobody is looking.
+    entry.held = false;
+    entry.heldField = null;
     start(entry);
     return { entry };
   }
@@ -1013,6 +1027,15 @@ function createTournamentRegistry(deps = {}) {
       if (entry.status === 'registering') {
         if (entry.registrations.size === 0) {
           remove(entry, 'empty');
+          continue;
+        }
+        // A held field sits in `registering` with its start time long past, so
+        // this used to deal it one tick after the guard held it - a fresh
+        // table at level one, written over the chips being kept - and the
+        // overdue branch below would throw the same thing away half an hour
+        // later. It waits for the host instead, for as long as that takes.
+        if (entry.held) {
+          transferHost(entry);
           continue;
         }
         if (t >= entry.startsAt) {
@@ -1140,9 +1163,12 @@ function createTournamentRegistry(deps = {}) {
       // decide what to do with it.
       entry.restoreCount = (Number(saved.restoreCount) || 0) + 1;
       entry.restoredAt = now();
-      if (saved.status === 'running' && saved.field && entry.restoreCount > MAX_RESTORE_ATTEMPTS) {
+      const wasDealt = !!saved.field && (saved.status === 'running' || saved.held);
+      if (wasDealt && (saved.held || entry.restoreCount > MAX_RESTORE_ATTEMPTS)) {
+        entry.held = true;
+        entry.heldField = saved.field;
         entry.waitingReason = 'This tournament could not be restarted; the field is held.';
-      } else if (saved.status === 'running' && saved.field) {
+      } else if (wasDealt) {
         try {
           if (entry.director.restoreFrom(saved.field)) {
             for (const table of entry.director.tables) wireTable(entry, table);

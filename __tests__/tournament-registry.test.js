@@ -561,6 +561,79 @@ describe('tournament registry', () => {
     held.stop();
   });
 
+  // Holding the field was undone a tick later. A held tournament sits in
+  // `registering` with its start time long past, which is exactly what the
+  // sweep deals - so it dealt a fresh table at level one over the top of the
+  // chips being kept, and wrote that down as the field. Seen on a dev box,
+  // where a held game came back as a brand new one on every restart, which is
+  // the opposite of what holding it is for.
+  test('a held field is not dealt over by the sweep, and keeps its chips', () => {
+    const store = makeStore();
+    const boot = () =>
+      createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        sweepMs: 1000,
+        overdueAbandonMs: 3000,
+        store,
+        tableOptions: { actionTimeoutMs: 0 },
+      });
+    const first = boot();
+    const { entry } = first.create(
+      'h',
+      { name: 'Held', startsAt: Date.now() + 1000 },
+      makeSocket('sh')
+    );
+    first.join('g', { code: entry.code }, makeSocket('sg'));
+    jest.advanceTimersByTime(2000);
+    expect(entry.status).toBe('running');
+    first.flush();
+    first.stop();
+
+    // Three boots that could not get a hand out, already counted.
+    store.load()[0].restoreCount = 3;
+    const chips = store.load()[0].field.tables[0].players.map((p) => p.chips);
+
+    const second = boot();
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back.director.isRunning).toBe(false);
+    expect(back.waitingReason).toMatch(/could not be restarted/i);
+
+    // Past the start time, past the overdue window, and still held: neither
+    // dealt nor cancelled.
+    jest.advanceTimersByTime(6000);
+    expect(second.tournaments.has(entry.id)).toBe(true);
+    expect(back.status).toBe('registering');
+    expect(back.director.isRunning).toBe(false);
+    expect(back.waitingReason).toMatch(/could not be restarted/i);
+
+    // The file still carries the field, so the next restart holds it as well
+    // rather than reading it back as one waiting for its start time.
+    second.flush();
+    expect(store.load()[0].held).toBe(true);
+    expect(store.load()[0].field.tables[0].players.map((p) => p.chips)).toEqual(chips);
+    second.stop();
+
+    const third = boot();
+    expect(third.restore()).toBe(1);
+    const still = third.tournaments.get(entry.id);
+    expect(still.director.isRunning).toBe(false);
+    jest.advanceTimersByTime(6000);
+    expect(third.tournaments.has(entry.id)).toBe(true);
+    expect(still.director.isRunning).toBe(false);
+
+    // The host is the way out: starting it deals the field again from the
+    // beginning, which is a decision somebody made rather than something that
+    // happened to it.
+    expect(third.startNow(still, 'h').error).toBeUndefined();
+    expect(still.status).toBe('running');
+    expect(still.director.isRunning).toBe(true);
+    third.flush();
+    expect(store.load()[0].held).toBe(false);
+    third.stop();
+  });
+
   test('a field that stays up is not held against its earlier crashes', () => {
     const store = makeStore();
     const boot = () =>

@@ -32,6 +32,11 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- A tournament whose field could not be restarted is now held as it stood,
+  with its chips, until the host starts or cancels it. It used to be dealt
+  again from scratch a second later - a new table at level one with starting
+  stacks, and again on every restart after that - which threw away the field
+  the hold exists to keep.
 - A running tournament brought back after a server restart is now cleared
   after the usual two minutes if none of its players return, the same as one
   everybody has disconnected from. Before, it was only ever cleared on a
