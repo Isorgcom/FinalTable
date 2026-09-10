@@ -54,6 +54,35 @@ Half of this exists: a busted player keeps watching the table they were at
 What is missing is a way in for somebody who is not in the tournament at all -
 a rail link, and a decision about whether watchers can chat.
 
+### The host at every table
+
+Asked for on the forum (below): in a field of several tables the host is a
+seat at one of them, and chat is per table, so the host can talk to their own
+table and nobody else. A host running a night needs to reach every table - a
+level change, a break, "we are hand-for-hand". The shape is a host channel
+that lands in every table's room at once, distinguishable from a line said at
+the table, and readable by the host from every room whether or not they are
+seated there - which is the same seam as watching a table, since a host who
+busts should keep the whole field in view, not the rail of one table.
+
+### Trust, but verify
+
+The first reply to the announcement was "Rigged!", and that is the right
+question to ask a server that deals. Today the answer is by inspection: the
+shuffle is Fisher-Yates over `crypto.randomInt`, a player's state carries
+nobody's hole cards but their own until they are turned up, and the tests
+walk the run-out rules ([SECURITY.md](./SECURITY.md) has the details). That
+is a claim a reader has to verify by reading code.
+
+What would let a player verify a hand without reading anything: commit to
+the deck at the deal - publish a hash of the shuffled order plus a per-hand
+secret - and reveal both at the end of the hand, so anyone with the hand
+history can check that the cards that came out were the cards that were
+committed to. With an exportable hand history that becomes something a
+suspicious player can do at home. It does not prove the shuffle was fair, only
+that the deck was not changed after the deal, which is the part that can be
+proven.
+
 ### Accounts, and preferences that follow you
 
 A guest is still a device token in the browser plus a record in
@@ -189,6 +218,23 @@ Suggested, for the split:
 
 The game-side work above is independent of all six and can be picked up in any
 order.
+
+## From the table
+
+Feedback, and where it went. Kept so a request is not lost when the thread
+scrolls away.
+
+- [PokerChipForum, September 2026](https://www.pokerchipforum.com/threads/working-an-open-sourced-and-free-poker-tournament-server.146533/)
+  - the announcement thread, and the first outside play-test.
+  - _Thomacetti_ played a session at test.isorg.com: "Everything works well...
+    speedy, nice layout." The action bubble outliving its street, and the
+    reactions strip, came out of watching that play.
+  - _HiveKueen_: "The game host needs to be able to participate in the chat at
+    any table." → The host at every table, above.
+  - _CraigT78_: "Rigged!" then "Trust, but verify!" → Trust, but verify,
+    above, and the fairness notes in [SECURITY.md](./SECURITY.md).
+  - _toothpic_: the green screen recalls the OFCP game. Noted; the felt is the
+    felt.
 
 ## Not on either path
 
