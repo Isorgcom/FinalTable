@@ -1082,9 +1082,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   animation: actionFade 0.3s ease-out;
+  transition: opacity 0.3s ease-out;
   pointer-events: none;
   z-index: 30;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+}
+/* On its way out: the animation above is the arrival, this is the leaving. */
+.player-action-badge.fading {
+  opacity: 0;
 }
 .action-fold {
   background: rgba(92, 61, 26, 0.6);

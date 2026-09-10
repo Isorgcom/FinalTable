@@ -75,6 +75,13 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- The bubble saying what a player just did no longer sits on the felt after the
+  moment has passed. It cleared on a three-second rule that was only ever
+  checked when new state arrived, so on a table waiting for one player it
+  stayed for as long as they took to act, and a raise from before the flop was
+  still hanging over a chair with the flop on the board. It now goes when the
+  next street is dealt, all-in runouts included, and otherwise fades out on its
+  own three seconds after the action, whether or not anything else happens.
 - A `.env` the server could see but not read stopped it booting, in a loop,
   rather than being skipped. It is what a deployment that mounts the working
   tree into the container does with a secrets file that is deliberately

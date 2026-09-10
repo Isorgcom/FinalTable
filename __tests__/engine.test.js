@@ -1298,6 +1298,49 @@ describe('Hand History & Replay Data', () => {
     expect(game.phase).toBe('flop');
   });
 
+  test('the action bubbles clear when the next street is dealt', () => {
+    const game = armedTable('bubbles_clear', { actionTimeoutMs: 0, streetPauseMs: 0 });
+    for (let i = 0; i < 3; i++) game.addPlayer({ id: `p${i}`, name: `P${i}`, chips: 5000 });
+    game.startRound();
+
+    // Play the street out. Everybody has said something by the end of it.
+    let guard = 0;
+    while (game.phase === 'preflop' && guard++ < 12) {
+      const cur = game.players[game.currentPlayerIndex];
+      game.handleAction(cur.id, cur.bet >= game.currentBet ? 'check' : 'call');
+    }
+    expect(game.phase).toBe('flop');
+    // What they did on the preflop is not what they are doing on the flop.
+    expect(game.players.every((p) => p.lastAction === null)).toBe(true);
+
+    // And it holds for the street after that.
+    const first = game.players[game.currentPlayerIndex];
+    game.handleAction(first.id, 'raise', 100);
+    expect(first.lastAction).toBeTruthy();
+    guard = 0;
+    while (game.phase === 'flop' && guard++ < 12) {
+      const cur = game.players[game.currentPlayerIndex];
+      game.handleAction(cur.id, cur.bet >= game.currentBet ? 'check' : 'call');
+    }
+    expect(game.phase).toBe('turn');
+    expect(game.players.every((p) => p.lastAction === null)).toBe(true);
+  });
+
+  test('an all-in runout clears the bubbles too, street by street', () => {
+    const game = armedTable('bubbles_runout', { actionTimeoutMs: 0, streetPauseMs: 0 });
+    for (let i = 0; i < 2; i++) game.addPlayer({ id: `p${i}`, name: `P${i}`, chips: 500 });
+    game.startRound();
+    // Everybody all-in preflop: the board runs out with nobody left to act, so
+    // the cards come through dealRemainingCards() and never open a street.
+    let guard = 0;
+    while (game.phase === 'preflop' && guard++ < 8) {
+      const cur = game.players[game.currentPlayerIndex];
+      game.handleAction(cur.id, 'allin');
+    }
+    expect(game.communityCards.length).toBeGreaterThanOrEqual(3);
+    expect(game.players.every((p) => p.lastAction === null)).toBe(true);
+  });
+
   test('a raised pot gives the big blind no free option, only a call to make', () => {
     const game = armedTable('bb_option_raised', { actionTimeoutMs: 0 });
     for (let i = 0; i < 3; i++) game.addPlayer({ id: `p${i}`, name: `P${i}`, chips: 5000 });
@@ -1484,6 +1527,10 @@ describe('Hand History & Replay Data', () => {
         const game = armedTable(`checkfold_${expected}`);
         const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
         game.addPlayer({ id: 'p2', name: 'Villain' });
+        // A third seat still owing a turn, so the street cannot close on the
+        // back of the arm firing: a street that closes deals the next one, and
+        // dealing a street clears every lastAction on the table.
+        game.addPlayer({ id: 'p3', name: 'Onlooker' });
         game.startRound();
         putOnTurn(game, hero, { currentBet, heroBet: 10 });
         hero.preAction = { kind: 'checkfold', atBet: null, atToCall: null };

@@ -1826,3 +1826,64 @@ test('the check sound is served, trimmed and levelled before it is used', async 
 
   expect(pageErrors).toEqual([]);
 });
+
+// The bubble over a chair saying what that seat just did is the one thing on
+// the felt that leaves on its own. Nothing re-renders a quiet table, so it
+// cannot leave on a timestamp captured at the last state push: it needs the
+// page's own tick to sweep it.
+test('an action bubble expires on the clock, not on the next state push', async ({ page }) => {
+  await page.goto(baseUrl);
+
+  const state = await page.evaluate(async () => {
+    const seat = document.createElement('div');
+    seat.className = 'player-info';
+    document.body.appendChild(seat);
+    const make = (id, until) => {
+      const el = document.createElement('div');
+      el.className = 'player-action-badge';
+      el.id = id;
+      el.dataset.until = String(until);
+      el.textContent = 'raise 90';
+      seat.appendChild(el);
+      return el;
+    };
+    const stale = make('badgeStale', Date.now() - 1);
+    const fresh = make('badgeFresh', Date.now() + 60000);
+
+    expireActionBadges();
+    const fadingImmediately = stale.classList.contains('fading');
+    // The fade has to finish before it is taken out of the layout.
+    const hiddenDuringFade = stale.classList.contains('hidden');
+    await new Promise((r) => setTimeout(r, 500));
+
+    return {
+      fadingImmediately,
+      hiddenDuringFade,
+      staleHidden: stale.classList.contains('hidden'),
+      freshUntouched: !fresh.classList.contains('hidden') && !fresh.classList.contains('fading'),
+    };
+  });
+
+  expect(state).toEqual({
+    fadingImmediately: true,
+    hiddenDuringFade: false,
+    staleHidden: true,
+    freshUntouched: true,
+  });
+
+  // And the page sweeps on its own tick, with nobody calling the sweep and no
+  // state push to prompt it.
+  await page.evaluate(() => {
+    const el = document.createElement('div');
+    el.className = 'player-action-badge';
+    el.dataset.until = String(Date.now() + 400);
+    el.textContent = 'call 40';
+    document.querySelector('.player-info').appendChild(el);
+    window.__sweptBadge = el;
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__sweptBadge.classList.contains('hidden')), {
+      timeout: 5000,
+    })
+    .toBe(true);
+});

@@ -997,6 +997,13 @@ class PokerGame {
   // comes out exactly like one that was played - three cards for the flop,
   // one burn a street, and the same line in the log and the replay.
   _dealStreet(street) {
+    // The bubble over a chair says what that seat just did, and "just" ends
+    // with the street it did it on. Cleared here rather than in _openStreet
+    // because an all-in runout deals its remaining streets without ever
+    // opening one, and a fold from three streets ago hanging over a chair
+    // while the river lands reads as a fold on the river.
+    for (const p of this.players) p.lastAction = null;
+
     this.deck.pop(); // burn
     if (street === 'flop') {
       this.communityCards.push(this.deck.pop(), this.deck.pop(), this.deck.pop());

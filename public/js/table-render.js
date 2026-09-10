@@ -599,6 +599,37 @@ function seatRenderContext() {
   };
 }
 
+// How long the bubble over a chair says what that seat just did. The server
+// clears lastAction when the next street is dealt, so this is only about a
+// bubble outliving its welcome within one street.
+const ACTION_BADGE_MS = 3000;
+
+// Nothing re-renders a quiet table. With everybody waiting on one seat, the
+// `now` captured at the last state push is the only clock a badge has, and it
+// would sit there for the whole twenty-five seconds of somebody's turn. So the
+// badge is drawn with its deadline on it and swept by the page's tick.
+function expireActionBadges(now) {
+  const at = typeof now === 'number' ? now : Date.now();
+  document.querySelectorAll('.player-action-badge[data-until]').forEach((el) => {
+    if (el.classList.contains('hidden') || el.classList.contains('fading')) return;
+    if (Number(el.dataset.until) <= at) hideActionBadge(el);
+  });
+}
+
+// Out rather than off: an action bubble is the one thing on the felt that
+// leaves of its own accord, and blinking out of existence reads as a glitch.
+function hideActionBadge(el) {
+  if (!el || el.classList.contains('hidden') || el.classList.contains('fading')) return;
+  el.classList.add('fading');
+  setTimeout(() => {
+    // A new action re-drew the badge while this was pending: it rewrites the
+    // class list, so 'fading' being gone is how we know to leave it alone.
+    if (!el.classList.contains('fading')) return;
+    el.classList.remove('fading');
+    el.classList.add('hidden');
+  }, 320);
+}
+
 function actionBadgeLabel(action) {
   let label = SEAT_ACTION_LABELS[action.action] || action.action;
   if (action.amount > 0 && action.action !== 'fold') label += ' ' + action.amount;
@@ -658,15 +689,21 @@ function updateSeatDynamic(seat, player, ctx) {
   }
 
   const action =
-    player.lastAction && ctx.now - player.lastAction.time < 3000 ? player.lastAction : null;
-  const badge = setSeatNode(
-    info,
-    'player-action-badge',
-    !!action,
-    action ? actionBadgeLabel(action) : undefined
-  );
-  if (action && badge) {
+    player.lastAction && ctx.now - player.lastAction.time < ACTION_BADGE_MS
+      ? player.lastAction
+      : null;
+  if (!action) {
+    // Faded rather than hidden outright, so a street being dealt takes the
+    // bubbles with it gently instead of snatching them away.
+    hideActionBadge(info.querySelector('.player-action-badge'));
+    return;
+  }
+  const badge = setSeatNode(info, 'player-action-badge', true, actionBadgeLabel(action));
+  if (badge) {
+    // Rewritten whole, which also clears 'hidden' and 'fading' from the badge
+    // this seat had a moment ago.
     badge.className = 'player-action-badge ' + (SEAT_ACTION_CSS[action.action] || '');
+    badge.dataset.until = action.time + ACTION_BADGE_MS;
     badge.title = badge.textContent;
   }
 }

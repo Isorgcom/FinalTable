@@ -515,6 +515,9 @@ function init() {
 
   setInterval(() => {
     if (typeof updateTurnClocks === 'function') updateTurnClocks();
+    // The action bubbles expire on wall-clock time, and a table waiting on one
+    // seat pushes no state to re-evaluate them against.
+    if (typeof expireActionBadges === 'function') expireActionBadges();
   }, 250);
   const PLAYER_NAME_STORAGE_KEY = 'finaltable_player_name';
   const PLAYER_AVATAR_STORAGE_KEY = 'finaltable_player_avatar';
