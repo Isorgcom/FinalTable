@@ -8,8 +8,8 @@ can.
 
 Entries are grouped as Added, Changed, Fixed and Removed, roughly following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are
-[semver](https://semver.org/), and a version heading means a `v*` tag, which is
-what publishes a container image.
+[semver](https://semver.org/), and a version heading means a `v*` tag and a
+Release on GitHub to go with it.
 
 ## Unreleased
 

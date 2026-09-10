@@ -38,8 +38,9 @@ there yet.
 1. Rename `## Unreleased` to `## X.Y.Z - YYYY-MM-DD` and open a fresh empty
    `## Unreleased` above it.
 2. Match `version` in `package.json`.
-3. Tag `vX.Y.Z` and push the tag. `.github/workflows/publish-image.yml`
-   publishes the container image on `v*` tags.
+3. Tag `vX.Y.Z`, push the tag, and publish a Release on GitHub with the notes
+   from that heading. Nothing builds off the tag - deployment is a matter of
+   getting an image onto a host over SSH, not of publishing one.
 
 Semver against the players, not the API: a rule or a payout that behaves
 differently is a minor, a fix is a patch. Stay on 0.x while this is under

@@ -44,8 +44,9 @@ formatting do not earn an entry; the commit message is the right place for
 those.
 
 Releases are cut by moving `## Unreleased` under a `## X.Y.Z - YYYY-MM-DD`
-heading, matching `version` in `package.json`, and pushing a `vX.Y.Z` tag,
-which is what publishes a container image.
+heading, matching `version` in `package.json`, pushing a `vX.Y.Z` tag, and
+publishing a Release on GitHub with those notes. No image is published: a
+server is deployed to over SSH, not by pulling a registry tag.
 
 ## Pull Request Guidelines
 
