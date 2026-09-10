@@ -15,6 +15,78 @@ Settled:
 - At each milestone: `git tag v0.2.0`, push the tag, then publish a Release on
   GitHub with notes.
 
+## The game itself
+
+None of this waits on the split below, and all of it is visible to a player.
+
+### Table visibility - public, private, invite-only
+
+Today every tournament is public, and more so than it sounds: `summarize()`
+puts the join code in the card, and `GET /api/tournaments` is unauthenticated,
+so anyone who can reach the server can list every running game _and_ the code
+to walk into it. On a box on the internet that is a hole, not a preference.
+
+Three modes: **public** (listed, anyone joins), **private** (unlisted, joinable
+only with the code), **invite-only** (the host admits people, or the roster is
+fixed up front). The immediate fix is smaller than the feature - stop putting
+`code` in a list anybody can fetch - and is worth doing before the rest.
+
+### A real blind structure
+
+There is a thirteen-level ladder in `tournament.js`, fixed, from 10/20 to
+1000/2000. `director.js` already accepts a `blindSchedule` option and nothing
+ever passes one, so the wiring is half there. Wanted: choosing a structure when
+the game is made - turbo, deep, slow - editing the levels, seeing the ladder
+before you sit down, and antes, which do not exist at all.
+
+### Re-entry
+
+Busting should not always be the end of it. Re-entry while late registration is
+open, re-buys within a level window, add-ons at the break. Needs a decision on
+what it does to the prize pool and to the chip-conservation invariant the
+director checks after every hand, which currently assumes chips only move
+between seats and never appear.
+
+### Watching a table
+
+Half of this exists: a busted player keeps watching the table they were at
+(`entry.watching`), and the plumbing serves a spectator view with no hole cards.
+What is missing is a way in for somebody who is not in the tournament at all -
+a rail link, and a decision about whether watchers can chat.
+
+### Accounts, and preferences that follow you
+
+An identity today is a device token in the browser plus a record in
+`identities.json` with a thirty-day expiry, so it survives a restart but is
+tied to one browser. Preferences - mute, which chair you sit in, which panel
+tab - are `localStorage` only, so they do not follow you to the iPad.
+
+Real accounts, in the sense of a password or a login, are the Identity bridge
+below: Game Night owns that. What belongs here is the other half - a
+server-side place for preferences to live, keyed by the identity, so the same
+person gets the same table on any device.
+
+### More control over your own games
+
+For a player: see and end your own sessions, leave properly rather than by
+closing the tab. For a host: more than start and cancel - pause a running game,
+kick or mute somebody, adjust a level, rebalance by hand. Some of that arrives
+with the API below, but a host with no Game Night should have it too.
+
+### Games other than Hold'em
+
+The largest of these by far. The engine deals two cards and makes the best five
+from seven, and `hand-eval.js` assumes exactly that. Omaha changes the deal and
+the must-use-two rule; stud changes the whole street structure; draw needs a
+discard phase that has no equivalent anywhere in the code. Worth doing as one
+deliberate piece of work on the engine's shape rather than as four special
+cases bolted to a Hold'em loop.
+
+### Done
+
+Chat landed - table chat, a waiting-room channel before the cards are out, and
+a host mute. See the CHANGELOG.
+
 ## Architecture
 
 Decided: **two services, two containers.**
@@ -80,7 +152,7 @@ auto-invites and seats the roster.
 
 ## Build order
 
-Suggested:
+Suggested, for the split:
 
 1. The game-creation endpoint and the game id
 2. The elimination and tournament-complete webhooks
@@ -89,10 +161,12 @@ Suggested:
 5. The online event type in Game Night
 6. Cancel and pause, the heartbeat, and seat-move requests
 
-## Not on the path
+The game-side work above is independent of all six and can be picked up in any
+order, with one exception worth taking first: the join code should stop being
+served to anybody who asks, which is a small change and does not need the rest
+of the visibility feature behind it.
 
-Wanted, but not part of the integration work above:
+## Not on either path
 
-- Railbird spectating for people who are not registered
-- Re-entry during late registration; kicking a registrant
-- Custom blind schedules; an admin page
+- An admin page. The operator controls are a password and a few socket events;
+  there is no screen for them.
