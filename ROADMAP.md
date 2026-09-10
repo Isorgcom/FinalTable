@@ -12,8 +12,9 @@ Settled:
 - Bump the patch for fixes, the minor for backward-compatible features, the
   major on breaking changes.
 - Move to 1.0.0 when it is stable and you would hand it to strangers.
-- At each milestone: `git tag v0.2.0`, push the tag, then publish a Release on
-  GitHub with notes.
+- At each milestone, a tag and a Release on GitHub with the notes from the
+  changelog. The routine is written down in [CLAUDE.md](./CLAUDE.md); 0.2.0
+  and 0.3.0 went out through it.
 
 ## The game itself
 
@@ -55,22 +56,27 @@ a rail link, and a decision about whether watchers can chat.
 
 ### Accounts, and preferences that follow you
 
-An identity today is a device token in the browser plus a record in
-`identities.json` with a thirty-day expiry, so it survives a restart but is
-tied to one browser. Preferences - mute, which chair you sit in, which panel
-tab - are `localStorage` only, so they do not follow you to the iPad.
+A guest is still a device token in the browser plus a record in
+`identities.json` with a thirty-day expiry, tied to one browser. A Game Night
+account is not: it is one identity here with a device token per browser, so
+the phone and the iPad are the same player. That half is done (Identity
+bridge, below).
 
-Real accounts, in the sense of a password or a login, are the Identity bridge
-below: Game Night owns that. What belongs here is the other half - a
-server-side place for preferences to live, keyed by the identity, so the same
-person gets the same table on any device.
+What remains is the other half. Preferences - mute, which chair you sit in,
+which panel tab - are `localStorage` only, so they still do not follow you.
+They want a server-side place to live, keyed by the identity, so the same
+person gets the same table on any device. For a Game Night player the key
+exists now; for a guest it is the device, which is the best there is.
 
 ### More control over your own games
 
 For a player: see and end your own sessions, leave properly rather than by
 closing the tab. For a host: more than start and cancel - pause a running game,
-kick or mute somebody, adjust a level, rebalance by hand. Some of that arrives
-with the API below, but a host with no Game Night should have it too.
+kick somebody, adjust a level, rebalance by hand. Mute is done. An operator
+(the server's password, not the game's host) can end a running tournament
+from the table menu, and has an Operator page in the lobby for the server's
+own settings. Some of the rest arrives with the API below, but a host with no
+Game Night should have it too.
 
 ### Games other than Hold'em
 
@@ -86,7 +92,13 @@ cases bolted to a Hold'em loop.
 Chat landed - table chat, a waiting-room channel before the cards are out, and
 a host mute. Reactions followed it: a fixed strip of six, thrown from the
 pre-action panel, floating over the chair and kept nowhere, past the same mute
-and off with one switch. See the CHANGELOG.
+and off with one switch.
+
+Signing in with a Game Night account, and the Operator page that pairs a
+server with one and changes its own password. The lobby's corner menu, which
+is where those live. Deployment by pulling this repository rather than
+shipping an image. The join code no longer served in the public list. The
+action bubble that used to outlive its street. See the CHANGELOG.
 
 ## Architecture
 
@@ -149,9 +161,12 @@ the same tournament (today the second to arrive is refused).
 
 Final Table must run without Game Night existing at all.
 
-- A guest username and a session token, plus join-by-URL links.
-- Mixed tables are allowed - regulars alongside walk-ins - with guests tagged
-  in the data and in the UI.
+- A guest username and a session token, plus join-by-URL links. Done, and
+  still the whole of what a server with no Game Night needs.
+- Mixed tables - regulars alongside walk-ins. Done: every identity carries a
+  `provider`, the roster badges a Game Night player, and a guest and a member
+  sit at the same table. The one seam left is a guest taking a member's name
+  in the same tournament, where the second to arrive is refused.
 - The guest-to-account upgrade path is handled on the Game Night side, by
   email invite and username matching.
 
@@ -177,5 +192,7 @@ order.
 
 ## Not on either path
 
-- An admin page. The operator controls are a password and a few socket events;
-  there is no screen for them.
+- A full admin console. There is an Operator page now, but it holds the
+  server's settings - the Game Night pairing and its own password - and no
+  more. The controls over a running game stay in the table menu, behind the
+  same password, and are not growing into a dashboard.
