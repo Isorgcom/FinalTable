@@ -119,6 +119,12 @@ function loadConfig() {
     chatMaxLength: intFromEnv('CHAT_MAX_LEN', 200, 20, 2000),
     chatRatePerWindow: intFromEnv('CHAT_RATE', 4, 1, 100),
     chatRateWindowMs: intFromEnv('CHAT_RATE_WINDOW_MS', 10000, 1000, 600000),
+    // Reactions: a few emoji thrown at the table without typing. Off removes
+    // the strip and the event, the same way as chat. The rate is tighter than
+    // chat's because a reaction costs one tap.
+    reactionsEnabled: boolFromEnv('REACTIONS_ENABLED', true),
+    reactionRatePerWindow: intFromEnv('REACTION_RATE', 3, 1, 100),
+    reactionRateWindowMs: intFromEnv('REACTION_RATE_WINDOW_MS', 10000, 1000, 600000),
     // Pacing. A betting round closing and the next street arriving in the same
     // frame is too fast to follow, so the table holds a beat between them, and
     // another between one hand and the next.

@@ -13,6 +13,18 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- Reactions. A strip of six emoji beside the arm-a-line buttons, for the seat
+  whose turn it is not: one tap and it floats up from your chair on every
+  screen at the table, then goes. It is chat with the words taken out - the
+  same room, the same host mute, the same people - and none of chat's record:
+  nothing is written to the log, nothing comes back on a reload. Three a
+  minute per player, tighter than chat because a tap is cheaper than a
+  sentence. Under reduced motion it appears in place rather than floating.
+  `REACTIONS_ENABLED=false` removes the strip and the event; `REACTION_RATE`
+  and `REACTION_RATE_WINDOW_MS` tune the limit.
+
 ## 0.2.0 - 2026-09-10
 
 ### Added

@@ -280,3 +280,67 @@ test('on a phone the composer sits above the keyboard, at a size iOS will not zo
   await guest.context.close();
   await context.close();
 });
+
+// A reaction is a chat line with the words taken out: same room, same chair,
+// and gone on its own. The strip lives with the pre-action controls, so it is
+// there for the seat whose turn it is not, which is the seat with something to
+// react to.
+test('a reaction floats over the chair of whoever threw it, then goes', async ({
+  browser,
+  page,
+}) => {
+  await identifyAs(page, 'Host');
+  const code = await hostCreates(page, 'Reacts');
+  const guest = await guestJoins(browser, code, 'Guest');
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // Whichever of the two is not on turn has the strip; the other has the bar.
+  // Decided from the state, not the panel, and only once both have a state.
+  const running = (p) =>
+    p.waitForFunction(
+      () => typeof gameState !== 'undefined' && gameState && gameState.isRunning,
+      null,
+      {
+        timeout: 10000,
+      }
+    );
+  await Promise.all([running(page), running(guest.page)]);
+  const hostOnTurn = await page.evaluate(() => gameState.isMyTurn);
+  const thrower = hostOnTurn ? guest.page : page;
+  const watcher = hostOnTurn ? page : guest.page;
+  const throwerUid = await thrower.evaluate(() => window.__identity.uid);
+  await expect(watcher.locator(`#playerSeats .player-seat[data-uid="${throwerUid}"]`)).toHaveCount(
+    1,
+    { timeout: 10000 }
+  );
+
+  const strip = thrower.locator('#reactionRow');
+  await expect(strip).toBeVisible();
+  const buttons = strip.locator('.reaction-btn');
+  expect(await buttons.count()).toBeGreaterThanOrEqual(4);
+  await expect(buttons.first()).toBeEnabled();
+  const emoji = await buttons.first().textContent();
+  await buttons.first().click();
+
+  // Over the thrower's chair on the other screen, and on their own.
+  const onWatcher = watcher.locator(
+    `#playerSeats .player-seat[data-uid="${throwerUid}"] .seat-reaction`
+  );
+  await expect(onWatcher).toHaveClass(/is-live/);
+  await expect(onWatcher).toHaveText(emoji.trim());
+  await expect(
+    thrower.locator(`#playerSeats .player-seat[data-uid="${throwerUid}"] .seat-reaction`)
+  ).toHaveClass(/is-live/);
+  // Decoration, never in the way of a click.
+  expect(await onWatcher.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
+  // And it is not a line in the log.
+  await expect(watcher.locator('#panelChatBody .chat-line')).toHaveCount(0);
+
+  // Gone on its own, well inside a street.
+  await expect(onWatcher).not.toHaveClass(/is-live/, { timeout: 5000 });
+
+  expect(guest.errors).toEqual([]);
+  await guest.context.close();
+});

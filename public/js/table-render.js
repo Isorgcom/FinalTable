@@ -1081,6 +1081,13 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   bubble.appendChild(bubbleText);
   seat.appendChild(bubble);
 
+  // Where a reaction floats up from. Same idea as the bubble: part of the
+  // skeleton, so throwing one is a class change and a text node.
+  const reaction = document.createElement('div');
+  reaction.className = 'seat-reaction hidden';
+  reaction.setAttribute('aria-hidden', 'true');
+  seat.appendChild(reaction);
+
   seat.appendChild(info);
   return seat;
 }
@@ -1117,6 +1124,39 @@ function showSeatBubble(uid, text) {
       bubble.classList.add('hidden');
       label.textContent = '';
     }, SEAT_BUBBLE_MS)
+  );
+}
+
+// A reaction over a chair. The lifetime is a timer and the float is CSS, kept
+// apart on purpose: under prefers-reduced-motion the float collapses to
+// nothing, and the emoji still has to be on screen long enough to be seen.
+const SEAT_REACTION_MS = 1800;
+const seatReactionTimers = new Map();
+function showSeatReaction(uid, emoji) {
+  if (!uid || !emoji) return;
+  const seats = document.getElementById('playerSeats');
+  if (!seats) return;
+  const seat = seats.querySelector('.player-seat[data-uid="' + CSS.escape(uid) + '"]');
+  if (!seat) return;
+  const node = seat.querySelector('.seat-reaction');
+  if (!node) return;
+  node.textContent = emoji;
+  // A second reaction while the first is still up restarts the float rather
+  // than stacking: remove, reflow, add, the same trick the pressed buttons use.
+  node.classList.remove('is-live');
+  void node.offsetWidth;
+  node.classList.remove('hidden');
+  node.classList.add('is-live');
+  const previous = seatReactionTimers.get(uid);
+  if (previous) clearTimeout(previous);
+  seatReactionTimers.set(
+    uid,
+    setTimeout(function () {
+      seatReactionTimers.delete(uid);
+      node.classList.remove('is-live');
+      node.classList.add('hidden');
+      node.textContent = '';
+    }, SEAT_REACTION_MS)
   );
 }
 

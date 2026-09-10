@@ -39,6 +39,8 @@ function registerTournamentHandlers(deps) {
     return {
       version,
       adminAvailable: adminEnabled,
+      // The set the strip draws, or null when the surface does not exist.
+      reactions: registry.reactions,
       gamenight: live
         ? { connectUrl: live.config.connectUrl, audience: live.config.audience }
         : null,
@@ -424,6 +426,17 @@ function registerTournamentHandlers(deps) {
       const result = registry.postChat(entry, socket.data.tournamentUid, payload.text, socket);
       // A refusal goes back on its own event, not through fail(): the client
       // routes 'error' to a lobby dialog, and a rate limit is not a dialog.
+      if (result.error) socket.emit('chatDenied', { reason: result.error });
+    });
+
+    // A reaction: one of a fixed set, thrown at the room. Refusals ride
+    // chatDenied, because the reasons are chat's reasons and the note under
+    // the composer is where a player already looks for them.
+    socket.on('reaction', (payload = {}) => {
+      if (!registry.reactionsEnabled) return;
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const result = registry.postReaction(entry, socket.data.tournamentUid, payload.emoji, socket);
       if (result.error) socket.emit('chatDenied', { reason: result.error });
     });
 

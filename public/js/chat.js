@@ -138,6 +138,9 @@
         note.classList.toggle('hidden', canSend || !closedReason);
       }
     });
+    // The strip may throw exactly when the composer may send: same room, same
+    // mute, same seat. One permission, painted in two places.
+    if (window.Reactions) Reactions.setCanSend(canSend);
     const composer = el('panelComposer');
     // Shown whenever there is a table to be at, disabled rather than hidden
     // when you may not talk: a box that vanishes reads as a bug, and there is

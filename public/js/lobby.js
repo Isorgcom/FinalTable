@@ -141,6 +141,7 @@
     $('btnOperator').classList.toggle('hidden', !(serverInfo && serverInfo.adminAvailable));
     const version = serverInfo && serverInfo.version;
     $('lobbyMenuVersion').textContent = version ? `FinalTable v${version}` : 'FinalTable';
+    if (window.Reactions) Reactions.configure(serverInfo ? serverInfo.reactions : null);
   }
 
   function onIdentified(ident) {

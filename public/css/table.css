@@ -616,6 +616,45 @@
   transform: none;
 }
 
+/* A reaction, floating up from the chair and fading as it goes. The element is
+   shown and hidden by a timer in table-render.js; this is only the motion, so
+   under prefers-reduced-motion (responsive.css collapses every animation) it
+   simply appears in place and then goes, which is the right thing. */
+.seat-reaction {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 61;
+  pointer-events: none;
+  font-size: 1.9rem;
+  line-height: 1;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5));
+}
+.seat-reaction.hidden {
+  display: none;
+}
+.seat-reaction.is-live {
+  animation: reactionFloat 1.8s ease-out both;
+}
+@keyframes reactionFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.15);
+  }
+  30% {
+    transform: translate(-50%, -6px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -46px) scale(1);
+  }
+}
+
 /* Only the two chairs at the top of the ring. The upper side chairs sit low
    enough that a bubble above them is still on the stage, and flipping those
    down as well pointed them straight at the bubble of the chair below, which
@@ -1339,6 +1378,45 @@
   border-color: var(--gold);
   color: var(--bg-deep);
 }
+/* The reactions, on the end of the same panel. Round and wordless, so they
+   read as a different kind of thing from the arm buttons beside them. */
+.reaction-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(92, 61, 26, 0.35);
+}
+.reaction-row.hidden {
+  display: none;
+}
+.reaction-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 168, 76, 0.22);
+  background: rgba(201, 168, 76, 0.06);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
+}
+.reaction-btn:hover:not(:disabled) {
+  background: rgba(201, 168, 76, 0.18);
+  border-color: rgba(201, 168, 76, 0.5);
+  transform: translateY(-1px);
+}
+.reaction-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* The queued sit-out is not one of the three, and does not compete with them:
    green, like the other "you are stepping out" affordances. */
 .preaction-sitout {

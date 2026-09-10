@@ -162,6 +162,13 @@ function ensureSocket() {
     if (window.TableChat) TableChat.render(message);
   });
 
+  // A reaction is drawn and gone; nothing else keeps it.
+  socket.on('reaction', (payload) => {
+    if (payload && typeof showSeatReaction === 'function') {
+      showSeatReaction(payload.uid, payload.emoji);
+    }
+  });
+
   socket.on('chatHistory', (payload) => {
     if (window.TableChat) TableChat.renderHistory(payload);
   });

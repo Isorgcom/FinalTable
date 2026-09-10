@@ -116,7 +116,9 @@ Chat is the first thing the server keeps that people wrote rather than played:
 the last hundred lines of each room are held in memory and written to
 `data/chat/<tournament>.json`, and both go when the tournament is reaped.
 `CHAT_ENABLED=false` turns the whole surface off, and `CHAT_HISTORY=0` keeps
-the chat without keeping any of it.
+the chat without keeping any of it. Reactions ride the same rooms and the same
+mute: a few emoji thrown from the pre-action strip that float over the chair
+and are kept nowhere. `REACTIONS_ENABLED=false` removes them.
 
 Identity is now shared with Game Night, optionally: a server paired with one
 (from the lobby's Operator page, behind the admin password; see

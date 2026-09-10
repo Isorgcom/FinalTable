@@ -176,6 +176,9 @@ const tournamentLayer = registerTournamentHandlers({
   chatMaxLength: config.chatMaxLength,
   chatRatePerWindow: config.chatRatePerWindow,
   chatRateWindowMs: config.chatRateWindowMs,
+  reactionsEnabled: config.reactionsEnabled,
+  reactionRatePerWindow: config.reactionRatePerWindow,
+  reactionRateWindowMs: config.reactionRateWindowMs,
 });
 // Registrations survive a restart; a running tournament does not.
 const restoredTournaments = tournamentLayer.registry.restore();

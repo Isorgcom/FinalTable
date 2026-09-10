@@ -13,6 +13,7 @@
 
 const { TournamentDirector } = require('../director');
 const { createChatRooms } = require('./chat-rooms');
+const reactions = require('./reactions');
 const random = require('../random');
 
 const TICK_MS = 1200;
@@ -57,6 +58,10 @@ function createTournamentRegistry(deps = {}) {
     chatMaxLength = 200,
     chatRatePerWindow = 4,
     chatRateWindowMs = 10 * 1000,
+    // Reactions ride chat's rooms and chat's mute, with a limit of their own.
+    reactionsEnabled = true,
+    reactionRatePerWindow = reactions.DEFAULT_RATE,
+    reactionRateWindowMs = reactions.DEFAULT_WINDOW_MS,
   } = deps;
   const timers = deps.timers || {
     setInterval: (...a) => setInterval(...a),
@@ -504,6 +509,31 @@ function createTournamentRegistry(deps = {}) {
     if (ids.length) io.to(ids).emit('chatMessage', message);
     persistChat(entry);
     return { message };
+  }
+
+  // Same room, same mute, same people as a chat line, and none of its
+  // permanence: nothing is appended, nothing is written, nobody arriving
+  // later is shown it. The name is looked up rather than taken from the
+  // payload, as for chat.
+  function postReaction(entry, uid, emoji, socket) {
+    if (!reactionsEnabled) return { error: 'Reactions are switched off' };
+    if (!reactions.isReaction(emoji)) return { error: 'Not one of the reactions' };
+    const allowed = chat.canPost(entry, uid);
+    if (!allowed.ok) return { error: allowed.reason };
+    if (!socket.data.reactionBucket) socket.data.reactionBucket = {};
+    const ok = reactions.takeToken(socket.data.reactionBucket, {
+      limit: reactionRatePerWindow,
+      windowMs: reactionRateWindowMs,
+      at: now(),
+    });
+    if (!ok) return { error: 'Slow down a moment' };
+    const room = chat.roomFor(entry, uid);
+    if (!room) return { error: 'You are not at a table yet' };
+    const who = identity.get(uid);
+    const reaction = { room, uid, name: who ? who.name : 'Player', emoji, at: now() };
+    const ids = chatRecipients(entry, room);
+    if (ids.length) io.to(ids).emit('reaction', reaction);
+    return { reaction };
   }
 
   function setChatMute(entry, hostUid, targetUid, muted) {
@@ -1229,10 +1259,13 @@ function createTournamentRegistry(deps = {}) {
     byCode,
     requireHost,
     postChat,
+    postReaction,
     setChatMute,
     sendChatHistory,
     chat,
     chatEnabled,
+    reactionsEnabled,
+    reactions: reactionsEnabled ? reactions.REACTIONS.slice() : null,
     sweep,
     restore,
     flush,
