@@ -461,30 +461,36 @@
   font-family: var(--font-display);
 }
 
-/* The small print under the list: the way to the operator page. */
-.lobby-foot {
-  text-align: center;
-  margin-top: 8px;
+/* The lobby's menu, in the corner. The dropdown, its items and the toggle all
+   come from panels.css, which the table uses; only the placement is here.
+   Fixed inside .login-screen, which is itself fixed and forms the stacking
+   context, so a small z-index clears the cards without reaching for 1001. */
+/* Compound, because panels.css loads after this file and its `.menu-shell`
+   is `position: relative` at the same specificity. Left to source order the
+   button would sit in the flow and scroll away with the list. */
+.menu-shell.lobby-menu {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
 }
-.link-btn {
-  background: none;
-  border: none;
-  padding: 8px 12px;
+/* On its own in a corner rather than beside other toolbar buttons, so it earns
+   a real touch target. */
+.lobby-menu .menu-toggle {
+  min-width: 44px;
   min-height: 44px;
+  font-size: 1.25rem;
+}
+/* Not a control: what this server is, under the things you can do. */
+.menu-note {
+  padding: 8px 16px 2px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(92, 61, 26, 0.35);
   color: var(--smoke);
-  opacity: 0.55;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  font-family: var(--font-display);
-}
-.link-btn:hover {
-  opacity: 1;
-  color: var(--gold);
-}
-.link-btn.hidden {
-  display: none;
+  opacity: 0.6;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 /* ── Operator ── */

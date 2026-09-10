@@ -213,3 +213,14 @@ test('unregistering before the start returns to the lobby', async ({ page }) => 
     })
     .toBe(false);
 });
+
+test('the lobby menu holds only the version when nothing else is configured', async ({ page }) => {
+  // This spec's server has no ADMIN_PASSWORD and no GameNight pairing.
+  await page.goto(baseUrl);
+  await page.click('#lobbyMenuToggle');
+  await expect(page.locator('#lobbyMenuDropdown')).toHaveClass(/open/);
+  await expect(page.locator('#lobbyMenuVersion')).toContainText('FinalTable v');
+  await expect(page.locator('#btnOperator')).toBeHidden();
+  await expect(page.locator('#btnGameNightSignOut')).toBeHidden();
+  await expect(page.locator('#btnGameNight')).toBeHidden();
+});

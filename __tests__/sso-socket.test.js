@@ -96,6 +96,7 @@ describe('GameNight sign-in over the socket', () => {
   test('serverInfo says where GameNight is, and a signed token becomes an identity', async () => {
     const { s, info } = await connect();
     expect(await info).toEqual({
+      version: require('../package.json').version,
       adminAvailable: false,
       gamenight: { connectUrl: `${ISSUER}/connect.php`, audience: AUDIENCE },
     });

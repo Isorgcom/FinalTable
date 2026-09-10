@@ -32,9 +32,12 @@ function registerTournamentHandlers(deps) {
   const sso = deps.sso || { get: () => null, status: () => ({ paired: false }) };
   const log = typeof deps.log === 'function' ? deps.log : () => {};
 
+  const version = typeof deps.version === 'string' ? deps.version : '';
+
   function serverInfo() {
     const live = sso.get();
     return {
+      version,
       adminAvailable: adminEnabled,
       gamenight: live
         ? { connectUrl: live.config.connectUrl, audience: live.config.audience }

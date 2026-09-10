@@ -76,7 +76,8 @@ memory sized for a box that has other tenants.
 
 `ADMIN_PASSWORD` in the host's `.env` is how a server gets its first one: with
 no password there is no operator surface, and so no way in to set one. After
-that it is changed from the **Operator** page in the lobby, and the new one is
+that it is changed from the **operator** page, reached from the menu in the
+lobby's top corner, and the new one is
 kept as a scrypt hash in `data/settings.json` and wins over the environment
 from then on - a password somebody typed into a browser should not be undone
 by a stale line in a compose file.
@@ -102,8 +103,9 @@ browser:
    this server: a slug (`finaltable`), a name, and the base URL players use to
    reach it. The URL must match exactly, scheme, host and port: it is the only
    place GameNight will ever send a token.
-2. In this server's lobby, open **Operator** (the small link under the list;
-   it needs `ADMIN_PASSWORD` set) and enter the GameNight address and the slug.
+2. In this server's lobby, open the menu in the top corner and pick
+   **operator** (it needs `ADMIN_PASSWORD` set), then enter the GameNight
+   address and the slug.
    The signing key is fetched from GameNight, checked, and saved to
    `data/settings.json`; the button appears for everyone at once.
 3. If GameNight ever regenerates its key, press **Refresh key** on the same

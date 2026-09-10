@@ -73,6 +73,12 @@ test.afterAll(async () => {
   process.env = originalEnv;
 });
 
+// The lobby's menu holds the operator link and the GameNight sign-out.
+async function openLobbyMenu(page) {
+  await page.click('#lobbyMenuToggle');
+  await expect(page.locator('#lobbyMenuDropdown')).toHaveClass(/open/);
+}
+
 // What the lobby leaves in sessionStorage before it sends the browser away.
 async function stash(page, state, code = null) {
   await page.addInitScript(
@@ -105,8 +111,11 @@ test('a signed token in the fragment signs the player in, and the device remembe
   await expect(page.locator('#identityStatus')).toContainText('Signed in with GameNight as Bryce');
   await expect(page.locator('#playerName')).toHaveValue('Bryce');
   await expect(page.locator('#playerName')).toHaveAttribute('readonly', '');
-  await expect(page.locator('#btnGameNightSignOut')).toBeVisible();
   await expect(page.locator('#btnGameNight')).toBeHidden();
+  await openLobbyMenu(page);
+  await expect(page.locator('#btnGameNightSignOut')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#lobbyMenuDropdown')).not.toHaveClass(/open/);
   expect(new URL(page.url()).hash).toBe('');
   const uid = await page.evaluate(() => window.__identity.uid);
   expect(uid).toBe('gn_270');
@@ -120,6 +129,7 @@ test('a signed token in the fragment signs the player in, and the device remembe
   expect(await page.evaluate(() => window.__identity.uid)).toBe('gn_270');
 
   // Sign out: back to a guest with an empty name.
+  await openLobbyMenu(page);
   await page.click('#btnGameNightSignOut');
   await expect(page.locator('#btnGameNight')).toBeVisible();
   await expect(page.locator('#playerName')).toHaveValue('');
@@ -188,8 +198,11 @@ test('the operator unpairs and re-pairs from the lobby', async ({ page }) => {
   try {
     await page.goto(baseUrl);
     await expect(page.locator('#btnGameNight')).toBeVisible();
+    await openLobbyMenu(page);
     await expect(page.locator('#btnOperator')).toBeVisible();
     await page.click('#btnOperator');
+    // Picking something closes the menu behind it.
+    await expect(page.locator('#lobbyMenuDropdown')).not.toHaveClass(/open/);
     await page.fill('#appDialogInput', OPERATOR_PASSWORD);
     await page.click('#btnAppDialogConfirm');
     await expect(page.locator('#lobbyOperator')).toBeVisible();
@@ -210,6 +223,7 @@ test('the operator unpairs and re-pairs from the lobby', async ({ page }) => {
     await page.click('#btnOpBack');
     await expect(page.locator('#btnGameNight')).toBeVisible();
     // A bad address is an error line, not a broken page.
+    await openLobbyMenu(page);
     await page.click('#btnOperator');
     await expect(page.locator('#lobbyOperator')).toBeVisible();
     await page.fill('#opGnUrl', 'http://127.0.0.1:1');
@@ -234,11 +248,13 @@ test('the operator unpairs and re-pairs from the lobby', async ({ page }) => {
 
     // The new one is what unlocks now. Reload for a fresh socket and prove it.
     await page.reload();
+    await openLobbyMenu(page);
     await page.click('#btnOperator');
     await page.fill('#appDialogInput', OPERATOR_PASSWORD);
     await page.click('#btnAppDialogConfirm');
     await expect(page.locator('#appDialogBody')).toContainText('Wrong password');
     await page.click('#btnAppDialogConfirm');
+    await openLobbyMenu(page);
     await page.click('#btnOperator');
     await page.fill('#appDialogInput', 'a-longer-password');
     await page.click('#btnAppDialogConfirm');
@@ -246,4 +262,27 @@ test('the operator unpairs and re-pairs from the lobby', async ({ page }) => {
   } finally {
     await new Promise((r) => fakeGn.s.close(r));
   }
+});
+
+test('the menu shows the version, and only the version when nothing is configured', async ({
+  page,
+}) => {
+  await page.goto(baseUrl);
+  await openLobbyMenu(page);
+  await expect(page.locator('#lobbyMenuVersion')).toHaveText(
+    `FinalTable v${require('../package.json').version}`
+  );
+  // This server has both an admin password and a pairing, so both items are here.
+  await expect(page.locator('#btnOperator')).toBeVisible();
+
+  // A click anywhere else closes it. A raw mouse click, because "anywhere
+  // else" is a point on the page rather than any particular element.
+  await page.mouse.click(20, 500);
+  await expect(page.locator('#lobbyMenuDropdown')).not.toHaveClass(/open/);
+
+  // And it stays in the corner while the page scrolls under it.
+  const before = await page.locator('#lobbyMenuToggle').boundingBox();
+  await page.evaluate(() => document.getElementById('loginScreen').scrollTo(0, 400));
+  const after = await page.locator('#lobbyMenuToggle').boundingBox();
+  expect(after.y).toBe(before.y);
 });

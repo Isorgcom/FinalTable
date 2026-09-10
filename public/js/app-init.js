@@ -664,6 +664,10 @@ function init() {
       closeMenu();
       return;
     }
+    if (window.Lobby && Lobby.lobbyMenuOpen()) {
+      Lobby.closeLobbyMenu();
+      return;
+    }
     const modals = ['lbPanel', 'replayPanel', 'hintModal', 'resultModal', 'appDialogModal'];
     for (const id of modals) {
       if (closeOverlayById(id)) return;

@@ -60,6 +60,12 @@ Release on GitHub to go with it.
 
 ### Changed
 
+- The lobby has a menu in the top corner. Operator was a small grey link under
+  the tournament list, easy to miss and only there on the first screen; signing
+  out of GameNight was a button in the identity card, next to a name it was not
+  really about. Both now live behind one button that stays in the corner while
+  the list scrolls, along with a line naming the version, which the lobby never
+  showed at all. It is the menu the table already has, in the same place.
 - The server is deployed by pulling this repository on the host and restarting,
   rather than by building an image elsewhere and shipping the whole thing over
   SSH. The working tree is bind-mounted into the container, so nothing is built

@@ -96,6 +96,25 @@
     return true;
   }
 
+  // ── The lobby's menu ─────────────────────────────────────────────────────
+  //
+  // Same idiom as the table's (app-state.js): a class on the dropdown, closed
+  // by an outside click and by Escape. Every item closes it before acting.
+
+  function lobbyMenuOpen() {
+    return $('lobbyMenuDropdown').classList.contains('open');
+  }
+
+  function closeLobbyMenu() {
+    $('lobbyMenuDropdown').classList.remove('open');
+    $('lobbyMenuToggle').setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleLobbyMenu() {
+    const open = $('lobbyMenuDropdown').classList.toggle('open');
+    $('lobbyMenuToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   function isGameNight() {
     return !!(identity && identity.provider === 'gamenight');
   }
@@ -105,10 +124,12 @@
     if (!row) return;
     const offered = !!(serverInfo && serverInfo.gamenight);
     const linked = isGameNight();
-    row.classList.toggle('hidden', !offered && !linked);
+    // Signed in, the row's only contents - the button and its hint - are both
+    // beside the point, and signing out lives in the menu. So the row goes.
+    row.classList.toggle('hidden', linked || !offered);
     $('btnGameNight').classList.toggle('hidden', linked || !offered);
-    $('btnGameNightSignOut').classList.toggle('hidden', !linked);
     $('ssoHint').classList.toggle('hidden', linked);
+    $('btnGameNightSignOut').classList.toggle('hidden', !linked);
     $('playerName').readOnly = linked;
     $('playerName').classList.remove('input-invalid');
   }
@@ -117,8 +138,9 @@
     serverInfo = info || null;
     window.__serverInfo = serverInfo;
     renderIdentityRow();
-    const op = $('btnOperator');
-    if (op) op.classList.toggle('hidden', !(serverInfo && serverInfo.adminAvailable));
+    $('btnOperator').classList.toggle('hidden', !(serverInfo && serverInfo.adminAvailable));
+    const version = serverInfo && serverInfo.version;
+    $('lobbyMenuVersion').textContent = version ? `FinalTable v${version}` : 'FinalTable';
   }
 
   function onIdentified(ident) {
@@ -181,6 +203,7 @@
   let pairing = null;
 
   async function openOperator() {
+    closeLobbyMenu();
     if (window.Admin && Admin.isAuthed()) {
       setPwStatus('');
       showView('operator');
@@ -432,6 +455,7 @@
   }
 
   function signOutOfGameNight() {
+    closeLobbyMenu();
     store.set(TOKEN_KEY, null);
     store.set(NAME_KEY, null);
     store.set(PROVIDER_KEY, null);
@@ -1003,6 +1027,13 @@
     $('btnCopyLink').addEventListener('click', copyLink);
     $('btnGameNight').addEventListener('click', startGameNightLogin);
     $('btnGameNightSignOut').addEventListener('click', signOutOfGameNight);
+    $('lobbyMenuToggle').addEventListener('click', toggleLobbyMenu);
+    // Anywhere else closes it, the way the table's does.
+    document.addEventListener('click', (e) => {
+      if (!lobbyMenuOpen()) return;
+      if ($('lobbyMenuShell').contains(e.target)) return;
+      closeLobbyMenu();
+    });
     $('btnOperator').addEventListener('click', openOperator);
     $('btnOpPair').addEventListener('click', opPair);
     $('btnOpRefresh').addEventListener('click', opRefresh);
@@ -1061,6 +1092,8 @@
 
   window.Lobby = {
     identify,
+    lobbyMenuOpen,
+    closeLobbyMenu,
     onServerInfo,
     onAdminStatus,
     onAdminGameNight,

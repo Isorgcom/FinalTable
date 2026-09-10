@@ -154,6 +154,8 @@ sso.init();
 const tournamentLayer = registerTournamentHandlers({
   io,
   identity,
+  // What the lobby's menu shows. package.json stays the one place it is written.
+  version: require('./package.json').version,
   sso,
   log: structuredLog,
   store: tournamentStore,

@@ -69,6 +69,26 @@
 
     <!-- LOBBY -->
     <div class="login-screen" id="loginScreen" role="region" aria-label="Lobby">
+      <!-- Fixed to the corner, so it stays put while the list scrolls under it.
+           Inside the lobby screen, so it goes when the table opens - which has
+           a menu of its own. -->
+      <div class="menu-shell lobby-menu" id="lobbyMenuShell">
+        <button
+          class="menu-toggle"
+          id="lobbyMenuToggle"
+          type="button"
+          aria-label="Menu"
+          aria-haspopup="true"
+          aria-expanded="false"
+        >
+          &#8801;
+        </button>
+        <div class="menu-dropdown" id="lobbyMenuDropdown" role="menu">
+          <button class="menu-item hidden" id="btnOperator" type="button">operator</button>
+          <button class="menu-item hidden" id="btnGameNightSignOut" type="button">sign out</button>
+          <div class="menu-note" id="lobbyMenuVersion"></div>
+        </div>
+      </div>
       <div class="login-container">
         <div class="login-logo">FINALTABLE</div>
         <div class="login-subtitle">Play down to one table.</div>
@@ -96,9 +116,6 @@
           <div class="identity-sso hidden" id="ssoRow">
             <button class="btn-secondary" id="btnGameNight" type="button">
               Sign in with GameNight
-            </button>
-            <button class="btn-secondary hidden" id="btnGameNightSignOut" type="button">
-              Sign out
             </button>
             <span class="identity-sso-hint" id="ssoHint"
               >Use your GameNight account instead of a guest name.</span
@@ -143,10 +160,6 @@
           </section>
           <div class="lobby-empty" id="lobbyEmpty">
             No tournaments yet. Create one and share the code.
-          </div>
-          <!-- Only on a server with an admin password (serverInfo). -->
-          <div class="lobby-foot">
-            <button class="link-btn hidden" id="btnOperator" type="button">Operator</button>
           </div>
         </section>
 
