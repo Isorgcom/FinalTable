@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.4.0 - 2026-09-10
+
 ### Added
 
 - A game is now private unless you say otherwise. Private means unlisted: it is
