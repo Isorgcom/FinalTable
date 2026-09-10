@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-10
+
 ### Added
 
 - Sign in with GameNight. A server paired with a GameNight site (three new
@@ -73,6 +75,12 @@ Release on GitHub to go with it.
   deploy is two commands. `docker-compose.prod.yml` carries the host's own
   settings. See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 
+- The Chat tab no longer scrolls itself to the bottom while you are reading
+  back through it, and keeps 200 lines rather than 50 - a conversation and the
+  dealer's narration now share the pane.
+- A player who busts can still read their table's chat, but not post to it.
+- Only players still in the tournament can talk once it is running.
+
 ### Fixed
 
 - The bubble saying what a player just did no longer sits on the felt after the
@@ -107,6 +115,11 @@ Release on GitHub to go with it.
   game you are in. Joining from a lobby card still works - it goes by the
   game rather than the code - and the code box and `?t=` links are unchanged.
 
+- A deploy could leave a browser on the previous build until someone thought to
+  hard-refresh. The page carries the cache-busting stamp for every script and
+  stylesheet, but was itself served without a cache header, so a browser was
+  free to hold a stale copy and keep asking for the old files.
+
 ### Removed
 
 - The 3D room behind the felt, and the 589 KB WebGL library that drew it -
@@ -114,21 +127,6 @@ Release on GitHub to go with it.
   rendered flat black over a CSS background that already had the lit room in
   it, so desktop was getting the worse of the two. That CSS background is now
   simply the background, which is what phones have always had.
-
-### Fixed
-
-- A deploy could leave a browser on the previous build until someone thought to
-  hard-refresh. The page carries the cache-busting stamp for every script and
-  stylesheet, but was itself served without a cache header, so a browser was
-  free to hold a stale copy and keep asking for the old files.
-
-### Changed
-
-- The Chat tab no longer scrolls itself to the bottom while you are reading
-  back through it, and keeps 200 lines rather than 50 - a conversation and the
-  dealer's narration now share the pane.
-- A player who busts can still read their table's chat, but not post to it.
-- Only players still in the tournament can talk once it is running.
 
 ## 0.1.9 - 2026-09-09
 
