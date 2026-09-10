@@ -72,6 +72,36 @@ closing the tab. For a host: more than start and cancel - pause a running game,
 kick or mute somebody, adjust a level, rebalance by hand. Some of that arrives
 with the API below, but a host with no Game Night should have it too.
 
+### Reactions at the table
+
+A row of a few emoji a player can throw at the table without typing: the
+clap for a good fold, the wince at a bad beat, the eye-roll at a slow one.
+Chat already carries the weight of a conversation; this is for the moment
+that does not deserve a sentence, and it wants to be one tap on a phone
+while the action is on somebody else.
+
+Most of the machinery is already there and should be reused rather than
+paralleled. A reaction is a chat message in everything but shape: it goes to
+the same room (`chat-rooms.js` resolves the waiting room before the cards are
+out and your table after), it surfaces the same way as the bubble over a
+chair, the host mute in `entry.mutedUids` must silence it too, and the rate
+limit that stops somebody flooding a table applies with more force to a
+control that costs one tap. Whether it belongs in the chat log as a line, or
+only ever floats and is gone, is the open question - probably the latter, or
+a busy table's log becomes unreadable.
+
+Worth settling before it is built:
+
+- A fixed, small set, chosen by this project rather than an open picker. An
+  arbitrary emoji is a message, and messages have a place already.
+- Whether a busted player at the rail can react. They can read chat and not
+  post; the same rule is the obvious default.
+- Reduced motion. Anything that floats or bounces needs to sit still for
+  somebody who has asked for that, the way the rest of the felt does.
+- One switch to turn it off for a whole server, in the shape of
+  `CHAT_ENABLED`: the surface does not exist rather than the buttons being
+  hidden.
+
 ### Games other than Hold'em
 
 The largest of these by far. The engine deals two cards and makes the best five
