@@ -30,6 +30,14 @@ Release on GitHub to go with it.
   `CHAT_MAX_LEN`, `CHAT_RATE` and `CHAT_RATE_WINDOW_MS` tune what is kept and
   how fast anyone can talk.
 
+### Removed
+
+- The 3D room behind the felt, and the 589 KB WebGL library that drew it -
+  larger on its own than everything else a browser downloads for this. It
+  rendered flat black over a CSS background that already had the lit room in
+  it, so desktop was getting the worse of the two. That CSS background is now
+  simply the background, which is what phones have always had.
+
 ### Fixed
 
 - A deploy could leave a browser on the previous build until someone thought to

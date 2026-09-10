@@ -315,13 +315,6 @@
     font-size: 0.45rem;
     margin-top: 24px;
   }
-  /* Skip 3D scene on mobile — use CSS fallback */
-  #room3dCanvas {
-    display: none !important;
-  }
-  .css-fallback-bg {
-    display: block !important;
-  }
 }
 /* Large phones: even the tighter ring needs slimmer plates to stay on a
    430px screen. */

@@ -126,8 +126,6 @@
       return;
     }
     document.body.classList.toggle('rail-hidden');
-    // The 3D room sizes itself to the stage, which just changed width.
-    if (typeof window.roomThreeRefit === 'function') window.roomThreeRefit();
     if (isShowing()) {
       const tab = tabFor(current);
       if (tab) tab.classList.remove('unread');
@@ -147,7 +145,6 @@
       open();
     } else if (document.body.classList.contains('rail-hidden')) {
       document.body.classList.remove('rail-hidden');
-      if (typeof window.roomThreeRefit === 'function') window.roomThreeRefit();
     }
     syncToggle();
   }

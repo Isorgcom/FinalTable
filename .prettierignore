@@ -1,6 +1,5 @@
-# Third-party, shipped as published. Reformatting a minified build would blow
-# 600 KB onto thousands of lines and make the vendored copy undiffable against
-# upstream's.
+# Third-party, shipped as published. Reformatting a vendored copy would make it
+# undiffable against the upstream it came from.
 public/vendor/
 
 # Build and run output, not source.

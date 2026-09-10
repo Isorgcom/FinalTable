@@ -264,8 +264,7 @@
     <!-- GAME SCREEN -->
     <div class="game-screen" id="gameScreen" role="main">
       <!-- Three.js canvas (or CSS fallback) -->
-      <canvas id="room3dCanvas"></canvas>
-      <div class="css-fallback-bg" id="cssFallback"></div>
+      <div class="table-backdrop" id="tableBackdrop"></div>
 
       <div class="top-bar">
         <div class="top-bar-title">FinalTable <span class="mode-badge" id="modeBadge"></span></div>
@@ -721,7 +720,6 @@
       </div>
     </div>
 
-    <script defer src="/js/three-loader.js?v=__ASSET_VERSION__"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script defer src="/js/app-state.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/side-panel.js?v=__ASSET_VERSION__"></script>
