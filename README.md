@@ -43,6 +43,9 @@ docker compose up -d --build
 The app listens on **2026** inside the container. The compose file publishes it
 to loopback only, on the assumption a reverse proxy sits in front.
 
+For a server too small to build its own image, `./ship.sh user@host` builds one
+here and hands it over SSH. See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
+
 ## Capacity
 
 Measured rather than estimated, against a container held to

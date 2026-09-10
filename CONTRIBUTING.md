@@ -32,7 +32,7 @@ All checks must pass before submitting a PR.
 - **Server & networking**: `server.js`, `server/config.js`, `server/http-middleware.js`
 - **Frontend**: `public/index.html`, `public/css/`, `public/js/` (`lobby.js` and `socket-client.js` for the lobby; `table-render.js`, `ui-panels.js`, `side-panel.js` for the table)
 - **Tests**: `__tests__/` (Jest) and `e2e/` (Playwright; `npx playwright install chromium` once)
-- **Docs**: `README.md` (what it does and how to run it), `CHANGELOG.md` (what changed), `ROADMAP.md` (where it is going), `FORK.md` (lineage and licence), `CLAUDE.md` (the working rules)
+- **Docs**: `README.md` (what it does and how to run it), `CHANGELOG.md` (what changed), `ROADMAP.md` (where it is going), `docs/DEPLOYMENT.md` (how it reaches a server), `FORK.md` (lineage and licence), `CLAUDE.md` (the working rules)
 
 ## The Changelog
 
