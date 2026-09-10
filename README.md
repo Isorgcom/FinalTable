@@ -112,12 +112,11 @@ the last hundred lines of each room are held in memory and written to
 `CHAT_ENABLED=false` turns the whole surface off, and `CHAT_HISTORY=0` keeps
 the chat without keeping any of it.
 
-Not built, in the order they are likely to matter:
-
-- Railbird spectating for people who are not registered
-- Re-entry during late registration; kicking a registrant
-- A GameNight-account login behind `server/identity.js`
-- Custom blind schedules; an admin page
+Next is splitting the work in two: Game Night owning identity, invites and
+records, FinalTable owning the live game, talking over an API and webhooks so
+neither can take the other down - and FinalTable still running on its own for
+anyone who has no Game Night. See [ROADMAP.md](./ROADMAP.md) for the shape of
+that and what comes in what order.
 
 ## Licence
 
