@@ -69,19 +69,22 @@ repository, containers, volumes and release cadence, shares no code and no
 database with GameNight, and neither imports the other. It may be served from a
 subdomain of gamenight.poker; that is a DNS record, not a dependency.
 
-What is planned is integration, not merging. The two will talk over an HTTP API
-and webhooks - GameNight asks for a game and is told when players bust and when
-it ends - and over a signed token that lets somebody logged into GameNight be
-seated here without a second account. GameNight becomes the source of truth for
-who a player is; it does not become part of this program. The boundary is the
-point: either service can be down, or absent entirely, without taking the other
-with it.
+What is planned is integration, not merging. The two talk over a signed token
+today and will talk over an HTTP API and webhooks later - GameNight asks for a
+game and is told when players bust and when it ends. The token is the sign-in
+bridge: somebody logged into GameNight is seated here without a second account.
+GameNight signs it with a key only GameNight holds, this server checks it with
+the public half (`server/gamenight-sso.js`), and the player lands as a
+GameNight identity in `server/identity.js` under their GameNight username. No
+password, email or phone crosses. GameNight is the source of truth for who a
+player is; it does not become part of this program. The boundary is the point:
+either service can be down, or absent entirely, without taking the other with
+it.
 
 That is why standalone operation is a requirement rather than a fallback.
 FinalTable must run for somebody who has never heard of GameNight - a guest
-name, a join link, and a seat - and the identity store behind that
-(`server/identity.js`) is one interface with room for a second implementation,
-not a hole where a login is supposed to go.
+name, a join link, and a seat - and does: a server with no `GAMENIGHT_URL` has
+no button, and a guest and a GameNight member sit at the same table.
 
 See [ROADMAP.md](./ROADMAP.md) for the API, the events and the order of work.
 

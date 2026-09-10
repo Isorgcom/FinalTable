@@ -47,11 +47,25 @@ function ensureSocket() {
   // per socket on the server and only ever answered to adminLogin.
   socket.on('adminStatus', (st) => {
     if (window.Admin) Admin.onStatus(st);
+    if (window.Lobby) Lobby.onAdminStatus(st);
+  });
+  // The GameNight pairing, answered only to a socket that has unlocked the
+  // operator controls.
+  socket.on('adminGameNight', (data) => {
+    if (window.Lobby) Lobby.onAdminGameNight(data);
   });
 
+  // What the server offers, sent before identify: whether an operator surface
+  // exists and whether a GameNight sign-in does. Nothing about this socket.
+  socket.on('serverInfo', (info) => {
+    if (window.Lobby) Lobby.onServerInfo(info);
+  });
   socket.on('identified', (ident) => {
     if (window.Admin) Admin.onIdentified(ident);
     if (window.Lobby) Lobby.onIdentified(ident);
+  });
+  socket.on('identifyFailed', (data) => {
+    if (window.Lobby) Lobby.onIdentifyFailed(data);
   });
   socket.on('sessionReplaced', () => {
     if (window.Lobby) Lobby.onSessionReplaced();

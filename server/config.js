@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 function intFromEnv(name, fallback, min, max) {
   const value = parseInt(process.env[name], 10);
   if (!Number.isFinite(value)) return fallback;
@@ -19,6 +21,62 @@ function adminPasswordFromEnv() {
   return typeof raw === 'string' ? raw.trim() : '';
 }
 
+// The GameNight sign-in bridge, as the environment describes it. A player
+// logged in to GameNight can be seated here on a token GameNight signs; this
+// server needs only the public key to check it. The operator normally pairs
+// from the lobby's Operator page (server/gamenight-pairing.js), and these
+// variables seed that the first time a box boots without a saved pairing.
+// Both unset means no seed. One set without the other, or a key that does
+// not parse, is a mistake worth stopping the boot for: the alternative is a
+// sign-in button that silently does nothing.
+function pemFromEnv(name) {
+  const raw = process.env[name];
+  if (typeof raw !== 'string') return '';
+  // A .env line holds no line breaks, so the key is written with the two
+  // characters "\n" where each break goes. A real newline is fine too.
+  let pem = raw
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/\\n/g, '\n')
+    .trim();
+  if (!pem) return '';
+  if (!pem.includes('-----BEGIN')) {
+    const body = (pem.replace(/\s+/g, '').match(/.{1,64}/g) || []).join('\n');
+    pem = `-----BEGIN PUBLIC KEY-----\n${body}\n-----END PUBLIC KEY-----`;
+  }
+  return pem;
+}
+
+function gamenightFromEnv() {
+  const url = (process.env.GAMENIGHT_URL || '').trim().replace(/\/+$/, '');
+  const pem = pemFromEnv('GAMENIGHT_PUBLIC_KEY');
+  const audience = (process.env.GAMENIGHT_AUDIENCE || '').trim() || 'finaltable';
+  if (!url && !pem) return null;
+  if (!url || !pem) {
+    throw new Error('GAMENIGHT_URL and GAMENIGHT_PUBLIC_KEY must be set together, or neither');
+  }
+  if (!/^https?:\/\/[^/\s]+/.test(url)) {
+    throw new Error(`GAMENIGHT_URL must be an http(s) origin, got "${url}"`);
+  }
+  let publicKey;
+  try {
+    publicKey = crypto.createPublicKey(pem);
+  } catch (err) {
+    throw new Error(`GAMENIGHT_PUBLIC_KEY is not a readable public key: ${err.message}`);
+  }
+  const details = publicKey.asymmetricKeyDetails || {};
+  if (publicKey.asymmetricKeyType !== 'ec' || details.namedCurve !== 'prime256v1') {
+    throw new Error('GAMENIGHT_PUBLIC_KEY must be a P-256 (prime256v1) EC public key');
+  }
+  return {
+    issuer: url,
+    connectUrl: `${url}/connect.php`,
+    audience,
+    publicKey,
+    publicKeyPem: pem,
+  };
+}
+
 function loadConfig() {
   const rawCorsOrigin = process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.trim();
   const corsOrigin = rawCorsOrigin || '*';
@@ -32,6 +90,7 @@ function loadConfig() {
 
   return {
     adminPassword: adminPasswordFromEnv(),
+    gamenight: gamenightFromEnv(),
     port: process.env.PORT || 2026,
     host: process.env.HOST || '0.0.0.0',
     logLevel: process.env.LOG_LEVEL || 'info',

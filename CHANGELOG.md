@@ -15,6 +15,24 @@ Release on GitHub to go with it.
 
 ### Added
 
+- Sign in with GameNight. A server paired with a GameNight site (three new
+  settings: `GAMENIGHT_URL`, `GAMENIGHT_AUDIENCE`, `GAMENIGHT_PUBLIC_KEY`, see
+  `.env.example`) shows a button beside the name box. It sends you to GameNight
+  to sign in there, two-factor and all, and brings you back seated under your
+  GameNight username: the name is GameNight's and cannot be edited here, the
+  avatar is still yours, and the roster marks you as a GameNight player. The
+  same account is the same player on every device, and a join link followed
+  before signing in still lands at its table afterwards. Sign out from the
+  same row. Guests are unchanged, and a server that is not paired has no
+  button. Known limit: a guest and a GameNight member with the same name still
+  cannot share a tournament; the second to arrive is refused as before.
+- An Operator page in the lobby, behind the admin password, where the
+  GameNight pairing is made: enter the GameNight address and the app slug, and
+  the signing key is fetched from it, nothing to paste. Refresh it after
+  GameNight rotates its key, or unpair; the sign-in button follows without a
+  restart, and the pairing survives one. The environment variables still work
+  and seed the page the first time a server boots without a saved pairing;
+  after that the page wins.
 - Chat. Players at the same table can talk to each other, and everyone in the
   waiting room can talk before the cards are out - it hands over to the table
   you are seated at once the tournament starts. The last hundred lines of a
@@ -32,6 +50,10 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- A dialog raised while the lobby was showing was drawn underneath it, where it
+  could be neither read nor dismissed. Everything the lobby had to tell you went
+  unseen: that a tournament was cancelled, that the name was taken, that the one
+  you were in had ended, and what became of your stack when you left a table.
 - A tournament whose field could not be restarted is now held as it stood,
   with its chips, until the host starts or cancels it. It used to be dealt
   again from scratch a second later - a new table at level one with starting

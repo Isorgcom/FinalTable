@@ -87,20 +87,22 @@ as the memory ceiling and watch the clock separately on a small box.
 
 ## Layout
 
-| Path                                                         | Purpose                                                                                         |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `server.js`                                                  | Express + Socket.IO host; wires the identity store, the tournament registry and the handlers    |
-| `server/tournament-registry.js`                              | A tournament's life: codes, scheduled start, registrations, host, late entry, rejoin, reaper    |
-| `server/tournament-handlers.js`                              | Socket events for tournaments, a thin shim over the registry                                    |
-| `server/identity.js`                                         | Who a player is: name + avatar behind a device token (a login backend fills the same interface) |
-| `server/tournament-store.js`                                 | Registering tournaments persisted as JSON so a restart keeps them                               |
-| `director.js`                                                | `TournamentDirector`: N tables on one clock, seating, balancing, breaking, payouts              |
-| `engine.js`                                                  | `PokerGame`: one table, one hand loop, betting and showdown                                     |
-| `tournament.js`                                              | Blind schedule, level timer, elimination ledger                                                 |
-| `hand-eval.js`, `hand-describe.js`                           | Hand ranking, and the hand in words for the table's readout                                     |
-| `public/js/lobby.js`, `socket-client.js`                     | The lobby and the one socket for the life of the page                                           |
-| `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Info / Stats / History panel                     |
-| `__tests__/`, `e2e/`                                         | Jest suites and Playwright specs                                                                |
+| Path                                                         | Purpose                                                                                      |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `server.js`                                                  | Express + Socket.IO host; wires the identity store, the tournament registry and the handlers |
+| `server/tournament-registry.js`                              | A tournament's life: codes, scheduled start, registrations, host, late entry, rejoin, reaper |
+| `server/tournament-handlers.js`                              | Socket events for tournaments, a thin shim over the registry                                 |
+| `server/identity.js`                                         | Who a player is: a guest name, or a GameNight account, behind device tokens                  |
+| `server/gamenight-sso.js`                                    | Checks the signed token a player brings back from GameNight, with only the public key        |
+| `server/gamenight-pairing.js`, `settings-store.js`           | The pairing itself: fetched from GameNight by the operator, kept in `data/settings.json`     |
+| `server/tournament-store.js`                                 | Registering tournaments persisted as JSON so a restart keeps them                            |
+| `director.js`                                                | `TournamentDirector`: N tables on one clock, seating, balancing, breaking, payouts           |
+| `engine.js`                                                  | `PokerGame`: one table, one hand loop, betting and showdown                                  |
+| `tournament.js`                                              | Blind schedule, level timer, elimination ledger                                              |
+| `hand-eval.js`, `hand-describe.js`                           | Hand ranking, and the hand in words for the table's readout                                  |
+| `public/js/lobby.js`, `socket-client.js`                     | The lobby and the one socket for the life of the page                                        |
+| `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Info / Stats / History panel                  |
+| `__tests__/`, `e2e/`                                         | Jest suites and Playwright specs                                                             |
 
 ## Roadmap
 
@@ -116,11 +118,17 @@ the last hundred lines of each room are held in memory and written to
 `CHAT_ENABLED=false` turns the whole surface off, and `CHAT_HISTORY=0` keeps
 the chat without keeping any of it.
 
-Next is splitting the work in two: Game Night owning identity, invites and
-records, FinalTable owning the live game, talking over an API and webhooks so
-neither can take the other down - and FinalTable still running on its own for
-anyone who has no Game Night. See [ROADMAP.md](./ROADMAP.md) for the shape of
-that and what comes in what order.
+Identity is now shared with Game Night, optionally: a server paired with one
+(from the lobby's Operator page, behind the admin password; see
+[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)) offers "Sign in with GameNight",
+and a player who signs in there is seated here under their Game Night
+username, the same player on every device. Guests still type a name; a server
+with no Game Night is still whole.
+
+Next is the rest of that split: Game Night owning invites and records,
+FinalTable owning the live game, talking over an API and webhooks so neither
+can take the other down. See [ROADMAP.md](./ROADMAP.md) for the shape of that
+and what comes in what order.
 
 ## Licence
 

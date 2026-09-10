@@ -117,14 +117,24 @@ heartbeat.
 
 ## Identity bridge
 
-- Game Night stays the single source of truth for accounts, passwords and 2FA.
-- A JWT signed with a shared secret; Final Table verifies the signature
-  locally.
-- The secret lives in environment variables, never in the repository.
-- Short expiry, per game or per session, with an optional reject-list so
-  somebody can be kicked mid-game.
-- The flow: a player logs into Game Night, is redirected to Final Table with
-  the token attached, and is seated automatically.
+Built. What shipped, and what changed from the sketch:
+
+- Game Night is the single source of truth for accounts, passwords and 2FA.
+- A JWT signed ES256 with a keypair Game Night holds, rather than a shared
+  secret: Final Table verifies with the public key alone, so a leak on this
+  side lets nobody mint a token, and rotation touches one place.
+- The key lives in environment variables, never in the repository.
+- Two-minute expiry, single use, carried in the URL fragment so it reaches no
+  access log. The device token that comes back is what every later connect
+  uses; Game Night is not consulted again.
+- The flow: the lobby's button sends the player to Game Night, which logs them
+  in and asks once; they land back seated, with a join link honoured across
+  the round trip.
+
+Still to do here: a reject-list or server-side revoke so somebody can be
+signed out of every device mid-game (sign-out today is per browser), and a
+name reservation so a guest cannot take a Game Night member's display name in
+the same tournament (today the second to arrive is refused).
 
 ## Seating authority
 
@@ -155,7 +165,7 @@ Suggested, for the split:
 
 1. The game-creation endpoint and the game id
 2. The elimination and tournament-complete webhooks
-3. The JWT bridge and the redirect flow
+3. ~~The JWT bridge and the redirect flow~~ (done)
 4. Re-entry and blind-level events
 5. The online event type in Game Night
 6. Cancel and pause, the heartbeat, and seat-move requests

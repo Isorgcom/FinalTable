@@ -92,6 +92,18 @@
             <input type="hidden" id="playerAvatar" value="🧑" />
           </div>
           <div class="identity-status" id="identityStatus" aria-live="polite"></div>
+          <!-- Shown only when this server is paired with a GameNight (serverInfo). -->
+          <div class="identity-sso hidden" id="ssoRow">
+            <button class="btn-secondary" id="btnGameNight" type="button">
+              Sign in with GameNight
+            </button>
+            <button class="btn-secondary hidden" id="btnGameNightSignOut" type="button">
+              Sign out
+            </button>
+            <span class="identity-sso-hint" id="ssoHint"
+              >Use your GameNight account instead of a guest name.</span
+            >
+          </div>
         </section>
 
         <!-- The list -->
@@ -131,6 +143,54 @@
           </section>
           <div class="lobby-empty" id="lobbyEmpty">
             No tournaments yet. Create one and share the code.
+          </div>
+          <!-- Only on a server with an admin password (serverInfo). -->
+          <div class="lobby-foot">
+            <button class="link-btn hidden" id="btnOperator" type="button">Operator</button>
+          </div>
+        </section>
+
+        <!-- Operator: server settings, behind the admin password -->
+        <section class="lobby-view lobby-card hidden" id="lobbyOperator" aria-label="Operator">
+          <div class="lobby-title">Operator</div>
+          <div class="op-section">
+            <div class="op-heading">Sign in with GameNight</div>
+            <p class="op-help">
+              Pair this server with a GameNight site and the lobby offers a "Sign in with GameNight"
+              button. Register this server there first, under Site Settings &rsaquo; Connected Apps,
+              with the address players use to reach this page. Then enter the GameNight address
+              here: the signing key is fetched from it, nothing to paste.
+            </p>
+            <div class="op-status" id="opGnStatus" aria-live="polite"></div>
+            <div class="op-detail hidden" id="opGnDetail"></div>
+            <div class="form-group">
+              <label for="opGnUrl">GameNight address</label>
+              <input
+                type="url"
+                id="opGnUrl"
+                placeholder="https://gamenight.example"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="form-group">
+              <label for="opGnAudience">App slug (as registered on GameNight)</label>
+              <input
+                type="text"
+                id="opGnAudience"
+                value="finaltable"
+                maxlength="32"
+                autocomplete="off"
+              />
+            </div>
+            <div class="lobby-actions">
+              <button class="btn-enter" id="btnOpPair" type="button">Pair</button>
+              <button class="btn-secondary hidden" id="btnOpRefresh" type="button">
+                Refresh key
+              </button>
+              <button class="btn-secondary hidden" id="btnOpUnpair" type="button">Unpair</button>
+              <button class="btn-secondary" id="btnOpBack" type="button">Back</button>
+            </div>
           </div>
         </section>
 

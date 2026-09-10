@@ -55,6 +55,35 @@ tree matches no commit, which is unpleasant to work out later from the server.
 Nothing secret is sent. The image carries no configuration, so the same one is
 fine on a public box and a private one.
 
+### Pairing with GameNight
+
+Optional. Paired, the lobby offers "Sign in with GameNight" next to the guest
+name box, and a player who signs in there is seated here under their GameNight
+username with no second account. Three steps, once per server, all from a
+browser:
+
+1. In GameNight, as a site admin, open Site Settings > Connected Apps and add
+   this server: a slug (`finaltable`), a name, and the base URL players use to
+   reach it. The URL must match exactly, scheme, host and port: it is the only
+   place GameNight will ever send a token.
+2. In this server's lobby, open **Operator** (the small link under the list;
+   it needs `ADMIN_PASSWORD` set) and enter the GameNight address and the slug.
+   The signing key is fetched from GameNight, checked, and saved to
+   `data/settings.json`; the button appears for everyone at once.
+3. If GameNight ever regenerates its key, press **Refresh key** on the same
+   page. **Unpair** takes the button away again.
+
+Only the public key travels, and only this way round. GameNight signs each
+sign-in with a private key it never shares, so this server can check a token
+on its own and a leak here lets nobody forge one. The key id shown on the
+Operator page matches the one on GameNight's Connected Apps page.
+
+The three environment variables (`GAMENIGHT_URL`, `GAMENIGHT_AUDIENCE`,
+`GAMENIGHT_PUBLIC_KEY`, see `.env.example`) still work for a headless setup:
+they seed the pairing the first time a server boots with nothing saved, and
+after that the saved pairing wins, so a change made on the Operator page is
+not undone by a restart.
+
 ### Sizing it
 
 Set `NODE_HEAP_MB` and `MEM_LIMIT` together; raising one alone only changes

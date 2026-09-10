@@ -127,10 +127,15 @@ test('the host can leave the table and rejoin it, back in control', async ({ bro
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
 
-  // Leave through the menu, confirming the dialog.
+  // Leave through the menu, confirming the dialog. The lobby then says what
+  // happened to the stack, and that notice has to be dismissed like any other:
+  // it is a real dialog over the lobby, not something to click through.
   await page.click('#menuToggle');
   await page.click('#btnExit');
   await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#appDialogBody')).toContainText('You left the table');
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#appDialogModal')).toBeHidden();
   await expect(page.locator('#lobbyHome')).toBeVisible();
 
   // The card has to say Rejoin. Before the fix it sat in the Running section

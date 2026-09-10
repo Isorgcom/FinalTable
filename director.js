@@ -284,6 +284,8 @@ class TournamentDirector {
         place: placeByUid.get(e.uid) || null,
         autoPlay: seat ? !!seat.player.autoPlay : false,
         isBot: !!e.isBot,
+        // Where the player came from: a typed name, or a GameNight account.
+        provider: e.provider || 'guest',
       };
     });
   }
@@ -906,6 +908,7 @@ class TournamentDirector {
         uid: e.uid,
         name: e.name,
         avatar: e.avatar || null,
+        provider: e.provider || 'guest',
         isBot: !!e.isBot,
       })),
       tables: [...this._tableSnapshots.values()].map((t) => ({

@@ -39,9 +39,14 @@ describe('identity store', () => {
     const me = store.identify({ name: 'Bryce', avatar: '🦊' });
     expect(store.verify(me.token)).toMatchObject({ uid: me.uid, name: 'Bryce', avatar: '🦊' });
     expect(store.verify('unknown')).toBeNull();
-    expect(store.get(me.uid)).toEqual({ uid: me.uid, name: 'Bryce', avatar: '🦊' });
+    expect(store.get(me.uid)).toEqual({
+      uid: me.uid,
+      name: 'Bryce',
+      avatar: '🦊',
+      provider: 'guest',
+    });
     store.rename(me.uid, { name: 'B', avatar: '🐸' });
-    expect(store.get(me.uid)).toEqual({ uid: me.uid, name: 'B', avatar: '🐸' });
+    expect(store.get(me.uid)).toEqual({ uid: me.uid, name: 'B', avatar: '🐸', provider: 'guest' });
     // Re-identifying with an empty name keeps the stored one.
     expect(store.identify({ token: me.token, name: '' }).name).toBe('B');
   });
@@ -126,5 +131,91 @@ describe('identity store', () => {
     store.flush();
     // No await: the file is on disk by the time flush returns.
     expect(readIdentities()).toHaveLength(1);
+  });
+
+  // ── GameNight identities ──────────────────────────────────────────────────
+
+  test('a GameNight sign-in is one identity with a device token per browser', () => {
+    const store = createIdentityStore();
+    const phone = store.identifyFromGameNight({ sub: '42', name: 'bryce' });
+    expect(phone.isNew).toBe(true);
+    expect(phone.uid).toBe('gn_42');
+    expect(phone.provider).toBe('gamenight');
+    const ipad = store.identifyFromGameNight({ sub: '42', name: 'bryce' });
+    expect(ipad.isNew).toBe(false);
+    expect(ipad.uid).toBe('gn_42');
+    expect(ipad.token).not.toBe(phone.token);
+    // Both browsers stay signed in.
+    expect(store.verify(phone.token)).toMatchObject({ uid: 'gn_42' });
+    expect(store.verify(ipad.token)).toMatchObject({ uid: 'gn_42' });
+    expect(store.size).toBe(1);
+  });
+
+  test("the name is GameNight's: refreshed on sign-in, never taken from the browser", () => {
+    const store = createIdentityStore();
+    const me = store.identifyFromGameNight({ sub: '7', name: 'oldname', avatar: '🦊' });
+    // A reconnect sending some other name changes nothing but the avatar.
+    const again = store.identify({ token: me.token, name: 'impostor', avatar: '🐸' });
+    expect(again).toMatchObject({
+      uid: 'gn_7',
+      name: 'oldname',
+      avatar: '🐸',
+      provider: 'gamenight',
+    });
+    expect(store.rename('gn_7', { name: 'impostor' })).toMatchObject({ name: 'oldname' });
+    // The account was renamed on GameNight; the next sign-in carries it.
+    store.identifyFromGameNight({ sub: '7', name: 'newname' });
+    expect(store.get('gn_7')).toMatchObject({ name: 'newname' });
+  });
+
+  test('a stale GameNight token with no name mints nothing', () => {
+    const store = createIdentityStore();
+    expect(store.identify({ token: 'gone', avatar: '🦊' })).toBeNull();
+    expect(store.size).toBe(0);
+  });
+
+  test('identifyFromGameNight refuses a missing subject or an empty name', () => {
+    const store = createIdentityStore();
+    expect(store.identifyFromGameNight({ name: 'x' })).toBeNull();
+    expect(store.identifyFromGameNight({ sub: '1', name: '' })).toBeNull();
+  });
+
+  test('a GameNight identity outlives one expired device and goes with the last', () => {
+    let clock = 1000;
+    const store = createIdentityStore({ ttlMs: 500, now: () => clock });
+    const a = store.identifyFromGameNight({ sub: '9', name: 'nine' });
+    clock += 300;
+    const b = store.identifyFromGameNight({ sub: '9', name: 'nine' });
+    clock += 300;
+    expect(store.expireIdle()).toBe(0);
+    expect(store.verify(a.token)).toBeNull();
+    expect(store.verify(b.token)).not.toBeNull();
+    clock += 600;
+    expect(store.expireIdle()).toBe(1);
+    expect(store.get('gn_9')).toBeNull();
+  });
+
+  test('provider and GameNight id persist, and a version 1 file still loads', () => {
+    const store = createIdentityStore({ saveDir: dir });
+    const gn = store.identifyFromGameNight({ sub: '3', name: 'three' });
+    const guest = store.identify({ name: 'Ann' });
+    store.flush();
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'identities.json'), 'utf8'));
+    expect(raw.version).toBe(2);
+    const reopened = createIdentityStore({ saveDir: dir });
+    expect(reopened.verify(gn.token)).toMatchObject({ uid: 'gn_3', provider: 'gamenight' });
+    expect(reopened.verify(guest.token)).toMatchObject({ uid: guest.uid, provider: 'guest' });
+
+    fs.writeFileSync(
+      path.join(dir, 'identities.json'),
+      JSON.stringify({
+        version: 1,
+        identities: [
+          { token: 'oldtok', uid: 'u_old', name: 'Old', avatar: '🧑', createdAt: 1, lastSeenAt: 1 },
+        ],
+      })
+    );
+    const legacy = createIdentityStore({ saveDir: dir });
+    expect(legacy.verify('oldtok')).toMatchObject({ uid: 'u_old', name: 'Old', provider: 'guest' });
   });
 });

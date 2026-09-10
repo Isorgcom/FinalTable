@@ -395,6 +395,9 @@ function init() {
         authed = !!st.ok;
         paint();
         if (st.ok) {
+          // The lobby's Operator page unlocks the same way and then opens
+          // itself; a notice on top of that would be one dialog too many.
+          if (window.__operatorPending) return;
           window.showNoticeDialog &&
             window.showNoticeDialog({ title: 'Admin', message: 'Operator controls unlocked.' });
           return;

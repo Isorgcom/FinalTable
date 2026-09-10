@@ -116,6 +116,7 @@ function createTournamentRegistry(deps = {}) {
         uid: e.uid,
         name: e.name,
         avatar: e.avatar || null,
+        provider: e.provider || 'guest',
         isBot: !!e.isBot,
       })),
       registrations: [...entry.registrations.entries()].map(([uid, r]) => ({
@@ -569,6 +570,7 @@ function createTournamentRegistry(deps = {}) {
       uid,
       name: who.name,
       avatar: who.avatar,
+      provider: who.provider || 'guest',
     });
     entry.registrations.set(uid, {
       socketId: null,
@@ -717,7 +719,13 @@ function createTournamentRegistry(deps = {}) {
     if (entry.director.entrants.some((e) => normalizeNameKey(e.name) === key)) {
       return { error: 'Name already taken in this tournament' };
     }
-    const entrant = { id: socket ? socket.id : null, uid, name: who.name, avatar: who.avatar };
+    const entrant = {
+      id: socket ? socket.id : null,
+      uid,
+      name: who.name,
+      avatar: who.avatar,
+      provider: who.provider || 'guest',
+    };
     if (entry.status === 'registering') {
       entry.director.register(entrant);
     } else if (entry.director.lateRegOpen()) {
@@ -1129,6 +1137,7 @@ function createTournamentRegistry(deps = {}) {
           uid: e.uid,
           name: e.name,
           avatar: e.avatar || null,
+          provider: e.provider || 'guest',
           isBot: !!e.isBot,
         });
       }

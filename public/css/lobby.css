@@ -171,6 +171,28 @@
   letter-spacing: 0.04em;
   min-height: 1em;
 }
+/* The GameNight sign-in row, only present on a server paired with one. */
+.identity-sso {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.identity-sso.hidden,
+.identity-sso .hidden {
+  display: none;
+}
+.identity-sso-hint {
+  font-size: 0.72rem;
+  color: var(--smoke);
+  opacity: 0.7;
+}
+/* A name GameNight owns is shown, not edited. */
+#playerName[readonly] {
+  opacity: 0.75;
+  cursor: default;
+}
 
 /* A quick-pick strip, in the side panel's tab idiom. */
 .seg {
@@ -439,6 +461,74 @@
   font-family: var(--font-display);
 }
 
+/* The small print under the list: the way to the operator page. */
+.lobby-foot {
+  text-align: center;
+  margin-top: 8px;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  min-height: 44px;
+  color: var(--smoke);
+  opacity: 0.55;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-family: var(--font-display);
+}
+.link-btn:hover {
+  opacity: 1;
+  color: var(--gold);
+}
+.link-btn.hidden {
+  display: none;
+}
+
+/* ── Operator ── */
+.op-section {
+  margin-top: 6px;
+}
+.op-heading {
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+.op-help {
+  font-size: 0.78rem;
+  color: var(--smoke);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.op-status {
+  font-size: 0.8rem;
+  color: var(--cream);
+  margin-bottom: 8px;
+  min-height: 1em;
+}
+.op-status.ok {
+  color: #7bca95;
+}
+.op-status.err {
+  color: #ffd1b1;
+}
+.op-detail {
+  font-size: 0.74rem;
+  color: var(--smoke);
+  line-height: 1.6;
+  margin-bottom: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+.op-detail.hidden {
+  display: none;
+}
+
 /* ── Waiting room ── */
 .wr-head {
   display: flex;
@@ -537,6 +627,12 @@
   font-size: 0.55rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+/* A player who signed in with a GameNight account rather than a typed name. */
+.wr-badge-gn {
+  border-color: rgba(123, 202, 149, 0.45);
+  background: rgba(123, 202, 149, 0.1);
+  color: #7bca95;
 }
 /* The waiting room's own chat: there is no table to talk at yet. */
 .wr-chat {

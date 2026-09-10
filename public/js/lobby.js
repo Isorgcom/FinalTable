@@ -7,6 +7,13 @@
 // same code routes a rejoin: the server answers `identify` with `resume`
 // when this identity has a live registration and follows with
 // tournamentJoined, which lands in the waiting room or on the table.
+//
+// GameNight sign-in, when the server offers it (serverInfo): the button sends
+// the browser to GameNight with a random state; GameNight sends it back to
+// this page with a signed token in the URL fragment, which is handed to the
+// server once over the socket. The device token that comes back is stored
+// like a guest's, with the provider beside it, so every later connect is an
+// ordinary token identify and GameNight is not consulted again.
 
 (function () {
   'use strict';
@@ -14,8 +21,12 @@
   const TOKEN_KEY = 'finaltable_identity_token';
   const NAME_KEY = 'finaltable_player_name';
   const LAST_KEY = 'finaltable_last_tournament';
+  const PROVIDER_KEY = 'finaltable_identity_provider';
+  const SSO_STATE_KEY = 'finaltable_gn_state'; // sessionStorage: one round trip
 
   let identity = null;
+  let serverInfo = null;
+  let pendingGnToken = null; // the token from the fragment, until it is sent
   let list = [];
   let current = null; // latest tournamentState for our tournament
   let currentId = null;
@@ -64,20 +75,67 @@
   // submit identifies.
   function identify() {
     if (!socket) return false;
-    const name = nameValue();
+    if (pendingGnToken) {
+      const gnToken = pendingGnToken;
+      pendingGnToken = null;
+      socket.emit('identify', { gnToken, avatar: avatarValue() });
+      return true;
+    }
     const token = store.get(TOKEN_KEY);
+    if (store.get(PROVIDER_KEY) === 'gamenight') {
+      if (!token) return false;
+      // No name: it is GameNight's, and sending one would let a stale token
+      // turn into a guest of the same name on the server.
+      socket.emit('identify', { token, provider: 'gamenight', avatar: avatarValue() });
+      return true;
+    }
+    const name = nameValue();
     if (!name && !token) return false;
     if (name) store.set(NAME_KEY, name);
     socket.emit('identify', { token, name, avatar: avatarValue() });
     return true;
   }
 
+  function isGameNight() {
+    return !!(identity && identity.provider === 'gamenight');
+  }
+
+  function renderIdentityRow() {
+    const row = $('ssoRow');
+    if (!row) return;
+    const offered = !!(serverInfo && serverInfo.gamenight);
+    const linked = isGameNight();
+    row.classList.toggle('hidden', !offered && !linked);
+    $('btnGameNight').classList.toggle('hidden', linked || !offered);
+    $('btnGameNightSignOut').classList.toggle('hidden', !linked);
+    $('ssoHint').classList.toggle('hidden', linked);
+    $('playerName').readOnly = linked;
+    $('playerName').classList.remove('input-invalid');
+  }
+
+  function onServerInfo(info) {
+    serverInfo = info || null;
+    window.__serverInfo = serverInfo;
+    renderIdentityRow();
+    const op = $('btnOperator');
+    if (op) op.classList.toggle('hidden', !(serverInfo && serverInfo.adminAvailable));
+  }
+
   function onIdentified(ident) {
     identity = ident;
     window.__identity = ident;
     store.set(TOKEN_KEY, ident.token);
-    if (ident.name && !nameValue()) $('playerName').value = ident.name;
-    $('identityStatus').textContent = `Playing as ${ident.name}`;
+    if (ident.provider === 'gamenight') {
+      store.set(PROVIDER_KEY, 'gamenight');
+      $('playerName').value = ident.name;
+      store.set(NAME_KEY, ident.name);
+      $('identityStatus').textContent = `Signed in with GameNight as ${ident.name}`;
+    } else {
+      store.set(PROVIDER_KEY, null);
+      if (ident.name && !nameValue()) $('playerName').value = ident.name;
+      $('identityStatus').textContent = `Playing as ${ident.name}`;
+    }
+    renderIdentityRow();
     setConnection(true);
     if (ident.resume) {
       store.set(LAST_KEY, null);
@@ -111,6 +169,263 @@
 
   function onSessionReplaced() {
     returnToLobby('You opened FinalTable somewhere else; this tab was signed out of the table.');
+  }
+
+  // ── Operator page ────────────────────────────────────────────────────────
+  //
+  // Server settings an operator changes from the browser, behind the same
+  // password as the table's admin controls. The page holds no privilege: the
+  // unlock is per socket and every request is checked on the server.
+
+  let operatorPending = false; // opening the page once the unlock answers
+  let pairing = null;
+
+  async function openOperator() {
+    if (window.Admin && Admin.isAuthed()) {
+      showView('operator');
+      if (socket) socket.emit('adminGetGameNight');
+      return;
+    }
+    if (typeof window.showTextPromptDialog !== 'function' || !socket) return;
+    const password = await window.showTextPromptDialog({
+      title: 'Operator login',
+      message: 'Password for the admin controls.',
+      hint: 'Sent over this connection as typed; the server is plain HTTP on your network.',
+      confirmLabel: 'Unlock',
+      placeholder: 'password',
+      maxLength: 128,
+      masked: true,
+    });
+    if (!password) return;
+    operatorPending = true;
+    window.__operatorPending = true;
+    socket.emit('adminLogin', { password });
+  }
+
+  function onAdminStatus(st) {
+    if (!operatorPending) return;
+    operatorPending = false;
+    window.__operatorPending = false;
+    if (st && st.ok) openOperator();
+  }
+
+  function setOpStatus(text, kind) {
+    const el = $('opGnStatus');
+    el.textContent = text || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('err', kind === 'err');
+  }
+
+  function fmtWhen(ms) {
+    if (!ms) return 'from the environment';
+    try {
+      return new Date(ms).toLocaleString();
+    } catch (_err) {
+      return String(ms);
+    }
+  }
+
+  function renderOperator() {
+    const p = pairing;
+    const detail = $('opGnDetail');
+    detail.textContent = '';
+    if (p && p.paired) {
+      const lines = [
+        `issuer   ${p.issuer}`,
+        `slug     ${p.audience}`,
+        `key id   ${p.kid}`,
+        `fetched  ${fmtWhen(p.fetchedAt)}`,
+      ];
+      if (p.url && p.issuer && p.url !== p.issuer) {
+        lines.push(
+          `note     GameNight calls itself ${p.issuer}; you entered ${p.url}. Its Site URL setting decides the issuer.`
+        );
+      }
+      lines.forEach((line) => {
+        const row = document.createElement('div');
+        row.textContent = line;
+        detail.appendChild(row);
+      });
+      if (!$('opGnUrl').value) $('opGnUrl').value = p.url || p.issuer;
+      $('opGnAudience').value = p.audience || 'finaltable';
+      $('btnOpPair').textContent = 'Pair again';
+    } else {
+      $('btnOpPair').textContent = 'Pair';
+    }
+    detail.classList.toggle('hidden', !(p && p.paired));
+    $('btnOpRefresh').classList.toggle('hidden', !(p && p.paired));
+    $('btnOpUnpair').classList.toggle('hidden', !(p && p.paired));
+  }
+
+  function onAdminGameNight(data) {
+    if (!data) return;
+    pairing = data;
+    if (data.ok === false) {
+      setOpStatus(data.error || 'That did not work.', 'err');
+    } else if (data.ok === true) {
+      setOpStatus(
+        data.paired ? `Paired with ${data.issuer}. The sign-in button is live.` : 'Unpaired.',
+        'ok'
+      );
+    } else {
+      setOpStatus(
+        data.paired ? `Paired with ${data.issuer}.` : 'Not paired. Players sign in as guests only.'
+      );
+    }
+    renderOperator();
+    setOpBusy(false);
+  }
+
+  function setOpBusy(busy) {
+    ['btnOpPair', 'btnOpRefresh', 'btnOpUnpair'].forEach((id) => ($(id).disabled = busy));
+  }
+
+  function opPair() {
+    if (!socket) return;
+    const url = $('opGnUrl').value.trim();
+    const audience = $('opGnAudience').value.trim() || 'finaltable';
+    if (!/^https?:\/\/[^/\s?#]+/i.test(url)) {
+      setOpStatus('Enter the GameNight address as http(s)://host', 'err');
+      $('opGnUrl').focus();
+      return;
+    }
+    setOpBusy(true);
+    setOpStatus('Asking GameNight for its signing key…');
+    socket.emit('adminPairGameNight', { url, audience });
+  }
+
+  function opRefresh() {
+    if (!socket) return;
+    setOpBusy(true);
+    setOpStatus('Fetching the current key…');
+    socket.emit('adminRefreshGameNight');
+  }
+
+  async function opUnpair() {
+    if (!socket) return;
+    let ok = true;
+    if (typeof window.showConfirmDialog === 'function') {
+      ok = await window.showConfirmDialog({
+        title: 'Unpair from GameNight?',
+        message:
+          'The sign-in button goes away. Players already signed in keep their seats until they sign out.',
+        confirmLabel: 'Unpair',
+        cancelLabel: 'Keep it',
+      });
+    }
+    if (!ok) return;
+    setOpBusy(true);
+    socket.emit('adminUnpairGameNight');
+  }
+
+  // ── GameNight sign-in ────────────────────────────────────────────────────
+
+  function randomState() {
+    const bytes = new Uint8Array(16);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    return btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  }
+
+  const session = {
+    get(key) {
+      try {
+        return sessionStorage.getItem(key);
+      } catch (_err) {
+        return null;
+      }
+    },
+    set(key, value) {
+      try {
+        if (value === null || value === undefined) sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key, value);
+      } catch (_err) {
+        /* private mode */
+      }
+    },
+  };
+
+  function startGameNightLogin() {
+    if (!serverInfo || !serverInfo.gamenight) return;
+    const state = randomState();
+    // The state guards the return leg; the join code rides with it so a link
+    // that led here still lands at its table after the round trip.
+    session.set(
+      SSO_STATE_KEY,
+      JSON.stringify({ state, code: pendingJoin && pendingJoin.code ? pendingJoin.code : null })
+    );
+    const url =
+      serverInfo.gamenight.connectUrl +
+      '?app=' +
+      encodeURIComponent(serverInfo.gamenight.audience) +
+      '&return=' +
+      encodeURIComponent(location.origin + location.pathname) +
+      '&state=' +
+      state;
+    location.assign(url);
+  }
+
+  // The return leg: GameNight sends the browser back with the token in the
+  // fragment, which never reaches the server's log. Read it, scrub it from
+  // the address bar, and hold it for the first identify.
+  function consumeReturnHash() {
+    const hash = location.hash || '';
+    if (!/^#gn_(token|error)=/.test(hash)) return;
+    const params = new URLSearchParams(hash.slice(1));
+    history.replaceState(null, '', location.pathname + location.search);
+    let stash = null;
+    try {
+      stash = JSON.parse(session.get(SSO_STATE_KEY) || 'null');
+    } catch (_err) {
+      stash = null;
+    }
+    session.set(SSO_STATE_KEY, null);
+    if (params.get('gn_error')) return;
+    const token = params.get('gn_token');
+    if (!token || !stash || !stash.state || stash.state !== params.get('state')) {
+      notice('Sign-in could not be verified. Try again from the Sign in with GameNight button.');
+      return;
+    }
+    pendingGnToken = token;
+    if (stash.code && !pendingJoin) pendingJoin = { code: stash.code };
+  }
+
+  function signOutOfGameNight() {
+    store.set(TOKEN_KEY, null);
+    store.set(NAME_KEY, null);
+    store.set(PROVIDER_KEY, null);
+    location.reload();
+  }
+
+  const FAIL_TEXT = {
+    expired: 'That sign-in took too long. Try again.',
+    signed_out: 'Your GameNight sign-in has expired here. Sign in again.',
+    not_configured: 'This server does not accept GameNight sign-in.',
+  };
+
+  function onIdentifyFailed(data) {
+    const reason = data && data.reason ? data.reason : '';
+    identity = null;
+    window.__identity = null;
+    store.set(TOKEN_KEY, null);
+    store.set(PROVIDER_KEY, null);
+    $('identityStatus').textContent = '';
+    renderIdentityRow();
+    notice(FAIL_TEXT[reason] || 'GameNight sign-in failed. Try again.');
+  }
+
+  // The dialog helpers are defined by app-init.js, which app.js runs after
+  // every deferred script has loaded; this module's own init runs before
+  // that. A notice raised during init waits a tick for them.
+  function notice(message, tries = 0) {
+    if (typeof window.showNoticeDialog === 'function') {
+      window.showNoticeDialog({ title: 'Lobby', message, confirmLabel: 'OK' });
+    } else if (tries < 20) {
+      setTimeout(() => notice(message, tries + 1), 50);
+    }
   }
 
   function setConnection(ok) {
@@ -200,7 +515,7 @@
 
   function showView(name) {
     view = name;
-    ['home', 'create', 'waiting'].forEach((v) => {
+    ['home', 'create', 'waiting', 'operator'].forEach((v) => {
       const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
       if (node) node.classList.toggle('hidden', v !== name);
     });
@@ -401,7 +716,7 @@
   }
 
   function submitCreate() {
-    if (!nameValue()) return needName();
+    if (!nameValue() && !isGameNight()) return needName();
     const quick = $('tStartAt').dataset.quick;
     let startsAt = Date.parse($('tStartAt').value);
     if (quick === '0') startsAt = Date.now();
@@ -435,7 +750,7 @@
 
   // The list never carries a code - it is public - so a card joins by id.
   function requestJoin(payload) {
-    if (!nameValue()) {
+    if (!nameValue() && !isGameNight() && !pendingGnToken) {
       pendingJoin = payload;
       return needName();
     }
@@ -473,6 +788,13 @@
       const badge = document.createElement('span');
       badge.className = 'wr-badge';
       badge.textContent = 'bot';
+      line.appendChild(badge);
+    }
+    if (row.provider === 'gamenight') {
+      const badge = document.createElement('span');
+      badge.className = 'wr-badge wr-badge-gn';
+      badge.textContent = 'GameNight';
+      badge.title = 'Signed in with a GameNight account';
       line.appendChild(badge);
     }
     // The host's moderation, and only the host's: the server checks this again
@@ -641,16 +963,30 @@
     $('btnLeaveTournament').addEventListener('click', leave);
     $('btnEnterTable').addEventListener('click', enterTable);
     $('btnCopyLink').addEventListener('click', copyLink);
+    $('btnGameNight').addEventListener('click', startGameNightLogin);
+    $('btnGameNightSignOut').addEventListener('click', signOutOfGameNight);
+    $('btnOperator').addEventListener('click', openOperator);
+    $('btnOpPair').addEventListener('click', opPair);
+    $('btnOpRefresh').addEventListener('click', opRefresh);
+    $('btnOpUnpair').addEventListener('click', opUnpair);
+    $('btnOpBack').addEventListener('click', () => showView('home'));
+    $('opGnUrl').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        opPair();
+      }
+    });
 
     // Name and avatar edits re-identify (the server updates the identity).
     let renameTimer = null;
     const reidentify = () => {
       clearTimeout(renameTimer);
       renameTimer = setTimeout(() => {
-        if (identity && nameValue()) identify();
+        if (identity && (isGameNight() || nameValue())) identify();
       }, 400);
     };
     $('playerName').addEventListener('blur', () => {
+      if (isGameNight()) return;
       if (!identity && nameValue()) identify();
       else reidentify();
     });
@@ -671,15 +1007,20 @@
     }
     const savedName = store.get(NAME_KEY);
     if (savedName && !$('playerName').value) $('playerName').value = savedName;
+    consumeReturnHash();
 
     setInterval(tickCountdowns, 1000);
     ensureSocket();
-    if (fromLink && !nameValue()) needName();
+    if (fromLink && !nameValue() && !pendingGnToken) needName();
   }
 
   window.Lobby = {
     identify,
+    onServerInfo,
+    onAdminStatus,
+    onAdminGameNight,
     onIdentified,
+    onIdentifyFailed,
     onSessionReplaced,
     onList,
     onJoined,

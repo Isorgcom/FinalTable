@@ -35,6 +35,21 @@ function registerTournamentHandlers(deps) {
   // default password. It is never sent to a client, logged, or put in state.
   const adminPassword = typeof deps.adminPassword === 'string' ? deps.adminPassword.trim() : '';
   const adminEnabled = adminPassword.length > 0;
+  // The GameNight sign-in bridge. Read live on every use: the operator can
+  // pair, refresh or unpair while the server runs. Unpaired, a GameNight
+  // token is simply not a way in.
+  const sso = deps.sso || { get: () => null, status: () => ({ paired: false }) };
+  const log = typeof deps.log === 'function' ? deps.log : () => {};
+
+  function serverInfo() {
+    const live = sso.get();
+    return {
+      adminAvailable: adminEnabled,
+      gamenight: live
+        ? { connectUrl: live.config.connectUrl, audience: live.config.audience }
+        : null,
+    };
+  }
 
   function fail(socket, error) {
     socket.emit('error', { message: error });
@@ -57,6 +72,10 @@ function registerTournamentHandlers(deps) {
       const entry = entryFor(socket);
       if (entry) registry.bind(entry, socket.data.tournamentUid, socket, { resumed: true });
     }
+    // What this server offers, before the client has said who it is: whether
+    // there is an operator surface, and whether a GameNight sign-in exists and
+    // where it goes. Never the password, never the key.
+    socket.emit('serverInfo', serverInfo());
     socket.emit('tournamentList', registry.listFor(socket.data.uid));
 
     socket.on('listTournaments', () =>
@@ -65,13 +84,58 @@ function registerTournamentHandlers(deps) {
 
     // First thing on every connect, reconnects included. Establishes who the
     // socket is and, when that person has a live registration, rebinds it.
+    //
+    // Three ways to say it. A guest sends a name and, after the first time, the
+    // token it was given. A player just back from GameNight sends the signed
+    // token from the URL, once. A linked browser reconnecting sends its device
+    // token with provider set, and no name: when that token has gone stale it
+    // is told so, rather than quietly becoming a guest of the same name with a
+    // different uid.
     socket.on('identify', (payload = {}) => {
-      const ident = identity.identify({
-        token: payload.token,
-        name: payload.name,
-        avatar: payload.avatar,
-      });
-      if (!ident) return fail(socket, 'Enter a name first');
+      let ident = null;
+      if (typeof payload.gnToken === 'string') {
+        const live = sso.get();
+        if (!live) {
+          return socket.emit('identifyFailed', { provider: 'gamenight', reason: 'not_configured' });
+        }
+        const result = live.verifier.verify(payload.gnToken);
+        if (!result.ok) {
+          log({
+            level: 'warn',
+            event: 'gamenight_token_rejected',
+            message: 'GameNight sign-in token rejected',
+            data: { reason: result.reason, socketId: socket.id },
+          });
+          return socket.emit('identifyFailed', { provider: 'gamenight', reason: result.reason });
+        }
+        ident = identity.identifyFromGameNight({
+          sub: result.claims.sub,
+          name: result.claims.name,
+          avatar: payload.avatar,
+        });
+        if (!ident)
+          return socket.emit('identifyFailed', { provider: 'gamenight', reason: 'malformed' });
+        log({
+          level: 'info',
+          event: 'gamenight_sign_in',
+          message: 'Player signed in with GameNight',
+          data: { uid: ident.uid, isNew: ident.isNew },
+        });
+      } else if (payload.provider === 'gamenight') {
+        // No name on purpose: with no record for the token, identify() has
+        // nothing to mint a guest from and answers null.
+        ident = identity.identify({ token: payload.token, avatar: payload.avatar });
+        if (!ident || ident.provider !== 'gamenight') {
+          return socket.emit('identifyFailed', { provider: 'gamenight', reason: 'signed_out' });
+        }
+      } else {
+        ident = identity.identify({
+          token: payload.token,
+          name: payload.name,
+          avatar: payload.avatar,
+        });
+        if (!ident) return fail(socket, 'Enter a name first');
+      }
       socket.data.uid = ident.uid;
       const entry = registry.findByUid(ident.uid);
       let resume = null;
@@ -291,6 +355,47 @@ function registerTournamentHandlers(deps) {
       if (!entry) return fail(socket, 'No tournament to cancel');
       const result = registry.forceCancel(entry, 'cancelled by the operator');
       if (result.error) return fail(socket, result.error);
+    });
+
+    // The GameNight pairing, from the Operator page. All four answer on
+    // adminGameNight, and a change is announced to every socket as a fresh
+    // serverInfo so the button appears or goes without a reload. Nobody who
+    // has not unlocked the admin controls gets an answer at all.
+    function sendPairing(extra = {}) {
+      socket.emit('adminGameNight', { ...sso.status(), ...extra });
+    }
+    function announcePairing() {
+      io.emit('serverInfo', serverInfo());
+    }
+    socket.on('adminGetGameNight', () => {
+      if (!adminEnabled || !socket.data.isAdmin) return;
+      sendPairing();
+    });
+    socket.on('adminPairGameNight', async (payload = {}) => {
+      if (!adminEnabled || !socket.data.isAdmin) return;
+      try {
+        await sso.pair(payload.url, payload.audience);
+        announcePairing();
+        sendPairing({ ok: true });
+      } catch (err) {
+        sendPairing({ ok: false, error: err.message });
+      }
+    });
+    socket.on('adminRefreshGameNight', async () => {
+      if (!adminEnabled || !socket.data.isAdmin) return;
+      try {
+        await sso.refresh();
+        announcePairing();
+        sendPairing({ ok: true });
+      } catch (err) {
+        sendPairing({ ok: false, error: err.message });
+      }
+    });
+    socket.on('adminUnpairGameNight', () => {
+      if (!adminEnabled || !socket.data.isAdmin) return;
+      sso.unpair();
+      announcePairing();
+      sendPairing({ ok: true });
     });
 
     // Chat. Deliberately its own event rather than a kind of gameMessage: the

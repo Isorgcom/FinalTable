@@ -29,6 +29,11 @@ services:
       - NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_MB:-384}
       # Unset by default: no admin password means no operator controls.
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      # Sign in with GameNight, all three from .env (see .env.example). Unset
+      # means the button does not exist.
+      - GAMENIGHT_URL=${GAMENIGHT_URL:-}
+      - GAMENIGHT_AUDIENCE=${GAMENIGHT_AUDIENCE:-}
+      - GAMENIGHT_PUBLIC_KEY=${GAMENIGHT_PUBLIC_KEY:-}
       # How long a seat that is sitting out pauses before it checks or folds,
       # in ms, divided by the table speed multiplier.
       - AUTO_TURN_DELAY_MS=${AUTO_TURN_DELAY_MS:-600}

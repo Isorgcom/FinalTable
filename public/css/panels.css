@@ -216,7 +216,9 @@
 .result-modal {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  /* Above the lobby (1000) as well as the table: a dialog raised while the
+     lobby is showing used to render underneath it, unreadable and unclickable. */
+  z-index: 2100;
   display: flex;
   align-items: center;
   justify-content: center;
