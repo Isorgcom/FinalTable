@@ -45,7 +45,7 @@ what publishes a container image.
 - A player who busts can still read their table's chat, but not post to it.
 - Only players still in the tournament can talk once it is running.
 
-## 0.1.0 - 2026-09-09
+## 0.1.9 - 2026-09-09
 
 The first entry, covering everything since FinalTable forked from LONICERA on
 5 September 2026. Summarised rather than itemised - it is five days and a
@@ -143,5 +143,6 @@ changelog to write into.
 
 ---
 
-Note on tags: `v1.0.1` in this repository is upstream LONICERA's release,
-inherited through the fork. FinalTable's own numbering starts at 0.1.0.
+Note on tags: this repository has none yet. `v1.0.1` was a local leftover from
+the fork - upstream LONICERA's release, on upstream's repository - and has been
+removed. FinalTable's own numbering is 0.1.x and starts here.

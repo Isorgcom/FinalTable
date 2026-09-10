@@ -42,6 +42,7 @@ there yet.
    publishes the container image on `v*` tags.
 
 Semver against the players, not the API: a rule or a payout that behaves
-differently is a minor, a fix is a patch. `v1.0.1` in this repository is
-upstream LONICERA's tag, inherited through the fork - FinalTable's own
-numbering starts at 0.1.0 and is unrelated to it.
+differently is a minor, a fix is a patch. Stay on 0.x while this is under
+active development; 1.0.0 is for when you would hand it to strangers. The
+repository carries no tags yet - the `v1.0.1` that used to show up locally was
+upstream LONICERA's, inherited by the fork, and has been removed.

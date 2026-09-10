@@ -64,10 +64,26 @@ Phase 3:
 
 ## Relationship to GameNight
 
-None. FinalTable is a wholly separate project with its own repository,
-containers, volumes and release cadence. It may be served from a subdomain of
-gamenight.poker, but it shares no code, database or authentication with it, and
-neither imports from the other.
+Separate projects, deliberately, and staying that way. FinalTable has its own
+repository, containers, volumes and release cadence, shares no code and no
+database with GameNight, and neither imports the other. It may be served from a
+subdomain of gamenight.poker; that is a DNS record, not a dependency.
+
+What is planned is integration, not merging. The two will talk over an HTTP API
+and webhooks - GameNight asks for a game and is told when players bust and when
+it ends - and over a signed token that lets somebody logged into GameNight be
+seated here without a second account. GameNight becomes the source of truth for
+who a player is; it does not become part of this program. The boundary is the
+point: either service can be down, or absent entirely, without taking the other
+with it.
+
+That is why standalone operation is a requirement rather than a fallback.
+FinalTable must run for somebody who has never heard of GameNight - a guest
+name, a join link, and a seat - and the identity store behind that
+(`server/identity.js`) is one interface with room for a second implementation,
+not a hole where a login is supposed to go.
+
+See [ROADMAP.md](./ROADMAP.md) for the API, the events and the order of work.
 
 ## Licence
 
