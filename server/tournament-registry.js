@@ -1131,8 +1131,7 @@ function createTournamentRegistry(deps = {}) {
       if (chatStore) chat.hydrate(chatStore.load(saved.id));
       // A tournament that was mid-play when the process went down is seated
       // again from the field it recorded between hands. Every seat comes back
-      // sitting out and is taken over by its player when they reconnect, so a
-      // field nobody returns to plays itself out rather than hanging.
+      // sitting out and is taken over by its player when they reconnect.
       // A field big enough to bring the process down is restored on boot and
       // brings it down again, and the restart policy makes that a loop the box
       // never gets out of. So a field that has been seated this many times
@@ -1154,6 +1153,13 @@ function createTournamentRegistry(deps = {}) {
           // tournament down for; it falls back to its registrations.
         }
       }
+      // Nobody is connected to a field that has just been seated, and the
+      // clock the sweep abandons on is only ever started by a disconnect. So
+      // it starts here: a field nobody returns to within the grace is cleared
+      // the same as one everybody walked out of, instead of dealing to empty
+      // seats until the process next goes down. Seats that fold every hand
+      // never bust each other, so it would never finish on its own.
+      if (entry.status === 'running') entry.noHumansSince = entry.restoredAt;
       tournaments.set(entry.id, entry);
       restored++;
     }

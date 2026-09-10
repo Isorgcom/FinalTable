@@ -439,6 +439,74 @@ describe('tournament registry', () => {
     second.stop();
   });
 
+  // The abandonment clock was only started by a disconnect, so a running field
+  // restored on boot - every seat socketless, nobody having disconnected -
+  // never started it, and dealt to nobody until the next restart, which seated
+  // it again. Seen on a dev box: four fields from a chat test, a day later,
+  // at the top of the ladder with everybody still in, because seats that fold
+  // every hand only ever trade blinds.
+  test('a restored field nobody comes back to is abandoned after the grace', () => {
+    const store = makeStore();
+    const boot = () =>
+      createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        sweepMs: 1000,
+        abandonGraceMs: 3000,
+        store,
+        tableOptions: { actionTimeoutMs: 0 },
+        connectedSockets: () => live.values(),
+      });
+    const first = boot();
+    const { entry } = first.create(
+      'h',
+      { name: 'Left running', startsAt: Date.now() + 1000 },
+      makeSocket('sh')
+    );
+    first.join('g', { code: entry.code }, makeSocket('sg'));
+    jest.advanceTimersByTime(2000);
+    expect(entry.status).toBe('running');
+    first.flush();
+    first.stop();
+    live.clear();
+
+    const second = boot();
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back.status).toBe('running');
+    // Still there inside the grace...
+    jest.advanceTimersByTime(2500);
+    expect(second.tournaments.has(entry.id)).toBe(true);
+    // ...and gone once it has passed with nobody back.
+    jest.advanceTimersByTime(1500);
+    expect(second.tournaments.has(entry.id)).toBe(false);
+    second.flush();
+    expect(store.load()).toHaveLength(0);
+    second.stop();
+
+    // Whereas a player who does come back keeps the field, as they always did.
+    const third = boot();
+    const again = third.create(
+      'h',
+      { name: 'Came back', startsAt: Date.now() + 1000 },
+      makeSocket('sh')
+    ).entry;
+    third.join('g', { code: again.code }, makeSocket('sg'));
+    jest.advanceTimersByTime(2000);
+    third.flush();
+    third.stop();
+    live.clear();
+    const fourth = boot();
+    expect(fourth.restore()).toBe(1);
+    const kept = fourth.tournaments.get(again.id);
+    jest.advanceTimersByTime(2000);
+    fourth.bind(kept, 'g', makeSocket('sg2', 'g'), { resumed: true });
+    jest.advanceTimersByTime(5000);
+    expect(fourth.tournaments.has(again.id)).toBe(true);
+    expect(kept.status).toBe('running');
+    fourth.stop();
+  });
+
   // A broadcast builds the roster and the field summary once and hands them to
   // every recipient. The risk in that is showing one player another player's
   // corner of the state, so it is pinned: what is shared must be identical for

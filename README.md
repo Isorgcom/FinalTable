@@ -14,7 +14,8 @@ friends register by code or link, a scheduled start, tables that balance and
 break as players bust, late registration, payouts and hand-for-hand at the
 bubble, and rejoin after a dropped connection or a page reload. Registrations
 survive a server restart, and so does a running field: it is recorded between
-hands, never during one, and seated again on the way back up.
+hands, never during one, and seated again on the way back up - and cleared,
+like any other table everyone has left, if nobody comes back to it.
 
 It is people, unless you ask for otherwise: a tournament needs two entrants
 before it can deal, and the create form has a box that adds five demo seats so

@@ -32,6 +32,11 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- A running tournament brought back after a server restart is now cleared
+  after the usual two minutes if none of its players return, the same as one
+  everybody has disconnected from. Before, it was only ever cleared on a
+  disconnect, and a field that came back with nobody in it had none coming -
+  so it dealt to empty seats indefinitely, and showed in the lobby as running.
 - The lobby list, and `GET /api/tournaments` behind it, no longer carry each
   game's join code. Anyone who could reach the server could read every code
   and walk into any game; now the code is only shown in the waiting room of a
