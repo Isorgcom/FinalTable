@@ -59,6 +59,11 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- A `.env` the server could see but not read stopped it booting, in a loop,
+  rather than being skipped. It is what a deployment that mounts the working
+  tree into the container does with a secrets file that is deliberately
+  readable only by its owner; everything in it arrives through the environment
+  anyway.
 - A dialog raised while the lobby was showing was drawn underneath it, where it
   could be neither read nor dismissed. Everything the lobby had to tell you went
   unseen: that a tournament was cancelled, that the name was taken, that the one

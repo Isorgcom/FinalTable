@@ -64,6 +64,9 @@ commit that exists nowhere else is unpleasant to work out later.
   then `git clone github-finaltable:OWNER/FinalTable.git /opt/finaltable`.
 - Its own `.env` beside the compose files, holding that machine's admin
   password and any sizing. It is gitignored, so a pull never touches it.
+  Compose reads it on the host and passes the values in; the container sees the
+  file too, through the bind mount, and skips it if the permissions say it is
+  none of its business, so mode 600 is fine and is the point.
 
 The clone is the deployment. `docker-compose.prod.yml` is committed and carries
 this host's specifics: the bind mount, the proxy network, `TRUST_PROXY`, and

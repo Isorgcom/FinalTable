@@ -11,9 +11,23 @@ function stripQuotes(value) {
   return value;
 }
 
+// A file that is there but cannot be read is not a reason to refuse to start.
+// It happens for a good reason: a deployment that bind-mounts the working tree
+// into the container exposes the operator's .env to a process running as
+// somebody else, and that file is deliberately kept at mode 600. Everything in
+// it reached the process through the environment already, which is what the
+// compose file is for, so skipping it costs nothing and crash-looping over it
+// costs the server.
 function applyEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return false;
-  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+  let contents;
+  try {
+    contents = fs.readFileSync(filePath, 'utf8');
+  } catch (err) {
+    console.warn(`Skipping ${filePath}: ${err.code || err.message}`);
+    return false;
+  }
+  const lines = contents.split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
