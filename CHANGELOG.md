@@ -48,6 +48,15 @@ Release on GitHub to go with it.
   `CHAT_MAX_LEN`, `CHAT_RATE` and `CHAT_RATE_WINDOW_MS` tune what is kept and
   how fast anyone can talk.
 
+### Changed
+
+- The server is deployed by pulling this repository on the host and restarting,
+  rather than by building an image elsewhere and shipping the whole thing over
+  SSH. The working tree is bind-mounted into the container, so nothing is built
+  on a box that has no room to build, a rollback is a `git checkout`, and the
+  deploy is two commands. `docker-compose.prod.yml` carries the host's own
+  settings. See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
+
 ### Fixed
 
 - A dialog raised while the lobby was showing was drawn underneath it, where it

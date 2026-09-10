@@ -1,0 +1,38 @@
+# FinalTable - the isorg VPS, layered over docker-compose.yml.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What this host needs that a generic one does not: the working tree bind-mounted
+# so a deploy is a pull rather than a build (that box has ~600MB free and one
+# core, and `npm ci` there is slow at best and takes the neighbours down at
+# worst), the proxy network so Nginx Proxy Manager can reach the container by
+# name, and smaller memory than the defaults because it runs beside eight other
+# containers.
+#
+# Nobody self-hosting needs this file. The compose file beside it stands alone.
+services:
+  finaltable:
+    # Named, so the image the host already has is reused and an ordinary deploy
+    # never builds. `--build` retags this same name when dependencies change.
+    image: finaltable:latest
+    volumes:
+      # The source is the clone at /opt/finaltable, read straight off disk, the
+      # way GameNight serves www/. node_modules stays in the image: the tree has
+      # none (it is gitignored), and the anonymous volume keeps the bind mount
+      # from hiding the image's copy.
+      - .:/app
+      - /app/node_modules
+    environment:
+      # Behind Nginx Proxy Manager, so the client address comes from
+      # X-Forwarded-For rather than every request logging as the proxy.
+      - TRUST_PROXY=true
+      # Sized for the room this box actually has, not the 384/512 defaults.
+      - NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_MB:-256}
+    mem_limit: ${MEM_LIMIT:-384m}
+    cpus: 0.5
+    networks:
+      - npm_default
+
+networks:
+  npm_default:
+    external: true

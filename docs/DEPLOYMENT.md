@@ -1,59 +1,73 @@
 # Deploying
 
-Two places this runs, and they update differently. There is no deploy script:
-the server side is three commands, and a script wrapping them turned out to be
-more moving parts than the thing it wrapped.
+The server carries a clone of this repository and reads its source straight off
+disk, so a deploy is a pull and a restart. There is no deploy script: it is two
+commands, and a script wrapping them turned out to be more moving parts than
+the thing it wrapped.
 
 ## The server
 
-The box carries no source and never builds. It is a 1 vCPU VPS with a few
-hundred megabytes free running other things beside this one, and `npm ci` there
-is slow at best and takes the neighbours down at worst. So the image is built
-on a machine with room, and only the finished image travels:
-
 ```bash
-docker build -t finaltable:latest .
-docker save finaltable:latest | gzip -1 | ssh root@HOST 'gunzip | docker load'
-ssh root@HOST 'cd /opt/finaltable && docker compose up -d'
+ssh root@HOST
+cd /opt/finaltable
+git pull --ff-only origin main
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart
 ```
 
-Then check it actually came up, which the commands above will not tell you:
+Then check it actually came up, which those will not tell you:
 
 ```bash
 curl -s https://your-host/api/status      # {"activeTournaments":0}
 ssh root@HOST 'docker ps --filter name=finaltable --format "{{.Status}}"'
 ```
 
-`gzip -1` rather than the default because the image is mostly incompressible
-layers already, so the time is all in the transfer.
+**Nothing is built.** The box is a 1 vCPU VPS with a few hundred megabytes free
+running other things beside this one, and `npm ci` there is slow at best and
+takes the neighbours down at worst. It does not have to: `docker-compose.prod.yml`
+bind-mounts the working tree into the container, so the source that runs is the
+source in the clone, and `node_modules` stays in the image where it was built.
+This is how GameNight serves `www/` on the same host.
 
 Three things to know:
 
-- **`docker compose up -d`, never `docker restart`.** Restart starts the _same
-  container_, which is still pointed at the old image, so the deploy silently
-  does nothing and looks like it worked.
-- **The whole image goes over the wire every time**, around 250 MB. The far
-  side already has most of those layers and `docker save` has no way to know
-  it. A registry would send only what changed; this trades that away for having
-  no registry to run.
-- **There is no rollback.** Every build overwrites `finaltable:latest`, which
-  is the only tag the server has, so the previous image is gone once the new
-  one lands. Build with `-t finaltable:$(git rev-parse --short HEAD)` as well
-  if you want something to fall back to.
+- **The restart is not optional.** `public/index.html` is templated once per
+  process with the asset version, and every module is loaded at boot, so a pull
+  on its own changes nothing a player can see. Only CSS and images are live.
+- **A rebuild is only needed when `package.json` or the `Dockerfile` changes.**
+  Then, and only then:
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+  ```
+  On this host that is worth doing at a quiet hour, or on a machine with room
+  (`docker build -t finaltable:latest .` there, then
+  `docker save finaltable:latest | gzip -1 | ssh root@HOST 'gunzip | docker load'`).
+- **Rolling back is `git checkout`**, which is most of the reason for deploying
+  this way. Any commit or tag, then restart; the image is not involved.
 
-Commit before building. Nothing enforces it, and an image built from a dirty
-tree matches no commit, which is unpleasant to work out later from the server.
+Commit and push before pulling. Nothing enforces it, and a server sitting on a
+commit that exists nowhere else is unpleasant to work out later.
 
 ### What the host needs
 
-- Docker, and an SSH key
-- A compose file naming `image: finaltable:latest` rather than a `build:`
-  block, since there is no source there to build from. Everything else can be
-  copied from the compose file in the repository root.
-- Its own `.env`, holding that machine's settings and admin password
+- Docker, `git`, and an SSH key
+- A read-only **deploy key** for this repository, since it is private. Generate
+  one on the server, add the public half under Settings › Deploy keys, and give
+  it a host alias so the remote stays readable:
+  ```
+  # ~/.ssh/config
+  Host github-finaltable
+      HostName github.com
+      User git
+      IdentityFile ~/.ssh/finaltable_deploy
+      IdentitiesOnly yes
+  ```
+  then `git clone github-finaltable:OWNER/FinalTable.git /opt/finaltable`.
+- Its own `.env` beside the compose files, holding that machine's admin
+  password and any sizing. It is gitignored, so a pull never touches it.
 
-Nothing secret is sent. The image carries no configuration, so the same one is
-fine on a public box and a private one.
+The clone is the deployment. `docker-compose.prod.yml` is committed and carries
+this host's specifics: the bind mount, the proxy network, `TRUST_PROXY`, and
+memory sized for a box that has other tenants.
 
 ### Pairing with GameNight
 
@@ -78,6 +92,13 @@ sign-in with a private key it never shares, so this server can check a token
 on its own and a leak here lets nobody forge one. The key id shown on the
 Operator page matches the one on GameNight's Connected Apps page.
 
+When both run on the same host, the address to enter can be the internal one -
+`http://gamenight`, the container's name on the proxy network - rather than the
+public URL. What is stored as the issuer is whatever GameNight calls itself in
+its answer, not what was typed, so the tokens still verify against its public
+name. That also sidesteps a host whose NAT will not let a container reach its
+own public address.
+
 The three environment variables (`GAMENIGHT_URL`, `GAMENIGHT_AUDIENCE`,
 `GAMENIGHT_PUBLIC_KEY`, see `.env.example`) still work for a headless setup:
 they seed the pairing the first time a server boots with nothing saved, and
@@ -88,44 +109,35 @@ not undone by a restart.
 
 Set `NODE_HEAP_MB` and `MEM_LIMIT` together; raising one alone only changes
 which limit is hit first. A busy box wants _less_ than the repository default
-of a 384 MB heap in a 512 MB container, not more. The Capacity section of the
+of a 384 MB heap in a 512 MB container, not more, which is why
+`docker-compose.prod.yml` asks for 256 in 384. The Capacity section of the
 [README](../README.md) has the measured numbers.
 
 ## The development clone
 
-A clone used for development bind-mounts the working tree into the container,
-so the server reads files straight off disk:
-
-```yaml
-volumes:
-  - .:/app
-  - /app/node_modules
-```
-
-Which makes an update a pull and a restart, with no build at all:
+A clone used for development bind-mounts the working tree the same way, and so
+updates the same way:
 
 ```bash
 git pull --ff-only origin main
 docker restart finaltable-dev
 ```
 
-A rebuild is only needed when `package.json` or the `Dockerfile` changes, since
-`node_modules` lives in an anonymous volume rather than in the tree.
-
 That clone keeps its own `docker-compose.yml` - different container name,
 different published port, debug logging - and it is a permanent local
 divergence, never mirrored from the repository. A pull must not clobber it.
 
-## The data outlives the image
+## The data outlives everything
 
-Tournaments, identities and chat live in a named volume at `/app/data`, not in
-the image, so replacing the image keeps the field that was playing. A running
-tournament is recorded between hands and seated again on the way back up.
+Tournaments, identities, chat and the GameNight pairing live in a named volume
+at `/app/data`, not in the image and not in the clone, so neither a pull nor a
+rebuild touches the field that was playing. A running tournament is recorded
+between hands and seated again on the way back up.
 
 ## Running it somewhere else
 
 Anyone self-hosting on a machine with room to build needs none of the above -
-clone the repository and use the compose file directly, as the
+clone the repository and use the compose file on its own, as the
 [README](../README.md) describes:
 
 ```bash
