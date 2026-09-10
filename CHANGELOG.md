@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.3.0 - 2026-09-10
+
 ### Added
 
 - Reactions. A strip of six emoji beside the arm-a-line buttons, for the seat
