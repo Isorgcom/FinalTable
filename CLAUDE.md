@@ -36,11 +36,23 @@ there yet.
 ## Cutting a release
 
 1. Rename `## Unreleased` to `## X.Y.Z - YYYY-MM-DD` and open a fresh empty
-   `## Unreleased` above it.
-2. Match `version` in `package.json`.
-3. Tag `vX.Y.Z`, push the tag, and publish a Release on GitHub with the notes
-   from that heading. Nothing builds off the tag - deployment is a matter of
-   getting an image onto a host over SSH, not of publishing one.
+   `## Unreleased` above it. Entries landing in separate commits each add
+   their own heading, so the section can hold two `Fixed` or two `Changed`;
+   merge them into one of each, in the file's order, without rewording.
+2. `npm version minor --no-git-tag-version` (or `patch`, or `major`). It
+   writes the number into `package.json` and the two root entries of
+   `package-lock.json`, and nothing else. Do not edit the lockfile by hand: a
+   dependency can share the old number (`forwarded` sat at 0.2.0 while we
+   did) and a find-and-replace takes it along. `--no-git-tag-version` stops
+   npm committing, because the changelog rename belongs in the same commit.
+3. One commit, then an annotated tag - `git tag -a vX.Y.Z -m "X.Y.Z - one
+line"` - and push both.
+4. `gh release create vX.Y.Z --title X.Y.Z --notes-file <file>` with that
+   section's notes.
+5. Deploy is a pull: on the server, `git pull --ff-only --tags origin main`
+   and restart, as [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) says. `--tags`
+   matters, or the clone cannot roll back by tag. The number shows in the
+   lobby's corner menu, read from `package.json`, so that is the check.
 
 Semver against the players, not the API: a rule or a payout that behaves
 differently is a minor, a fix is a patch. Stay on 0.x while this is under
