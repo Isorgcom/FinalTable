@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.8.0 - 2026-09-11
+
 ### Added
 
 - The host's controls at the table, in the Info tab while the game runs:

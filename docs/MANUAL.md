@@ -11,17 +11,18 @@ Everything here is play chips. FinalTable keeps no money and moves none.
 ## What is new
 
 The last few releases changed how a game is found, who can get in, how the
-host reaches the whole room, and how the blinds run. The short version, with
-where to read more:
+host reaches the whole room, how the blinds run, and what the host can do
+once the cards are out. The short version, with where to read more:
 
-| Version | What arrived                                                                                                                                                  | See                                                                                              |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| 0.7.0   | A blind structure to choose or edit when a game is made: Turbo, Standard or Deep, with antes and breaks, and the ladder in the waiting room and the Info tab. | [Creating a tournament](#creating-a-tournament), [How a tournament runs](#how-a-tournament-runs) |
-| 0.6.0   | The host reads and talks at every table: a strip in the Chat tab picks a table, and All announces to every table at once and over the felt.                   | [The side panel](#the-side-panel), [Chat, reactions and mute](#chat-reactions-and-mute)          |
-| 0.5.0   | The Operator page lists every game on the server, listed or not, and can end one. A page left open across an update reloads itself.                           | [For the operator](#for-the-operator), [Updates](#updates)                                       |
-| 0.4.0   | A game is **private by default**. Public lists it for anyone; invite-only puts a door on the link that the host works.                                        | [Who can join](#who-can-join), [The door](#the-door)                                             |
-| 0.3.0   | Reactions: six emoji thrown at the table without typing.                                                                                                      | [Reactions](#reactions)                                                                          |
-| 0.2.0   | Sign in with GameNight, the Operator page, the corner menu, and a join code that is no longer served to anyone who asks.                                      | [Who you are](#who-you-are), [For the operator](#for-the-operator)                               |
+| Version | What arrived                                                                                                                                                                         | See                                                                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| 0.8.0   | The host's controls at the table: pause, a level back or forward, a minute on the clock, move a player, remove a player. The bot box takes a count. Tables that should merge now do. | [The host at the table](#the-host-at-the-table), [Creating a tournament](#creating-a-tournament) |
+| 0.7.0   | A blind structure to choose or edit when a game is made: Turbo, Standard or Deep, with antes and breaks, and the ladder in the waiting room and the Info tab.                        | [Creating a tournament](#creating-a-tournament), [How a tournament runs](#how-a-tournament-runs) |
+| 0.6.0   | The host reads and talks at every table: a strip in the Chat tab picks a table, and All announces to every table at once and over the felt.                                          | [The side panel](#the-side-panel), [Chat, reactions and mute](#chat-reactions-and-mute)          |
+| 0.5.0   | The Operator page lists every game on the server, listed or not, and can end one. A page left open across an update reloads itself.                                                  | [For the operator](#for-the-operator), [Updates](#updates)                                       |
+| 0.4.0   | A game is **private by default**. Public lists it for anyone; invite-only puts a door on the link that the host works.                                                               | [Who can join](#who-can-join), [The door](#the-door)                                             |
+| 0.3.0   | Reactions: six emoji thrown at the table without typing.                                                                                                                             | [Reactions](#reactions)                                                                          |
+| 0.2.0   | Sign in with GameNight, the Operator page, the corner menu, and a join code that is no longer served to anyone who asks.                                                             | [Who you are](#who-you-are), [For the operator](#for-the-operator)                               |
 
 Older: table chat and a host mute, hand-for-hand at the bubble, late
 registration, rejoin after a dropped connection, and a field that survives a

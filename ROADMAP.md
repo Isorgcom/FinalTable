@@ -14,7 +14,7 @@ Settled:
 - Move to 1.0.0 when it is stable and you would hand it to strangers.
 - At each milestone, a tag and a Release on GitHub with the notes from the
   changelog. The routine is written down in [CLAUDE.md](./CLAUDE.md); 0.2.0
-  through 0.7.0 went out through it.
+  through 0.8.0 went out through it.
 
 ## The game itself
 
