@@ -135,6 +135,12 @@ tournaments**.
 The room before the cards are out. It shows the game's name and status, the
 **code** with a **Copy link** button, the roster, the settings, and a chat.
 
+**The settings line** says who can join, the table size, the starting stack,
+the blind structure with how many levels, when the antes start and where the
+breaks fall, the level length, late registration and the buy-in. Under it,
+**Blind structure** opens the whole ladder, level by level, so you can see
+what the night looks like before you sit down.
+
 **The roster** lists everyone registered, with a dot that is lit while they
 are connected and a badge for GameNight sign-ins. The host sees a **mute**
 control on each row; see [Chat, reactions and mute](#chat-reactions-and-mute).
@@ -239,16 +245,18 @@ host mute silences reactions along with chat.
 Docked beside the table on a wide screen, a drawer on a phone (the **panel**
 button opens and closes it). Four tabs:
 
-- **Chat**: the dealer's log of the hand, and the table's chat with a box to
+- **Chat**: the dealer's log of the hand (who posted the ante and the
+  blinds, each street, the showdown), and the table's chat with a box to
   type in. The host of a game with more than one table also gets a strip
   over the log, **All** and one pill per table: pick a table to read what is
   said there and answer it, pick All to say something to every table at
   once. Lines from another table carry a small T2-style chip; the host's own
   lines carry a **host** badge wherever they land.
-- **Info**: the table (mode, players), blinds and level, the field (tables
-  left, which one you are at, players remaining, payouts), and, for the host
-  of an invite-only game, whoever is waiting at the door. When the game
-  ends, the final standings.
+- **Info**: the table (mode, players), the blinds and the ante, the level
+  and the time to the next one, the whole structure with the level the clock
+  is on marked, the field (tables left, which one you are at, players
+  remaining, payouts), and, for the host of an invite-only game, whoever is
+  waiting at the door. When the game ends, the final standings.
 - **Stats**: a leaderboard for this game (wins, hands, win rate, biggest
   pot) and your last ten hands.
 - **History**: every hand you were dealt, replayable card by card and action

@@ -137,8 +137,10 @@ They talk over an API and webhooks. Neither takes the other down.
 
 ## Core API
 
-- An endpoint to launch a game with its settings: blind timers, player count,
-  roster.
+- An endpoint to launch a game with its settings: the blind structure, player
+  count, roster. A level here is `{ sb, bb, ante, duration, break }`, one to
+  one with a row of Game Night's blind editor, so a structure can travel as it
+  is; the server's own presets and clamp live in `blind-structures.js`.
 - It returns a unique game id. Every later call references it.
 - Game Night to Final Table: start a game, cancel or end early, pause, and
   request a seat move - advisory only, see Seating authority below.
@@ -149,7 +151,9 @@ Final Table to Game Night:
 
 - Player eliminated, with finishing place
 - Re-entry
-- Blind level up
+- Blind level up. The server already tells every client (`tournamentLevelUp`,
+  break or level, with the blinds and the time to the next); the webhook is
+  the same event sent outward.
 - Tournament complete, with final standings
 
 Later if they turn out to be needed: a game-started confirmation, and a

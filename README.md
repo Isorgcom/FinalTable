@@ -12,9 +12,10 @@ was removed, and an important licence caution, and
 There is a [user manual](./docs/MANUAL.md) for players, hosts and operators.
 
 Status: **playable.** Multi-table tournaments run end to end: a lobby where
-friends register by code or link, a scheduled start, tables that balance and
-break as players bust, late registration, payouts and hand-for-hand at the
-bubble, and rejoin after a dropped connection or a page reload. Registrations
+friends register by code or link, a scheduled start, a blind structure the
+host picks or edits with antes and breaks, tables that balance and break as
+players bust, late registration, payouts and hand-for-hand at the bubble, and
+rejoin after a dropped connection or a page reload. Registrations
 survive a server restart, and so does a running field: it is recorded between
 hands, never during one, and seated again on the way back up - and cleared,
 like any other table everyone has left, if nobody comes back to it.
@@ -134,6 +135,12 @@ and a player who signs in there is seated here under their Game Night
 username, the same player on every device. Guests still type a name; a server
 with no Game Night is still whole. The same Operator page lists every game the
 server holds, listed or not, with its code, and can end one.
+
+A blind structure is chosen when a game is made, Turbo, Standard or Deep, or
+edited level by level: blinds, a big-blind ante, length, breaks. The ladder is
+in the waiting room and the Info tab; a break holds every table until the
+clock moves on. A level is a row of the same shape Game Night's blind editor
+keeps, so a structure can come across from there when the API below exists.
 
 Next is the rest of that split: Game Night owning invites and records,
 FinalTable owning the live game, talking over an API and webhooks so neither
