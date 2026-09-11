@@ -327,3 +327,66 @@ test('an invite-only game: turned away lands back in the lobby with a reason', a
   await expect(page.locator('#wrPending')).toBeHidden();
   await guestContext.close();
 });
+
+// The page marks itself stale by hand: the server's build never changes
+// under a test, so the meta is edited to disagree with it, and a reconnect
+// brings the serverInfo that makes the page look.
+async function pretendStale(page) {
+  await page.evaluate(() => {
+    document
+      .querySelector('meta[name="finaltable-asset-version"]')
+      .setAttribute('content', 'stale00000');
+    socket.disconnect();
+    socket.connect();
+  });
+}
+
+test('a page served before an update reloads itself when it reconnects', async ({ page }) => {
+  await identifyAs(page, 'Host');
+  const served = await page.getAttribute('meta[name="finaltable-asset-version"]', 'content');
+  expect(served).toMatch(/^[0-9a-f]{10}$/);
+  const reloaded = page.waitForEvent('load');
+  await pretendStale(page);
+  await reloaded;
+  await expect(page.locator('meta[name="finaltable-asset-version"]')).toHaveAttribute(
+    'content',
+    served
+  );
+  await expect(page.locator('#updateStatus')).toBeHidden();
+  await expect(page.locator('#lobbyHome')).toBeVisible();
+});
+
+test('a page that is stale at a table says so and reloads once you leave', async ({
+  browser,
+  page,
+}) => {
+  await identifyAs(page, 'Host');
+  const code = await createTournament(page, { name: 'Stale Table', minutes: 15 });
+  // By code rather than by link: a ?t= link would rejoin the table on the
+  // reload at the end, and the point is to land in the lobby.
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await identifyAs(guest, 'Guest');
+  await guest.fill('#joinCodeInput', code);
+  await guest.click('#btnJoinCode');
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  let loads = 0;
+  guest.on('load', () => loads++);
+  await pretendStale(guest);
+  await expect(guest.locator('#updateStatus')).toBeVisible();
+  await guest.waitForTimeout(1500);
+  expect(loads).toBe(0);
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/);
+
+  const reloaded = guest.waitForEvent('load');
+  await guest.click('#menuToggle');
+  await guest.click('#btnExit');
+  await guest.click('#btnAppDialogConfirm'); // "leave the table?"
+  await reloaded;
+  await expect(guest.locator('#updateStatus')).toBeHidden();
+  await expect(guest.locator('#lobbyHome')).toBeVisible();
+  await guestContext.close();
+});

@@ -169,6 +169,49 @@ test('a join link survives the round trip', async ({ page, browser }) => {
   await hostContext.close();
 });
 
+// The Operator page lists every game the server holds, listed or not, with
+// its code, and can end one from there. Runs before the pairing test below,
+// which changes the operator password for the rest of this file.
+test('the operator sees every game, listed or not, and can end one', async ({ browser, page }) => {
+  const hostContext = await browser.newContext();
+  const host = await hostContext.newPage();
+  await host.goto(baseUrl);
+  await host.fill('#playerName', 'Quiet Host');
+  await host.locator('#playerName').blur();
+  await expect(host.locator('#lobbyHome')).toBeVisible();
+  await host.click('#btnCreateTournament');
+  await host.fill('#tName', 'Back Room');
+  await host.click('#tStartQuick button[data-min="15"]');
+  await host.click('#btnCreateSubmit');
+  await expect(host.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await host.locator('#wrCode').textContent()).trim();
+
+  await page.goto(baseUrl);
+  await openLobbyMenu(page);
+  await page.click('#btnOperator');
+  await page.fill('#appDialogInput', OPERATOR_PASSWORD);
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#lobbyOperator')).toBeVisible();
+  const card = page.locator('#opGamesList .t-card', { hasText: 'Back Room' });
+  await expect(card).toBeVisible();
+  await expect(card.locator('.op-code')).toHaveText(code);
+  await expect(card.locator('.t-card-vis')).toHaveText('private');
+  await expect(card.locator('.t-card-meta')).toContainText('1/1 connected');
+  // Earlier tests leave games of their own on this server, so the count is
+  // only ever "some".
+  await expect(page.locator('#opGamesStatus')).toContainText('game');
+  // And still nowhere a player could see it.
+  const pub = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+  expect(pub.find((t) => t.name === 'Back Room')).toBeUndefined();
+
+  await card.locator('button', { hasText: 'End game' }).click();
+  await page.click('#btnAppDialogConfirm');
+  await expect(host.locator('#lobbyHome')).toBeVisible();
+  await expect(host.locator('#appDialogBody')).toContainText('cancelled by the operator');
+  await expect(page.locator('#opGamesList .t-card', { hasText: 'Back Room' })).toHaveCount(0);
+  await hostContext.close();
+});
+
 // The Operator page: unlock with the admin password, see the pairing the
 // environment seeded, unpair, then pair again against a GameNight stood up
 // here, and watch the sign-in button follow.

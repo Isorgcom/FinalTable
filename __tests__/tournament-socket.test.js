@@ -212,6 +212,21 @@ describe('Tournament socket layer', () => {
     expect(await until(() => !serverModule.tournaments.has(joined.id))).toBe(true);
   });
 
+  test('serverInfo names the asset version the page was served with', async () => {
+    const html = await (await fetch(`${baseUrl}/`)).text();
+    const meta = /name="finaltable-asset-version" content="([0-9a-f]{10})"/.exec(html);
+    expect(meta).not.toBeNull();
+    // Listening from before the connect: serverInfo is the first thing sent.
+    const socket = Client(baseUrl, {
+      forceNew: true,
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    clients.push(socket);
+    const info = await waitFor(socket, 'serverInfo');
+    expect(info.assetVersion).toBe(meta[1]);
+  });
+
   test('creating needs an identity, and the token is not the uid', async () => {
     const anon = await connectClient();
     const refused = waitFor(anon, 'error', (e) => /Identify first/.test(e.message));
@@ -745,6 +760,62 @@ describe('Tournament socket layer', () => {
     const notice = await cancelled;
     expect(notice.id).toBe(created.id);
     expect(await until(() => !serverModule.tournaments.has(created.id))).toBe(true);
+  });
+
+  test('the operator list holds every game with its code, and nobody else gets it', async () => {
+    const hostA = await connectClient();
+    const quiet = await createTournament(hostA, { name: 'Quiet' });
+    const hostB = await connectClient();
+    const door = await createTournament(hostB, {
+      name: 'Door',
+      playerName: 'HostB',
+      visibility: 'invite',
+    });
+    const knocker = await connectClient();
+    await identify(knocker, { name: 'Knocker', avatar: '🐸' });
+    const knocked = waitFor(knocker, 'tournamentPending');
+    knocker.emit('joinTournament', { code: door.code });
+    await knocked;
+
+    // Not unlocked: silence, not an error.
+    const op = await connectClient();
+    let answered = false;
+    op.on('adminTournaments', () => (answered = true));
+    op.on('error', () => (answered = true));
+    op.emit('adminListTournaments');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(answered).toBe(false);
+
+    const unlocked = waitFor(op, 'adminStatus', (st) => st.ok === true);
+    op.emit('adminLogin', { password: 'correct horse battery staple' });
+    await unlocked;
+    const listed = waitFor(op, 'adminTournaments');
+    op.emit('adminListTournaments');
+    const { list } = await listed;
+    expect(list.find((t) => t.id === quiet.id)).toMatchObject({
+      code: quiet.code,
+      visibility: 'private',
+      connected: 1,
+      pending: 0,
+    });
+    expect(list.find((t) => t.id === door.id)).toMatchObject({
+      code: door.code,
+      visibility: 'invite',
+      connected: 1,
+      pending: 1,
+    });
+    // Still nowhere public.
+    const pub = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+    expect(pub.find((t) => t.id === quiet.id || t.id === door.id)).toBeUndefined();
+
+    // Ending one from the list, by id.
+    const gone = waitFor(hostA, 'tournamentCancelled');
+    op.emit('adminCancelTournament', { id: quiet.id });
+    expect((await gone).id).toBe(quiet.id);
+    const again = waitFor(op, 'adminTournaments');
+    op.emit('adminListTournaments');
+    expect((await again).list.find((t) => t.id === quiet.id)).toBeUndefined();
+    await cancelGame(hostB);
   });
 
   test('a wrong password unlocks nothing and the tournament survives', async () => {

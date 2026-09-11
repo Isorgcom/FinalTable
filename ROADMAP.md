@@ -93,8 +93,8 @@ closing the tab. For a host: more than start and cancel - pause a running game,
 kick somebody, adjust a level, rebalance by hand. Mute is done. An operator
 (the server's password, not the game's host) can end a running tournament
 from the table menu, and has an Operator page in the lobby for the server's
-own settings. Some of the rest arrives with the API below, but a host with no
-Game Night should have it too.
+own settings and a list of every game on it. Some of the rest arrives with the
+API below, but a host with no Game Night should have it too.
 
 ### Games other than Hold'em
 
@@ -233,6 +233,7 @@ scrolls away.
 ## Not on either path
 
 - A full admin console. There is an Operator page now, but it holds the
-  server's settings - the Game Night pairing and its own password - and no
-  more. The controls over a running game stay in the table menu, behind the
-  same password, and are not growing into a dashboard.
+  server's settings - the Game Night pairing and its own password - and a
+  list of every game the server holds, with the one control the operator
+  already had: ending one. The controls over a running game stay in the table
+  menu, behind the same password, and are not growing into a dashboard.

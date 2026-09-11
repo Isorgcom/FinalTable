@@ -66,6 +66,11 @@
     <a class="skip-link" href="#gameScreen">Skip to game</a>
     <!-- Connection state, shown over either screen -->
     <div class="conn-status hidden" id="connStatus" role="status">Reconnecting...</div>
+    <!-- The server has a newer page than this one. In the lobby the page simply
+         reloads; at a table it waits, and this is the notice meanwhile. -->
+    <button class="conn-status update-status hidden" id="updateStatus" type="button">
+      FinalTable was updated. Tap to reload, or it reloads when you leave the table.
+    </button>
 
     <!-- LOBBY -->
     <div class="login-screen" id="loginScreen" role="region" aria-label="Lobby">
@@ -167,6 +172,18 @@
         <section class="lobby-view lobby-card hidden" id="lobbyOperator" aria-label="Operator">
           <div class="lobby-title">Operator</div>
           <div class="op-section">
+            <div class="op-heading">Games on this server</div>
+            <p class="op-help">
+              Every game the server holds, listed or not. The code is the way in; hand it out with
+              care.
+            </p>
+            <div class="op-status" id="opGamesStatus" aria-live="polite"></div>
+            <div class="op-games" id="opGamesList"></div>
+            <div class="lobby-actions">
+              <button class="btn-secondary" id="btnOpGamesRefresh" type="button">Refresh</button>
+            </div>
+          </div>
+          <div class="op-section op-divider">
             <div class="op-heading">Sign in with GameNight</div>
             <p class="op-help">
               Pair this server with a GameNight site and the lobby offers a "Sign in with GameNight"

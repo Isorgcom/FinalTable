@@ -127,7 +127,8 @@ the host works. Identity is now shared with Game Night, optionally: a server pai
 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)) offers "Sign in with GameNight",
 and a player who signs in there is seated here under their Game Night
 username, the same player on every device. Guests still type a name; a server
-with no Game Night is still whole.
+with no Game Night is still whole. The same Operator page lists every game the
+server holds, listed or not, with its code, and can end one.
 
 Next is the rest of that split: Game Night owning invites and records,
 FinalTable owning the live game, talking over an API and webhooks so neither

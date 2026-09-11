@@ -54,6 +54,10 @@ function ensureSocket() {
   socket.on('adminGameNight', (data) => {
     if (window.Lobby) Lobby.onAdminGameNight(data);
   });
+  // Every game on the server, for the Operator page; the same unlock.
+  socket.on('adminTournaments', (data) => {
+    if (window.Lobby) Lobby.onAdminTournaments(data);
+  });
   socket.on('adminPasswordResult', (data) => {
     if (window.Lobby) Lobby.onAdminPasswordResult(data);
   });

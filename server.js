@@ -156,6 +156,8 @@ const tournamentLayer = registerTournamentHandlers({
   identity,
   // What the lobby's menu shows. package.json stays the one place it is written.
   version: require('./package.json').version,
+  // Which page this server serves, so a page that predates it can tell.
+  assetVersion,
   sso,
   log: structuredLog,
   store: tournamentStore,

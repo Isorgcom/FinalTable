@@ -33,11 +33,16 @@ function registerTournamentHandlers(deps) {
   const log = typeof deps.log === 'function' ? deps.log : () => {};
 
   const version = typeof deps.version === 'string' ? deps.version : '';
+  // The build of index.html and its scripts this server hands out. A page
+  // compares it with the one it was served with; a phone that kept a tab
+  // alive across a deploy is otherwise old code talking to a new server.
+  const assetVersion = typeof deps.assetVersion === 'string' ? deps.assetVersion : '';
 
   function serverInfo() {
     const live = sso.get();
     return {
       version,
+      assetVersion,
       adminAvailable: adminEnabled,
       // The set the strip draws, or null when the surface does not exist.
       reactions: registry.reactions,
@@ -411,6 +416,14 @@ function registerTournamentHandlers(deps) {
       if (!entry) return fail(socket, 'No tournament to cancel');
       const result = registry.forceCancel(entry, 'cancelled by the operator');
       if (result.error) return fail(socket, result.error);
+    });
+
+    // Every game on the server, listed or not, with its code: the Operator
+    // page's list. Answered only to a socket that has unlocked the controls,
+    // like the pairing below; anyone else gets silence.
+    socket.on('adminListTournaments', () => {
+      if (!adminEnabled || !socket.data.isAdmin) return;
+      socket.emit('adminTournaments', { list: registry.operatorList() });
     });
 
     // The GameNight pairing, from the Operator page. All four answer on

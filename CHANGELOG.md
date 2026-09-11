@@ -13,6 +13,24 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- The Operator page lists every game on the server, listed or not: its state,
+  its code, who is connected, how many are at the door of an invite-only game,
+  and an End game button for each. The lobby list and `GET /api/tournaments`
+  are unchanged; this is behind the operator password, on the socket that
+  unlocked it.
+
+### Fixed
+
+- A phone that had FinalTable open since before an update was running the old
+  page against the new server: a knock on an invite-only game reached the host,
+  but the phone showed nothing, because its scripts had never heard of the
+  event. The page now notices the server has moved on and reloads itself, from
+  the lobby right away and from a table once you leave it (a notice at the top
+  says so meanwhile, and tapping it reloads at once). The one page that
+  predates this needs one reload by hand.
+
 ## 0.4.0 - 2026-09-10
 
 ### Added

@@ -60,6 +60,62 @@
   function nameValue() {
     return sanitizeLobbyPlayerName($('playerName').value);
   }
+
+  // ── A page the server has moved past ─────────────────────────────────────
+  //
+  // index.html carries the build it was served with; serverInfo carries the
+  // build the server serves now. They differ when a tab has outlived a
+  // deploy, which on a phone can be days: old scripts against a new server
+  // answer new events with silence. In the lobby the page reloads itself; at
+  // a table it says so and reloads once the table is left.
+
+  const RELOADED_KEY = 'ft.reloadedFor';
+  let staleAssets = false;
+
+  function pageAssetVersion() {
+    const meta = document.querySelector('meta[name="finaltable-asset-version"]');
+    const v = meta ? meta.getAttribute('content') || '' : '';
+    // The raw template token means the page was served without a version.
+    return v.indexOf('__') === 0 ? '' : v;
+  }
+
+  function sessionGet(key) {
+    try {
+      return sessionStorage.getItem(key);
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function sessionSet(key, value) {
+    try {
+      sessionStorage.setItem(key, value);
+    } catch (_err) {
+      /* private mode */
+    }
+  }
+
+  function reloadForUpdate(serverVersion) {
+    sessionSet(RELOADED_KEY, serverVersion || sessionGet(RELOADED_KEY) || '');
+    location.reload();
+  }
+
+  function noticeStaleAssets(serverVersion) {
+    const mine = pageAssetVersion();
+    if (!serverVersion || !mine || serverVersion === mine) {
+      staleAssets = false;
+      $('updateStatus').classList.add('hidden');
+      return;
+    }
+    // Once per server build: a proxy handing back a cached index would
+    // otherwise have the page reloading forever. After that, the banner.
+    if (!tableShowing() && sessionGet(RELOADED_KEY) !== serverVersion) {
+      reloadForUpdate(serverVersion);
+      return;
+    }
+    staleAssets = true;
+    $('updateStatus').classList.remove('hidden');
+  }
   function avatarValue() {
     return $('playerAvatar').value || '🧑';
   }
@@ -144,6 +200,9 @@
     const version = serverInfo && serverInfo.version;
     $('lobbyMenuVersion').textContent = version ? `FinalTable v${version}` : 'FinalTable';
     if (window.Reactions) Reactions.configure(serverInfo ? serverInfo.reactions : null);
+    // serverInfo only ever arrives over a live connection.
+    setConnection(true);
+    noticeStaleAssets(serverInfo ? serverInfo.assetVersion : '');
   }
 
   function onIdentified(ident) {
@@ -213,13 +272,19 @@
 
   let operatorPending = false; // opening the page once the unlock answers
   let pairing = null;
+  let operatorGames = null; // every game on the server, once asked for
+  let _drawnOpSig = null;
 
   async function openOperator() {
     closeLobbyMenu();
     if (window.Admin && Admin.isAuthed()) {
       setPwStatus('');
       showView('operator');
-      if (socket) socket.emit('adminGetGameNight');
+      renderOperatorGames();
+      if (socket) {
+        socket.emit('adminGetGameNight');
+        socket.emit('adminListTournaments');
+      }
       return;
     }
     if (typeof window.showTextPromptDialog !== 'function' || !socket) return;
@@ -291,6 +356,123 @@
     detail.classList.toggle('hidden', !(p && p.paired));
     $('btnOpRefresh').classList.toggle('hidden', !(p && p.paired));
     $('btnOpUnpair').classList.toggle('hidden', !(p && p.paired));
+  }
+
+  // ── The operator's list of games ─────────────────────────────────────────
+
+  function onAdminTournaments(data) {
+    operatorGames = data && Array.isArray(data.list) ? data.list : [];
+    renderOperatorGames();
+  }
+
+  function operatorCard(t) {
+    const card = document.createElement('div');
+    card.className = `t-card t-card-${t.status}`;
+    card.dataset.id = t.id;
+
+    const head = document.createElement('div');
+    head.className = 't-card-head';
+    const name = document.createElement('div');
+    name.className = 't-card-name';
+    name.textContent = t.name;
+    const tag = document.createElement('span');
+    tag.className = `room-status-tag room-status-tag-${t.status}`;
+    tag.textContent = t.status;
+    // Every card says how it is listed, public included: that is what the
+    // operator is here to see.
+    const vis = document.createElement('span');
+    vis.className = 't-card-vis';
+    vis.textContent = t.visibility === 'invite' ? 'invite-only' : t.visibility || 'private';
+    head.append(name, tag, vis);
+
+    const code = document.createElement('div');
+    code.className = 'op-code';
+    code.textContent = t.code || '';
+
+    const status = document.createElement('div');
+    status.className = 't-card-status';
+    status.textContent = statusLine(t);
+
+    const meta = document.createElement('div');
+    meta.className = 't-card-meta';
+    const total = t.entrants ? t.entrants.total : 0;
+    const humans = t.entrants ? t.entrants.humans : 0;
+    const parts = [
+      t.hostName ? `Host ${t.hostName}` : null,
+      `${t.connected}/${humans} connected`,
+      `${total} entrant${total === 1 ? '' : 's'}`,
+      t.status === 'running' ? `${t.tables} table${t.tables === 1 ? '' : 's'}` : null,
+      t.pending ? `${t.pending} at the door` : null,
+      `${t.tableSize}-max`,
+      fmtChips(t.startChips),
+      t.startedAt ? `started ${fmtWhen(t.startedAt)}` : `created ${fmtWhen(t.createdAt)}`,
+    ].filter(Boolean);
+    meta.textContent = parts.join(' · ');
+
+    card.append(head, code, status, meta);
+    if (t.status !== 'finished') {
+      const actions = document.createElement('div');
+      actions.className = 'op-card-actions';
+      const end = document.createElement('button');
+      end.type = 'button';
+      end.className = 'btn-danger';
+      end.textContent = 'End game';
+      end.addEventListener('click', () => opEndGame(t));
+      actions.appendChild(end);
+      card.appendChild(actions);
+    }
+    return card;
+  }
+
+  async function opEndGame(t) {
+    let ok = true;
+    if (typeof window.showConfirmDialog === 'function') {
+      ok = await window.showConfirmDialog({
+        title: `End "${t.name}"?`,
+        message: 'Everyone in it is sent back to the lobby.',
+        confirmLabel: 'End it',
+        cancelLabel: 'Keep it',
+      });
+    }
+    if (!ok || !socket) return;
+    socket.emit('adminCancelTournament', { id: t.id });
+  }
+
+  // Rebuilt under a signature, as the lobby list is, so a refresh that
+  // changes nothing leaves the button under the cursor alone.
+  function renderOperatorGames() {
+    const holder = $('opGamesList');
+    const status = $('opGamesStatus');
+    if (operatorGames === null) {
+      status.textContent = 'Loading…';
+      return;
+    }
+    const sig = JSON.stringify(
+      operatorGames.map((t) => [
+        t.id,
+        t.status,
+        t.connected,
+        t.entrants,
+        t.pending,
+        t.level,
+        t.remaining,
+        t.tables,
+        t.lateRegOpen,
+      ])
+    );
+    if (sig === _drawnOpSig) return;
+    _drawnOpSig = sig;
+    holder.textContent = '';
+    const n = operatorGames.length;
+    status.textContent = n ? `${n} game${n === 1 ? '' : 's'}` : '';
+    if (!n) {
+      const empty = document.createElement('div');
+      empty.className = 'op-games-empty';
+      empty.textContent = 'No games right now.';
+      holder.appendChild(empty);
+      return;
+    }
+    operatorGames.forEach((t) => holder.appendChild(operatorCard(t)));
   }
 
   function onAdminGameNight(data) {
@@ -512,6 +694,9 @@
   function onList(items) {
     list = Array.isArray(items) ? items : [];
     renderList();
+    // The registry pushes the list on every create, join, start, finish and
+    // cancel, so the operator's view follows it without a broadcast of its own.
+    if (view === 'operator' && socket && socket.connected) socket.emit('adminListTournaments');
     if (pendingLastCheck) {
       const id = pendingLastCheck;
       pendingLastCheck = null;
@@ -678,6 +863,11 @@
     $('gameScreen').classList.remove('active');
     $('loginScreen').classList.remove('hidden');
     showView('home');
+    // The table was what held the reload back.
+    if (staleAssets) {
+      reloadForUpdate();
+      return;
+    }
     if (socket && socket.connected) socket.emit('listTournaments');
     if (notice && typeof window.showNoticeDialog === 'function') {
       window.showNoticeDialog({ title: 'Lobby', message: notice, confirmLabel: 'OK' });
@@ -1147,6 +1337,7 @@
   function init() {
     $('btnCreateTournament').addEventListener('click', openCreate);
     $('btnCreateCancel').addEventListener('click', () => showView('home'));
+    $('updateStatus').addEventListener('click', () => reloadForUpdate());
     $('btnCreateSubmit').addEventListener('click', submitCreate);
     $('joinCodeForm').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -1196,6 +1387,9 @@
     $('btnOpRefresh').addEventListener('click', opRefresh);
     $('btnOpUnpair').addEventListener('click', opUnpair);
     $('btnOpBack').addEventListener('click', () => showView('home'));
+    $('btnOpGamesRefresh').addEventListener('click', () => {
+      if (socket && socket.connected) socket.emit('adminListTournaments');
+    });
     $('btnOpSetPassword').addEventListener('click', opSetPassword);
     $('opPwConfirm').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -1254,6 +1448,7 @@
     onServerInfo,
     onAdminStatus,
     onAdminGameNight,
+    onAdminTournaments,
     onAdminPasswordResult,
     onIdentified,
     onIdentifyFailed,

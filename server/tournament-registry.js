@@ -337,6 +337,25 @@ function createTournamentRegistry(deps = {}) {
     return [...tournaments.values()].filter(isPublic).map(summarize);
   }
 
+  // What the Operator page shows: every game the server holds, listed or not,
+  // with its code. Only ever answered to a socket that has unlocked the
+  // operator controls (tournament-handlers.js); nothing here reaches a player.
+  const OPERATOR_ORDER = { running: 0, registering: 1, finished: 2 };
+  function operatorRank(entry) {
+    return entry.status in OPERATOR_ORDER ? OPERATOR_ORDER[entry.status] : 3;
+  }
+  function operatorList() {
+    return [...tournaments.values()]
+      .sort((a, b) => operatorRank(a) - operatorRank(b) || a.createdAt - b.createdAt)
+      .map((entry) => ({
+        ...summarize(entry),
+        code: entry.code,
+        connected: connectedHumans(entry),
+        pending: entry.pending.size,
+        tables: entry.director.tables.length,
+      }));
+  }
+
   // A private or invite-only game is on the list for its own people only, so
   // Open and Rejoin still work for them and a stranger never learns it exists.
   // registrations.has covers a player who left, whose stack is still in play.
@@ -1514,6 +1533,7 @@ function createTournamentRegistry(deps = {}) {
     stateFor,
     listFor,
     publicList,
+    operatorList,
     findByUid,
     findPendingByUid,
     byCode,

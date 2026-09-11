@@ -97,6 +97,7 @@ describe('GameNight sign-in over the socket', () => {
     const { s, info } = await connect();
     expect(await info).toEqual({
       version: require('../package.json').version,
+      assetVersion: expect.stringMatching(/^[0-9a-f]{10}$/),
       reactions: require('../server/reactions').REACTIONS,
       adminAvailable: false,
       gamenight: { connectUrl: `${ISSUER}/connect.php`, audience: AUDIENCE },
