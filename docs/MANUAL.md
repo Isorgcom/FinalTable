@@ -131,10 +131,10 @@ Press **Create a tournament**. The form:
 - **Buy-in (play chips)**: optional. Buy-in times entrants is the prize pool,
   paid out by place at the end. Zero means no pool and no payouts, just a
   winner.
-- **Add donkey bots**: one to eight seats the server plays, so you can fill
+- **Add donkey bots**: one to forty seats the server plays, so you can fill
   a table alone and watch the game move. They are demo opponents and play
-  badly on purpose. Eight at 4-max is three tables, which is the quickest way
-  to see the host's Move to… control.
+  badly on purpose. Eight at 6-max is two tables and twenty-three is four,
+  which is the quickest way to see the host's Move to… control and the rail.
 
 **Create** takes you to the waiting room with the code. You are the host.
 

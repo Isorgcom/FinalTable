@@ -182,7 +182,10 @@ describe('tournament registry', () => {
     expect(new Set(bots.map((b) => b.uid)).size).toBe(8);
     registry.cancel(eight.entry, 'h');
     const many = create({ startsAt: Date.now() + 60000, bots: '99' }, makeSocket('s9', 'h'));
-    expect(many.entry.director.entrants.filter((e) => e.isBot)).toHaveLength(8);
+    const crowd = many.entry.director.entrants.filter((e) => e.isBot);
+    expect(crowd).toHaveLength(40);
+    expect(new Set(crowd.map((b) => b.name)).size).toBe(40);
+    expect(crowd.slice(0, 8).map((b) => b.name)).toEqual(bots.map((b) => b.name));
     registry.cancel(many.entry, 'h');
     const two = create({ startsAt: Date.now() + 60000, bots: 2 }, makeSocket('s2', 'h'));
     expect(two.entry.director.entrants.filter((e) => e.isBot)).toHaveLength(2);

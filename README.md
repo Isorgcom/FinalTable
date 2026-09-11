@@ -23,7 +23,7 @@ hands, never during one, and seated again on the way back up - and cleared,
 like any other table everyone has left, if nobody comes back to it.
 
 It is people, unless you ask for otherwise: a tournament needs two entrants
-before it can deal, and the create form has a box that adds up to eight demo
+before it can deal, and the create form has a box that adds up to forty demo
 seats so you can fill a table on your own and watch it play. They are donkeys on
 purpose - they call far too much and raise for no reason - and they are there
 to show the game moving, not to be beaten. A seat whose player disconnects,
@@ -147,7 +147,7 @@ keeps, so a structure can come across from there when the API below exists.
 The host runs the night from the table's Info tab: pause and resume, a level
 back or forward, a minute on or off the clock, a player moved to a smaller
 table, a player removed from the game. Every action is checked again on the
-server. The create form's bot box takes a count, one to eight, and a table
+server. The create form's bot box takes a count, one to forty, and a table
 the field is waiting on sits out a hand so tables merge and balance even
 when they never rest at the same moment.
 

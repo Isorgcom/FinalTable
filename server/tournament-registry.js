@@ -34,6 +34,44 @@ const START_CHIPS = [1000, 2000, 5000, 10000];
 // whole behaviour. Up to eight, which with a host fills the biggest table or
 // spreads over two smaller ones; five when the form says only "yes".
 const DEMO_BOT_NAMES = ['Burro', 'Jenny', 'Moke', 'Neddy', 'Hinny', 'Jack', 'Cuddy', 'Dapple'];
+// Past the eight, a field of several tables needs more seats than names
+// anyone would remember: these are drawn at random, so two games do not
+// seat the same crowd in the same order.
+const MORE_BOT_NAMES = [
+  'Bray',
+  'Muffin',
+  'Dusty',
+  'Clover',
+  'Pepper',
+  'Biscuit',
+  'Rusty',
+  'Poppy',
+  'Hazel',
+  'Basil',
+  'Barnaby',
+  'Daisy',
+  'Nutmeg',
+  'Pickle',
+  'Sorrel',
+  'Thistle',
+  'Bramble',
+  'Chester',
+  'Dobbin',
+  'Fennel',
+  'Ginger',
+  'Humphrey',
+  'Jasper',
+  'Juniper',
+  'Maple',
+  'Marley',
+  'Oliver',
+  'Rowan',
+  'Toffee',
+  'Willow',
+  'Winston',
+  'Ziggy',
+];
+const MAX_BOTS = DEMO_BOT_NAMES.length + MORE_BOT_NAMES.length;
 const DEFAULT_BOTS = 5;
 
 // How many demo seats a create asks for: a count, or the old yes/no.
@@ -41,7 +79,18 @@ function botCount(value) {
   if (value === true) return DEFAULT_BOTS;
   const n = parseInt(value, 10);
   if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(DEMO_BOT_NAMES.length, n));
+  return Math.max(0, Math.min(MAX_BOTS, n));
+}
+
+// The names for a field of `count` bots: the eight in their order, then a
+// random draw from the rest.
+function botNames(count) {
+  const names = DEMO_BOT_NAMES.slice(0, count);
+  const pool = [...MORE_BOT_NAMES];
+  while (names.length < count && pool.length) {
+    names.push(pool.splice(random.randomInt(pool.length), 1)[0]);
+  }
+  return names;
 }
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -832,7 +881,7 @@ function createTournamentRegistry(deps = {}) {
     // registration row, so connectedHumans does not count them and a field of
     // bots whose only human has gone still gets reaped like any other.
     if (botCount(payload.bots) > 0) {
-      DEMO_BOT_NAMES.slice(0, botCount(payload.bots)).forEach((botName, i) => {
+      botNames(botCount(payload.bots)).forEach((botName, i) => {
         const botUid = `bot:${entry.id}:${i + 1}`;
         entry.director.register({
           id: botUid,

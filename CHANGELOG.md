@@ -28,6 +28,8 @@ Release on GitHub to go with it.
   game open, and is forgotten by a restart; the link brings them back. Up to
   fifty per game.
 - A busted player can switch which table they watch, from the same block.
+- The bot box goes up to forty: the eight named donkeys, then the rest drawn
+  from a longer list, so one person can raise a field of several tables.
 
 ### Changed
 
