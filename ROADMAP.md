@@ -14,7 +14,7 @@ Settled:
 - Move to 1.0.0 when it is stable and you would hand it to strangers.
 - At each milestone, a tag and a Release on GitHub with the notes from the
   changelog. The routine is written down in [CLAUDE.md](./CLAUDE.md); 0.2.0
-  through 0.5.0 went out through it.
+  through 0.6.0 went out through it.
 
 ## The game itself
 
@@ -98,7 +98,9 @@ cases bolted to a Hold'em loop.
 
 The host at every table: a strip in the host's Chat tab reads and answers
 any table, All announces to every table at once and over the felt, and the
-host hears every room live. Asked for on the forum, below.
+host hears every room live. Asked for on the forum, below. And a user manual,
+[docs/MANUAL.md](./docs/MANUAL.md), for players, hosts and operators, which
+opens with what each release added and where to read about it.
 
 The Operator page lists every game the server holds, listed or not, with its
 code, who is connected, who is waiting at the door, and End game on each: the

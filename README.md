@@ -120,7 +120,9 @@ the last hundred lines of each room are held in memory and written to
 `CHAT_ENABLED=false` turns the whole surface off, and `CHAT_HISTORY=0` keeps
 the chat without keeping any of it. Reactions ride the same rooms and the same
 mute: a few emoji thrown from the pre-action strip that float over the chair
-and are kept nowhere. `REACTIONS_ENABLED=false` removes them.
+and are kept nowhere. `REACTIONS_ENABLED=false` removes them. The host reads
+and talks at every table: a strip in the Chat tab picks a table, and All
+announces to every table at once and over the felt.
 
 A game is private unless its host lists it: friends come in by code or link, a
 public game is on the lobby list for anyone, and an invite-only game has a door

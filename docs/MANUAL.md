@@ -10,8 +10,8 @@ Everything here is play chips. FinalTable keeps no money and moves none.
 
 ## What is new
 
-The last few releases changed how a game is found and who can get in. The
-short version, with where to read more:
+The last few releases changed how a game is found, who can get in, and how
+the host reaches the whole room. The short version, with where to read more:
 
 | Version | What arrived                                                                                                                                | See                                                                                     |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
