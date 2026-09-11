@@ -951,4 +951,33 @@ describe('Tournament socket layer', () => {
     guest.emit('joinTournament', { code: created.code });
     expect((await refused).message).toBe('You were removed from this game');
   });
+
+  test('a third socket opens the rail: the table with no cards, a badged line, and a way out', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host, {
+      startsAt: Date.now() + 60000,
+    });
+    await startAndDeal(host, guest);
+    const entry = serverModule.registry.tournaments.get(created.id);
+
+    const rail = await connectClient();
+    await identify(rail, { name: 'Rail', avatar: '🦉' });
+    const joined = waitFor(rail, 'tournamentJoined');
+    const seen = waitFor(rail, 'gameState');
+    rail.emit('watchTournament', { rail: entry.rail });
+    expect(await joined).toMatchObject({ id: created.id, watching: true });
+    const game = await seen;
+    expect(game.players).toHaveLength(2);
+    expect(game.players.every((p) => p.holeCards === null)).toBe(true);
+    expect(game.isMyTurn).toBeFalsy();
+
+    const heard = waitFor(host, 'chatMessage', (m) => m.text === 'go on');
+    rail.emit('chat', { text: 'go on' });
+    expect(await heard).toMatchObject({ name: 'Rail', rail: true });
+
+    const gone = waitFor(rail, 'leftTournament');
+    rail.emit('stopWatching');
+    expect(await gone).toMatchObject({ id: created.id, reason: 'unwatched' });
+    expect(entry.watchers.size).toBe(0);
+  });
 });

@@ -32,6 +32,8 @@
   let currentId = null;
   // A join waiting on a name: `{ code }` from the box or a link, `{ tournamentId }` from a card.
   let pendingJoin = null;
+  let pendingWatch = null; // a rail link, or a Watch button, waiting on a name
+  let watching = false; // on the rail of the game we are in, not at a seat
   let pendingCreate = null;
   let pendingLastCheck = null; // a tournament we were in before this page load
   let pendingRequest = null; // asked to join an invite-only game, not yet answered
@@ -250,6 +252,12 @@
       const payload = pendingJoin;
       pendingJoin = null;
       socket.emit('joinTournament', payload);
+      return;
+    }
+    if (pendingWatch) {
+      const payload = pendingWatch;
+      pendingWatch = null;
+      socket.emit('watchTournament', payload);
       return;
     }
     // Reconnected while on a table that no longer holds us.
@@ -714,6 +722,8 @@
   function onJoined(info) {
     currentId = info.id;
     myId = info.you && info.you.playerId ? info.you.playerId : socket.id;
+    watching = !!info.watching;
+    document.body.classList.toggle('watching', watching);
     window.__tournamentActive = true;
     window.__currentTournamentId = info.id;
     store.set(LAST_KEY, info.id);
@@ -845,6 +855,8 @@
     current = null;
     currentStructure = null;
     currentId = null;
+    watching = false;
+    document.body.classList.remove('watching');
     pendingRequest = null;
     seenPending.clear();
     window.__currentTournamentId = null;
@@ -986,7 +998,19 @@
     }
     btn.addEventListener('click', () => requestJoin({ tournamentId: t.id }));
 
-    card.append(head, status, meta, btn);
+    // Anyone may watch a listed game while it runs: a second button beside
+    // the way in, and it never takes a seat.
+    const buttons = [btn];
+    if (!mine && t.status === 'running') {
+      const watch = document.createElement('button');
+      watch.className = 't-card-btn t-card-watch';
+      watch.type = 'button';
+      watch.textContent = 'Watch';
+      watch.addEventListener('click', () => requestWatch({ tournamentId: t.id }));
+      buttons.push(watch);
+    }
+
+    card.append(head, status, meta, ...buttons);
     return card;
   }
 
@@ -1469,6 +1493,21 @@
     return true;
   }
 
+  // The rail: a name is needed here too, since a watcher talks.
+  function requestWatch(payload) {
+    if (!nameValue() && !isGameNight() && !pendingGnToken) {
+      pendingWatch = payload;
+      return needName();
+    }
+    if (identity && socket && socket.connected) {
+      socket.emit('watchTournament', payload);
+    } else {
+      pendingWatch = payload;
+      identify();
+    }
+    return true;
+  }
+
   // ── Waiting room ─────────────────────────────────────────────────────────
 
   function renderRosterRow(row) {
@@ -1584,7 +1623,10 @@
     const t = current;
     if (!t) return;
     $('wrName').textContent = t.name;
-    $('wrCode').textContent = t.code;
+    // A watcher is never shown the join code; the rail code is theirs to share.
+    $('wrCodeLabel').textContent = watching ? 'Rail' : 'Code';
+    $('wrCode').textContent = watching ? t.rail || '' : t.code || '';
+    $('btnCopyRail').classList.toggle('hidden', watching || !t.rail);
     $('wrStatus').textContent = waitingStatus(t);
     const roster = $('wrRoster');
     roster.textContent = '';
@@ -1622,20 +1664,22 @@
     const host = $('wrHostControls');
     host.classList.toggle('hidden', !(t.isHost && t.status === 'registering'));
     $('btnStartNow').disabled = (t.entrants || 0) < 2;
-    $('btnUnregister').classList.toggle('hidden', t.status !== 'registering');
-    $('btnLeaveTournament').classList.toggle('hidden', t.status === 'registering');
+    $('btnUnregister').classList.toggle('hidden', t.status !== 'registering' || watching);
+    $('btnLeaveTournament').textContent = watching ? 'Stop watching' : 'Leave';
+    $('btnLeaveTournament').classList.toggle('hidden', t.status === 'registering' && !watching);
     $('btnEnterTable').classList.toggle('hidden', t.status === 'registering');
   }
 
   function waitingStatus(t) {
+    const prefix = watching ? 'Watching · ' : '';
     if (t.status === 'registering') {
       const wait = t.startsAt - Date.now();
-      if (wait > 0) return `Starts in ${fmtCountdown(wait)}`;
-      return t.waitingReason || 'Starting…';
+      if (wait > 0) return `${prefix}Starts in ${fmtCountdown(wait)}`;
+      return prefix + (t.waitingReason || 'Starting…');
     }
     if (t.status === 'running') {
       return (
-        `Running · level ${t.level}` +
+        `${prefix}Running · level ${t.level}` +
         (t.paused ? ' · paused' : '') +
         (t.lateRegOpen ? ' · late registration open' : '')
       );
@@ -1651,9 +1695,34 @@
     });
   }
 
+  function railUrl() {
+    return current && current.rail
+      ? `${location.origin}${location.pathname}?w=${current.rail}`
+      : '';
+  }
+
+  // The link that brings a watcher. Anyone in the game may hand it out, and
+  // so may a watcher: it is a way to look, never a way in.
+  function copyRail(button = $('btnCopyRail')) {
+    const url = railUrl();
+    if (!url || !button) return;
+    const label = button.textContent;
+    const done = () => {
+      button.textContent = 'Copied';
+      setTimeout(() => (button.textContent = label), 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(done, () => fallbackCopy(url, done));
+    } else {
+      fallbackCopy(url, done);
+    }
+  }
+
   function copyLink() {
     if (!current) return;
-    const url = `${location.origin}${location.pathname}?t=${current.code}`;
+    // A watcher's Copy link is the rail link: the join code is not theirs.
+    const url = watching ? railUrl() : `${location.origin}${location.pathname}?t=${current.code}`;
+    if (!url) return;
     const done = () => {
       $('btnCopyLink').textContent = 'Copied';
       setTimeout(() => ($('btnCopyLink').textContent = 'Copy link'), 1500);
@@ -1686,6 +1755,10 @@
   // stack sitting out) once running.
   async function leave() {
     if (!socket || !currentId) return;
+    if (watching) {
+      socket.emit('stopWatching');
+      return;
+    }
     if (current && current.status === 'registering') {
       socket.emit('unregisterTournament');
       return;
@@ -1753,6 +1826,7 @@
     $('btnLeaveTournament').addEventListener('click', leave);
     $('btnEnterTable').addEventListener('click', enterTable);
     $('btnCopyLink').addEventListener('click', copyLink);
+    $('btnCopyRail').addEventListener('click', () => copyRail());
     $('btnGameNight').addEventListener('click', startGameNightLogin);
     $('btnGameNightSignOut').addEventListener('click', signOutOfGameNight);
     $('lobbyMenuToggle').addEventListener('click', toggleLobbyMenu);
@@ -1812,13 +1886,16 @@
       pendingJoin = { code };
       $('joinCodeInput').value = code;
     }
+    // A rail link arms a watch the way a join link arms a join.
+    const railLink = params.get('w');
+    if (railLink && !fromLink) pendingWatch = { rail: railLink.trim().toUpperCase() };
     const savedName = store.get(NAME_KEY);
     if (savedName && !$('playerName').value) $('playerName').value = savedName;
     consumeReturnHash();
 
     setInterval(tickCountdowns, 1000);
     ensureSocket();
-    if (fromLink && !nameValue() && !pendingGnToken) needName();
+    if ((fromLink || railLink) && !nameValue() && !pendingGnToken) needName();
   }
 
   window.Lobby = {
@@ -1852,6 +1929,9 @@
     current: () => current,
     structure: () => currentStructure,
     structureRows,
+    watching: () => watching,
+    copyRail,
+    railUrl,
   };
 
   if (document.readyState === 'loading') {

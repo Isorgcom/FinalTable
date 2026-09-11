@@ -28,13 +28,6 @@ what it does to the prize pool and to the chip-conservation invariant the
 director checks after every hand, which currently assumes chips only move
 between seats and never appear.
 
-### Watching a table
-
-Half of this exists: a busted player keeps watching the table they were at
-(`entry.watching`), and the plumbing serves a spectator view with no hole cards.
-What is missing is a way in for somebody who is not in the tournament at all -
-a rail link, and a decision about whether watchers can chat.
-
 ### Trust, but verify
 
 The first reply to the announcement was "Rigged!", and that is the right
@@ -87,6 +80,11 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+Watching a table: a rail link on every game, a second code that looks and
+never seats, a Watch button on a public card, the busted player's view for
+whoever opens it, a block to switch tables, and the decision on chat made:
+watchers talk at the table they watch, badged rail, mutable by the host.
 
 The host's controls at the table: pause and resume, a level back or forward,
 a minute on or off the clock, a player moved to a smaller table by hand, a

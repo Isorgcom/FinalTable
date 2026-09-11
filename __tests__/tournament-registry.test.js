@@ -1029,17 +1029,26 @@ describe('tournament registry', () => {
       expect(message.name).toBe('Host');
     });
 
-    test('a seat that has busted reads its table but cannot type into it', () => {
+    test('a seat that has busted reads its table and talks there, marked as the rail', () => {
       const { entry, sockets } = twoTables();
       const seat = entry.director.playerByUid('g');
       const table = seat.table;
       // Bust them: no seat, watching the table they were at.
       entry.director.tables.forEach((t) => t.removePlayer(seat.player.id));
       entry.watching.set('g', table.id);
-      const denied = registry.postChat(entry, 'g', 'nice fold', sockets.g);
-      expect(denied.error).toMatch(/still in the tournament/);
-      // But they are still in the room, so they see what is said there.
+      const posted = registry.postChat(entry, 'g', 'nice fold', sockets.g);
+      expect(posted.error).toBeUndefined();
+      expect(posted.message.rail).toBe(true);
       expect(registry.chat.roomFor(entry, 'g')).toBe(`${entry.id}:t${table.tableNumber}`);
+      // A seat still playing is not marked.
+      expect(registry.postChat(entry, 'h', 'nice call', sockets.h).message).not.toHaveProperty(
+        'rail'
+      );
+      // A player who walked out is still gagged.
+      registry.leave(entry, 't', sockets.t);
+      expect(registry.postChat(entry, 't', 'hello?', sockets.t).error).toMatch(
+        /not in this tournament/
+      );
     });
 
     test('the host can mute and unmute, and nobody else can', () => {
@@ -1777,5 +1786,296 @@ describe('the host controls in the registry', () => {
     expect(registry.movePlayer(entry, 'h', big.players[0].uid, small.tableNumber).error).toMatch(
       /would then have more players/
     );
+  });
+});
+
+describe('the rail', () => {
+  let registry;
+  let io;
+  let store;
+  const names = { h: 'Host', g: 'Guest', t: 'Third', w: 'Watcher', v: 'Viewer', gg: 'guest' };
+
+  // Any uid gets a name, so fifty watchers can be minted for the cap.
+  function anyIdentity() {
+    return {
+      get: (uid) => (uid ? { uid, name: names[uid] || `Rail ${uid}`, avatar: '🙂' } : null),
+      expireIdle: () => 0,
+    };
+  }
+
+  function makeRegistry(withStore) {
+    return createTournamentRegistry({
+      io,
+      identity: anyIdentity(),
+      sweepMs: 1000,
+      abandonGraceMs: 3000,
+      overdueAbandonMs: 20000,
+      hostTransferGraceMs: 2000,
+      pendingGraceMs: 4000,
+      store: withStore,
+      tableOptions: { actionTimeoutMs: 0 },
+      connectedSockets: () => live.values(),
+      socketById: (id) => live.get(id) || null,
+    });
+  }
+
+  function running(extra = {}, more = []) {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Night', startsAt: Date.now() + 1000, tableSize: 6, ...extra },
+      makeSocket('sh', 'h')
+    );
+    registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+    for (const uid of more) registry.join(uid, { code: entry.code }, makeSocket(`s${uid}`, uid));
+    jest.advanceTimersByTime(1500);
+    expect(entry.status).toBe('running');
+    entry.director.holdField();
+    return entry;
+  }
+
+  function sentTo(sid, event) {
+    return io.sent.filter((m) => m.to === sid && m.event === event).map((m) => m.payload);
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-11T22:00:00Z'));
+    io = makeIo();
+    store = makeStore();
+    live.clear();
+    registry = makeRegistry(store);
+  });
+
+  afterEach(() => {
+    registry.stop();
+    jest.useRealTimers();
+  });
+
+  test('a rail link watches a private game; an id watches a public one and nothing else', () => {
+    const entry = running();
+    expect(entry.rail).toMatch(/^[A-Z2-9]{5}$/);
+    expect(entry.rail).not.toBe(entry.code);
+    expect(registry.watch('w', { tournamentId: entry.id }, makeSocket('sw0', 'w'))).toEqual({
+      error: 'Tournament not found',
+    });
+    const sw = makeSocket('sw', 'w');
+    expect(registry.watch('w', { rail: entry.rail.toLowerCase() }, sw)).toMatchObject({
+      watching: true,
+    });
+    expect(entry.watchers.get('w')).toMatchObject({ socketId: 'sw', table: 1 });
+    expect(sw.data.tournamentId).toBe(entry.id);
+    expect(sw.data.tournamentUid).toBe('w');
+
+    const joined = sw.emitted.find((m) => m.event === 'tournamentJoined').payload;
+    expect(joined).toMatchObject({ id: entry.id, watching: true, host: false });
+    expect(joined).not.toHaveProperty('code');
+    const state = sw.emitted.find((m) => m.event === 'tournamentState').payload;
+    expect(state).not.toHaveProperty('code');
+    expect(state.rail).toBe(entry.rail);
+    expect(state.isHost).toBe(false);
+    expect(state.you).toMatchObject({
+      watching: true,
+      registered: false,
+      seated: false,
+      watchingTable: 1,
+    });
+    expect(state).not.toHaveProperty('pending');
+    // The seatless view of the table: nobody's cards, no turn.
+    const game = sentTo('sw', 'gameState')[0];
+    expect(game).toBeTruthy();
+    expect(game.players.every((p) => p.holeCards === null)).toBe(true);
+    expect(game.isMyTurn).toBeFalsy();
+    expect(game.myHand).toBeNull();
+    // The people in the game see the rail.
+    expect(registry.stateFor(entry, 'h').watchers).toBe(1);
+    expect(registry.stateFor(entry, 'h').rail).toBe(entry.rail);
+    expect(registry.operatorList().find((c) => c.id === entry.id).watchers).toBe(1);
+    // A public game may be watched from its card.
+    const open = registry.create(
+      'v',
+      { name: 'Open', startsAt: Date.now() + 60000, visibility: 'public' },
+      makeSocket('sv', 'v')
+    ).entry;
+    expect(registry.watch('t', { tournamentId: open.id }, makeSocket('st', 't'))).toMatchObject({
+      watching: true,
+    });
+  });
+
+  test('who may not watch', () => {
+    const entry = running();
+    expect(registry.watch('h', { rail: entry.rail }, makeSocket('sh2', 'h'))).toEqual({
+      error: 'You are in this game',
+    });
+    entry.removedUids.add('w');
+    expect(registry.watch('w', { rail: entry.rail }, makeSocket('sw', 'w'))).toEqual({
+      error: 'You were removed from this game',
+    });
+    entry.removedUids.delete('w');
+    expect(registry.watch('gg', { rail: entry.rail }, makeSocket('sgg', 'gg'))).toEqual({
+      error: 'Name already taken in this tournament',
+    });
+    // Registered elsewhere, or waiting at a door elsewhere.
+    const other = registry.create(
+      'v',
+      { name: 'Other', startsAt: Date.now() + 60000, visibility: 'invite' },
+      makeSocket('sv', 'v')
+    ).entry;
+    expect(registry.watch('v', { rail: entry.rail }, makeSocket('sv2', 'v'))).toEqual({
+      error: 'You are already in a tournament',
+    });
+    registry.join('t', { code: other.code }, makeSocket('st', 't'));
+    expect(other.pending.has('t')).toBe(true);
+    expect(registry.watch('t', { rail: entry.rail }, makeSocket('st2', 't'))).toEqual({
+      error: 'You are already in a tournament',
+    });
+    // The cap.
+    for (let i = 0; i < 50; i++) {
+      expect(
+        registry.watch(`r${i}`, { rail: entry.rail }, makeSocket(`sr${i}`, `r${i}`)).watching
+      ).toBe(true);
+    }
+    expect(registry.watch('w', { rail: entry.rail }, makeSocket('sw', 'w'))).toEqual({
+      error: 'Too many people are watching this game',
+    });
+    expect(registry.stateFor(entry, 'h').watchers).toBe(50);
+    // And a finished game.
+    registry.cancel(entry, 'h');
+    const gone = registry.create(
+      'h',
+      { name: 'Done', startsAt: Date.now() + 1000 },
+      makeSocket('sh3', 'h')
+    ).entry;
+    registry.join('g', { code: gone.code }, makeSocket('sg3', 'g'));
+    jest.advanceTimersByTime(1500);
+    gone.director.holdField();
+    gone.status = 'finished';
+    expect(registry.watch('w', { rail: gone.rail }, makeSocket('sw3', 'w'))).toEqual({
+      error: 'That tournament is over',
+    });
+  });
+
+  test('a watcher picks a table, follows it when it empties, and leaves', () => {
+    const entry = running({ tableSize: 2 }, ['t']); // tables of two and one
+    const d = entry.director;
+    const [big, small] = [...d.tables].sort((x, y) => y.players.length - x.players.length);
+    const sw = makeSocket('sw', 'w');
+    registry.watch('w', { rail: entry.rail }, sw);
+    expect(entry.watchers.get('w').table).toBe(big.tableNumber);
+    const before = io.sent.length;
+    expect(registry.watchTable(entry, 'w', small.tableNumber)).toMatchObject({
+      table: small.tableNumber,
+    });
+    expect(entry.watchers.get('w').table).toBe(small.tableNumber);
+    const pushes = io.sent.slice(before);
+    expect(pushes.some((m) => m.to === 'sw' && m.event === 'gameState')).toBe(true);
+    const history = pushes.find((m) => m.to === 'sw' && m.event === 'chatHistory');
+    expect(history.payload.room).toBe(`${entry.id}:t${small.tableNumber}`);
+    expect(history.payload.canSend).toBe(true);
+    expect(registry.watchTable(entry, 'w', 99)).toEqual({ error: 'There is no table 99' });
+    expect(registry.stateFor(entry, 'w').you.watchingTable).toBe(small.tableNumber);
+
+    // The small table empties: the watcher is moved to the one left.
+    for (const p of [...small.players]) small.removePlayer(p.id);
+    registry.stateFor(entry, 'w'); // no push yet
+    jest.advanceTimersByTime(1300); // a tick pushes state, which repoints first
+    expect(entry.watchers.get('w').table).toBe(big.tableNumber);
+
+    registry.leave(entry, 'w', sw);
+    expect(entry.watchers.has('w')).toBe(false);
+    expect(sentTo('sw', 'leftTournament')).toEqual([{ id: entry.id, reason: 'unwatched' }]);
+    expect(sw.data.tournamentId).toBeNull();
+    expect(registry.stateFor(entry, 'h').watchers).toBe(0);
+  });
+
+  test('a dropped watcher lapses after the grace, and never holds the game open', () => {
+    const entry = running();
+    const sw = makeSocket('sw', 'w');
+    registry.watch('w', { rail: entry.rail }, sw);
+    registry.unbindWatcher(entry, 'w', sw);
+    expect(entry.watchers.get('w').socketId).toBeNull();
+    expect(registry.stateFor(entry, 'h').watchers).toBe(0);
+    expect(registry.findWatcherByUid('w')).toBe(entry);
+    jest.advanceTimersByTime(4500);
+    expect(entry.watchers.has('w')).toBe(false);
+
+    const sw2 = makeSocket('sw2', 'w');
+    registry.watch('w', { rail: entry.rail }, sw2);
+    registry.unbind(entry, 'h', live.get('sh'));
+    registry.unbind(entry, 'g', live.get('sg'));
+    expect(entry.noHumansSince).not.toBeNull();
+    jest.advanceTimersByTime(4500);
+    expect(registry.tournaments.has(entry.id)).toBe(false);
+    expect(sentTo('sw2', 'leftTournament')).toEqual([{ id: entry.id, reason: 'over' }]);
+    expect(sw2.data.tournamentId).toBeNull();
+  });
+
+  test('the rail survives a restart, and an old file gets one', () => {
+    const entry = running();
+    registry.flush();
+    const saved = store.load();
+    expect(saved[0].rail).toBe(entry.rail);
+    registry.stop();
+    const second = makeRegistry(store);
+    expect(second.restore()).toBe(1);
+    expect(second.tournaments.get(entry.id).rail).toBe(entry.rail);
+    second.stop();
+
+    const old = store.load().map((row) => ({ ...row }));
+    delete old[0].rail;
+    const legacy = makeStore();
+    legacy.save(old);
+    const third = makeRegistry(legacy);
+    expect(third.restore()).toBe(1);
+    const back = third.tournaments.get(entry.id);
+    expect(back.rail).toMatch(/^[A-Z2-9]{5}$/);
+    expect(back.rail).not.toBe(back.code);
+    third.stop();
+    registry = makeRegistry(store);
+  });
+
+  test('a watcher who presents the code becomes a player, and is no longer on the rail', () => {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Later', startsAt: Date.now() + 60000 },
+      makeSocket('sh', 'h')
+    );
+    const sw = makeSocket('sw', 'w');
+    expect(registry.watch('w', { rail: entry.rail }, sw)).toMatchObject({ watching: true });
+    expect(registry.stateFor(entry, 'w').you.watching).toBe(true);
+    expect(registry.join('w', { code: entry.code }, makeSocket('sw2', 'w')).entry).toBe(entry);
+    expect(entry.watchers.has('w')).toBe(false);
+    expect(entry.registrations.has('w')).toBe(true);
+    expect(registry.stateFor(entry, 'w').you).toMatchObject({ registered: true, watching: false });
+  });
+
+  test('the rail talks at the table it watches, badged, and not before; no reactions; the mute holds', () => {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Talk', startsAt: Date.now() + 1000 },
+      makeSocket('sh', 'h')
+    );
+    registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+    const sw = makeSocket('sw', 'w');
+    registry.watch('w', { rail: entry.rail }, sw);
+    expect(registry.postChat(entry, 'w', 'hello', sw).error).toMatch(/cards are out/);
+    const history = sentTo('sw', 'chatHistory')[0];
+    expect(history.room).toBe(`${entry.id}:lobby`);
+    expect(history.canSend).toBe(false);
+
+    jest.advanceTimersByTime(1500);
+    expect(entry.status).toBe('running');
+    entry.director.holdField();
+    const before = io.sent.length;
+    const posted = registry.postChat(entry, 'w', 'nice hand', sw);
+    expect(posted.error).toBeUndefined();
+    expect(posted.message.rail).toBe(true);
+    const line = io.sent.slice(before).find((m) => m.event === 'chatMessage');
+    expect(line.to).toEqual(expect.arrayContaining(['sw', 'sh']));
+    expect(registry.postReaction(entry, 'w', '👏', sw)).toEqual({
+      error: 'Only a seat can throw one',
+    });
+    expect(registry.setChatMute(entry, 'h', 'w', true)).toMatchObject({ ok: true });
+    expect(registry.postChat(entry, 'w', 'again', sw).error).toMatch(/muted/);
+    expect(registry.setChatMute(entry, 'g', 'w', true).error).toMatch(/host/);
   });
 });

@@ -15,8 +15,9 @@ Status: **playable.** Multi-table tournaments run end to end: a lobby where
 friends register by code or link, a scheduled start, a blind structure the
 host picks or edits with antes and breaks, a host who can pause the game,
 step the level, and move or remove a player, tables that balance and break as
-players bust, late registration, payouts and hand-for-hand at the bubble, and
-rejoin after a dropped connection or a page reload. Registrations
+players bust, late registration, payouts and hand-for-hand at the bubble,
+rejoin after a dropped connection or a page reload, and a rail link for
+anyone who wants to watch. Registrations
 survive a server restart, and so does a running field: it is recorded between
 hands, never during one, and seated again on the way back up - and cleared,
 like any other table everyone has left, if nobody comes back to it.
@@ -149,6 +150,12 @@ table, a player removed from the game. Every action is checked again on the
 server. The create form's bot box takes a count, one to eight, and a table
 the field is waiting on sits out a hand so tables merge and balance even
 when they never rest at the same moment.
+
+Anyone can watch. A game carries a rail link beside its join code, a way to
+look that is never a way in: a watcher gets the same blanked view a busted
+player gets, picks which table to watch, and talks in that table's chat with
+a rail badge on their lines. Held in memory only, never on the roster, never
+the host, and never able to keep a game alive.
 
 Next is the rest of that split: Game Night owning invites and records,
 FinalTable owning the live game, talking over an API and webhooks so neither

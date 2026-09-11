@@ -1625,7 +1625,7 @@ function updateTopBar() {
 
   let text = '';
   const field = window.mttField;
-  if (!me && field && field.you && field.you.eliminated) {
+  if (!me && field && field.you && (field.you.eliminated || field.you.watching)) {
     text = `Watching table ${field.you.watchingTable || ''}`.trim();
     if (field.you.place) text += ` · out in #${field.you.place}`;
   } else if (me && me.isConnected === false) {

@@ -1269,3 +1269,35 @@
 .tournament-banner.on-pause .tb-level {
   color: var(--cream);
 }
+
+/* Whoever is watching: which table. The people in the game: the rail link. */
+.panel-info-watch,
+.panel-info-rail {
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid rgba(92, 61, 26, 0.35);
+}
+.panel-info-watch.hidden,
+.panel-info-rail.hidden {
+  display: none;
+}
+.host-btn.current {
+  border-color: var(--gold);
+  color: var(--gold);
+  opacity: 1;
+}
+.info-rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.info-rail-label {
+  font-size: 0.72rem;
+  color: var(--smoke);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.chat-badge.rail {
+  border-color: rgba(154, 166, 158, 0.6);
+  color: var(--smoke);
+}

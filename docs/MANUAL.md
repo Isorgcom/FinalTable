@@ -80,6 +80,31 @@ name first if the browser has none.
 For a public or private game the code puts you straight in. For an
 invite-only game it puts you at the door: see [The door](#the-door).
 
+### Watching a game
+
+Every game also has a **rail link**, for anyone who wants to watch without
+playing. The people in the game find it beside **Copy link** in the waiting
+room, as **Copy rail link**, and again in the table's Info tab. A public game
+has a **Watch** button on its lobby card while it runs. The rail link is not
+the code: it never seats anyone, and anyone who has it may pass it on.
+
+Opening it asks for a name, like everything here, then puts you at the
+table. You see what a busted player sees: the felt, the seats, the board,
+the banner, nobody's hole cards until they are turned up, and no action bar.
+The top of the page says _Watching table N_. The Info tab has a **Watching**
+block listing the tables with how many are at each; pick one to move your
+view. When the table you are watching empties, you are moved to the biggest
+one left.
+
+You can talk in the chat of the table you are watching, and your lines carry
+a **rail** badge so the table knows who is playing and who is only talking.
+The host can mute you like anyone else. Before the cards are out you read the
+waiting room's chat and wait. **leave** in the menu stops watching and takes
+you back to the lobby; a reload brings you back to the table, and a restart
+of the server forgets the rail, so open the link again. Up to fifty people
+can watch one game. If you were removed from a game, the rail link will not
+let you back in either.
+
 ## Creating a tournament
 
 Press **Create a tournament**. The form:
@@ -130,7 +155,8 @@ when the link may travel further than you meant it to: everyone who arrives
 waits at the door until you let them in.
 
 Whatever the mode, the people in a game always see it under **Your
-tournaments**.
+tournaments**. And whatever the mode, the rail link lets somebody watch: see
+[Watching a game](#watching-a-game).
 
 ## The waiting room
 
@@ -308,7 +334,9 @@ another device.
 
 When your stack is gone you are out, with a finishing place, and a payout if
 the place is paid. You can stay and watch the table you were at, or go back
-to the lobby.
+to the lobby. Watching, you can still talk in that table's chat, marked
+**rail**, and the Info tab's **Watching** block lets you move to another
+table.
 
 The host can also remove you. Then your chips leave play, you finish in the
 place you held, paid if that place pays, you are sent back to the lobby with
@@ -400,6 +428,11 @@ the Chat tab. A line to all tables is marked "to all tables" and flashes
 over the felt for a few seconds, so a closed chat panel is not a missed
 break call. A host who busts keeps the floor.
 
+Anyone watching a table, from the rail or after busting, can talk in that
+table's chat; their lines carry a **rail** badge, so a seat can tell who is
+playing from who is only talking. The host's mute covers them. Reactions are
+for seats only: they float over a chair, and a watcher has none.
+
 An operator can switch chat or reactions off for the whole server; then the
 box or the strip simply does not exist.
 
@@ -477,6 +510,8 @@ receives a view with them blanked, and they are shown only at a showdown or
 a run-out with two or more live hands. The deck is shuffled with the
 operating system's random source. Unlisted games are not on any list or in
 the public API, and a game's id without its code gets "Tournament not found".
-The operator, who runs the machine, can see every game and its code, and
-that is the extent of it. The details, with the code paths and the tests
+A watcher on the rail gets the same blanked view as any other seat, is never
+sent the join code, and cannot sit down by the rail link. The operator, who
+runs the machine, can see every game and its code, and that is the extent of
+it. The details, with the code paths and the tests
 behind them, are in [SECURITY.md](../SECURITY.md).

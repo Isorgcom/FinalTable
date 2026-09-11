@@ -405,9 +405,10 @@
             <div class="wr-status" id="wrStatus" aria-live="polite"></div>
           </div>
           <div class="wr-code-row">
-            <span class="wr-code-label">Code</span>
+            <span class="wr-code-label" id="wrCodeLabel">Code</span>
             <span class="wr-code" id="wrCode"></span>
             <button class="btn-secondary" id="btnCopyLink" type="button">Copy link</button>
+            <button class="btn-secondary" id="btnCopyRail" type="button">Copy rail link</button>
           </div>
           <p class="wr-code-hint hidden" id="wrCodeHint"></p>
           <div class="wr-roster" id="wrRoster" aria-label="Registered players"></div>
@@ -796,6 +797,11 @@
                  the running game. A sibling of the body, which is rebuilt
                  every tick, so a button is never replaced under the cursor. -->
             <div class="panel-info-host hidden" id="panelInfoHost"></div>
+            <!-- Whoever is watching, from the rail or after busting: which
+                 table, and the others to switch to. -->
+            <div class="panel-info-watch hidden" id="panelInfoWatch"></div>
+            <!-- The people in the game: the link that brings a watcher. -->
+            <div class="panel-info-rail hidden" id="panelInfoRail"></div>
             <!-- Host only, invite-only, once the cards are out: who is at the
                  door. A sibling of the body for the same reason. -->
             <div class="panel-info-pending hidden" id="panelInfoPending"></div>

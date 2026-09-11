@@ -155,6 +155,13 @@ function registerTournamentHandlers(deps) {
         if (waiting) {
           registry.bindPending(waiting, ident.uid, socket, { resumed: true });
           pending = { id: waiting.id, name: waiting.name };
+        } else {
+          // Or on the rail of one.
+          const railing = registry.findWatcherByUid(ident.uid);
+          if (railing) {
+            registry.bindWatcher(railing, ident.uid, socket, { resumed: true });
+            resume = { id: railing.id, name: railing.name, status: railing.status, watching: true };
+          }
         }
       }
       // Whether the admin surface exists at all, so a client can decide
@@ -199,6 +206,30 @@ function registerTournamentHandlers(deps) {
       const waiting = registry.tournaments.get(socket.data.pendingTournamentId);
       if (!waiting) return;
       registry.withdraw(waiting, socket.data.pendingUid, socket);
+    });
+
+    // The rail: watch a game by its rail code, or by id when it is public.
+    socket.on('watchTournament', (payload = {}) => {
+      const { error } = registry.watch(
+        socket.data.uid,
+        { rail: payload.rail, tournamentId: payload.tournamentId },
+        socket
+      );
+      if (error) fail(socket, error);
+    });
+
+    socket.on('watchTable', (payload = {}) => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.watchTable(entry, socket.data.tournamentUid, payload.table);
+      if (error) fail(socket, error);
+    });
+
+    socket.on('stopWatching', () => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.unwatch(entry, socket.data.tournamentUid, socket);
+      if (error) fail(socket, error);
     });
 
     socket.on('admitPlayer', (payload = {}) => {
@@ -303,7 +334,9 @@ function registerTournamentHandlers(deps) {
     socket.on('requestState', () => {
       const entry = entryFor(socket);
       if (!entry) return;
-      registry.bind(entry, socket.data.tournamentUid, socket, { resumed: true });
+      if (!registry.bind(entry, socket.data.tournamentUid, socket, { resumed: true })) {
+        registry.bindWatcher(entry, socket.data.tournamentUid, socket, { resumed: true });
+      }
     });
 
     // Actions are routed by uid, never by a cached table: a player's table
@@ -576,6 +609,7 @@ function registerTournamentHandlers(deps) {
       const entry = entryFor(socket);
       if (!entry) return;
       registry.unbind(entry, socket.data.tournamentUid, socket);
+      registry.unbindWatcher(entry, socket.data.tournamentUid, socket);
     });
   });
 

@@ -13,6 +13,28 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- Watching a table. Every game has a rail link, a second code that is a way
+  to look and never a way in: the people in a game find it beside Copy link
+  in the waiting room and as Copy rail link in the Info tab, and a public
+  game's card has a Watch button while it runs. Opening the link, after
+  giving a name, puts you at the table as a watcher: the same view a busted
+  player gets, with nobody's cards until they are shown, no seat and no
+  action bar, the banner, the Info tab with a Watching block to switch
+  tables, and the table's chat, where your lines carry a rail badge. The
+  people in the game see "N watching" in the Info tab. A watcher is never on
+  the roster, never the host, never handed the join code, does not hold a
+  game open, and is forgotten by a restart; the link brings them back. Up to
+  fifty per game.
+- A busted player can switch which table they watch, from the same block.
+
+### Changed
+
+- A busted player can now talk at the table they watch, marked rail, and the
+  host can mute them like anyone else. Before, they could only read.
+  Reactions stay with seats: nobody without a chair can throw one.
+
 ## 0.8.0 - 2026-09-11
 
 ### Added

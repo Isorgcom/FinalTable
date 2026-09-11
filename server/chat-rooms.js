@@ -83,13 +83,15 @@ function createChatRooms(options = {}) {
   // reused and a new table cannot inherit a dead one's conversation.
   function roomFor(entry, uid) {
     if (!entry || !uid) return null;
+    const rail = entry.watchers ? entry.watchers.get(uid) : null;
     if (entry.status === 'registering') {
-      return entry.registrations.has(uid) ? lobbyRoom(entry.id) : null;
+      return entry.registrations.has(uid) || rail ? lobbyRoom(entry.id) : null;
     }
     const seat = entry.director.playerByUid(uid);
     if (seat) return tableRoom(entry.id, seat.table.tableNumber);
-    // Busted and watching: they read the table they are railing, and that is
-    // all - canPost turns them down.
+    // On the rail: the table they chose, or none yet.
+    if (rail) return rail.table ? tableRoom(entry.id, rail.table) : null;
+    // Busted and watching: the table they are railing.
     const watchingId = entry.watching.get(uid);
     if (!watchingId) return null;
     const table = entry.director.tables.find((t) => t.id === watchingId);
@@ -101,20 +103,25 @@ function createChatRooms(options = {}) {
   function canPost(entry, uid) {
     if (!entry) return { ok: false, reason: 'You are not in a tournament' };
     const reg = entry.registrations.get(uid);
-    if (!reg || reg.left) return { ok: false, reason: 'You are not in this tournament' };
+    const rail = entry.watchers ? entry.watchers.get(uid) : null;
+    if (!reg && !rail) return { ok: false, reason: 'You are not in this tournament' };
+    // A player who walked out is gagged; their seat may still be at the table
+    // but they are not.
+    if (reg && reg.left) return { ok: false, reason: 'You are not in this tournament' };
     if (entry.mutedUids && entry.mutedUids.has(uid)) {
       return { ok: false, reason: 'The host has muted you' };
     }
-    if (entry.status === 'registering') return { ok: true };
-    if (entry.status !== 'running') return { ok: false, reason: 'The tournament is over' };
-    // The host keeps the floor while the game runs, seat or no seat: a host
-    // who busts still has a room to run.
-    if (entry.hostUid === uid) return { ok: true };
-    // Seated players only once the cards are out. A player who has busted can
-    // still read the table they are watching.
-    if (!entry.director.playerByUid(uid)) {
-      return { ok: false, reason: 'Only players still in the tournament can chat' };
+    if (entry.status === 'registering') {
+      // The waiting room is the players': the rail reads it and waits.
+      return rail
+        ? { ok: false, reason: 'The rail can talk once the cards are out' }
+        : { ok: true };
     }
+    if (entry.status !== 'running') return { ok: false, reason: 'The tournament is over' };
+    // Once the cards are out, everyone at a table has the floor there: the
+    // seats, the host wherever they are, a player who busted and stayed to
+    // watch, and the rail. A line from anyone without a seat is marked as
+    // from the rail, so the table can tell who is playing from who is talking.
     return { ok: true };
   }
 
@@ -136,7 +143,10 @@ function createChatRooms(options = {}) {
   // by every copy of one announcement so a reader holding several rooms can
   // draw it once. Absent when they do not apply, so an ordinary line is the
   // shape it always was.
-  function post(room, { uid, name, text, table = null, host = false, scope = null, group = null }) {
+  function post(
+    room,
+    { uid, name, text, table = null, host = false, scope = null, group = null, rail = false }
+  ) {
     const clean = sanitizeChat(text, maxLength);
     if (!clean || !room) return null;
     seq += 1;
@@ -152,6 +162,7 @@ function createChatRooms(options = {}) {
       ...(host ? { host: true } : {}),
       ...(scope ? { scope } : {}),
       ...(group ? { group } : {}),
+      ...(rail ? { rail: true } : {}),
     };
     append(message);
     return message;

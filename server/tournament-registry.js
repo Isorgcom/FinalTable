@@ -20,6 +20,9 @@ const VISIBILITIES = ['public', 'private', 'invite'];
 // How many people may wait on one invite-only game at once. A bound rather
 // than a rule: nobody runs a home game with fifty at the door.
 const MAX_PENDING = 50;
+// And how many may watch one from the rail. The same bound, for the same
+// reason.
+const MAX_WATCHERS = 50;
 const random = require('../random');
 const { clampStructure, summary: structureSummary } = require('../blind-structures');
 
@@ -136,6 +139,7 @@ function createTournamentRegistry(deps = {}) {
     return {
       id: entry.id,
       code: entry.code,
+      rail: entry.rail,
       name: entry.name,
       createdAt: entry.createdAt,
       startsAt: entry.startsAt,
@@ -202,7 +206,7 @@ function createTournamentRegistry(deps = {}) {
     for (let attempt = 0; attempt < 50; attempt++) {
       let code = '';
       for (let i = 0; i < 5; i++) code += CODE_ALPHABET[random.randomInt(CODE_ALPHABET.length)];
-      if (![...tournaments.values()].some((t) => t.code === code)) return code;
+      if (![...tournaments.values()].some((t) => t.code === code || t.rail === code)) return code;
     }
     return random.randomId('').slice(0, 5).toUpperCase();
   }
@@ -212,6 +216,13 @@ function createTournamentRegistry(deps = {}) {
       .trim()
       .toUpperCase();
     return [...tournaments.values()].find((t) => t.code === key) || null;
+  }
+
+  function byRail(code) {
+    const key = String(code || '')
+      .trim()
+      .toUpperCase();
+    return [...tournaments.values()].find((t) => t.rail === key) || null;
   }
 
   function connectedHumans(entry) {
@@ -225,12 +236,19 @@ function createTournamentRegistry(deps = {}) {
 
   function emitTo(entry, uid, event, payload) {
     const reg = entry.registrations.get(uid);
-    if (reg && reg.socketId) io.to(reg.socketId).emit(event, payload);
+    const rail = entry.watchers.get(uid);
+    const sock = reg && reg.socketId ? reg.socketId : rail ? rail.socketId : null;
+    if (sock) io.to(sock).emit(event, payload);
   }
 
+  // Everyone in the game and everyone watching it: what the director says
+  // about the field is for the rail as well.
   function emitAll(entry, event, payload) {
     for (const reg of entry.registrations.values()) {
       if (reg.socketId) io.to(reg.socketId).emit(event, payload);
+    }
+    for (const row of entry.watchers.values()) {
+      if (row.socketId) io.to(row.socketId).emit(event, payload);
     }
   }
 
@@ -280,12 +298,21 @@ function createTournamentRegistry(deps = {}) {
   function emitState(entry) {
     // The field summary is built once for the whole broadcast; only the "you"
     // corner is per viewer.
+    if (entry.status === 'running') repointWatchers(entry);
     const shared = sharedState(entry);
     const ids = [];
     for (const [uid, reg] of entry.registrations) {
       if (!reg.socketId) continue;
       ids.push(reg.socketId);
       io.to(reg.socketId).emit(
+        'tournamentState',
+        stateFor(entry, uid, shared, { includeRoster: false })
+      );
+    }
+    for (const [uid, row] of entry.watchers) {
+      if (!row.socketId) continue;
+      ids.push(row.socketId);
+      io.to(row.socketId).emit(
         'tournamentState',
         stateFor(entry, uid, shared, { includeRoster: false })
       );
@@ -366,6 +393,7 @@ function createTournamentRegistry(deps = {}) {
         code: entry.code,
         connected: connectedHumans(entry),
         pending: entry.pending.size,
+        watchers: entry.watchers.size,
         tables: entry.director.tables.length,
       }));
   }
@@ -411,13 +439,18 @@ function createTournamentRegistry(deps = {}) {
   function stateFor(entry, uid, shared = sharedState(entry), { includeRoster = true } = {}) {
     const d = entry.director;
     const reg = entry.registrations.get(uid) || null;
+    const watcher = entry.watchers.get(uid) || null;
     const seat = shared.field.seats.get(uid) || null;
     const place = shared.placeByUid.has(uid) ? { place: shared.placeByUid.get(uid) } : null;
     const roster = shared.roster;
     return {
       ...d.fieldSummary(uid, shared.field),
       id: entry.id,
-      code: entry.code,
+      // The join code is for the people in the game. The rail code goes to
+      // everyone, watchers included: a watcher may bring a friend.
+      ...(reg ? { code: entry.code } : {}),
+      rail: entry.rail,
+      watchers: connectedWatchers(entry),
       name: entry.name,
       status: entry.status,
       startsAt: entry.startsAt,
@@ -436,15 +469,24 @@ function createTournamentRegistry(deps = {}) {
       ...(requireHost(entry, uid) ? { pending: pendingRows(entry) } : {}),
       you: {
         uid,
-        playerId: seat ? seat.player.id : reg && reg.socketId ? reg.socketId : null,
+        playerId: seat
+          ? seat.player.id
+          : reg && reg.socketId
+            ? reg.socketId
+            : watcher
+              ? watcher.socketId
+              : null,
         registered: !!reg && !reg.left,
         left: !!(reg && reg.left),
         seated: !!seat,
         eliminated: entry.watching.has(uid),
+        watching: !!watcher,
         place: place ? place.place : null,
-        watchingTable: entry.watching.has(uid)
-          ? (d.tables.find((t) => t.id === entry.watching.get(uid)) || {}).tableNumber || null
-          : null,
+        watchingTable: watcher
+          ? watcher.table
+          : entry.watching.has(uid)
+            ? (d.tables.find((t) => t.id === entry.watching.get(uid)) || {}).tableNumber || null
+            : null,
       },
     };
   }
@@ -464,6 +506,11 @@ function createTournamentRegistry(deps = {}) {
       if (tableId !== table.id) continue;
       const reg = entry.registrations.get(uid);
       if (reg && reg.socketId) out.push({ socketId: reg.socketId, playerId: reg.socketId });
+    }
+    // And the rail at this table: the same seatless view.
+    for (const row of entry.watchers.values()) {
+      if (row.table !== table.tableNumber || !row.socketId) continue;
+      out.push({ socketId: row.socketId, playerId: row.socketId });
     }
     return out;
   }
@@ -591,7 +638,8 @@ function createTournamentRegistry(deps = {}) {
   function sendChatHistory(entry, uid, socketId = null) {
     if (!chatEnabled) return;
     const reg = entry.registrations.get(uid);
-    const target = socketId || (reg && reg.socketId);
+    const rail = entry.watchers.get(uid);
+    const target = socketId || (reg && reg.socketId) || (rail && rail.socketId);
     if (!target) return;
     const room = chat.roomFor(entry, uid);
     if (!room) return;
@@ -625,6 +673,9 @@ function createTournamentRegistry(deps = {}) {
     const name = who ? who.name : 'Player';
     const group =
       targets.scope === 'all' && targets.rooms.length > 1 ? random.randomId('a_') : null;
+    // A line from the rail, or from a seat that busted, is marked so: the
+    // table can tell who is playing from who is only talking.
+    const rail = !isHost && entry.status === 'running' && !entry.director.playerByUid(uid);
     const messages = [];
     for (const { room, table } of targets.rooms) {
       const message = chat.post(room, {
@@ -635,6 +686,7 @@ function createTournamentRegistry(deps = {}) {
         host: isHost,
         scope: targets.scope,
         group,
+        rail,
       });
       // The sanitiser answers the same for every room, so a refusal here is
       // before anything was posted anywhere.
@@ -656,6 +708,10 @@ function createTournamentRegistry(deps = {}) {
     if (!reactions.isReaction(emoji)) return { error: 'Not one of the reactions' };
     const allowed = chat.canPost(entry, uid);
     if (!allowed.ok) return { error: allowed.reason };
+    // A reaction floats over a chair, and the rail has none.
+    if (entry.status === 'running' && !entry.director.playerByUid(uid)) {
+      return { error: 'Only a seat can throw one' };
+    }
     if (!socket.data.reactionBucket) socket.data.reactionBucket = {};
     const ok = reactions.takeToken(socket.data.reactionBucket, {
       limit: reactionRatePerWindow,
@@ -674,7 +730,7 @@ function createTournamentRegistry(deps = {}) {
 
   function setChatMute(entry, hostUid, targetUid, muted) {
     if (!requireHost(entry, hostUid)) return { error: 'Only the host can do that' };
-    if (!targetUid || !entry.registrations.has(targetUid)) {
+    if (!targetUid || !(entry.registrations.has(targetUid) || entry.watchers.has(targetUid))) {
       return { error: 'They are not in this tournament' };
     }
     if (targetUid === entry.hostUid) return { error: 'You cannot mute the host' };
@@ -686,16 +742,29 @@ function createTournamentRegistry(deps = {}) {
     return { ok: true, muted };
   }
 
-  // A watcher whose table emptied moves to the biggest table left.
+  function biggestTable(d) {
+    return (
+      [...d.tables]
+        .filter((t) => t.players.length > 0)
+        .sort((a, b) => b.players.length - a.players.length)[0] || null
+    );
+  }
+
+  // A watcher whose table emptied moves to the biggest table left; so does
+  // one on the rail, and one who arrived before there were tables.
   function repointWatchers(entry) {
     const d = entry.director;
     for (const [uid, tableId] of entry.watching) {
       const table = d.tables.find((t) => t.id === tableId);
       if (table && table.players.length > 0) continue;
-      const biggest = [...d.tables]
-        .filter((t) => t.players.length > 0)
-        .sort((a, b) => b.players.length - a.players.length)[0];
+      const biggest = biggestTable(d);
       if (biggest) entry.watching.set(uid, biggest.id);
+    }
+    for (const row of entry.watchers.values()) {
+      const table = d.tables.find((t) => t.tableNumber === row.table);
+      if (table && table.players.length > 0) continue;
+      const biggest = biggestTable(d);
+      if (biggest) row.table = biggest.tableNumber;
     }
   }
 
@@ -741,6 +810,7 @@ function createTournamentRegistry(deps = {}) {
     if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
     if (tournaments.size >= maxTournaments) return { error: 'Too many tournaments running' };
     withdrawAll(uid);
+    unwatchAll(uid);
 
     const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
     const { startsAt, settings } = clampSettings(payload);
@@ -783,10 +853,22 @@ function createTournamentRegistry(deps = {}) {
 
   // The entry and its director, with every callback wired. Shared by create()
   // and restore().
-  function buildEntry({ id = null, code = null, name, startsAt, hostUid, settings, createdAt }) {
+  function buildEntry({
+    id = null,
+    code = null,
+    rail = null,
+    name,
+    startsAt,
+    hostUid,
+    settings,
+    createdAt,
+  }) {
     const entry = {
       id,
       code: code || makeCode(),
+      // A second secret, for watching. A link meant for the rail must never
+      // be a seat, so it is not the join code.
+      rail: rail || makeCode(),
       name,
       status: 'registering',
       createdAt: createdAt || now(),
@@ -816,6 +898,10 @@ function createTournamentRegistry(deps = {}) {
       // registration, not written to the file. A restart empties the queue
       // and the asker's client falls back to the lobby.
       pending: new Map(),
+      // People on the rail: uid -> { socketId, table, joinedAt, disconnectedAt }.
+      // Not an entrant, not a registration, not written to the file; a restart
+      // drops them and the link brings them back.
+      watchers: new Map(),
     };
     const director = new TournamentDirector({
       id: id || undefined,
@@ -930,6 +1016,8 @@ function createTournamentRegistry(deps = {}) {
       return { error: 'Name already taken in this tournament' };
     }
     withdrawAll(uid, entry);
+    // A watcher who presents the code is done watching: they are coming in.
+    unwatchAll(uid);
     if (entry.settings.visibility === 'invite') return ask(entry, uid, socket);
     return enter(entry, uid, who, socket);
   }
@@ -1174,6 +1262,177 @@ function createTournamentRegistry(deps = {}) {
   // Bind a socket to its registration. On a rejoin the seated player's id is
   // rebound to the new socket, exactly as the room layer does on reconnect,
   // so every socket-id-keyed path in the engine and the client keeps working.
+  // ── The rail ─────────────────────────────────────────────────────────────
+  // Somebody watching who is not in the game: not an entrant, not a
+  // registration, on no roster, in no chat room but the table they watch,
+  // never the host, never holding the game open. Held in memory only, like a
+  // request at the door. Reached by the rail code, or by id for a game that
+  // is listed for everyone anyway.
+
+  function connectedWatchers(entry) {
+    let n = 0;
+    for (const row of entry.watchers.values()) if (row.socketId) n++;
+    return n;
+  }
+
+  function clearWatcherFields(socketId) {
+    const s = socketId ? socketById(socketId) : null;
+    if (s) {
+      s.data.tournamentId = null;
+      s.data.tournamentUid = null;
+    }
+  }
+
+  function watch(uid, { rail, tournamentId } = {}, socket) {
+    const who = identity.get(uid);
+    if (!who) return { error: 'Identify first' };
+    const fromRail = rail ? byRail(rail) : null;
+    const entry = fromRail || tournaments.get(tournamentId) || null;
+    if (!entry) return { error: 'Tournament not found' };
+    // An unlisted game is reached by its rail code or not at all; an id on
+    // its own gets the answer a wrong code gets.
+    if (!fromRail && !isPublic(entry)) return { error: 'Tournament not found' };
+    if (entry.removedUids.has(uid)) return { error: 'You were removed from this game' };
+    if (entry.registrations.has(uid)) return { error: 'You are in this game' };
+    if (findByUid(uid, { includeLeft: true }) || findPendingByUid(uid)) {
+      return { error: 'You are already in a tournament' };
+    }
+    if (entry.status === 'finished') return { error: 'That tournament is over' };
+    if (entry.watchers.has(uid)) {
+      // A second tab, a reload by the link: the same watcher on the newest socket.
+      if (socket) bindWatcher(entry, uid, socket, { resumed: true });
+      return { entry, watching: true };
+    }
+    // One name per person in the conversation: a watcher may not take a
+    // player's name, for the same reason a player may not.
+    const key = normalizeNameKey(who.name);
+    if (entry.director.entrants.some((e) => normalizeNameKey(e.name) === key)) {
+      return { error: 'Name already taken in this tournament' };
+    }
+    if (entry.watchers.size >= MAX_WATCHERS) {
+      return { error: 'Too many people are watching this game' };
+    }
+    unwatchAll(uid, entry);
+    const biggest = entry.status === 'running' ? biggestTable(entry.director) : null;
+    entry.watchers.set(uid, {
+      socketId: null,
+      table: biggest ? biggest.tableNumber : null,
+      joinedAt: now(),
+      disconnectedAt: null,
+    });
+    if (socket) bindWatcher(entry, uid, socket);
+    emitState(entry);
+    return { entry, watching: true };
+  }
+
+  function bindWatcher(entry, uid, socket, { resumed = false } = {}) {
+    const row = entry.watchers.get(uid);
+    if (!row) return false;
+    row.socketId = socket.id;
+    row.disconnectedAt = null;
+    socket.data.tournamentId = entry.id;
+    socket.data.tournamentUid = uid;
+    if (entry.status === 'running' && row.table === null) {
+      const biggest = biggestTable(entry.director);
+      row.table = biggest ? biggest.tableNumber : null;
+    }
+    socket.emit('tournamentJoined', {
+      id: entry.id,
+      uid,
+      host: false,
+      name: entry.name,
+      status: entry.status,
+      watching: true,
+      you: { uid, playerId: socket.id, watching: true },
+      resumed,
+    });
+    const state = stateFor(entry, uid);
+    socket.emit('tournamentState', state);
+    socket.emit('tournamentField', state);
+    entry._rosterSig = null;
+    sendWatchedTable(entry, uid);
+    sendChatHistory(entry, uid, socket.id);
+    if (resumed) emitState(entry);
+    return true;
+  }
+
+  // The table a rail watcher is at, as the seatless view the engine gives an
+  // id that matches no seat: no hole cards until they are turned up, no turn.
+  function sendWatchedTable(entry, uid) {
+    const row = entry.watchers.get(uid);
+    if (!row || !row.socketId || entry.status !== 'running') return;
+    const table = entry.director.tables.find((t) => t.tableNumber === row.table);
+    if (table) io.to(row.socketId).emit('gameState', table.getStateForPlayer(row.socketId));
+  }
+
+  function unbindWatcher(entry, uid, socket) {
+    const row = entry.watchers.get(uid);
+    if (!row || row.socketId !== socket.id) return;
+    row.socketId = null;
+    row.disconnectedAt = now();
+    emitState(entry);
+  }
+
+  function findWatcherByUid(uid) {
+    if (!uid) return null;
+    for (const entry of tournaments.values()) {
+      if (entry.status !== 'finished' && entry.watchers.has(uid)) return entry;
+    }
+    return null;
+  }
+
+  // Which table to watch. The rail's row, or a busted player's watching
+  // entry: both land at the same place and get that table's chat.
+  function watchTable(entry, uid, tableNumber) {
+    if (entry.status !== 'running') return { error: 'The tournament is not running' };
+    const number = parseInt(tableNumber, 10);
+    const table = entry.director.tables.find((t) => t.tableNumber === number);
+    if (!table || table._broken || table.players.length === 0) {
+      return { error: `There is no table ${tableNumber}` };
+    }
+    const row = entry.watchers.get(uid);
+    if (row) {
+      row.table = number;
+      sendWatchedTable(entry, uid);
+      if (row.socketId) sendChatHistory(entry, uid, row.socketId);
+    } else if (entry.watching.has(uid)) {
+      entry.watching.set(uid, table.id);
+      const reg = entry.registrations.get(uid);
+      if (reg && reg.socketId) {
+        io.to(reg.socketId).emit('gameState', table.getStateForPlayer(reg.socketId));
+        sendChatHistory(entry, uid, reg.socketId);
+      }
+    } else {
+      return { error: 'You are not watching' };
+    }
+    emitState(entry);
+    return { entry, table: number };
+  }
+
+  function unwatch(entry, uid, socket, { quiet = false } = {}) {
+    const row = entry.watchers.get(uid);
+    if (!row) return { error: 'You are not watching' };
+    entry.watchers.delete(uid);
+    if (!quiet) {
+      if (row.socketId) {
+        clearWatcherFields(row.socketId);
+        io.to(row.socketId).emit('leftTournament', { id: entry.id, reason: 'unwatched' });
+      }
+      emitState(entry);
+    }
+    return { entry };
+  }
+
+  // Rows left elsewhere when their owner joins or creates a game, or comes to
+  // watch another. Bookkeeping, not a message: the watcher is the one moving.
+  function unwatchAll(uid, except = null) {
+    for (const entry of tournaments.values()) {
+      if (entry === except || !entry.watchers.has(uid)) continue;
+      unwatch(entry, uid, null, { quiet: true });
+      emitState(entry);
+    }
+  }
+
   function bind(entry, uid, socket, { resumed = false } = {}) {
     const reg = entry.registrations.get(uid);
     if (!reg) return false;
@@ -1278,6 +1537,9 @@ function createTournamentRegistry(deps = {}) {
   // sitting out and the registration is marked as left. Auto-return will
   // not pull them back in; joining by code rebinds their own seat.
   function leave(entry, uid, socket) {
+    if (!entry.registrations.has(uid) && entry.watchers.has(uid)) {
+      return unwatch(entry, uid, socket);
+    }
     if (entry.status === 'registering') return unregister(entry, uid, socket);
     const reg = entry.registrations.get(uid);
     if (!reg) return { error: 'You are not registered' };
@@ -1490,6 +1752,13 @@ function createTournamentRegistry(deps = {}) {
     // whoever was still waiting to be let in is told there is nothing to
     // wait for.
     flushPending(entry, 'cancelled');
+    // And whoever was watching has nothing left to watch.
+    for (const row of entry.watchers.values()) {
+      if (!row.socketId) continue;
+      clearWatcherFields(row.socketId);
+      io.to(row.socketId).emit('leftTournament', { id: entry.id, reason: 'over' });
+    }
+    entry.watchers.clear();
     if (entry.timer) {
       timers.clearInterval(entry.timer);
       entry.timer = null;
@@ -1555,6 +1824,13 @@ function createTournamentRegistry(deps = {}) {
   function sweep() {
     const t = now();
     for (const entry of [...tournaments.values()]) {
+      // A watcher whose socket went keeps their place for the same grace a
+      // request at the door gets, then is forgotten.
+      for (const [uid, row] of [...entry.watchers]) {
+        if (row.disconnectedAt !== null && t - row.disconnectedAt > pendingGraceMs) {
+          entry.watchers.delete(uid);
+        }
+      }
       if (entry.pending.size) {
         const open =
           entry.status === 'registering' ||
@@ -1660,6 +1936,7 @@ function createTournamentRegistry(deps = {}) {
       const entry = buildEntry({
         id: saved.id,
         code: saved.code,
+        rail: saved.rail || null,
         name: saved.name,
         startsAt: Number(saved.startsAt) || now(),
         hostUid: saved.hostUid,
@@ -1763,6 +2040,13 @@ function createTournamentRegistry(deps = {}) {
     startNow,
     cancel,
     forceCancel,
+    watch,
+    watchTable,
+    unwatch,
+    bindWatcher,
+    unbindWatcher,
+    findWatcherByUid,
+    byRail,
     pause: hostPause,
     resume: hostResume,
     stepLevel,

@@ -99,6 +99,14 @@
       badge.textContent = 'host';
       row.appendChild(badge);
     }
+    // From the rail, or from a seat that busted: talking, not playing.
+    if (message.rail) {
+      row.classList.add('rail');
+      const badge = document.createElement('span');
+      badge.className = 'chat-badge rail';
+      badge.textContent = 'rail';
+      row.appendChild(badge);
+    }
     const text = document.createElement('span');
     text.className = 'chat-text';
     text.textContent = message.text;

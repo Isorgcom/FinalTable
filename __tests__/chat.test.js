@@ -127,15 +127,13 @@ describe('chat rooms', () => {
     expect(chat.roomFor(entry, 'stranger')).toBeNull();
   });
 
-  test('who may post: seated yes, busted no, muted no, stranger no', () => {
+  test('who may post: seated yes, busted yes, muted no, stranger no', () => {
     const chat = createChatRooms();
     const entry = seatedEntry();
     expect(chat.canPost(entry, 'ann').ok).toBe(true);
 
-    // Busted: reads the table they are watching, cannot write to it.
-    const busted = chat.canPost(entry, 'gone');
-    expect(busted.ok).toBe(false);
-    expect(busted.reason).toMatch(/still in the tournament/);
+    // Busted: they watch a table, and they have the floor there.
+    expect(chat.canPost(entry, 'gone').ok).toBe(true);
 
     entry.mutedUids.add('ann');
     const muted = chat.canPost(entry, 'ann');
@@ -146,11 +144,10 @@ describe('chat rooms', () => {
     expect(chat.canPost(null, 'ann').ok).toBe(false);
   });
 
-  test('the host keeps the floor after busting; nobody else does', () => {
+  test('the host keeps the floor after busting; the mute and the end still win', () => {
     const chat = createChatRooms();
     // 'gone' has no seat and is watching table 2.
     expect(chat.canPost(seatedEntry({ hostUid: 'gone' }), 'gone').ok).toBe(true);
-    expect(chat.canPost(seatedEntry({ hostUid: 'ann' }), 'gone').ok).toBe(false);
     // The mute still wins, and so does the game being over.
     const muted = seatedEntry({ hostUid: 'gone' });
     muted.mutedUids.add('gone');
@@ -158,6 +155,27 @@ describe('chat rooms', () => {
     expect(chat.canPost(seatedEntry({ hostUid: 'gone', status: 'finished' }), 'gone').ok).toBe(
       false
     );
+  });
+
+  test('the rail reads the waiting room and talks at the table it watches', () => {
+    const chat = createChatRooms();
+    const entry = seatedEntry();
+    entry.watchers = new Map([['rail', { socketId: 's9', table: 2 }]]);
+    expect(chat.roomFor(entry, 'rail')).toBe('t_1:t2');
+    expect(chat.canPost(entry, 'rail').ok).toBe(true);
+    entry.watchers.get('rail').table = null;
+    expect(chat.roomFor(entry, 'rail')).toBeNull();
+
+    const before = seatedEntry({ status: 'registering' });
+    before.watchers = new Map([['rail', { socketId: 's9', table: null }]]);
+    expect(chat.roomFor(before, 'rail')).toBe('t_1:lobby');
+    const quiet = chat.canPost(before, 'rail');
+    expect(quiet.ok).toBe(false);
+    expect(quiet.reason).toMatch(/cards are out/);
+
+    const posted = chat.post('t_1:t2', { uid: 'rail', name: 'R', text: 'hi', rail: true });
+    expect(posted.rail).toBe(true);
+    expect(chat.post('t_1:t2', { uid: 'ann', name: 'A', text: 'hi' })).not.toHaveProperty('rail');
   });
 
   test('a line carries where and from whom it was said, and a plain one carries nothing extra', () => {

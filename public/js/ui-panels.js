@@ -355,8 +355,85 @@ function renderInfoHost() {
   block.appendChild(list);
 }
 
+// Whoever is watching, from the rail or after busting: the table they are
+// at, and the others to switch to. A sibling block like the host's, redrawn
+// only when the tables or the choice change.
+let _infoWatchSig = null;
+function renderInfoWatch() {
+  const block = document.getElementById('panelInfoWatch');
+  if (!block) return;
+  const field = window.mttField || null;
+  const you = field && field.you;
+  const show = !!(
+    you &&
+    (you.watching || you.eliminated) &&
+    field.status === 'running' &&
+    !window.mttFinished
+  );
+  const roster = show && Array.isArray(field.roster) ? field.roster : [];
+  const counts = new Map();
+  for (const r of roster) {
+    if (r.table && r.chips > 0) counts.set(r.table, (counts.get(r.table) || 0) + 1);
+  }
+  const tables = [...counts.keys()].sort((a, b) => a - b);
+  const sig = show
+    ? `${you.watchingTable}/${tables.map((t) => `${t}:${counts.get(t)}`).join(',')}`
+    : '';
+  if (sig === _infoWatchSig) return;
+  _infoWatchSig = sig;
+  block.textContent = '';
+  block.classList.toggle('hidden', !show);
+  if (!show) return;
+  block.appendChild(createTextElement('div', 'info-section-title', 'Watching'));
+  const row = document.createElement('div');
+  row.className = 'host-controls';
+  for (const t of tables) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'host-btn' + (t === you.watchingTable ? ' current' : '');
+    b.textContent = `Table ${t} · ${counts.get(t)}`;
+    b.disabled = t === you.watchingTable;
+    b.addEventListener('click', () => {
+      if (socket && socket.connected) socket.emit('watchTable', { table: t });
+    });
+    row.appendChild(b);
+  }
+  block.appendChild(row);
+}
+
+// The people in the game get the link that brings a watcher. Drawn once: it
+// never changes for the life of the game.
+let _infoRailSig = null;
+function renderInfoRail() {
+  const block = document.getElementById('panelInfoRail');
+  if (!block) return;
+  const field = window.mttField || null;
+  const you = field && field.you;
+  const show = !!(you && (you.registered || you.left) && field.rail);
+  const sig = show ? field.rail : '';
+  if (sig === _infoRailSig) return;
+  _infoRailSig = sig;
+  block.textContent = '';
+  block.classList.toggle('hidden', !show);
+  if (!show) return;
+  const line = document.createElement('div');
+  line.className = 'info-rail';
+  line.appendChild(createTextElement('span', 'info-rail-label', 'Rail link'));
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'host-btn';
+  b.textContent = 'Copy rail link';
+  b.addEventListener('click', () => {
+    if (window.Lobby && typeof Lobby.copyRail === 'function') Lobby.copyRail(b);
+  });
+  line.appendChild(b);
+  block.appendChild(line);
+}
+
 function renderInfoTab() {
   renderInfoHost();
+  renderInfoWatch();
+  renderInfoRail();
   renderInfoPending();
   const body = document.getElementById('panelInfoBody');
   if (!body) return;
@@ -373,22 +450,25 @@ function renderInfoTab() {
     const t = gameState.tournament && gameState.tournament.isActive ? gameState.tournament : null;
     const alive = gameState.players.filter((p) => p.chips > 0).length;
     let room = gameState.id;
-    if (field) room = field.myTable ? `Table ${field.myTable}` : 'Tournament';
-    else if (gameState.gameMode === 'practice') room = 'Practice table';
+    if (field) {
+      // A seat's table, or the one a watcher is looking at.
+      const watched = field.you && field.you.watchingTable;
+      room = field.myTable ? `Table ${field.myTable}` : watched ? `Table ${watched}` : 'Tournament';
+    } else if (gameState.gameMode === 'practice') room = 'Practice table';
 
+    const tableRows = [
+      ['Room', room],
+      [
+        'Mode',
+        field ? 'Multi-table' : INFO_MODE_LABELS[gameState.gameMode] || gameState.gameMode || '-',
+      ],
+      ['Host', gameState.hostName || '-'],
+      ['Hand', gameState.roundCount ? `#${gameState.roundCount}` : '-'],
+      ['Players', `${alive} / ${gameState.players.length}`],
+    ];
+    if (field && field.watchers > 0) tableRows.push(['Rail', `${field.watchers} watching`]);
     const table = infoSection('Table');
-    table.appendChild(
-      infoGrid([
-        ['Room', room],
-        [
-          'Mode',
-          field ? 'Multi-table' : INFO_MODE_LABELS[gameState.gameMode] || gameState.gameMode || '-',
-        ],
-        ['Host', gameState.hostName || '-'],
-        ['Hand', gameState.roundCount ? `#${gameState.roundCount}` : '-'],
-        ['Players', `${alive} / ${gameState.players.length}`],
-      ])
-    );
+    table.appendChild(infoGrid(tableRows));
     body.appendChild(table);
 
     const bb = gameState.bigBlind || 0;

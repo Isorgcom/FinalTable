@@ -1994,3 +1994,52 @@ test('the host has controls in the Info tab: the level, a pause, and removing a 
   await expect(guest.locator('#appDialogBody')).toContainText('removed you from the game');
   expect(pageErrors).toEqual([]);
 });
+
+test('the rail link brings a watcher to the table, who can talk but not play', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Dealer');
+  await deal(page);
+  const uid = await page.evaluate(() => window.__identity.uid);
+  const entry = serverModule.registry.findByUid(uid);
+
+  // The host has the link to hand out.
+  await page.click('#tabInfo');
+  await expect(page.locator('#panelInfoRail')).toBeVisible();
+  await expect(page.locator('#panelInfoRail')).toContainText('Rail link');
+
+  const railContext = await browserRef.newContext();
+  const rail = await railContext.newPage();
+  const railErrors = [];
+  rail.on('pageerror', (err) => railErrors.push(err.message));
+  await rail.goto(`${baseUrl}/?w=${entry.rail.toLowerCase()}`);
+  await rail.fill('#playerName', 'Rail');
+  await rail.locator('#playerName').blur();
+  await expect(rail.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(rail.locator('#topInfo')).toContainText('Watching table 1');
+  await expect(rail.locator('#actionsPanel')).toHaveClass(/hidden/);
+  await expect(rail.locator('#btnAutoPlay')).toBeHidden();
+  await expect(rail.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(2);
+  await rail.click('#tabInfo');
+  await expect(rail.locator('#panelInfoWatch')).toContainText('Table 1');
+  await expect(rail.locator('#panelInfoHost')).toBeHidden();
+  await expect(rail.locator('#panelInfoRail')).toBeHidden();
+  await expect(page.locator('#panelInfoBody')).toContainText('1 watching');
+
+  // The rail talks, and the table sees who is talking.
+  await rail.click('#tabChat');
+  await rail.fill('#chatInput', 'go on then');
+  await rail.click('#chatSend');
+  await page.click('#tabChat');
+  const line = page.locator('#panelChatBody .chat-line', { hasText: 'go on then' });
+  await expect(line).toBeVisible();
+  await expect(line.locator('.chat-badge')).toHaveText('rail');
+
+  // And leaves without a fuss.
+  await rail.click('#menuToggle');
+  await rail.click('#btnExit');
+  await expect(rail.locator('#lobbyHome')).toBeVisible();
+  await page.click('#tabInfo');
+  await expect(page.locator('#panelInfoBody')).not.toContainText('1 watching');
+  expect(railErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+  await railContext.close();
+});
