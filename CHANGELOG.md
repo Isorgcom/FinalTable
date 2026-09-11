@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.7.0 - 2026-09-11
+
 ### Added
 
 - A blind structure to choose when a game is made: Turbo, Standard or Deep,
