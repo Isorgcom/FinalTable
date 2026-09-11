@@ -13,6 +13,19 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.6.0 - 2026-09-11
+
+### Added
+
+- The host reads and talks at every table. In a field of more than one table
+  the host's Chat tab gets a strip, All and one pill per table: pick a table
+  to read what is said there and answer it, pick All to say something to
+  every table at once. An announcement lands in each table's chat marked as
+  the host's and "to all tables", and flashes over the felt for a few seconds
+  so a closed panel is not a missed break call. The host hears every table
+  live, keeps the floor after busting, and everyone else's chat is exactly as
+  it was: a line said at a table reaches that table, and the host.
+
 ## 0.5.0 - 2026-09-11
 
 ### Added
