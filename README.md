@@ -22,8 +22,8 @@ hands, never during one, and seated again on the way back up - and cleared,
 like any other table everyone has left, if nobody comes back to it.
 
 It is people, unless you ask for otherwise: a tournament needs two entrants
-before it can deal, and the create form has a box that adds five demo seats so
-you can fill a table on your own and watch it play. They are donkeys on
+before it can deal, and the create form has a box that adds up to eight demo
+seats so you can fill a table on your own and watch it play. They are donkeys on
 purpose - they call far too much and raise for no reason - and they are there
 to show the game moving, not to be beaten. A seat whose player disconnects,
 leaves or runs out their clock is never played for them: it sits out, checking

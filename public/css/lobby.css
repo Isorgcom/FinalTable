@@ -981,3 +981,18 @@
 .structure-row.current .s-blinds {
   color: var(--gold);
 }
+
+/* The bot count sits inside the label's sentence, so it is sized to a word. */
+.check-row select {
+  width: auto;
+  display: inline-block;
+  margin: 0 4px;
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(92, 61, 26, 0.4);
+  border-radius: 4px;
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color-scheme: dark;
+}

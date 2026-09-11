@@ -377,7 +377,20 @@
                beating, and not meant to be. -->
           <label class="check-row" for="tBots">
             <input type="checkbox" id="tBots" />
-            <span>Add 5 donkey bots <em>demo only &ndash; they call far too much</em></span>
+            <span>
+              Add
+              <select id="tBotCount" aria-label="How many bots">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5" selected>5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+              donkey bots <em>demo only &ndash; they call far too much</em>
+            </span>
           </label>
           <div class="lobby-actions">
             <button class="btn-enter" id="btnCreateSubmit" type="button">Create</button>

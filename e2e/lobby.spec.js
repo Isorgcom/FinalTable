@@ -430,3 +430,21 @@ test('a host picks a structure, edits a level, and the waiting room shows the la
   const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
   expect(list.find((t) => t.name === 'Deep Night')).toMatchObject({ structure: 'Custom' });
 });
+
+test('the bot box takes a count, and eight bots at 6-max make two tables', async ({ page }) => {
+  await identifyAs(page, 'Host');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Donkey Derby');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.selectOption('#tTableSize', '6');
+  await page.check('#tBots');
+  await page.selectOption('#tBotCount', '8');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  await expect(page.locator('#wrRoster .wr-row')).toHaveCount(9);
+  await expect(page.locator('#wrRoster')).toContainText('Dapple');
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await page.click('#tabInfo');
+  await expect(page.locator('#panelInfoBody')).toContainText('2 · you');
+});

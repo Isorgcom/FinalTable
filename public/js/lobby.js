@@ -1433,7 +1433,7 @@
       levelDuration: parseInt($('tLevelDuration').value, 10),
       lateRegLevels: parseInt($('tLateRegLevels').value, 10),
       buyIn: Math.max(0, Math.min(10000, parseInt($('tBuyIn').value, 10) || 0)),
-      bots: !!$('tBots').checked,
+      bots: $('tBots').checked ? parseInt($('tBotCount').value, 10) || 5 : 0,
       visibility: currentVisibility(),
       structure: structurePayload(),
     };

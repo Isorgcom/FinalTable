@@ -25,6 +25,10 @@ Release on GitHub to go with it.
   paused. A host cannot remove themselves, and cannot move a player to a
   table that would leave the tables more than a seat apart.
 
+- The create form's bot box takes a count, one to eight, rather than always
+  five. Eight bots and a host at 8-max is a full table; at 4-max it is three
+  tables, which is what the host's Move to… needs.
+
 ### Changed
 
 - A paused game with nobody connected is kept for thirty minutes rather than

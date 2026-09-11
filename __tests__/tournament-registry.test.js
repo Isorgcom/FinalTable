@@ -166,6 +166,31 @@ describe('tournament registry', () => {
     expect(registry.tournaments.has(entry.id)).toBe(false);
   });
 
+  test('the bot option takes a count, one to eight, and the old yes still means five', () => {
+    const eight = create({ startsAt: Date.now() + 60000, bots: 8 }, makeSocket('s8', 'h'));
+    const bots = eight.entry.director.entrants.filter((e) => e.isBot);
+    expect(bots.map((b) => b.name)).toEqual([
+      'Burro',
+      'Jenny',
+      'Moke',
+      'Neddy',
+      'Hinny',
+      'Jack',
+      'Cuddy',
+      'Dapple',
+    ]);
+    expect(new Set(bots.map((b) => b.uid)).size).toBe(8);
+    registry.cancel(eight.entry, 'h');
+    const many = create({ startsAt: Date.now() + 60000, bots: '99' }, makeSocket('s9', 'h'));
+    expect(many.entry.director.entrants.filter((e) => e.isBot)).toHaveLength(8);
+    registry.cancel(many.entry, 'h');
+    const two = create({ startsAt: Date.now() + 60000, bots: 2 }, makeSocket('s2', 'h'));
+    expect(two.entry.director.entrants.filter((e) => e.isBot)).toHaveLength(2);
+    registry.cancel(two.entry, 'h');
+    const none = create({ startsAt: Date.now() + 60000, bots: 0 }, makeSocket('s0', 'h'));
+    expect(none.entry.director.entrants.filter((e) => e.isBot)).toHaveLength(0);
+  });
+
   test('without the bot option a tournament is people only', () => {
     const { entry } = create({ startsAt: Date.now() + 60000 });
     expect(entry.director.entrants.length).toBe(1);

@@ -28,8 +28,18 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const START_CHIPS = [1000, 2000, 5000, 10000];
 // Seats the server plays, for filling a table to try something out. Named for
 // what they are: a donkey calls too much and raises for no reason, which is the
-// whole behaviour. Five, because that plus a host is a table worth looking at.
-const DEMO_BOT_NAMES = ['Burro', 'Jenny', 'Moke', 'Neddy', 'Hinny'];
+// whole behaviour. Up to eight, which with a host fills the biggest table or
+// spreads over two smaller ones; five when the form says only "yes".
+const DEMO_BOT_NAMES = ['Burro', 'Jenny', 'Moke', 'Neddy', 'Hinny', 'Jack', 'Cuddy', 'Dapple'];
+const DEFAULT_BOTS = 5;
+
+// How many demo seats a create asks for: a count, or the old yes/no.
+function botCount(value) {
+  if (value === true) return DEFAULT_BOTS;
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(DEMO_BOT_NAMES.length, n));
+}
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function createTournamentRegistry(deps = {}) {
@@ -751,8 +761,8 @@ function createTournamentRegistry(deps = {}) {
     // Demo seats, if asked for. They are entrants and nothing else: no
     // registration row, so connectedHumans does not count them and a field of
     // bots whose only human has gone still gets reaped like any other.
-    if (payload.bots) {
-      DEMO_BOT_NAMES.forEach((botName, i) => {
+    if (botCount(payload.bots) > 0) {
+      DEMO_BOT_NAMES.slice(0, botCount(payload.bots)).forEach((botName, i) => {
         const botUid = `bot:${entry.id}:${i + 1}`;
         entry.director.register({
           id: botUid,
