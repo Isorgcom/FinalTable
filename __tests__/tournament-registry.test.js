@@ -864,6 +864,127 @@ describe('tournament registry', () => {
       }
     });
 
+    // Which table each of the three sits at. The draw is random: the host may
+    // share a table with one guest, or sit alone with both guests at the
+    // other, so `near` can be null and `atFar` holds one socket or two.
+    function layout(entry) {
+      const tableOf = (uid) => entry.director.playerByUid(uid).table.tableNumber;
+      const hostTable = tableOf('h');
+      const far = ['g', 't'].find((uid) => tableOf(uid) !== hostTable);
+      const near = ['g', 't'].find((uid) => tableOf(uid) === hostTable) || null;
+      const farTable = tableOf(far);
+      const atFar = ['g', 't'].filter((uid) => tableOf(uid) === farTable).map((uid) => 's' + uid);
+      return { hostTable, far, near, farTable, atFar };
+    }
+
+    test('the host reaches every table at once, and each table hears it once', () => {
+      const { entry, sockets } = twoTables();
+      io.sent.length = 0;
+      const result = registry.postChat(entry, 'h', 'break in five', sockets.h, { to: 'all' });
+      expect(result.error).toBeUndefined();
+      expect(result.messages).toHaveLength(2);
+      // One emit per room, each copy marked, all sharing a group.
+      const sent = chatSent();
+      expect(sent).toHaveLength(2);
+      expect(sent.map((m) => m.payload.room).sort()).toEqual([`${entry.id}:t1`, `${entry.id}:t2`]);
+      expect(sent.every((m) => m.payload.host === true && m.payload.scope === 'all')).toBe(true);
+      expect(new Set(sent.map((m) => m.payload.group)).size).toBe(1);
+      expect(sent.map((m) => m.payload.table).sort()).toEqual([1, 2]);
+      // Each seat hears exactly one copy; the host, who holds every room, both.
+      const heard = {};
+      for (const m of sent) for (const id of m.to) heard[id] = (heard[id] || 0) + 1;
+      expect(heard).toEqual({ sg: 1, st: 1, sh: 2 });
+      // Each table's history holds it, so a late arrival there reads it.
+      for (const n of [1, 2]) {
+        expect(registry.chat.history(`${entry.id}:t${n}`).map((m) => m.text)).toEqual([
+          'break in five',
+        ]);
+      }
+      // And what the store will write carries the marks.
+      const snap = registry.chat.snapshot(entry.id);
+      expect(snap[`${entry.id}:t1`][0]).toMatchObject({ host: true, scope: 'all' });
+      // One rate token per announcement, not one per copy: four go, the fifth
+      // does not.
+      const outcomes = [result.error];
+      for (let i = 0; i < 4; i++) {
+        outcomes.push(registry.postChat(entry, 'h', 'again ' + i, sockets.h, { to: 'all' }).error);
+      }
+      expect(outcomes.slice(0, 4).every((e) => !e)).toBe(true);
+      expect(outcomes[4]).toMatch(/slow down/i);
+    });
+
+    test('the host can speak to one table, hears every table, and nobody else can aim', () => {
+      const { entry, sockets } = twoTables();
+      const { far, near, farTable, atFar } = layout(entry);
+      io.sent.length = 0;
+      const aimed = registry.postChat(entry, 'h', 'you are up', sockets.h, { to: farTable });
+      expect(aimed.error).toBeUndefined();
+      let sent = chatSent();
+      expect(sent).toHaveLength(1);
+      expect(sent[0].payload).toMatchObject({ room: `${entry.id}:t${farTable}`, host: true });
+      expect(sent[0].payload.scope).toBeUndefined();
+      expect([...sent[0].to].sort()).toEqual([...atFar, 'sh'].sort());
+      if (near) expect(sent[0].to).not.toContain(sockets[near].id);
+      expect(registry.postChat(entry, 'h', 'nobody', sockets.h, { to: 9 }).error).toMatch(
+        /no such table/i
+      );
+      // A line said at the far table reaches that table and the host, who is
+      // not sitting there.
+      io.sent.length = 0;
+      registry.postChat(entry, far, 'anyone?', sockets[far]);
+      sent = chatSent();
+      expect(sent).toHaveLength(1);
+      expect([...sent[0].to].sort()).toEqual([...atFar, 'sh'].sort());
+      // A guest's `to` is ignored: their line stays at their own table.
+      io.sent.length = 0;
+      registry.postChat(entry, far, 'hello everyone', sockets[far], { to: 'all' });
+      sent = chatSent();
+      expect(sent).toHaveLength(1);
+      expect(sent[0].payload.room).toBe(`${entry.id}:t${farTable}`);
+      expect(sent[0].payload.host).toBeUndefined();
+      expect(sent[0].payload.scope).toBeUndefined();
+      if (near) expect(sent[0].to).not.toContain(sockets[near].id);
+    });
+
+    test('binding the host sends the whole field; a guest gets only their room', () => {
+      const { entry, sockets } = twoTables();
+      const { far, farTable, hostTable } = layout(entry);
+      registry.postChat(entry, far, 'said far away', sockets[far]);
+      io.sent.length = 0;
+      registry.bind(entry, 'h', makeSocket('sh2', 'h'), { resumed: true });
+      const fields = io.sent.filter((m) => m.event === 'chatField');
+      expect(fields).toHaveLength(1);
+      expect(fields[0].to).toBe('sh2');
+      const { mine, rooms } = fields[0].payload;
+      expect(mine).toBe(hostTable);
+      expect(rooms.map((r) => r.table)).toEqual([1, 2]);
+      expect(rooms.find((r) => r.table === farTable).messages.map((m) => m.text)).toEqual([
+        'said far away',
+      ]);
+      io.sent.length = 0;
+      registry.bind(entry, far, makeSocket('sx', far), { resumed: true });
+      expect(io.sent.filter((m) => m.event === 'chatField')).toHaveLength(0);
+    });
+
+    test('the floor moves with the title', () => {
+      const { entry, sockets } = twoTables();
+      io.sent.length = 0;
+      registry.leave(entry, 'h', sockets.h);
+      // The title passes on the sweep after the host walks out.
+      jest.advanceTimersByTime(1100);
+      const next = entry.hostUid;
+      expect(next).not.toBe('h');
+      const fields = io.sent.filter((m) => m.event === 'chatField');
+      const theirs = fields.find((m) => m.to === entry.registrations.get(next).socketId);
+      expect(theirs).toBeTruthy();
+      expect(theirs.payload.rooms.map((r) => r.table)).toEqual([1, 2]);
+      // The new host may aim.
+      io.sent.length = 0;
+      registry.postChat(entry, next, 'new host here', sockets[next], { to: 'all' });
+      expect(chatSent().length).toBeGreaterThan(0);
+      expect(chatSent().every((m) => m.payload.host === true)).toBe(true);
+    });
+
     test('before the start it is one room for everyone registered', () => {
       const hostSocket = makeSocket('sh', 'h');
       const { entry } = create({ startsAt: Date.now() + 60000 }, hostSocket);

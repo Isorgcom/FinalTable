@@ -43,17 +43,6 @@ Half of this exists: a busted player keeps watching the table they were at
 What is missing is a way in for somebody who is not in the tournament at all -
 a rail link, and a decision about whether watchers can chat.
 
-### The host at every table
-
-Asked for on the forum (below): in a field of several tables the host is a
-seat at one of them, and chat is per table, so the host can talk to their own
-table and nobody else. A host running a night needs to reach every table - a
-level change, a break, "we are hand-for-hand". The shape is a host channel
-that lands in every table's room at once, distinguishable from a line said at
-the table, and readable by the host from every room whether or not they are
-seated there - which is the same seam as watching a table, since a host who
-busts should keep the whole field in view, not the rail of one table.
-
 ### Trust, but verify
 
 The first reply to the announcement was "Rigged!", and that is the right
@@ -106,6 +95,10 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+The host at every table: a strip in the host's Chat tab reads and answers
+any table, All announces to every table at once and over the felt, and the
+host hears every room live. Asked for on the forum, below.
 
 The Operator page lists every game the server holds, listed or not, with its
 code, who is connected, who is waiting at the door, and End game on each: the
@@ -233,7 +226,7 @@ scrolls away.
     speedy, nice layout." The action bubble outliving its street, and the
     reactions strip, came out of watching that play.
   - _HiveKueen_: "The game host needs to be able to participate in the chat at
-    any table." → The host at every table, above.
+    any table." → Done: the host reads and talks at every table.
   - _CraigT78_: "Rigged!" then "Trust, but verify!" → Trust, but verify,
     above, and the fairness notes in [SECURITY.md](./SECURITY.md).
   - _toothpic_: the green screen recalls the OFCP game. Noted; the felt is the

@@ -107,6 +107,9 @@ function createChatRooms(options = {}) {
     }
     if (entry.status === 'registering') return { ok: true };
     if (entry.status !== 'running') return { ok: false, reason: 'The tournament is over' };
+    // The host keeps the floor while the game runs, seat or no seat: a host
+    // who busts still has a room to run.
+    if (entry.hostUid === uid) return { ok: true };
     // Seated players only once the cards are out. A player who has busted can
     // still read the table they are watching.
     if (!entry.director.playerByUid(uid)) {
@@ -127,7 +130,13 @@ function createChatRooms(options = {}) {
     return true;
   }
 
-  function post(room, { uid, name, text }) {
+  // The four optional fields say where and from whom: `table` is the room's
+  // table number (null in the waiting room), `host` marks the host's lines,
+  // `scope` is 'all' on an announcement to every table, and `group` is shared
+  // by every copy of one announcement so a reader holding several rooms can
+  // draw it once. Absent when they do not apply, so an ordinary line is the
+  // shape it always was.
+  function post(room, { uid, name, text, table = null, host = false, scope = null, group = null }) {
     const clean = sanitizeChat(text, maxLength);
     if (!clean || !room) return null;
     seq += 1;
@@ -139,6 +148,10 @@ function createChatRooms(options = {}) {
       name,
       text: clean,
       at: now(),
+      ...(table !== null ? { table } : {}),
+      ...(host ? { host: true } : {}),
+      ...(scope ? { scope } : {}),
+      ...(group ? { group } : {}),
     };
     append(message);
     return message;

@@ -507,7 +507,61 @@ function createTournamentRegistry(deps = {}) {
     const table = tableForRoom(entry, room);
     if (!table) return [];
     for (const r of recipientsFor(entry, table)) ids.add(r.socketId);
+    // The host hears every table, seated at it or not.
+    const hostSock = hostSocketId(entry);
+    if (hostSock) ids.add(hostSock);
     return [...ids];
+  }
+
+  function hostSocketId(entry) {
+    const reg = entry.registrations.get(entry.hostUid);
+    return reg && reg.socketId ? reg.socketId : null;
+  }
+
+  // The host's view of the field: every table's room and its backlog, and
+  // which table is theirs. Sent to the host alone, and receiving it is how a
+  // client knows it is the host; the strip in its Chat tab is built from it.
+  function chatFieldFor(entry) {
+    const seat = entry.director.playerByUid(entry.hostUid);
+    const tables = [...entry.director.activeTables()].sort((a, b) => a.tableNumber - b.tableNumber);
+    return {
+      mine: seat ? seat.table.tableNumber : null,
+      rooms: tables.map((t) => {
+        const room = chat.tableRoom(entry.id, t.tableNumber);
+        return { room, table: t.tableNumber, messages: chat.history(room) };
+      }),
+    };
+  }
+
+  function sendChatField(entry, socketId = hostSocketId(entry)) {
+    if (!chatEnabled || !socketId || entry.status !== 'running') return;
+    io.to(socketId).emit('chatField', chatFieldFor(entry));
+  }
+
+  // Where a line goes. Everyone's goes to their own room; the host may aim
+  // one at a table, or at every table at once.
+  function chatTargets(entry, uid, to) {
+    if (to === undefined || entry.status !== 'running') {
+      const room = chat.roomFor(entry, uid);
+      if (!room) return { error: 'You are not at a table yet' };
+      const table = tableForRoom(entry, room);
+      return { rooms: [{ room, table: table ? table.tableNumber : null }], scope: null };
+    }
+    const active = entry.director.activeTables();
+    if (to === 'all') {
+      const rooms = active.map((t) => ({
+        room: chat.tableRoom(entry.id, t.tableNumber),
+        table: t.tableNumber,
+      }));
+      if (!rooms.length) return { error: 'No table to speak to' };
+      return { rooms, scope: 'all' };
+    }
+    const table = active.find((t) => t.tableNumber === to);
+    if (!table) return { error: 'No such table' };
+    return {
+      rooms: [{ room: chat.tableRoom(entry.id, table.tableNumber), table: table.tableNumber }],
+      scope: null,
+    };
   }
 
   function persistChat(entry) {
@@ -529,9 +583,15 @@ function createTournamentRegistry(deps = {}) {
       canSend: chat.canPost(entry, uid).ok,
       messages: chat.history(room),
     });
+    if (uid === entry.hostUid) sendChatField(entry, target);
   }
 
-  function postChat(entry, uid, text, socket) {
+  // `to` is the host's alone: a table number, or 'all' for every table at
+  // once. From anyone else it is ignored and the line goes where it always
+  // did. An announcement is one line per table room, each in that room's
+  // history so a late arrival there still reads it, sharing one group id so
+  // the host, who hears every room, draws it once.
+  function postChat(entry, uid, text, socket, { to } = {}) {
     if (!chatEnabled) return { error: 'Chat is switched off' };
     const allowed = chat.canPost(entry, uid);
     if (!allowed.ok) return { error: allowed.reason };
@@ -539,17 +599,35 @@ function createTournamentRegistry(deps = {}) {
     if (!chat.takeToken(socket.data.chatBucket)) {
       return { error: 'Slow down a moment' };
     }
-    const room = chat.roomFor(entry, uid);
-    if (!room) return { error: 'You are not at a table yet' };
+    const isHost = requireHost(entry, uid);
+    const targets = chatTargets(entry, uid, isHost ? to : undefined);
+    if (targets.error) return { error: targets.error };
     // The name is looked up, never taken from the payload: otherwise anyone
     // can sign a message with somebody else's name.
     const who = identity.get(uid);
-    const message = chat.post(room, { uid, name: who ? who.name : 'Player', text });
-    if (!message) return { error: 'Nothing to send' };
-    const ids = chatRecipients(entry, room);
-    if (ids.length) io.to(ids).emit('chatMessage', message);
+    const name = who ? who.name : 'Player';
+    const group =
+      targets.scope === 'all' && targets.rooms.length > 1 ? random.randomId('a_') : null;
+    const messages = [];
+    for (const { room, table } of targets.rooms) {
+      const message = chat.post(room, {
+        uid,
+        name,
+        text,
+        table,
+        host: isHost,
+        scope: targets.scope,
+        group,
+      });
+      // The sanitiser answers the same for every room, so a refusal here is
+      // before anything was posted anywhere.
+      if (!message) return { error: 'Nothing to send' };
+      messages.push(message);
+      const ids = chatRecipients(entry, room);
+      if (ids.length) io.to(ids).emit('chatMessage', message);
+    }
     persistChat(entry);
-    return { message };
+    return { message: messages[0], messages };
   }
 
   // Same room, same mute, same people as a chat line, and none of its
@@ -724,8 +802,14 @@ function createTournamentRegistry(deps = {}) {
       lateRegLevels: settings.lateRegLevels,
       handPauseMs,
       gameOptions: { gameMode: 'tournament', ...tableOptions },
-      onTableCreated: (table) => wireTable(entry, table),
-      onTableBroken: (table) => chat.dropRoom(chat.tableRoom(entry.id, table.tableNumber)),
+      onTableCreated: (table) => {
+        wireTable(entry, table);
+        sendChatField(entry); // the host's strip gains a table
+      },
+      onTableBroken: (table) => {
+        chat.dropRoom(chat.tableRoom(entry.id, table.tableNumber));
+        sendChatField(entry); // and loses one
+      },
       onMessage: (msg) => emitAll(entry, 'gameMessage', msg),
       onPlayerMoved: (move) => {
         emitTo(entry, move.uid, 'tableMoved', move);
@@ -1257,6 +1341,7 @@ function createTournamentRegistry(deps = {}) {
     persist();
     emitState(entry);
     emitList();
+    sendChatField(entry); // the host's strip, now that there are tables
   }
 
   function cancelEntry(entry, reason) {
@@ -1295,6 +1380,7 @@ function createTournamentRegistry(deps = {}) {
       .filter(([uid, r]) => uid !== entry.hostUid && !r.left && r.socketId)
       .sort((a, b) => a[1].joinedAt - b[1].joinedAt)[0];
     if (!next) return false;
+    const previous = entry.hostUid;
     entry.hostUid = next[0];
     for (const table of entry.director.tables) table.hostPlayerId = entry.hostUid;
     const who = identity.get(entry.hostUid);
@@ -1302,6 +1388,13 @@ function createTournamentRegistry(deps = {}) {
     persist();
     emitState(entry);
     emitList();
+    // The floor moves with the title: the old host's strip goes, the new
+    // host's arrives.
+    if (entry.status === 'running') {
+      const old = entry.registrations.get(previous);
+      if (old && old.socketId) io.to(old.socketId).emit('chatField', { mine: null, rooms: null });
+      sendChatField(entry);
+    }
     // Whoever is waiting at the door is waiting on a different person now.
     for (const row of entry.pending.values()) {
       if (row.socketId) {

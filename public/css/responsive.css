@@ -693,3 +693,18 @@
     display: none;
   }
 }
+
+/* The host's announcement follows the banner's lane on small screens. */
+@media (max-width: 768px) {
+  .host-note {
+    top: 100px;
+    font-size: 0.62rem;
+    max-width: 84vw;
+  }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .host-note {
+    top: 66px;
+    font-size: 0.6rem;
+  }
+}

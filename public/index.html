@@ -484,6 +484,11 @@
                says so on the felt. -->
           <div class="tb-bubble hidden" id="tbBubble" role="status"></div>
         </div>
+        <!-- A host announcement, for the seconds it takes to read: the chat
+             panel may be closed, and a break call is not something to miss.
+             Its own element, not part of the banner: the banner hides between
+             hands, and a break is exactly when the host speaks. -->
+        <div class="host-note hidden" id="tbHostNote" role="status"></div>
 
         <div class="poker-table-wrapper">
           <div class="poker-table">
@@ -698,6 +703,14 @@
         </div>
         <div class="side-panel-bodies">
           <section class="side-tabpanel" id="panelChat" role="tabpanel" aria-labelledby="tabChat">
+            <!-- The host's strip: which table the panel shows and speaks to.
+                 Built by chat.js from chatField, which only the host receives. -->
+            <div
+              class="chat-tables hidden"
+              id="chatTables"
+              role="group"
+              aria-label="Which table"
+            ></div>
             <div class="panel-scroll" id="panelChatBody" role="log" aria-label="Dealer log"></div>
             <div class="panel-composer hidden" id="panelComposer">
               <form class="composer-row" id="chatForm">

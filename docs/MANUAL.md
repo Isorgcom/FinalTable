@@ -13,12 +13,13 @@ Everything here is play chips. FinalTable keeps no money and moves none.
 The last few releases changed how a game is found and who can get in. The
 short version, with where to read more:
 
-| Version | What arrived                                                                                                                        | See                                                                |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 0.5.0   | The Operator page lists every game on the server, listed or not, and can end one. A page left open across an update reloads itself. | [For the operator](#for-the-operator), [Updates](#updates)         |
-| 0.4.0   | A game is **private by default**. Public lists it for anyone; invite-only puts a door on the link that the host works.              | [Who can join](#who-can-join), [The door](#the-door)               |
-| 0.3.0   | Reactions: six emoji thrown at the table without typing.                                                                            | [Reactions](#reactions)                                            |
-| 0.2.0   | Sign in with GameNight, the Operator page, the corner menu, and a join code that is no longer served to anyone who asks.            | [Who you are](#who-you-are), [For the operator](#for-the-operator) |
+| Version | What arrived                                                                                                                                | See                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 0.6.0   | The host reads and talks at every table: a strip in the Chat tab picks a table, and All announces to every table at once and over the felt. | [The side panel](#the-side-panel), [Chat, reactions and mute](#chat-reactions-and-mute) |
+| 0.5.0   | The Operator page lists every game on the server, listed or not, and can end one. A page left open across an update reloads itself.         | [For the operator](#for-the-operator), [Updates](#updates)                              |
+| 0.4.0   | A game is **private by default**. Public lists it for anyone; invite-only puts a door on the link that the host works.                      | [Who can join](#who-can-join), [The door](#the-door)                                    |
+| 0.3.0   | Reactions: six emoji thrown at the table without typing.                                                                                    | [Reactions](#reactions)                                                                 |
+| 0.2.0   | Sign in with GameNight, the Operator page, the corner menu, and a join code that is no longer served to anyone who asks.                    | [Who you are](#who-you-are), [For the operator](#for-the-operator)                      |
 
 Older: table chat and a host mute, hand-for-hand at the bubble, late
 registration, rejoin after a dropped connection, and a field that survives a
@@ -229,7 +230,11 @@ Docked beside the table on a wide screen, a drawer on a phone (the **panel**
 button opens and closes it). Four tabs:
 
 - **Chat**: the dealer's log of the hand, and the table's chat with a box to
-  type in.
+  type in. The host of a game with more than one table also gets a strip
+  over the log, **All** and one pill per table: pick a table to read what is
+  said there and answer it, pick All to say something to every table at
+  once. Lines from another table carry a small T2-style chip; the host's own
+  lines carry a **host** badge wherever they land.
 - **Info**: the table (mode, players), blinds and level, the field (tables
   left, which one you are at, players remaining, payouts), and, for the host
   of an invite-only game, whoever is waiting at the door. When the game
@@ -313,6 +318,12 @@ The **host** can **mute** anyone from the waiting-room roster, and unmute the
 same way. A muted player can read but not post, sees _The host has muted
 you_ when they try, and cannot throw reactions either. The mute lasts for the
 game.
+
+The **host hears every table** in their game, live, whichever they are
+sitting at, and can speak to one table or to all of them from the strip in
+the Chat tab. A line to all tables is marked "to all tables" and flashes
+over the felt for a few seconds, so a closed chat panel is not a missed
+break call. A host who busts keeps the floor.
 
 An operator can switch chat or reactions off for the whole server; then the
 box or the strip simply does not exist.

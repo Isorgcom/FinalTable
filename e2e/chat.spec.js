@@ -47,10 +47,11 @@ async function identifyAs(page, name) {
   await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
 }
 
-async function hostCreates(page, name) {
+async function hostCreates(page, name, { tableSize = null } = {}) {
   await page.click('#btnCreateTournament');
   await expect(page.locator('#lobbyCreate')).toBeVisible();
   await page.fill('#tName', name);
+  if (tableSize) await page.selectOption('#tTableSize', String(tableSize));
   await page.click('#tStartQuick button[data-min="15"]');
   await page.click('#btnCreateSubmit');
   await expect(page.locator('#lobbyWaiting')).toBeVisible();
@@ -343,4 +344,100 @@ test('a reaction floats over the chair of whoever threw it, then goes', async ({
 
   expect(guest.errors).toEqual([]);
   await guest.context.close();
+});
+
+// Two tables, and the host at one of them. The strip in the host's Chat tab
+// reads and reaches the other; an announcement reaches both and the felt.
+test('the host reaches every table', async ({ browser, page }) => {
+  await identifyAs(page, 'Host');
+  const code = await hostCreates(page, 'Two Tables', { tableSize: 2 });
+  const guests = [];
+  for (const name of ['Ann', 'Bob', 'Cat']) guests.push(await guestJoins(browser, code, name));
+  await page.click('#btnStartNow');
+  const pages = [page, ...guests.map((g) => g.page)];
+  for (const p of pages) {
+    await expect(p.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  }
+  const tableOf = (p) => p.evaluate(() => window.mttField && window.mttField.myTable);
+  await expect.poll(() => tableOf(page), { timeout: 10000 }).toBeTruthy();
+  const hostTable = await tableOf(page);
+  const far = [];
+  const near = [];
+  for (const g of guests) {
+    await expect.poll(() => tableOf(g.page), { timeout: 10000 }).toBeTruthy();
+    ((await tableOf(g.page)) === hostTable ? near : far).push(g);
+  }
+  expect(near).toHaveLength(1);
+  expect(far).toHaveLength(2);
+  const farTable = await tableOf(far[0].page);
+
+  // The strip is the host's alone: All, then a pill per table, theirs in force.
+  const strip = page.locator('#chatTables');
+  await expect(strip).toBeVisible();
+  await expect(strip.locator('button')).toHaveCount(3);
+  await expect(strip.locator('button.active')).toHaveAttribute('data-view', `t${hostTable}`);
+  await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Message your table');
+  for (const g of guests) await expect(g.page.locator('#chatTables')).toBeHidden();
+
+  // An announcement: every table hears it, badged, and it flashes on the felt.
+  await strip.locator('button[data-view="all"]').click();
+  await expect(page.locator('#chatInput')).toHaveAttribute(
+    'placeholder',
+    'Announce to every table'
+  );
+  await page.fill('#chatInput', 'break in five');
+  await page.press('#chatInput', 'Enter');
+  for (const g of guests) {
+    const line = g.page.locator('#panelChatBody .chat-line.host', { hasText: 'break in five' });
+    await expect(line).toHaveCount(1);
+    await expect(line.locator('.chat-badge')).toHaveText('host');
+    await expect(line.locator('.chat-scope')).toHaveText('to all tables');
+    await expect(g.page.locator('#tbHostNote')).toBeVisible();
+    await expect(g.page.locator('#tbHostNote')).toContainText('break in five');
+  }
+  // Once on the host's own panel, though the host holds both rooms.
+  await expect(
+    page.locator('#panelChatBody .chat-line.host', { hasText: 'break in five' })
+  ).toHaveCount(1);
+
+  // A line said at the far table reaches the host, chipped, and not the near guest.
+  await far[0].page.fill('#chatInput', 'anyone here?');
+  await far[0].page.press('#chatInput', 'Enter');
+  const heard = page.locator('#panelChatBody .chat-line', { hasText: 'anyone here?' });
+  await expect(heard).toHaveCount(1);
+  await expect(heard.locator('.chat-table-chip')).toHaveText(`T${farTable}`);
+  await expect(
+    far[1].page.locator('#panelChatBody .chat-line', { hasText: 'anyone here?' })
+  ).toHaveCount(1);
+  await expect(
+    near[0].page.locator('#panelChatBody .chat-line', { hasText: 'anyone here?' })
+  ).toHaveCount(0);
+
+  // Speaking to the far table alone: they hear it, the near guest does not.
+  await strip.locator(`button[data-view="t${farTable}"]`).click();
+  await expect(page.locator('#chatInput')).toHaveAttribute(
+    'placeholder',
+    `Message table ${farTable}`
+  );
+  await page.fill('#chatInput', 'on my way over');
+  await page.press('#chatInput', 'Enter');
+  for (const g of far) {
+    await expect(
+      g.page.locator('#panelChatBody .chat-line.host', { hasText: 'on my way over' })
+    ).toHaveCount(1);
+  }
+  await expect(
+    near[0].page.locator('#panelChatBody .chat-line', { hasText: 'on my way over' })
+  ).toHaveCount(0);
+  // Not an announcement, so nothing on the felt for it.
+  await expect(far[0].page.locator('#tbHostNote')).not.toContainText('on my way over');
+  // In the far table's view the announcement, which is every table's, still shows.
+  await expect(
+    page.locator('#panelChatBody .chat-line.host', { hasText: 'break in five' })
+  ).toBeVisible();
+
+  // The felt note clears itself.
+  await expect(far[0].page.locator('#tbHostNote')).toBeHidden({ timeout: 12000 });
+  for (const g of guests) expect(g.errors).toEqual([]);
+  for (const g of guests) await g.context.close();
 });

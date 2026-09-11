@@ -476,7 +476,17 @@ function registerTournamentHandlers(deps) {
       if (typeof payload.text !== 'string') return;
       const entry = entryFor(socket);
       if (!entry) return;
-      const result = registry.postChat(entry, socket.data.tournamentUid, payload.text, socket);
+      // Where the host wants it: a table number or 'all'. Anything else is
+      // dropped here, and the registry ignores it from anyone but the host.
+      const to =
+        payload.to === 'all'
+          ? 'all'
+          : Number.isInteger(payload.to) && payload.to > 0
+            ? payload.to
+            : undefined;
+      const result = registry.postChat(entry, socket.data.tournamentUid, payload.text, socket, {
+        to,
+      });
       // A refusal goes back on its own event, not through fail(): the client
       // routes 'error' to a lobby dialog, and a rate limit is not a dialog.
       if (result.error) socket.emit('chatDenied', { reason: result.error });

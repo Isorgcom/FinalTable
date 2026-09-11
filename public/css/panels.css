@@ -656,6 +656,29 @@
   border-color: #c9a84c;
   box-shadow: 0 0 0 1px rgba(201, 168, 76, 0.35);
 }
+/* The host's announcement over the felt: below the banner's lane, on its
+   own, because the banner hides between hands and that is when a host talks. */
+.host-note {
+  position: absolute;
+  top: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 56;
+  max-width: min(80vw, 520px);
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: rgba(13, 31, 18, 0.92);
+  color: var(--gold);
+  border: 1px solid rgba(201, 168, 76, 0.7);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.host-note.hidden {
+  display: none;
+}
 .tournament-banner .tb-bubble {
   margin-top: 4px;
   padding: 3px 10px;
@@ -933,6 +956,72 @@
 }
 .log-entry.chat-line.mine .chat-who {
   color: var(--cream);
+}
+/* The host's lines, wherever they land, and the two ways one can be aimed. */
+.chat-badge {
+  display: inline-block;
+  margin: 0 5px 0 -2px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 168, 76, 0.6);
+  color: var(--gold);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+.chat-scope {
+  margin-left: 6px;
+  color: var(--smoke);
+  font-size: 0.66rem;
+  font-style: italic;
+}
+/* A line from a table the reader is not sitting at: only the host sees these. */
+.chat-table-chip {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(92, 61, 26, 0.45);
+  color: var(--smoke);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  vertical-align: 1px;
+}
+.log-entry.chat-line.off {
+  display: none;
+}
+/* The host's strip over the log: All, then one pill per table. */
+.chat-tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(92, 61, 26, 0.35);
+  background: rgba(13, 31, 18, 0.5);
+}
+.chat-tables button {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(92, 61, 26, 0.6);
+  background: none;
+  color: var(--smoke);
+  font-family: inherit;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.chat-tables button:hover {
+  color: var(--cream);
+}
+.chat-tables button.active {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.chat-tables button:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
 }
 .log-entry.chat-sep {
   text-align: center;

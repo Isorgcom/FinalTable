@@ -184,6 +184,11 @@ function ensureSocket() {
     if (window.TableChat) TableChat.renderHistory(payload);
   });
 
+  // The host's view of every table's room. Nobody else is ever sent it.
+  socket.on('chatField', (payload) => {
+    if (window.TableChat) TableChat.renderField(payload);
+  });
+
   socket.on('chatDenied', (payload) => {
     if (window.TableChat) TableChat.denied((payload && payload.reason) || 'Not sent');
   });

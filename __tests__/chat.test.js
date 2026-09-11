@@ -146,6 +146,39 @@ describe('chat rooms', () => {
     expect(chat.canPost(null, 'ann').ok).toBe(false);
   });
 
+  test('the host keeps the floor after busting; nobody else does', () => {
+    const chat = createChatRooms();
+    // 'gone' has no seat and is watching table 2.
+    expect(chat.canPost(seatedEntry({ hostUid: 'gone' }), 'gone').ok).toBe(true);
+    expect(chat.canPost(seatedEntry({ hostUid: 'ann' }), 'gone').ok).toBe(false);
+    // The mute still wins, and so does the game being over.
+    const muted = seatedEntry({ hostUid: 'gone' });
+    muted.mutedUids.add('gone');
+    expect(chat.canPost(muted, 'gone').ok).toBe(false);
+    expect(chat.canPost(seatedEntry({ hostUid: 'gone', status: 'finished' }), 'gone').ok).toBe(
+      false
+    );
+  });
+
+  test('a line carries where and from whom it was said, and a plain one carries nothing extra', () => {
+    const chat = createChatRooms();
+    const aimed = chat.post('t_1:t2', {
+      uid: 'h',
+      name: 'Host',
+      text: 'break in five',
+      table: 2,
+      host: true,
+      scope: 'all',
+      group: 'a_1',
+    });
+    expect(aimed).toMatchObject({ table: 2, host: true, scope: 'all', group: 'a_1' });
+    const plain = chat.post('t_1:t2', { uid: 'g', name: 'Guest', text: 'gg' });
+    expect(plain).not.toHaveProperty('host');
+    expect(plain).not.toHaveProperty('scope');
+    expect(plain).not.toHaveProperty('group');
+    expect(plain).not.toHaveProperty('table');
+  });
+
   test('a player who has left is gagged even though the seat remembers them', () => {
     const chat = createChatRooms();
     const entry = seatedEntry();

@@ -1127,6 +1127,24 @@ function showSeatBubble(uid, text) {
   );
 }
 
+// A host announcement over the felt, for the seconds it takes to read. Its
+// own node and its own timer, so the per-tick bubble logic never touches it
+// and a newer note simply restarts the clock.
+const HOST_NOTE_MS = 6000;
+let hostNoteTimer = null;
+function showHostNote(name, text) {
+  const note = document.getElementById('tbHostNote');
+  if (!note || !text) return;
+  note.textContent = (name ? name + ': ' : '') + text;
+  note.classList.remove('hidden');
+  if (hostNoteTimer) clearTimeout(hostNoteTimer);
+  hostNoteTimer = setTimeout(function () {
+    hostNoteTimer = null;
+    note.classList.add('hidden');
+    note.textContent = '';
+  }, HOST_NOTE_MS);
+}
+
 // A reaction over a chair. The lifetime is a timer and the float is CSS, kept
 // apart on purpose: under prefers-reduced-motion the float collapses to
 // nothing, and the emoji still has to be on screen long enough to be seen.
