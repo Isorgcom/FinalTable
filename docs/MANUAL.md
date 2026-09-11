@@ -283,8 +283,10 @@ button opens and closes it). Four tabs:
 - **Info**: the table (mode, players), the blinds and the ante, the level
   and the time to the next one, the whole structure with the level the clock
   is on marked, the field (tables left, which one you are at, players
-  remaining, payouts), and, for the host of an invite-only game, whoever is
-  waiting at the door. When the game ends, the final standings.
+  remaining, payouts), and, for the host, the Host block described in
+  [The host at the table](#the-host-at-the-table) and, in an invite-only
+  game, whoever is waiting at the door. When the game ends, the final
+  standings.
 - **Stats**: a leaderboard for this game (wins, hands, win rate, biggest
   pot) and your last ten hands.
 - **History**: every hand you were dealt, replayable card by card and action
@@ -307,6 +309,10 @@ another device.
 When your stack is gone you are out, with a finishing place, and a payout if
 the place is paid. You can stay and watch the table you were at, or go back
 to the lobby.
+
+The host can also remove you. Then your chips leave play, you finish in the
+place you held, paid if that place pays, you are sent back to the lobby with
+a note saying so, and the code will not let you back into that game.
 
 ## How a tournament runs
 
@@ -341,7 +347,10 @@ players, joining at that table's next deal.
 
 **Tables balance and break** as players bust: no table is ever more than one
 seat different from another, and a table is broken when the field fits on one
-fewer, until one table is left.
+fewer, until one table is left. A move needs both tables between hands, so
+the table that is due to break, or the biggest one when the tables are more
+than a seat apart, sits out one hand while the other finishes; then the move
+is made and dealing carries on. No table waits otherwise.
 
 **The bubble.** With a prize pool, one place before the money the game
 announces the bubble and plays hand for hand: a table that finishes its hand

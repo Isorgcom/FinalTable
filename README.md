@@ -143,6 +143,13 @@ in the waiting room and the Info tab; a break holds every table until the
 clock moves on. A level is a row of the same shape Game Night's blind editor
 keeps, so a structure can come across from there when the API below exists.
 
+The host runs the night from the table's Info tab: pause and resume, a level
+back or forward, a minute on or off the clock, a player moved to a smaller
+table, a player removed from the game. Every action is checked again on the
+server. The create form's bot box takes a count, one to eight, and a table
+the field is waiting on sits out a hand so tables merge and balance even
+when they never rest at the same moment.
+
 Next is the rest of that split: Game Night owning invites and records,
 FinalTable owning the live game, talking over an API and webhooks so neither
 can take the other down. See [ROADMAP.md](./ROADMAP.md) for the shape of that

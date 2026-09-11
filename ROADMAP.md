@@ -91,6 +91,10 @@ cases bolted to a Hold'em loop.
 The host's controls at the table: pause and resume, a level back or forward,
 a minute on or off the clock, a player moved to a smaller table by hand, a
 player removed from the game. All in the Info tab, all checked on the server.
+With them, a bot count on the create form, so one person can raise a field
+of two tables, and the fix that came out of trying it: a table the field is
+waiting on sits out a hand, so tables merge and balance even when they never
+rest at the same moment.
 
 A real blind structure: Turbo, Standard or Deep when a game is made, or the
 levels edited by hand; antes, posted by the big blind from the level the
