@@ -725,6 +725,17 @@
           </button>
           <button
             class="side-tab"
+            id="tabLog"
+            role="tab"
+            aria-selected="false"
+            tabindex="-1"
+            aria-controls="panelLog"
+            data-tab="log"
+          >
+            Log
+          </button>
+          <button
+            class="side-tab"
             id="tabInfo"
             role="tab"
             aria-selected="false"
@@ -775,7 +786,7 @@
               role="group"
               aria-label="Which table"
             ></div>
-            <div class="panel-scroll" id="panelChatBody" role="log" aria-label="Dealer log"></div>
+            <div class="panel-scroll" id="panelChatBody" role="log" aria-label="Table chat"></div>
             <div class="panel-composer hidden" id="panelComposer">
               <form class="composer-row" id="chatForm">
                 <input
@@ -791,6 +802,17 @@
               </form>
               <p class="composer-note hidden" id="chatNote"></p>
             </div>
+          </section>
+          <!-- The dealer's narration: hands, blinds, actions, streets, the
+               showdown. Its own scroller, so a conversation never pushes a
+               hand out of view and a hand never buries a conversation. -->
+          <section
+            class="side-tabpanel hidden"
+            id="panelLog"
+            role="tabpanel"
+            aria-labelledby="tabLog"
+          >
+            <div class="panel-scroll" id="panelLogBody" role="log" aria-label="Dealer log"></div>
           </section>
           <section
             class="side-tabpanel hidden"

@@ -1,6 +1,7 @@
 // side-panel.js - the docked table panel and its tabs.
 //
-// Chat is the dealer log: addLog() in ui-panels.js writes there. Info, Stats
+// Chat is what people say (chat.js writes there) and Log is the dealer's
+// narration (addLog() in ui-panels.js). Info, Stats
 // and History are drawn by renderers other scripts register with
 // SidePanel.register(name, fn); a tab is rendered when it is selected and
 // refreshed on demand while it is showing. From 1024px up the panel is docked
@@ -11,7 +12,7 @@
   'use strict';
 
   const TAB_KEY = 'finaltable_side_panel_tab';
-  const NAMES = ['chat', 'info', 'stats', 'history'];
+  const NAMES = ['chat', 'log', 'info', 'stats', 'history'];
   const renderers = {};
   let current = 'chat';
 
@@ -52,9 +53,10 @@
       if (body) body.classList.toggle('hidden', !on);
     });
     if (renderers[name]) renderers[name]();
-    if (name === 'chat') {
-      const log = document.getElementById('panelChatBody');
-      if (log) log.scrollTop = log.scrollHeight;
+    // The two append-only scrollers open at their latest line.
+    if (name === 'chat' || name === 'log') {
+      const body = document.getElementById(name === 'chat' ? 'panelChatBody' : 'panelLogBody');
+      if (body) body.scrollTop = body.scrollHeight;
     }
     try {
       localStorage.setItem(TAB_KEY, name);

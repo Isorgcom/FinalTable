@@ -869,8 +869,10 @@
       clearInterval(tournamentTimer);
       tournamentTimer = null;
     }
-    const log = $('panelChatBody');
-    if (log) log.textContent = '';
+    for (const id of ['panelChatBody', 'panelLogBody']) {
+      const pane = $(id);
+      if (pane) pane.textContent = '';
+    }
     const ticker = $('logLast');
     if (ticker) ticker.textContent = 'Waiting...';
     // The chat watermark goes with the log it was counting. Without this a

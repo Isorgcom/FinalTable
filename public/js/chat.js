@@ -52,7 +52,7 @@
   }
 
   // Hide a row the current pill does not cover. Class-driven rather than a
-  // rebuild, because the dealer log shares this scroller and must stay put.
+  // rebuild, so the rows the pill does cover stay where they were.
   function applyViewTo(row) {
     if (!field || !view || view === 'all') {
       row.classList.remove('off');
@@ -150,7 +150,7 @@
     const game = el('gameScreen');
     const atTable = game && game.classList.contains('active');
     return atTable
-      ? { body: el('panelChatBody'), cap: null, note: el('chatNote'), input: el('chatInput') }
+      ? { body: el('panelChatBody'), cap: 200, note: el('chatNote'), input: el('chatInput') }
       : { body: el('wrChatLog'), cap: 60, note: el('wrChatNote'), input: el('wrChatInput') };
   }
 

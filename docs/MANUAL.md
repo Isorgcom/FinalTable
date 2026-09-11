@@ -297,15 +297,18 @@ host mute silences reactions along with chat.
 ### The side panel
 
 Docked beside the table on a wide screen, a drawer on a phone (the **panel**
-button opens and closes it). Four tabs:
+button opens and closes it). Five tabs:
 
-- **Chat**: the dealer's log of the hand (who posted the ante and the
-  blinds, each street, the showdown), and the table's chat with a box to
-  type in. The host of a game with more than one table also gets a strip
-  over the log, **All** and one pill per table: pick a table to read what is
-  said there and answer it, pick All to say something to every table at
-  once. Lines from another table carry a small T2-style chip; the host's own
-  lines carry a **host** badge wherever they land.
+- **Chat**: the table's chat, with a box to type in. The tab lights up when
+  somebody else says something while you are looking elsewhere. The host of
+  a game with more than one table also gets a strip over the chat, **All**
+  and one pill per table: pick a table to read what is said there and answer
+  it, pick All to say something to every table at once. Lines from another
+  table carry a small T2-style chip; the host's own lines carry a **host**
+  badge wherever they land, and a watcher's a **rail** badge.
+- **Log**: the dealer's narration of the hand: who posted the ante and the
+  blinds, every action, each street, the showdown and who won. The strip
+  over the felt repeats its last line when the panel is out of view.
 - **Info**: the table (mode, players), the blinds and the ante, the level
   and the time to the next one, the whole structure with the level the clock
   is on marked, the field (tables left, which one you are at, players

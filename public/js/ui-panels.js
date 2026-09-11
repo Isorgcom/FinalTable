@@ -1,7 +1,9 @@
-// The dealer log lives in the side panel's Chat tab; the ticker over the
-// felt repeats the last line for when the panel is out of view.
+// The dealer log lives in the side panel's Log tab; the ticker over the
+// felt repeats the last line for when the panel is out of view. No unread
+// dot for it: a hand is a stream of lines, and the ticker already shows the
+// last one. Chat lights its own tab when somebody talks.
 function addLog(msg, meta) {
-  const body = document.getElementById('panelChatBody');
+  const body = document.getElementById('panelLogBody');
   const last = document.getElementById('logLast');
   if (!body || !last) return;
   const displayMsg = msg;
@@ -26,13 +28,11 @@ function addLog(msg, meta) {
 
   // The ticker shows the last line; CSS clamps it to a few lines.
   last.textContent = displayMsg.replace(/💬\s*/, '');
-  if (window.SidePanel) SidePanel.notify('chat');
 
   trimLog(body);
 }
 
-// Deep enough that a backlog of chat is not wiped by the next two hands, which
-// is what 50 did once dealer narration and conversation shared the pane.
+// A few hands' worth. Chat keeps its own pane and its own cap.
 const LOG_MAX_ROWS = 200;
 const LOG_NEAR_BOTTOM_PX = 48;
 

@@ -33,6 +33,11 @@ Release on GitHub to go with it.
 
 ### Changed
 
+- The dealer's log and the table's chat are separate tabs. Chat, still first
+  and still where the box is, holds only what people say, and lights up when
+  somebody talks; the new Log tab beside it holds the hand's narration, a
+  few hands deep, without a conversation pushing it out of view. The strip
+  over the felt still repeats the last line of either.
 - A busted player can now talk at the table they watch, marked rail, and the
   host can mute them like anyone else. Before, they could only read.
   Reactions stay with seats: nobody without a chair can throw one.

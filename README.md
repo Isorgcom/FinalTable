@@ -107,7 +107,7 @@ as the memory ceiling and watch the clock separately on a small box.
 | `blind-structures.js`                                        | The Turbo, Standard and Deep presets, the clamp on a hand-edited structure, the rung rule    |
 | `hand-eval.js`, `hand-describe.js`                           | Hand ranking, and the hand in words for the table's readout                                  |
 | `public/js/lobby.js`, `socket-client.js`                     | The lobby and the one socket for the life of the page                                        |
-| `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Info / Stats / History panel                  |
+| `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Log / Info / Stats / History panel            |
 | `__tests__/`, `e2e/`                                         | Jest suites and Playwright specs                                                             |
 
 ## Roadmap
