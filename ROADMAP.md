@@ -14,7 +14,7 @@ Settled:
 - Move to 1.0.0 when it is stable and you would hand it to strangers.
 - At each milestone, a tag and a Release on GitHub with the notes from the
   changelog. The routine is written down in [CLAUDE.md](./CLAUDE.md); 0.2.0
-  and 0.3.0 went out through it.
+  through 0.5.0 went out through it.
 
 ## The game itself
 
@@ -92,8 +92,8 @@ For a player: see and end your own sessions, leave properly rather than by
 closing the tab. For a host: more than start and cancel - pause a running game,
 kick somebody, adjust a level, rebalance by hand. Mute is done. An operator
 (the server's password, not the game's host) can end a running tournament
-from the table menu, and has an Operator page in the lobby for the server's
-own settings and a list of every game on it. Some of the rest arrives with the
+from the table menu or from the Operator page, which holds the server's own
+settings and a list of every game on it. Some of the rest arrives with the
 API below, but a host with no Game Night should have it too.
 
 ### Games other than Hold'em
@@ -106,6 +106,15 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+The Operator page lists every game the server holds, listed or not, with its
+code, who is connected, who is waiting at the door, and End game on each: the
+view that table visibility took away from the lobby list, given back to the
+one person entitled to it. And a page that outlives a deploy reloads itself:
+the server says which build it serves, and a page served an older one reloads
+from the lobby at once or, from a table, once the table is left. Phones keep a
+tab alive for days, and one of them was the first to knock on an invite-only
+game with scripts that had never heard of the door.
 
 Table visibility: public, private (the default) and invite-only, the last
 with a door the host works from the waiting room or the table's Info tab. A
