@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.5.0 - 2026-09-11
+
 ### Added
 
 - The Operator page lists every game on the server, listed or not: its state,
