@@ -1465,3 +1465,96 @@ describe('the host at the table', () => {
     d.stop();
   });
 });
+
+// ============================================================
+//  Tables that never rest at the same moment
+// ============================================================
+describe('a field waiting on a table', () => {
+  function lcg(seed = 99) {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      return s / 2147483648;
+    };
+  }
+  // Bust `n` players at a table by handing their chips to a survivor, then
+  // let the director see that hand end. Conservation holds throughout.
+  function bustAt(d, table, n) {
+    const keeper = table.players[0];
+    for (const p of table.players.slice(1, 1 + n)) {
+      keeper.chips += p.chips;
+      p.chips = 0;
+      d.tournament.recordElimination(p.name, 1, p.uid);
+    }
+    d._handleRoundEnd(table, null);
+  }
+
+  test('a table due to break sits out a hand, and the merge happens at the next round end', () => {
+    const d = makeDirector(7, { tableSize: 6 });
+    d.start();
+    const t1 = d.tables.find((t) => t.tableNumber === 1);
+    const t2 = d.tables.find((t) => t.tableNumber === 2);
+    expect([t1.players.length, t2.players.length]).toEqual([4, 3]);
+    // Table 2 is mid-hand when table 1 loses a player; six now fit one table.
+    t2.startRound();
+    bustAt(d, t1, 1);
+    expect(d.playersRemaining()).toBe(6);
+    expect(d.activeTables()).toHaveLength(2); // table 2 is dealing: not yet
+    // Table 1 deals again, as it would; table 2 finishes and must not.
+    t1.startRound();
+    playHand(t2, lcg(), 0);
+    expect(t2.isRunning).toBe(false);
+    expect(d.activeTables()).toHaveLength(2); // table 1 is dealing: not yet
+    expect(d.canStartHand(t2)).toBe(false);
+    expect(d.startHandsWhereReady()).toBe(0);
+    // Table 1's hand ends: both idle, and table 2 breaks into it.
+    playHand(t1, lcg(5), 0);
+    expect(t2._broken).toBe(true);
+    expect(t1.players.length).toBe(6);
+    expect(d.activeTables()).toHaveLength(1);
+    expect(d.canStartHand(t1)).toBe(true);
+    d.stop();
+  });
+
+  test('a table due to give a player up sits out a hand, and the move is made', () => {
+    const d = makeDirector(9, { tableSize: 5 });
+    d.start();
+    const t1 = d.tables.find((t) => t.tableNumber === 1);
+    const t2 = d.tables.find((t) => t.tableNumber === 2);
+    expect([t1.players.length, t2.players.length]).toEqual([5, 4]);
+    t1.startRound();
+    bustAt(d, t2, 2); // 5 and 2: seven players, no break, a move due
+    expect([t1.players.length, t2.players.length]).toEqual([5, 2]);
+    t2.startRound();
+    playHand(t1, lcg(), 0);
+    expect([t1.players.length, t2.players.length]).toEqual([5, 2]); // table 2 is dealing
+    expect(d.canStartHand(t1)).toBe(false);
+    expect(d.canStartHand(t2)).toBe(false); // it is dealing
+    playHand(t2, lcg(7), 0);
+    expect([t1.players.length, t2.players.length]).toEqual([4, 3]);
+    expect(d.canStartHand(t1)).toBe(true);
+    d.stop();
+  });
+
+  test('with nothing dealing, a field that is waiting settles itself from the tick', () => {
+    const d = makeDirector(8, { tableSize: 6 });
+    d.start();
+    const t1 = d.tables.find((t) => t.tableNumber === 1);
+    const t2 = d.tables.find((t) => t.tableNumber === 2);
+    // Two players leave table 2 between hands without a round end: the state
+    // a restart, or a removal, can leave the field in.
+    for (const p of t2.players.slice(0, 2)) {
+      d._expectedChips -= p.chips;
+      p.chips = 0;
+      t2.removePlayer(p.id);
+    }
+    expect([t1.players.length, t2.players.length]).toEqual([4, 2]);
+    expect(d._tableDueToBreak()).toBe(t2);
+    expect(d._tableDueToGive()).toBe(t1);
+    expect(d.tick()).toBe(1);
+    expect(t2._broken).toBe(true);
+    expect(t1.players.length).toBe(6);
+    expect(t1.isRunning).toBe(true);
+    d.stop();
+  });
+});

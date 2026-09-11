@@ -459,6 +459,7 @@ class TournamentDirector {
   canStartHand(table) {
     if (!this.isRunning || this.finished || this._paused) return false;
     if (table.isRunning) return false;
+    if (this._waitingOnField(table)) return false;
     // A break: the hand in play finishes and nothing new is dealt until the
     // clock moves on. tick() picks dealing back up by itself.
     if (this.tournament.onBreak()) return false;
@@ -476,6 +477,13 @@ class TournamentDirector {
   }
 
   startHandsWhereReady() {
+    // A field with nothing dealing and a break or a move due settles itself
+    // here rather than waiting for a round end that no table will produce:
+    // the tables it is waiting on are exactly the ones held below.
+    if (this._rebalanceDue() && !this.tables.some((t) => t.isRunning)) {
+      this._afterFieldChange(null);
+      if (!this.isRunning || this.finished) return 0;
+    }
     let started = 0;
     for (const table of this.tables) {
       if (this.canStartHand(table)) {
@@ -741,6 +749,42 @@ class TournamentDirector {
     this._captureIdleTables();
     if (this.onSnapshot) this.onSnapshot(this);
     if (this.onFieldUpdate) this.onFieldUpdate();
+  }
+
+  // ── Waiting on the field ─────────────────────────────────────────────────
+
+  // The table due to break, and the biggest table when the tables are more
+  // than a seat apart. A break needs both ends idle at the same round end, and
+  // so does a move; two tables that never rest at the same moment never
+  // merge or balance, because each finishes, finds the other dealing, and
+  // deals again. Seen on dev: six players on two tables of three at 6-max,
+  // for fourteen hands. Holding one is what makes the other's next round end
+  // the moment both are idle.
+  _tableDueToBreak() {
+    const active = this.activeTables().filter((t) => !t._broken);
+    if (active.length < 2) return null;
+    if (this.playersRemaining() > (active.length - 1) * this.tableSize) return null;
+    return (
+      this.breakOrder
+        .map((num) => this.tables.find((t) => t.tableNumber === num))
+        .find((t) => t && t.players.length > 0) || null
+    );
+  }
+
+  _tableDueToGive() {
+    const active = this.activeTables().filter((t) => !t._broken);
+    if (active.length < 2) return null;
+    const sorted = [...active].sort((a, b) => a.players.length - b.players.length);
+    const largest = sorted[sorted.length - 1];
+    return largest.players.length - sorted[0].players.length > 1 ? largest : null;
+  }
+
+  _rebalanceDue() {
+    return !!(this._tableDueToBreak() || this._tableDueToGive());
+  }
+
+  _waitingOnField(table) {
+    return this._tableDueToBreak() === table || this._tableDueToGive() === table;
   }
 
   // ── Seat maths ───────────────────────────────────────────────────────────

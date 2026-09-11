@@ -29,6 +29,16 @@ Release on GitHub to go with it.
   five. Eight bots and a host at 8-max is a full table; at 4-max it is three
   tables, which is what the host's Move to… needs.
 
+### Fixed
+
+- Two tables that never rested at the same moment never merged, and could
+  stay a seat or more apart: each finished a hand, found the other dealing,
+  and dealt itself another. Six players sat on two tables of three at 6-max
+  for fourteen hands. A table the field is waiting on, the one due to break
+  or the one due to give a player up, now sits out a hand so the move can be
+  made, and a field with nothing dealing settles itself without waiting for
+  a hand to end.
+
 ### Changed
 
 - A paused game with nobody connected is kept for thirty minutes rather than
