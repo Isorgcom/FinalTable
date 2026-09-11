@@ -163,6 +163,9 @@ If the host leaves before the start, or is gone for two minutes, the game
 passes to whoever registered earliest among those connected. A game whose
 players have all left before the start is removed.
 
+Once the cards are out, the host's controls are in the table's Info tab; see
+[The host at the table](#the-host-at-the-table).
+
 ### The door
 
 An invite-only game's waiting room says so under the code: anyone with the
@@ -195,9 +198,10 @@ controls when unlocked, and **leave**).
 
 The **banner** over the felt shows the level, the blinds and the ante when
 there is one, the time until the next level and how many players are left. On
-a break it reads Break and the blinds play resumes at; on the final level
-there is nothing left to count down to. When something about the moment
-changes, the bubble for instance, the banner says so.
+a break it reads Break and the blinds play resumes at; paused, it reads
+Paused and the clock stands still; on the final level there is nothing left
+to count down to. When something about the moment changes, the bubble for
+instance, the banner says so.
 
 On the felt: the pot, the community cards, the seats with each player's stack
 and last action, and your own two cards. A **You have …** line under the
@@ -205,6 +209,28 @@ action buttons names your hand as the board develops.
 
 You can choose which chair you are drawn in. It is a preference for your
 screen only; the table's real seats do not move.
+
+### The host at the table
+
+While the game runs, the host's Info tab opens with a **Host** block that
+nobody else has:
+
+- **Pause** and **Resume**. The hand in play finishes, no table deals, and
+  the blind clock stands still until Resume. The banner reads Paused.
+- **◀ Level** and **Level ▶**: one level back or forward, breaks included.
+  The chat says "Blinds up" or "Blinds back to", and every table takes the
+  new blinds at its next deal.
+- **−1 min** and **+1 min**: a minute off or on the level in play. There is
+  nothing to add on the final level.
+- One row per seated player, with **Move to…**, listing the other tables
+  with room (only a table smaller than theirs, so the tables stay level), and
+  **Remove**, which asks first. A removed player's chips leave play, they
+  finish in the place they hold at that moment, paid if that place pays,
+  they are sent to the lobby, and they cannot come back in.
+
+A move or a removal asked for while that table is mid-hand happens when the
+hand ends. Every one of these is checked on the server; the block is only
+how the host asks.
 
 ### Acting
 
@@ -300,6 +326,11 @@ ante first and the blind out of what is left.
 finishes and no table deals until it is over; the banner reads Break with the
 blinds play resumes at. A level number counts levels of play, so a break
 never takes one.
+
+**A pause** is the host's: the hand in play finishes, no table deals, and the
+clock stands still until the host resumes. **A removed player** is out as if
+they had busted: their stack leaves play, their finishing place is the one
+they held, and their registration is gone.
 
 **Late registration** stays open through the level chosen at creation, and
 through the break after it if there is one. A late

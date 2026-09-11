@@ -1192,12 +1192,14 @@ describe('blind structures', () => {
         blinds: { sb: 20, bb: 40, ante: 40 },
         onBreak: true,
         nextLevelIn: expect.any(Number),
+        manual: false,
       },
       {
         level: 2,
         blinds: { sb: 20, bb: 40, ante: 40 },
         onBreak: false,
         nextLevelIn: expect.any(Number),
+        manual: false,
       },
     ]);
     expect(d.fieldSummary()).toMatchObject({
@@ -1227,6 +1229,238 @@ describe('blind structures', () => {
     expect(revived.tournament.currentLevel).toBe(2);
     expect(revived.tables[0].ante).toBe(40);
     expect(revived.fieldSummary().level).toBe(2);
+    revived.stop();
+    d.stop();
+  });
+});
+
+// ============================================================
+//  The host at the table: pause, the level, removing and moving players
+// ============================================================
+describe('the host at the table', () => {
+  const SCHEDULE = [
+    { sb: 10, bb: 20, ante: 0, duration: 99999 },
+    { break: true, duration: 99999 },
+    { sb: 20, bb: 40, ante: 40, duration: 99999 },
+    { sb: 30, bb: 60, ante: 60, duration: 99999 },
+  ];
+  function lcg(seed = 777) {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      return s / 2147483648;
+    };
+  }
+
+  test('pause holds dealing and the clock; resume restarts both', () => {
+    const said = [];
+    const d = makeDirector(4, {
+      tableSize: 4,
+      blindSchedule: SCHEDULE,
+      onMessage: (m) => said.push(m),
+    });
+    d.start();
+    expect(d.pause()).toBe(true);
+    expect(d.isPaused()).toBe(true);
+    expect(d.tournament.isPaused()).toBe(true);
+    expect(d.canStartHand(d.tables[0])).toBe(false);
+    expect(d.tick()).toBe(0);
+    expect(d.fieldSummary().paused).toBe(true);
+    expect(said).toContain('Paused by the host');
+    expect(d.pause()).toBe(false);
+    expect(d.resume()).toBe(true);
+    expect(d.isPaused()).toBe(false);
+    expect(d.canStartHand(d.tables[0])).toBe(true);
+    expect(said).toContain('Play resumes');
+    expect(d.resume()).toBe(false);
+    d.stop();
+  });
+
+  test('a level stepped back says so and can reopen late registration', () => {
+    const said = [];
+    const d = makeDirector(4, {
+      tableSize: 4,
+      lateRegLevels: 1,
+      blindSchedule: SCHEDULE,
+      onMessage: (m) => said.push(m),
+    });
+    d.start();
+    expect(d.stepLevel(-1)).toEqual({ error: 'Already on the first level' });
+    expect(d.stepLevel(1)).toEqual({ level: 1, onBreak: true });
+    expect(d.stepLevel(1)).toEqual({ level: 2, onBreak: false });
+    expect(d.lateRegOpen()).toBe(false);
+    expect(said.filter((m) => /Late registration closed/.test(m))).toHaveLength(1);
+    expect(d.tables[0].bigBlind).toBe(40);
+    expect(d.stepLevel(-1)).toEqual({ level: 1, onBreak: true });
+    expect(d.stepLevel(-1)).toEqual({ level: 1, onBreak: false });
+    expect(said.some((m) => m === 'Blinds back to 10/20 (level 1)')).toBe(true);
+    expect(d.tables[0].bigBlind).toBe(20);
+    expect(d.lateRegOpen()).toBe(true);
+    d.stepLevel(1);
+    d.stepLevel(1);
+    expect(said.filter((m) => /Late registration closed/.test(m))).toHaveLength(2);
+    expect(d.stepLevel(1)).toEqual({ level: 3, onBreak: false });
+    expect(d.stepLevel(1)).toEqual({ error: 'Already on the last level' });
+    expect(d.tables[0].ante).toBe(60);
+    d.stop();
+  });
+
+  test('a minute goes on or off the level, but not on the last one', () => {
+    const said = [];
+    const d = makeDirector(3, {
+      tableSize: 4,
+      blindSchedule: SCHEDULE.map((r) => ({ ...r, duration: 300 })),
+      onMessage: (m) => said.push(m),
+    });
+    d.start();
+    const before = d.tournament.getTimeUntilNextLevel();
+    const more = d.adjustClock(60);
+    expect(Math.abs(more.nextLevelIn - (before + 60))).toBeLessThanOrEqual(1);
+    expect(said).toContain('1 min added to the level by the host');
+    const less = d.adjustClock(-60);
+    expect(Math.abs(less.nextLevelIn - before)).toBeLessThanOrEqual(1);
+    expect(said).toContain('1 min taken off the level by the host');
+    d.tournament.goToLevel(3);
+    expect(d.adjustClock(60)).toEqual({ error: 'Nothing is counting down on the final level' });
+    d.stop();
+  });
+
+  test('a removed player leaves with their chips, finishing where they stand', () => {
+    const said = [];
+    const out = [];
+    let snaps = 0;
+    const d = makeDirector(6, {
+      tableSize: 6,
+      onMessage: (m) => said.push(m),
+      onPlayerEliminated: (e) => out.push(e),
+      onSnapshot: () => snaps++,
+    });
+    d.start();
+    const table = d.tables[0];
+    const victim = table.players[2];
+    const total = d._expectedChips;
+    expect(d.removeFromPlay(victim.uid)).toEqual({ removed: true, place: 6 });
+    expect(table.players.some((p) => p.uid === victim.uid)).toBe(false);
+    expect(d._expectedChips).toBe(total - 2000);
+    expect(d.totalChips()).toBe(total - 2000);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    expect(out).toEqual([
+      { uid: victim.uid, name: victim.name, place: 6, tableId: table.id, removed: true },
+    ]);
+    expect(said).toContain(`${victim.name} removed from the game by the host, finishing #6`);
+    expect(d.roster().find((r) => r.uid === victim.uid)).toMatchObject({ place: 6, table: null });
+    expect(d.playersRemaining()).toBe(5);
+    expect(snaps).toBe(1);
+    expect(d.removeFromPlay(victim.uid)).toEqual({ error: 'They are not seated' });
+    d.stop();
+  });
+
+  test('a removal during a hand waits for the hand, then goes through once', () => {
+    const out = [];
+    const d = makeDirector(3, { tableSize: 3, onPlayerEliminated: (e) => out.push(e) });
+    d.start();
+    const table = d.tables[0];
+    table.startRound();
+    const victim = table.players[0];
+    expect(d.removeFromPlay(victim.uid)).toEqual({ queued: true });
+    expect(table.players.some((p) => p.uid === victim.uid)).toBe(true);
+    expect(victim.autoPlay).toBe(true);
+    expect(victim.sitOutReason).toBe('removed');
+    expect(out).toEqual([]);
+    playHand(table, lcg(), 0);
+    expect(table.isRunning).toBe(false);
+    expect(table.players.some((p) => p.uid === victim.uid)).toBe(false);
+    expect(out.filter((e) => e.uid === victim.uid)).toHaveLength(1);
+    expect(d.tournament.eliminations.filter((e) => e.uid === victim.uid)).toHaveLength(1);
+    expect(d._pendingRemovals.size).toBe(0);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    d.stop();
+  });
+
+  test('removing down to one player finishes the tournament with a winner', () => {
+    const finished = [];
+    const d = makeDirector(2, { tableSize: 2, onFinished: (f) => finished.push(f) });
+    d.start();
+    const [a, b] = d.tables[0].players;
+    expect(d.removeFromPlay(b.uid)).toEqual({ removed: true, place: 2 });
+    expect(d.isRunning).toBe(false);
+    expect(d.finished.winner).toBe(a.name);
+    expect(finished).toHaveLength(1);
+    expect(d.finalResults().map((x) => [x.place, x.name])).toEqual([
+      [1, a.name],
+      [2, b.name],
+    ]);
+    d.stop();
+  });
+
+  test('a host move is made between hands, waits on one, and keeps the tables level', () => {
+    const said = [];
+    const moves = [];
+    const d = makeDirector(9, {
+      tableSize: 6,
+      onMessage: (m) => said.push(m),
+      onPlayerMoved: (m) => moves.push(m),
+    });
+    d.start();
+    const [big, small] = [...d.tables].sort((x, y) => y.players.length - x.players.length);
+    expect([big.players.length, small.players.length]).toEqual([5, 4]);
+    const mover = big.players[0];
+    expect(d.requestMove(mover.uid, small.tableNumber)).toEqual({ moved: true });
+    expect(small.players.some((p) => p.uid === mover.uid)).toBe(true);
+    expect([big.players.length, small.players.length]).toEqual([4, 5]);
+    expect(moves[0]).toMatchObject({ uid: mover.uid, toTable: small.tableNumber });
+    expect(said).toContain(`${mover.name} moves to table ${small.tableNumber} (by the host)`);
+    // Within a seat of each other, so the balancer leaves it alone.
+    d.rebalanceField();
+    expect(small.players.some((p) => p.uid === mover.uid)).toBe(true);
+
+    expect(d.requestMove(big.players[0].uid, small.tableNumber).error).toMatch(
+      /would then have more players/
+    );
+    expect(d.requestMove(mover.uid, small.tableNumber).error).toMatch(/already at table/);
+    expect(d.requestMove(mover.uid, 99).error).toMatch(/no table 99/);
+    expect(d.requestMove('nobody', big.tableNumber)).toEqual({ error: 'They are not seated' });
+
+    // A hand in the way: the move waits, and is made at that hand's end.
+    big.startRound();
+    expect(d.requestMove(mover.uid, big.tableNumber)).toEqual({ queued: true });
+    expect(d._pendingMoves.get(mover.uid)).toBe(big.tableNumber);
+    expect(small.players.some((p) => p.uid === mover.uid)).toBe(true);
+    playHand(big, lcg(), 0);
+    expect(big.isRunning).toBe(false);
+    expect(big.players.some((p) => p.uid === mover.uid)).toBe(true);
+    expect(d._pendingMoves.size).toBe(0);
+    expect(() => d.assertChipConservation()).not.toThrow();
+
+    const full = makeDirector(12, { tableSize: 6 });
+    full.start();
+    const [t1, t2] = full.tables;
+    expect(full.requestMove(t1.players[0].uid, t2.tableNumber)).toEqual({
+      error: `Table ${t2.tableNumber} is full`,
+    });
+    full.stop();
+    d.stop();
+  });
+
+  test('a paused field is written down paused and comes back paused', () => {
+    const d = makeDirector(4, { tableSize: 4 });
+    d.start();
+    d.pause();
+    const snap = d.snapshot();
+    expect(snap.paused).toBe(true);
+    expect(snap.clock.paused).toBe(true);
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: 4,
+      startChips: snap.startChips,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    revived.restoreFrom(snap);
+    expect(revived.isPaused()).toBe(true);
+    expect(revived.canStartHand(revived.tables[0])).toBe(false);
+    expect(revived.resume()).toBe(true);
+    expect(revived.canStartHand(revived.tables[0])).toBe(true);
     revived.stop();
     d.stop();
   });

@@ -779,8 +779,12 @@
             role="tabpanel"
             aria-labelledby="tabInfo"
           >
+            <!-- Host only, once the cards are out: the host's controls over
+                 the running game. A sibling of the body, which is rebuilt
+                 every tick, so a button is never replaced under the cursor. -->
+            <div class="panel-info-host hidden" id="panelInfoHost"></div>
             <!-- Host only, invite-only, once the cards are out: who is at the
-                 door. A sibling of the body, which is rebuilt every tick. -->
+                 door. A sibling of the body for the same reason. -->
             <div class="panel-info-pending hidden" id="panelInfoPending"></div>
             <div class="panel-scroll" id="panelInfoBody"></div>
           </section>

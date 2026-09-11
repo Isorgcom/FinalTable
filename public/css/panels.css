@@ -1195,3 +1195,77 @@
   min-height: 38px;
   font-size: 0.82rem;
 }
+
+/* The host's controls in the Info tab: a sibling of the body, like the door. */
+.panel-info-host {
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid rgba(92, 61, 26, 0.35);
+}
+.panel-info-host.hidden {
+  display: none;
+}
+.host-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.host-btn {
+  padding: 6px 10px;
+  min-height: 32px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(92, 61, 26, 0.45);
+  border-radius: 999px;
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.host-btn:hover:not(:disabled) {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.host-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.host-btn-danger {
+  color: #e0a48f;
+  border-color: rgba(217, 112, 89, 0.4);
+}
+.host-btn-danger:hover:not(:disabled) {
+  border-color: #e0a48f;
+  color: #e0a48f;
+}
+.host-players .wr-row {
+  min-height: 36px;
+  font-size: 0.8rem;
+  gap: 8px;
+}
+.host-seat {
+  color: var(--smoke);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+.host-move {
+  margin-left: auto;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(92, 61, 26, 0.4);
+  border-radius: 4px;
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color-scheme: dark;
+}
+.host-empty {
+  color: var(--smoke);
+  font-size: 0.75rem;
+  padding: 4px 0;
+}
+/* Paused: not a level and not a break, so the level line drops the gold. */
+.tournament-banner.on-pause .tb-level {
+  color: var(--cream);
+}

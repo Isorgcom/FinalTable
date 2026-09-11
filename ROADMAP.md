@@ -70,12 +70,12 @@ exists now; for a guest it is the device, which is the best there is.
 ### More control over your own games
 
 For a player: see and end your own sessions, leave properly rather than by
-closing the tab. For a host: more than start and cancel - pause a running game,
-kick somebody, adjust a level, rebalance by hand. Mute is done. An operator
-(the server's password, not the game's host) can end a running tournament
-from the table menu or from the Operator page, which holds the server's own
-settings and a list of every game on it. Some of the rest arrives with the
-API below, but a host with no Game Night should have it too.
+closing the tab. The host's half is done: pause a running game, remove
+somebody, step the level or put a minute on it, move a player by hand, and
+mute. An operator (the server's password, not the game's host) can end a
+running tournament from the table menu or from the Operator page, which holds
+the server's own settings and a list of every game on it. Some of the rest
+arrives with the API below, but a host with no Game Night should have it too.
 
 ### Games other than Hold'em
 
@@ -87,6 +87,10 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+The host's controls at the table: pause and resume, a level back or forward,
+a minute on or off the clock, a player moved to a smaller table by hand, a
+player removed from the game. All in the Info tab, all checked on the server.
 
 A real blind structure: Turbo, Standard or Deep when a game is made, or the
 levels edited by hand; antes, posted by the big blind from the level the

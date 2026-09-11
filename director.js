@@ -59,6 +59,10 @@ class TournamentDirector {
     this._tableSnapshots = new Map();
     this._bubbleAnnounced = false;
     this._inTheMoneyAnnounced = false;
+    // What the host asked for while a hand was in the way. A removal waits
+    // for that table's hand; a move waits for both tables to be idle.
+    this._pendingRemovals = new Set();
+    this._pendingMoves = new Map(); // uid -> tableNumber
 
     // One Tournament instance is shared by every table, which is what gives a
     // synchronised blind clock and a single elimination ledger. The field
@@ -185,6 +189,7 @@ class TournamentDirector {
       levelCount: this.tournament.playLevelCount(),
       onBreak: this.tournament.onBreak(),
       finalLevel: this.tournament.isFinalLevel(),
+      paused: this.isPaused(),
       nextLevelIn: this.tournament.getTimeUntilNextLevel(),
     };
   }
@@ -485,6 +490,7 @@ class TournamentDirector {
   // drives bot turns and human actions arrive over sockets.
   tick() {
     if (!this.isRunning || this.finished) return 0;
+    this._applyPendingMoves();
     return this.startHandsWhereReady();
   }
 
@@ -495,6 +501,174 @@ class TournamentDirector {
 
   releaseField() {
     this._paused = false;
+  }
+
+  // ── The host's controls ──────────────────────────────────────────────────
+
+  // Pause: the hand in play finishes, nothing new is dealt, and the blind
+  // clock stands still. The shape of a break, which everyone already knows.
+  // holdField is the machinery's hold; this one is the host's, and it is the
+  // clock that says which is in force.
+  pause() {
+    if (!this.isRunning || this.finished || this.tournament.isPaused()) return false;
+    this._paused = true;
+    this.tournament.pause();
+    this._say('Paused by the host');
+    if (this.onFieldUpdate) this.onFieldUpdate();
+    return true;
+  }
+
+  resume() {
+    if (!this.tournament.isPaused()) return false;
+    this.tournament.resume();
+    this._paused = false;
+    this._say('Play resumes');
+    if (this.onFieldUpdate) this.onFieldUpdate();
+    return true;
+  }
+
+  isPaused() {
+    return this.tournament.isPaused();
+  }
+
+  // One level back or forward, breaks included. A delta rather than a target,
+  // so two quick clicks cannot race past each other.
+  stepLevel(delta) {
+    if (!this.isRunning || this.finished) return { error: 'The tournament is not running' };
+    const index = this.tournament.currentLevel + (delta < 0 ? -1 : 1);
+    if (index < 0) return { error: 'Already on the first level' };
+    if (index > this.tournament.blindSchedule.length - 1) {
+      return { error: 'Already on the last level' };
+    }
+    this.tournament.goToLevel(index);
+    return { level: this.tournament.levelNumber(), onBreak: this.tournament.onBreak() };
+  }
+
+  // Seconds on or off the level in play.
+  adjustClock(seconds) {
+    if (!this.isRunning || this.finished) return { error: 'The tournament is not running' };
+    if (this.tournament.isFinalLevel()) {
+      return { error: 'Nothing is counting down on the final level' };
+    }
+    const nextLevelIn = this.tournament.shiftClock(seconds);
+    this._say(
+      seconds > 0
+        ? `${fmtLength(seconds)} added to the level by the host`
+        : `${fmtLength(-seconds)} taken off the level by the host`
+    );
+    if (this.onFieldUpdate) this.onFieldUpdate();
+    return { nextLevelIn };
+  }
+
+  // Take a player out of the game. Their stack leaves play and they finish in
+  // the place they hold at that moment, the way a bust-out would; the ledger
+  // of places stays complete. A table mid-hand cannot lose a seat safely, so
+  // there the seat sits out and goes at that hand's end.
+  removeFromPlay(uid) {
+    if (!this.isRunning || this.finished) return { error: 'The tournament is not running' };
+    const seat = this.playerByUid(uid);
+    if (!seat) return { error: 'They are not seated' };
+    const { table, player } = seat;
+    if (table.isRunning) {
+      player.autoPlay = true;
+      player.sitOutReason = 'removed';
+      player.preAction = null;
+      player.sitOutNextHand = false;
+      this._pendingRemovals.add(uid);
+      this._say(`${player.name} will be removed after this hand`);
+      // If the hand is waiting on them, it stops waiting: the seat acts for
+      // itself from here, the way a dropped connection's does.
+      const idx = table.players.indexOf(player);
+      if (idx === table.currentPlayerIndex && !player.folded && !player.allIn) {
+        table.beginCurrentTurn();
+      } else {
+        table.emitUpdate();
+      }
+      return { queued: true };
+    }
+    const place = this._takeOutOfPlay(table, player);
+    this._afterFieldChange(table);
+    return { removed: true, place };
+  }
+
+  // Ledger first, seat second: the mirror of registerLate. Removing the chips
+  // from what the field is accountable for is what keeps the conservation
+  // check true at the next hand's end.
+  _takeOutOfPlay(table, player) {
+    this._expectedChips -= player.chips;
+    const place = this.tournament.recordElimination(player.name, table.roundCount, player.uid);
+    player.chips = 0;
+    this._say(`${player.name} removed from the game by the host, finishing #${place}`);
+    if (this.onPlayerEliminated) {
+      this.onPlayerEliminated({
+        uid: player.uid,
+        name: player.name,
+        place,
+        tableId: table.id,
+        removed: true,
+      });
+    }
+    table.removePlayer(player.id);
+    return place;
+  }
+
+  // Whether a host move is legal right now, and its two ends if so. The one
+  // rule is the balancer's own: tables stay within a seat of each other, so
+  // the destination must be the smaller table, or the next balance would
+  // carry the player straight back.
+  _moveCheck(uid, tableNumber) {
+    const seat = this.playerByUid(uid);
+    if (!seat) return { error: 'They are not seated' };
+    const number = Number(tableNumber);
+    const to = this.tables.find((t) => t.tableNumber === number);
+    if (!to || to._broken || to.players.length === 0) {
+      return { error: `There is no table ${tableNumber}` };
+    }
+    if (to === seat.table) return { error: `They are already at table ${number}` };
+    if (to.players.length >= this.tableSize) return { error: `Table ${number} is full` };
+    if (to.players.length >= seat.table.players.length) {
+      return {
+        error:
+          `Table ${number} would then have more players than table ${seat.table.tableNumber}; ` +
+          'tables stay within one seat of each other. Move somebody from the bigger table instead.',
+      };
+    }
+    return { from: seat.table, to, player: seat.player };
+  }
+
+  requestMove(uid, tableNumber) {
+    if (!this.isRunning || this.finished) return { error: 'The tournament is not running' };
+    const check = this._moveCheck(uid, tableNumber);
+    if (check.error) return check;
+    const { from, to, player } = check;
+    if (from.isRunning || to.isRunning) {
+      this._pendingMoves.set(uid, to.tableNumber);
+      this._say(`${player.name} will move to table ${to.tableNumber} after this hand`);
+      return { queued: true };
+    }
+    if (!this._movePlayer(from, to, player, { byHost: true })) {
+      return { error: 'The move could not be made' };
+    }
+    this._afterFieldChange(from);
+    return { moved: true };
+  }
+
+  // Moves the host asked for that were waiting on a hand. Re-checked each
+  // time: the field may have changed under them, and a move that no longer
+  // holds is dropped and said so, not made anyway.
+  _applyPendingMoves() {
+    for (const [uid, tableNumber] of [...this._pendingMoves]) {
+      const check = this._moveCheck(uid, tableNumber);
+      if (check.error) {
+        this._pendingMoves.delete(uid);
+        this._say(`Move to table ${tableNumber} dropped: ${check.error}`);
+        continue;
+      }
+      const { from, to, player } = check;
+      if (from.isRunning || to.isRunning) continue;
+      this._pendingMoves.delete(uid);
+      this._movePlayer(from, to, player, { byHost: true });
+    }
   }
 
   // ── Round end ────────────────────────────────────────────────────────────
@@ -521,6 +695,21 @@ class TournamentDirector {
     }
     for (const p of busted) table.removePlayer(p.id);
 
+    // Removals the host asked for while this table was dealing. One who
+    // busted on their own in the meantime is already out, and recorded once.
+    for (const uid of [...this._pendingRemovals]) {
+      const seated = table.players.find((p) => p.uid === uid);
+      if (seated) this._takeOutOfPlay(table, seated);
+      if (!this.playerByUid(uid)) this._pendingRemovals.delete(uid);
+    }
+
+    this._afterFieldChange(table, tournamentResult);
+  }
+
+  // What follows any change to who holds what: a hand ending, a removal, a
+  // move the host asked for. Shared so a change between hands settles the
+  // field exactly as a round end does.
+  _afterFieldChange(table, tournamentResult = null) {
     // The invariant from phase 2. Checked here because this is the only moment
     // the director moves anyone, so it is the only moment chips could go
     // missing. A failure means the tournament is minting or destroying money
@@ -530,9 +719,14 @@ class TournamentDirector {
     this._checkMoneyMilestones();
 
     if (tournamentResult || this.playersRemaining() <= 1) {
-      this._finish(tournamentResult);
+      // Reached between hands (a removal), the engine's own end check has
+      // not run: ask the clock the way the engine would, so the winner is
+      // recorded and the clock stopped the same way.
+      this._finish(tournamentResult || this.tournament.checkTournamentEnd(this.fieldPlayers()));
       return;
     }
+
+    this._applyPendingMoves();
 
     // Break a table when the field fits on fewer, keep the rest within one
     // seat of each other, and rescue anything that still cannot deal. Every
@@ -594,7 +788,7 @@ class TournamentDirector {
   // a player who holds no cards but is not folded. It loses chips: an observed
   // run drifted by exactly one big blind. Deferring is safe, because a running
   // table fires its own round end when it finishes and the rebalance runs again.
-  _movePlayer(from, to, player) {
+  _movePlayer(from, to, player, { byHost = false } = {}) {
     if (from.isRunning || to.isRunning) return false;
     const seatIndex = this._nextBigBlindIndex(to);
     const seated = to.addPlayer({
@@ -618,7 +812,7 @@ class TournamentDirector {
     // preAction is deliberately not carried: it is armed against one street's
     // price, and a move only happens between hands.
     from.removePlayer(player.id);
-    this._say(`${player.name} moves to table ${to.tableNumber}`);
+    this._say(`${player.name} moves to table ${to.tableNumber}${byHost ? ' (by the host)' : ''}`);
     if (this.onPlayerMoved) {
       this.onPlayerMoved({
         uid: player.uid,
@@ -858,7 +1052,7 @@ class TournamentDirector {
   // not find themselves playing level 3 blinds. Shared by start and restore:
   // a resumed tournament needs the same wiring a fresh one gets.
   _wireLevelUp() {
-    this.tournament.onLevelUp = (level, blinds) => {
+    this.tournament.onLevelUp = (level, blinds, info = {}) => {
       const onBreak = this.tournament.onBreak();
       const number = this.tournament.levelNumber();
       if (onBreak) {
@@ -868,8 +1062,16 @@ class TournamentDirector {
         this._say(`Break: ${fmtLength(row.duration)} · play resumes at ${blindsText(blinds)}`);
       } else {
         this._stampBlinds(blinds);
-        this._say(`Blinds up: ${blindsText(blinds)} (level ${number})`);
+        const verb = info.back ? 'Blinds back to' : 'Blinds up:';
+        this._say(`${verb} ${blindsText(blinds)} (level ${number})`);
       }
+      // The felt reads the level off the table's own state, which otherwise
+      // moves only with the hand: push it now, so the banner changes with
+      // the clock rather than with the next deal.
+      for (const table of this.tables) table.emitUpdate();
+      // A step back can reopen late registration; the close is then worth
+      // saying again when it comes.
+      if (info.back && this.lateRegOpen()) this._lateRegClosedAnnounced = false;
       if (this.lateRegLevels > 0 && !this._lateRegClosedAnnounced && !this.lateRegOpen()) {
         this._lateRegClosedAnnounced = true;
         this._say(
@@ -882,6 +1084,7 @@ class TournamentDirector {
           blinds: { ...blinds },
           onBreak,
           nextLevelIn: this.tournament.getTimeUntilNextLevel(),
+          manual: !!info.manual,
         });
       }
     };
@@ -945,6 +1148,7 @@ class TournamentDirector {
       paidPlaces: this.paidPlaces,
       breakOrder: [...(this.breakOrder || [])],
       expectedChips: this._expectedChips,
+      paused: this.isPaused(),
       entrants: this.entrants.map((e) => ({
         uid: e.uid,
         name: e.name,
@@ -1007,6 +1211,8 @@ class TournamentDirector {
     this.isRunning = true;
     this._expectedChips = this.totalChips();
     this.tournament.resumeFrom(snap.clock || {});
+    // The clock restores its own half of a pause; this is the field's.
+    this._paused = !!snap.paused && this.tournament.isPaused();
     this._wireLevelUp();
     this._stampBlinds(this.tournament.getCurrentBlinds());
     return true;

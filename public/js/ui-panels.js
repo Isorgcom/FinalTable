@@ -108,15 +108,20 @@ function updateBlindClock() {
   const levelNumber = t.levelNumber || t.currentLevel + 1;
   const blindsText =
     t.blinds.sb + '/' + t.blinds.bb + (t.blinds.ante ? ' · ante ' + t.blinds.ante : '');
-  document.getElementById('tbLevelLabel').textContent = t.onBreak
-    ? 'Break · '
-    : 'Level ' + levelNumber + ' · ';
+  // The field summary is pushed every tick, so it knows a pause first.
+  const paused = !!(t.paused || (window.mttField && window.mttField.paused));
+  document.getElementById('tbLevelLabel').textContent = paused
+    ? 'Paused · '
+    : t.onBreak
+      ? 'Break · '
+      : 'Level ' + levelNumber + ' · ';
   document.getElementById('tbBlinds').textContent = t.onBreak
     ? 'back at ' + blindsText
     : blindsText;
   // Nothing follows the final level, so nothing to count down to.
   document.getElementById('tbNext').classList.toggle('hidden', !!t.finalLevel);
-  banner.classList.toggle('on-break', !!t.onBreak);
+  banner.classList.toggle('on-break', !!t.onBreak && !paused);
+  banner.classList.toggle('on-pause', paused);
   // How many are left in the tournament, which is not how many are left at this
   // table. gameState.players is this table only, so pairing its count with the
   // field's starting number read as a field count and was not one: two players
@@ -147,10 +152,14 @@ function updateBlindClock() {
   }
   if (banner2) banner2.classList.toggle('on-bubble', onBubble);
 
-  // Live countdown, re-seeded from the server on every state update.
+  // Live countdown, re-seeded from the server on every state update. The
+  // field summary arrives every tick, so its figure is the fresher one when
+  // there is one; paused, the clock stands still and so does this.
   if (tournamentTimer) clearInterval(tournamentTimer);
-  _blindClockRemaining = t.timeUntilNextLevel;
+  const fromField = summary && summary.isRunning && Number.isFinite(summary.nextLevelIn);
+  _blindClockRemaining = fromField ? summary.nextLevelIn : t.timeUntilNextLevel;
   paintBlindClock();
+  if (paused) return;
   tournamentTimer = setInterval(() => {
     _blindClockRemaining = Math.max(0, _blindClockRemaining - 1);
     paintBlindClock();
@@ -211,7 +220,143 @@ function renderInfoPending() {
   rows.forEach((row) => block.appendChild(Lobby.pendingRow(row)));
 }
 
+// The host's controls over a running game, at the table: pause and resume,
+// a level back or forward, a minute on or off the clock, and every other
+// seated player with Move and Remove. Its own block beside the body, redrawn
+// only when what it shows has changed, for the same reason the door is. The
+// server checks every one of these again; the block is only how they are
+// asked for.
+let _infoHostSig = null;
+function renderInfoHost() {
+  const block = document.getElementById('panelInfoHost');
+  if (!block) return;
+  const field = window.mttField || null;
+  const show = !!(field && field.isHost && field.status === 'running' && !window.mttFinished);
+  const roster = show && Array.isArray(field.roster) ? field.roster : [];
+  const seated = roster.filter((r) => r.table && r.chips > 0 && !r.isHost);
+  const sig = show
+    ? [
+        field.paused ? 'p' : 'r',
+        field.level,
+        field.onBreak ? 'b' : '',
+        field.finalLevel ? 'f' : '',
+        field.tableSize,
+        seated.map((r) => `${r.uid}:${r.table}:${r.chips}:${r.name}`).join('|'),
+        roster
+          .filter((r) => r.table)
+          .map((r) => r.table)
+          .join(','),
+      ].join('/')
+    : '';
+  if (sig === _infoHostSig) return;
+  _infoHostSig = sig;
+  block.textContent = '';
+  block.classList.toggle('hidden', !show);
+  if (!show) return;
+  block.appendChild(createTextElement('div', 'info-section-title', 'Host'));
+
+  const send = (event, payload) => {
+    if (socket && socket.connected) socket.emit(event, payload);
+  };
+  const button = (label, onClick, { disabled = false, danger = false } = {}) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = danger ? 'host-btn host-btn-danger' : 'host-btn';
+    b.textContent = label;
+    b.disabled = disabled;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+
+  const controls = document.createElement('div');
+  controls.className = 'host-controls';
+  controls.appendChild(
+    button(field.paused ? 'Resume' : 'Pause', () =>
+      send(field.paused ? 'resumeTournament' : 'pauseTournament')
+    )
+  );
+  controls.appendChild(
+    button('◀ Level', () => send('stepLevel', { delta: -1 }), {
+      disabled: field.level <= 1 && !field.onBreak,
+    })
+  );
+  controls.appendChild(
+    button('Level ▶', () => send('stepLevel', { delta: 1 }), { disabled: !!field.finalLevel })
+  );
+  controls.appendChild(
+    button('−1 min', () => send('adjustClock', { seconds: -60 }), {
+      disabled: !!field.finalLevel,
+    })
+  );
+  controls.appendChild(
+    button('+1 min', () => send('adjustClock', { seconds: 60 }), { disabled: !!field.finalLevel })
+  );
+  block.appendChild(controls);
+
+  // Seats per table, so the destinations offered are the ones with room.
+  const counts = new Map();
+  for (const r of roster) if (r.table) counts.set(r.table, (counts.get(r.table) || 0) + 1);
+  const tables = [...counts.keys()].sort((a, b) => a - b);
+
+  const list = document.createElement('div');
+  list.className = 'host-players';
+  for (const r of seated) {
+    const line = document.createElement('div');
+    line.className = 'wr-row';
+    line.appendChild(createTextElement('span', 'wr-avatar', r.avatar || (r.isBot ? '🤖' : '🙂')));
+    line.appendChild(createTextElement('span', 'wr-name', r.name));
+    line.appendChild(createTextElement('span', 'host-seat', `T${r.table} · ${fmtNum(r.chips)}`));
+    const others = tables.filter((t) => t !== r.table && (counts.get(t) || 0) < field.tableSize);
+    if (others.length) {
+      const select = document.createElement('select');
+      select.className = 'host-move';
+      select.setAttribute('aria-label', `Move ${r.name} to a table`);
+      const first = document.createElement('option');
+      first.value = '';
+      first.textContent = 'Move to…';
+      select.appendChild(first);
+      for (const t of others) {
+        const opt = document.createElement('option');
+        opt.value = String(t);
+        opt.textContent = `Table ${t} (${counts.get(t) || 0})`;
+        select.appendChild(opt);
+      }
+      select.addEventListener('change', () => {
+        if (!select.value) return;
+        send('movePlayer', { uid: r.uid, table: Number(select.value) });
+        select.value = '';
+      });
+      line.appendChild(select);
+    }
+    line.appendChild(
+      button(
+        'Remove',
+        async () => {
+          let ok = true;
+          if (typeof window.showConfirmDialog === 'function') {
+            ok = await window.showConfirmDialog({
+              title: `Remove ${r.name} from the game?`,
+              message:
+                'Their chips leave play and they finish where they stand. They cannot come back in.',
+              confirmLabel: 'Remove',
+              cancelLabel: 'Keep',
+            });
+          }
+          if (ok) send('removePlayer', { uid: r.uid });
+        },
+        { danger: true }
+      )
+    );
+    list.appendChild(line);
+  }
+  if (!seated.length) {
+    list.appendChild(createTextElement('div', 'host-empty', 'Nobody else is seated.'));
+  }
+  block.appendChild(list);
+}
+
 function renderInfoTab() {
+  renderInfoHost();
   renderInfoPending();
   const body = document.getElementById('panelInfoBody');
   if (!body) return;

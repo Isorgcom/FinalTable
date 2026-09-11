@@ -13,6 +13,25 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- The host's controls at the table, in the Info tab while the game runs:
+  Pause and Resume (the hand in play finishes, no table deals, and the blind
+  clock stands still), a level back or forward, a minute on or off the level
+  in play, Move to… to send a player to a smaller table, and Remove, which
+  takes a player's stack out of play, finishes them in the place they hold
+  at that moment (paid if that place pays), sends them to the lobby and does
+  not let them back in. The banner reads Paused and the lobby card says
+  paused. A host cannot remove themselves, and cannot move a player to a
+  table that would leave the tables more than a seat apart.
+
+### Changed
+
+- A paused game with nobody connected is kept for thirty minutes rather than
+  two before it is cleared, since a pause is when people walk away.
+- A level change, the clock's or the host's, reaches the felt at once rather
+  than with the next hand.
+
 ## 0.7.0 - 2026-09-11
 
 ### Added

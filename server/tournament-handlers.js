@@ -219,6 +219,60 @@ function registerTournamentHandlers(deps) {
       if (error) fail(socket, error);
     });
 
+    // The host's controls over a running game. Authorised in the registry;
+    // refusals go back on `error` like the door's.
+    socket.on('pauseTournament', () => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.pause(entry, socket.data.tournamentUid);
+      if (error) fail(socket, error);
+    });
+
+    socket.on('resumeTournament', () => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.resume(entry, socket.data.tournamentUid);
+      if (error) fail(socket, error);
+    });
+
+    socket.on('stepLevel', (payload = {}) => {
+      const entry = entryFor(socket);
+      const delta = Number(payload.delta);
+      if (!entry || !delta) return;
+      const { error } = registry.stepLevel(entry, socket.data.tournamentUid, delta);
+      if (error) fail(socket, error);
+    });
+
+    socket.on('adjustClock', (payload = {}) => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.adjustClock(entry, socket.data.tournamentUid, payload.seconds);
+      if (error) fail(socket, error);
+    });
+
+    socket.on('removePlayer', (payload = {}) => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.removePlayer(
+        entry,
+        socket.data.tournamentUid,
+        String(payload.uid || '')
+      );
+      if (error) fail(socket, error);
+    });
+
+    socket.on('movePlayer', (payload = {}) => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.movePlayer(
+        entry,
+        socket.data.tournamentUid,
+        String(payload.uid || ''),
+        parseInt(payload.table, 10)
+      );
+      if (error) fail(socket, error);
+    });
+
     socket.on('unregisterTournament', () => {
       const entry = entryFor(socket);
       if (!entry) return;

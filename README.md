@@ -13,7 +13,8 @@ There is a [user manual](./docs/MANUAL.md) for players, hosts and operators.
 
 Status: **playable.** Multi-table tournaments run end to end: a lobby where
 friends register by code or link, a scheduled start, a blind structure the
-host picks or edits with antes and breaks, tables that balance and break as
+host picks or edits with antes and breaks, a host who can pause the game,
+step the level, and move or remove a player, tables that balance and break as
 players bust, late registration, payouts and hand-for-hand at the bubble, and
 rejoin after a dropped connection or a page reload. Registrations
 survive a server restart, and so does a running field: it is recorded between

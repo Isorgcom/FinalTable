@@ -7,6 +7,7 @@ class Tournament {
   constructor(options = {}) {
     this.isActive = false;
     this.startTime = null;
+    this.pausedAt = null; // while the host has the clock stopped
 
     // The level length a row falls back to when it carries none of its own:
     // a hand-built schedule in a test, or a caller from before rows had one.
@@ -43,6 +44,10 @@ class Tournament {
       duration: r.duration > 0 ? r.duration : this.levelDuration,
       break: !!r.break,
     }));
+    this._rebuildOffsets();
+  }
+
+  _rebuildOffsets() {
     this._startsAt = [];
     let t = 0;
     for (const row of this.blindSchedule) {
@@ -78,7 +83,8 @@ class Tournament {
   snapshotClock() {
     return {
       currentLevel: this.currentLevel,
-      elapsedMs: this.startTime ? Date.now() - this.startTime : 0,
+      elapsedMs: this.startTime ? this._now() - this.startTime : 0,
+      paused: this.isPaused(),
       levelDuration: this.levelDuration,
       schedule: this.blindSchedule.map((r) => ({ ...r })),
       startingPlayers: this.startingPlayers,
@@ -102,6 +108,8 @@ class Tournament {
       : [];
     const elapsed = Math.max(0, Number(snap.elapsedMs) || 0);
     this.startTime = Date.now() - elapsed;
+    // A field written down paused comes back paused, with the same time left.
+    this.pausedAt = snap.paused ? Date.now() : null;
 
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {
@@ -113,14 +121,65 @@ class Tournament {
 
   stop() {
     this.isActive = false;
+    this.pausedAt = null;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
   }
 
+  // The host's pause: the clock stands still and picks up where it stopped.
+  // Not stop(), which ends the clock for good and with it the ledger: a hand
+  // finishing during a pause must still record a bust-out.
+  pause() {
+    if (!this.isActive || this.pausedAt) return false;
+    this.pausedAt = Date.now();
+    return true;
+  }
+
+  resume() {
+    if (!this.pausedAt) return false;
+    this.startTime += Date.now() - this.pausedAt;
+    this.pausedAt = null;
+    return true;
+  }
+
+  isPaused() {
+    return !!this.pausedAt;
+  }
+
+  // The moment the clock reads: now, or the moment it was stopped.
+  _now() {
+    return this.pausedAt || Date.now();
+  }
+
   _elapsedSeconds() {
-    return this.startTime ? (Date.now() - this.startTime) / 1000 : 0;
+    return this.startTime ? (this._now() - this.startTime) / 1000 : 0;
+  }
+
+  // Move the clock to the start of a row, forwards or back. checkLevelUp only
+  // ever climbs, so both halves are set here and the change is announced by
+  // hand; the tick that follows then agrees with what it finds.
+  goToLevel(index) {
+    const target = Math.max(0, Math.min(index, this.blindSchedule.length - 1));
+    const back = target < this.currentLevel;
+    this.currentLevel = target;
+    this.startTime = this._now() - this._startsAt[target] * 1000;
+    if (this.onLevelUp) this.onLevelUp(target, this.getCurrentBlinds(), { manual: true, back });
+    return target;
+  }
+
+  // Put seconds on the level in play, or take them off: the row itself gets
+  // longer or shorter, so the time left moves by exactly that much. A row
+  // cannot end before the moment it is at; cut down to now, the next tick
+  // levels up on its own.
+  shiftClock(seconds) {
+    const index = Math.min(this.currentLevel, this.blindSchedule.length - 1);
+    const row = this.blindSchedule[index];
+    const into = Math.max(0, this._elapsedSeconds() - this._startsAt[index]);
+    row.duration = Math.max(1, Math.ceil(into), row.duration + Math.round(seconds));
+    this._rebuildOffsets();
+    return this.getTimeUntilNextLevel();
   }
 
   // The row the clock is on after this many seconds; the last row holds.
@@ -262,6 +321,7 @@ class Tournament {
       levelCount: this.playLevelCount(),
       onBreak: this.onBreak(),
       finalLevel: this.isFinalLevel(),
+      paused: this.isPaused(),
       blinds: this.getCurrentBlinds(),
       timeUntilNextLevel: this.getTimeUntilNextLevel(),
       levelDuration: this.levelDuration,

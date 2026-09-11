@@ -1581,8 +1581,176 @@ describe('blind structures in the registry', () => {
       blinds: { sb: 50, bb: 100, ante: 100 },
       onBreak: true,
       nextLevelIn: expect.any(Number),
+      manual: false,
     });
     const lines = io.sent.filter((m) => m.event === 'gameMessage').map((m) => m.payload);
     expect(lines).toContain('Break: 90s · play resumes at 50/100 ante 100');
+  });
+});
+
+describe('the host controls in the registry', () => {
+  let registry;
+  let io;
+  let store;
+  const names = { h: 'Host', g: 'Guest', t: 'Third', u: 'Fourth', v: 'Fifth' };
+
+  function makeRegistry(withStore) {
+    return createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      abandonGraceMs: 3000,
+      overdueAbandonMs: 20000,
+      hostTransferGraceMs: 2000,
+      store: withStore,
+      tableOptions: { actionTimeoutMs: 0 },
+      connectedSockets: () => live.values(),
+      socketById: (id) => live.get(id) || null,
+    });
+  }
+
+  // Three people, dealt: the smallest field a removal does not finish.
+  function running(extra = {}, more = []) {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Night', startsAt: Date.now() + 1000, tableSize: 6, ...extra },
+      makeSocket('sh', 'h')
+    );
+    registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+    registry.join('t', { code: entry.code }, makeSocket('st', 't'));
+    for (const uid of more) registry.join(uid, { code: entry.code }, makeSocket(`s${uid}`, uid));
+    jest.advanceTimersByTime(1500);
+    expect(entry.status).toBe('running');
+    entry.director.holdField();
+    return entry;
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-11T21:00:00Z'));
+    io = makeIo();
+    store = makeStore();
+    live.clear();
+    registry = makeRegistry(store);
+  });
+
+  afterEach(() => {
+    registry.stop();
+    jest.useRealTimers();
+  });
+
+  test('every control is the host of a running game only', () => {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Later', startsAt: Date.now() + 60000 },
+      makeSocket('sh', 'h')
+    );
+    registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+    const notRunning = { error: 'The tournament is not running' };
+    expect(registry.pause(entry, 'h')).toEqual(notRunning);
+    expect(registry.removePlayer(entry, 'h', 'g')).toEqual(notRunning);
+    registry.startNow(entry, 'h');
+    entry.director.holdField();
+    const notHost = { error: 'Only the host can do that' };
+    expect(registry.pause(entry, 'g')).toEqual(notHost);
+    expect(registry.resume(entry, 'g')).toEqual(notHost);
+    expect(registry.stepLevel(entry, 'g', 1)).toEqual(notHost);
+    expect(registry.adjustClock(entry, 'g', 60)).toEqual(notHost);
+    expect(registry.removePlayer(entry, 'g', 'h')).toEqual(notHost);
+    expect(registry.movePlayer(entry, 'g', 'h', 1)).toEqual(notHost);
+    expect(registry.removePlayer(entry, 'h', 'h')).toEqual({
+      error: 'Leave the game to remove yourself',
+    });
+  });
+
+  test('pausing and resuming reach the state and the card', () => {
+    const entry = running({ visibility: 'public' });
+    expect(registry.pause(entry, 'h').entry).toBe(entry);
+    expect(entry.director.isPaused()).toBe(true);
+    expect(registry.stateFor(entry, 'g').paused).toBe(true);
+    expect(registry.publicList().find((c) => c.id === entry.id).paused).toBe(true);
+    expect(registry.pause(entry, 'h')).toEqual({ error: 'Already paused' });
+    expect(registry.resume(entry, 'h').entry).toBe(entry);
+    expect(registry.stateFor(entry, 'g').paused).toBe(false);
+    expect(registry.resume(entry, 'h')).toEqual({ error: 'Not paused' });
+  });
+
+  test('a level step and a clock change go through', () => {
+    const entry = running();
+    const before = entry.director.tournament.getTimeUntilNextLevel();
+    expect(registry.stepLevel(entry, 'h', 1)).toMatchObject({ level: 2, onBreak: false });
+    expect(entry.director.tournament.currentLevel).toBe(1);
+    expect(io.sent.some((m) => m.event === 'tournamentLevelUp' && m.payload.manual)).toBe(true);
+    expect(registry.adjustClock(entry, 'h', 0)).toEqual({ error: 'Nothing to change' });
+    const changed = registry.adjustClock(entry, 'h', 600); // clamped to a minute
+    expect(Math.abs(changed.nextLevelIn - (before + 60))).toBeLessThanOrEqual(1);
+  });
+
+  test('a removed player is told, loses their registration, and cannot come back', () => {
+    const entry = running();
+    const before = io.sent.length;
+    expect(registry.removePlayer(entry, 'h', 'g')).toMatchObject({ removed: true, place: 3 });
+    const told = io.sent.slice(before).filter((m) => m.event === 'leftTournament');
+    expect(told).toEqual([
+      {
+        to: 'sg',
+        event: 'leftTournament',
+        payload: { id: entry.id, name: 'Night', reason: 'removed' },
+      },
+    ]);
+    expect(io.sent.slice(before).some((m) => m.event === 'tournamentEliminated')).toBe(false);
+    expect(entry.registrations.has('g')).toBe(false);
+    expect(entry.removedUids.has('g')).toBe(true);
+    expect(entry.watching.has('g')).toBe(false);
+    expect(live.get('sg').data.tournamentId).toBeNull();
+    expect(entry.director.playerByUid('g')).toBeNull();
+    expect(entry.director.roster().find((r) => r.uid === 'g')).toMatchObject({ place: 3 });
+    const refused = { error: 'You were removed from this game' };
+    expect(registry.join('g', { code: entry.code }, makeSocket('sg2', 'g'))).toEqual(refused);
+    expect(registry.join('g', { tournamentId: entry.id }, makeSocket('sg3', 'g'))).toEqual(refused);
+    expect(registry.findByUid('g')).toBeNull();
+    expect(registry.removePlayer(entry, 'h', 'g')).toEqual({ error: 'They are not seated' });
+
+    registry.flush();
+    expect(store.load()[0].removedUids).toEqual(['g']);
+    registry.stop();
+    const second = makeRegistry(store);
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back.removedUids.has('g')).toBe(true);
+    expect(second.join('g', { code: entry.code }, makeSocket('sg4', 'g'))).toEqual(refused);
+    second.stop();
+    registry = makeRegistry(store); // for afterEach
+  });
+
+  test('a paused game with nobody connected waits the long grace, not the short one', () => {
+    const entry = running();
+    expect(registry.pause(entry, 'h').entry).toBe(entry);
+    registry.unbind(entry, 'h', live.get('sh'));
+    registry.unbind(entry, 'g', live.get('sg'));
+    registry.unbind(entry, 't', live.get('st'));
+    expect(entry.noHumansSince).not.toBeNull();
+    jest.advanceTimersByTime(6000);
+    expect(registry.tournaments.has(entry.id)).toBe(true);
+    expect(registry.resume(entry, 'h').entry).toBe(entry);
+    jest.advanceTimersByTime(4000);
+    expect(registry.tournaments.has(entry.id)).toBe(false);
+  });
+
+  test('a host move is made and reported, and refused when it would unbalance', () => {
+    const entry = running({ tableSize: 4 }, ['u', 'v']); // five people: tables of 3 and 2
+    const d = entry.director;
+    const [big, small] = [...d.tables].sort((x, y) => y.players.length - x.players.length);
+    expect([big.players.length, small.players.length]).toEqual([3, 2]);
+    const mover = big.players[0];
+    const before = io.sent.length;
+    expect(registry.movePlayer(entry, 'h', mover.uid, small.tableNumber)).toMatchObject({
+      moved: true,
+    });
+    const moved = io.sent.slice(before).find((m) => m.event === 'tableMoved');
+    expect(moved).toMatchObject({ payload: { uid: mover.uid, toTable: small.tableNumber } });
+    expect(registry.movePlayer(entry, 'h', big.players[0].uid, small.tableNumber).error).toMatch(
+      /would then have more players/
+    );
   });
 });

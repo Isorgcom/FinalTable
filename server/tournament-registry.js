@@ -143,6 +143,7 @@ function createTournamentRegistry(deps = {}) {
         joinedAt: r.joinedAt,
       })),
       mutedUids: [...entry.mutedUids],
+      removedUids: [...entry.removedUids],
       status: entry.status,
       // How many times this field has been seated again without getting a hand
       // out. See the guard in restore().
@@ -324,6 +325,7 @@ function createTournamentRegistry(deps = {}) {
       lateRegLevels: d.lateRegLevels,
       lateRegOpen: d.lateRegOpen(),
       level: d.tournament.levelNumber(),
+      paused: d.isPaused(),
       remaining: entry.status === 'registering' ? total : d.playersRemaining(),
       buyIn: d.buyIn,
       prizePool: d.prizePool(),
@@ -796,6 +798,9 @@ function createTournamentRegistry(deps = {}) {
       // Host moderation. Small enough to ride along in the tournament file, so
       // a mute survives a restart the way the field it was aimed at does.
       mutedUids: new Set(),
+      // Players the host removed. Kept like the mutes, so a restart does not
+      // let them back in by the door their registration would have left.
+      removedUids: new Set(),
       // People asking to join an invite-only game, waiting on the host:
       // uid -> { socketId, askedAt, disconnectedAt }. Not an entrant, not a
       // registration, not written to the file. A restart empties the queue
@@ -844,6 +849,9 @@ function createTournamentRegistry(deps = {}) {
         emitState(entry);
       },
       onPlayerEliminated: ({ uid: outUid, place, tableId }) => {
+        // Somebody the host removed is told so by removePlayer, and is not
+        // kept watching a game they are no longer in.
+        if (entry.removedUids.has(outUid)) return;
         entry.watching.set(outUid, tableId);
         const prize = director.payouts().find((p) => p.place === place);
         emitTo(entry, outUid, 'tournamentEliminated', {
@@ -886,6 +894,7 @@ function createTournamentRegistry(deps = {}) {
     const fromCode = code ? byCode(code) : null;
     const entry = fromCode || tournaments.get(tournamentId) || null;
     if (!entry) return { error: 'Tournament not found' };
+    if (entry.removedUids.has(uid)) return { error: 'You were removed from this game' };
 
     const existing = entry.registrations.get(uid);
     if (existing) {
@@ -1318,6 +1327,110 @@ function createTournamentRegistry(deps = {}) {
     return { entry };
   }
 
+  // ── The host's controls over a running game ──────────────────────────────
+  // Authorised here, like the door: the socket layer only forwards.
+
+  function hostRunning(entry, uid) {
+    if (!requireHost(entry, uid)) return 'Only the host can do that';
+    if (entry.status !== 'running') return 'The tournament is not running';
+    return null;
+  }
+
+  // hostPause/hostResume rather than pause/resume: resume(entry) below is
+  // the restore path, starting a seated field's clock and tick again.
+  function hostPause(entry, uid) {
+    const refused = hostRunning(entry, uid);
+    if (refused) return { error: refused };
+    if (!entry.director.pause()) return { error: 'Already paused' };
+    persist();
+    emitList();
+    return { entry };
+  }
+
+  function hostResume(entry, uid) {
+    const refused = hostRunning(entry, uid);
+    if (refused) return { error: refused };
+    if (!entry.director.resume()) return { error: 'Not paused' };
+    // Everybody may have walked off during the pause; the short grace for an
+    // abandoned game starts again from here.
+    if (connectedHumans(entry) === 0) entry.noHumansSince = now();
+    persist();
+    emitList();
+    return { entry };
+  }
+
+  function stepLevel(entry, uid, delta) {
+    const refused = hostRunning(entry, uid);
+    if (refused) return { error: refused };
+    const result = entry.director.stepLevel(delta < 0 ? -1 : 1);
+    if (result.error) return result;
+    persist();
+    emitState(entry);
+    emitList();
+    return { entry, ...result };
+  }
+
+  function adjustClock(entry, uid, seconds) {
+    const refused = hostRunning(entry, uid);
+    if (refused) return { error: refused };
+    const n = Math.max(-60, Math.min(60, parseInt(seconds, 10) || 0));
+    if (!n) return { error: 'Nothing to change' };
+    const result = entry.director.adjustClock(n);
+    if (result.error) return result;
+    persist();
+    return { entry, ...result };
+  }
+
+  // Take somebody out of the game. Their stack leaves play and they finish
+  // where they stand; their registration goes, they are told, and they
+  // cannot come back in by code or by link.
+  function removePlayer(entry, uid, targetUid) {
+    const refused = hostRunning(entry, uid);
+    if (refused) return { error: refused };
+    if (!targetUid) return { error: 'Nobody named' };
+    if (targetUid === entry.hostUid) return { error: 'Leave the game to remove yourself' };
+    // Marked before the director acts, so the elimination it reports on the
+    // way out is not sent to a registration about to be dropped. A refusal
+    // unmarks only what this call marked: asking twice must not let them back.
+    const already = entry.removedUids.has(targetUid);
+    entry.removedUids.add(targetUid);
+    const result = entry.director.removeFromPlay(targetUid);
+    if (result.error) {
+      if (!already) entry.removedUids.delete(targetUid);
+      return result;
+    }
+    const reg = entry.registrations.get(targetUid);
+    if (reg && reg.socketId) {
+      const s = socketById(reg.socketId);
+      if (s) {
+        s.data.tournamentId = null;
+        s.data.tournamentUid = null;
+      }
+      io.to(reg.socketId).emit('leftTournament', {
+        id: entry.id,
+        name: entry.name,
+        reason: 'removed',
+      });
+    }
+    entry.registrations.delete(targetUid);
+    entry.watching.delete(targetUid);
+    entry.mutedUids.delete(targetUid);
+    persist();
+    emitState(entry);
+    emitList();
+    return { entry, ...result };
+  }
+
+  function movePlayer(entry, uid, targetUid, tableNumber) {
+    const refused = hostRunning(entry, uid);
+    if (refused) return { error: refused };
+    if (!targetUid) return { error: 'Nobody named' };
+    const result = entry.director.requestMove(targetUid, tableNumber);
+    if (result.error) return result;
+    emitState(entry);
+    return { entry, ...result };
+  }
+
   // Everything start() does except the draw: the field is already seated from
   // a snapshot, so only the clock and the tick need starting.
   function resume(entry) {
@@ -1473,10 +1586,13 @@ function createTournamentRegistry(deps = {}) {
         transferHost(entry);
       } else if (entry.status === 'running') {
         transferHost(entry);
+        // A pause is exactly when people walk away, so a paused field gets
+        // the long grace rather than the short one.
+        const grace = entry.director.isPaused() ? overdueAbandonMs : abandonGraceMs;
         if (
           connectedHumans(entry) === 0 &&
           entry.noHumansSince !== null &&
-          t - entry.noHumansSince > abandonGraceMs
+          t - entry.noHumansSince > grace
         ) {
           remove(entry, 'abandoned');
         }
@@ -1569,6 +1685,7 @@ function createTournamentRegistry(deps = {}) {
         entry.hostUid = [...entry.registrations.keys()][0];
       }
       for (const uid of saved.mutedUids || []) entry.mutedUids.add(uid);
+      for (const uid of saved.removedUids || []) entry.removedUids.add(uid);
       // Chat comes back before, and regardless of, whether the field is seated
       // again. The rooms are keyed by a string and need no table object to
       // exist - and a field held by the restore guard below is precisely the
@@ -1636,6 +1753,12 @@ function createTournamentRegistry(deps = {}) {
     startNow,
     cancel,
     forceCancel,
+    pause: hostPause,
+    resume: hostResume,
+    stepLevel,
+    adjustClock,
+    removePlayer,
+    movePlayer,
     stateFor,
     listFor,
     publicList,

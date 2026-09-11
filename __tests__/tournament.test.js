@@ -124,3 +124,91 @@ describe('the blind clock', () => {
     expect(t.blindSchedule[0]).toEqual({ sb: 5, bb: 10, ante: 0, duration: 45, break: false });
   });
 });
+
+describe('the host and the clock', () => {
+  // Wall-clock time passing while paused: both stamps move back together, as
+  // if the pause had been standing for that long.
+  function pausedFor(t, seconds) {
+    t.pausedAt -= seconds * 1000;
+    t.startTime -= seconds * 1000;
+  }
+
+  test('pause stops the clock and resume picks it up where it stopped', () => {
+    const t = clock({ blindSchedule: SCHEDULE });
+    t.start(6);
+    at(t, 30);
+    expect(t.getTimeUntilNextLevel()).toBe(30);
+    expect(t.pause()).toBe(true);
+    expect(t.isPaused()).toBe(true);
+    pausedFor(t, 100);
+    t.checkLevelUp();
+    expect(t.currentLevel).toBe(0);
+    expect(t.getTimeUntilNextLevel()).toBe(30);
+    expect(t.getState().paused).toBe(true);
+    expect(t.pause()).toBe(false);
+    expect(t.resume()).toBe(true);
+    expect(t.isPaused()).toBe(false);
+    expect(t.getTimeUntilNextLevel()).toBe(30);
+    expect(t.resume()).toBe(false);
+  });
+
+  test('a level can be set by hand, forwards or back, and the tick agrees', () => {
+    const t = clock({ blindSchedule: SCHEDULE });
+    const ups = [];
+    t.onLevelUp = (level, blinds, info) => ups.push([level, blinds.bb, info]);
+    t.start(6);
+    at(t, 30);
+    expect(t.goToLevel(3)).toBe(3);
+    expect(t.currentLevel).toBe(3);
+    expect(t.levelNumber()).toBe(3);
+    expect(t.getTimeUntilNextLevel()).toBe(0);
+    expect(ups).toEqual([[3, 60, { manual: true, back: false }]]);
+    t.checkLevelUp();
+    expect(t.currentLevel).toBe(3);
+    expect(t.goToLevel(1)).toBe(1);
+    expect(t.getTimeUntilNextLevel()).toBe(120);
+    expect(ups[1]).toEqual([1, 40, { manual: true, back: true }]);
+    t.checkLevelUp();
+    expect(t.currentLevel).toBe(1);
+    expect(t.goToLevel(-5)).toBe(0);
+    expect(t.goToLevel(99)).toBe(3);
+  });
+
+  test('seconds go on and off the level in play, never past the moment it is at', () => {
+    const t = clock({ blindSchedule: SCHEDULE });
+    t.start(6);
+    at(t, 70); // ten seconds into the second level, which lasts 120
+    expect(t.getTimeUntilNextLevel()).toBe(110);
+    expect(t.shiftClock(60)).toBe(170);
+    expect(t.blindSchedule[1].duration).toBe(180);
+    expect(t.shiftClock(-60)).toBe(110);
+    expect(t.shiftClock(-60)).toBe(50);
+    // Cut to before now: the level ends at once, and the tick moves on.
+    expect(t.shiftClock(-60)).toBeLessThanOrEqual(1);
+    expect(t.blindSchedule[1].duration).toBeLessThanOrEqual(11);
+    at(t, 75);
+    expect(t.currentLevel).toBe(2);
+    expect(t.onBreak()).toBe(true);
+  });
+
+  test('a snapshot taken paused comes back paused, with the time left', () => {
+    const t = clock({ blindSchedule: SCHEDULE });
+    t.start(6);
+    at(t, 30);
+    t.pause();
+    const snap = t.snapshotClock();
+    expect(snap.paused).toBe(true);
+    expect(Math.round(snap.elapsedMs / 1000)).toBe(30);
+    const revived = clock({ levelDuration: 300 });
+    revived.resumeFrom(snap);
+    expect(revived.isPaused()).toBe(true);
+    expect(revived.getTimeUntilNextLevel()).toBe(30);
+    expect(revived.resume()).toBe(true);
+    expect(revived.getTimeUntilNextLevel()).toBe(30);
+
+    t.resume();
+    const running = clock({ levelDuration: 300 });
+    running.resumeFrom(t.snapshotClock());
+    expect(running.isPaused()).toBe(false);
+  });
+});

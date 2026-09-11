@@ -781,10 +781,13 @@
 
   function onLeft(data) {
     if (data && data.id !== currentId) return;
+    const reason = data ? data.reason : null;
     returnToLobby(
-      data && data.reason === 'left'
+      reason === 'left'
         ? 'You left the table. Your stack sits out; join by code to take it back.'
-        : null
+        : reason === 'removed'
+          ? 'The host removed you from the game.'
+          : null
     );
   }
 
@@ -909,7 +912,11 @@
       return wait > 0 ? `Starts in ${fmtCountdown(wait)}` : 'Starting…';
     }
     if (t.status === 'running') {
-      return `Level ${t.level} · ${t.remaining} left` + (t.lateRegOpen ? ' · late reg open' : '');
+      return (
+        `Level ${t.level} · ${t.remaining} left` +
+        (t.paused ? ' · paused' : '') +
+        (t.lateRegOpen ? ' · late reg open' : '')
+      );
     }
     return t.winner ? `Won by ${t.winner}` : 'Finished';
   }
@@ -995,6 +1002,7 @@
         t.players,
         t.entrants,
         t.level,
+        t.paused,
         t.startsAt,
         t.you,
         t.visibility,
@@ -1626,7 +1634,11 @@
       return t.waitingReason || 'Starting…';
     }
     if (t.status === 'running') {
-      return `Running · level ${t.level}` + (t.lateRegOpen ? ' · late registration open' : '');
+      return (
+        `Running · level ${t.level}` +
+        (t.paused ? ' · paused' : '') +
+        (t.lateRegOpen ? ' · late registration open' : '')
+      );
     }
     return t.winner ? `Finished · won by ${t.winner}` : 'Finished';
   }

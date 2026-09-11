@@ -1950,3 +1950,47 @@ test('the banner reads the ante, a break and the final level, and the Info tab l
   await expect(page.locator('#panelInfoBody .structure-row')).toHaveCount(20);
   expect(pageErrors).toEqual([]);
 });
+
+test('the host has controls in the Info tab: the level, a pause, and removing a player', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Boss');
+  await deal(page);
+  await page.click('#tabInfo');
+  const block = page.locator('#panelInfoHost');
+  await expect(block).toBeVisible();
+  await expect(block).toContainText('Host');
+  await expect(block.locator('.wr-row')).toHaveCount(1); // the guest, not the host
+  await expect(block.locator('.host-move')).toHaveCount(0); // one table: nowhere to move to
+
+  // The guest's Info tab has no such block.
+  const guest = guestContext.pages()[0];
+  await guest.click('#tabInfo');
+  await expect(guest.locator('#panelInfoHost')).toBeHidden();
+
+  await block.locator('button', { hasText: 'Level ▶' }).click();
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 2');
+  await expect(page.locator('#tbBlinds')).toHaveText('15/30');
+  await block.locator('button', { hasText: '◀ Level' }).click();
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 1');
+
+  await block.locator('button', { hasText: 'Pause' }).click();
+  await expect(page.locator('#tbLevelLabel')).toContainText('Paused');
+  await expect(page.locator('#tournamentBanner')).toHaveClass(/on-pause/);
+  await expect(block.locator('button', { hasText: 'Resume' })).toBeVisible();
+  await expect(guest.locator('#tbLevelLabel')).toContainText('Paused');
+
+  // The hand in play finishes and no new one deals while paused, so the
+  // removal that follows is immediate rather than waiting on a hand.
+  await page.locator('#btnFold').click();
+  await expect(page.locator('#actionsPanel')).toHaveClass(/hidden/);
+  await page.waitForTimeout(1500);
+  await expect(page.locator('#actionsPanel')).toHaveClass(/hidden/);
+
+  await block.locator('.host-btn-danger').click();
+  await expect(page.locator('#appDialogBody')).toContainText('They cannot come back in');
+  await page.click('#btnAppDialogConfirm');
+  await expect(guest.locator('#lobbyHome')).toBeVisible({ timeout: 10000 });
+  await expect(guest.locator('#appDialogBody')).toContainText('removed you from the game');
+  expect(pageErrors).toEqual([]);
+});

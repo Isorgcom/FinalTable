@@ -910,4 +910,45 @@ describe('Tournament socket layer', () => {
       breaks: [1],
     });
   });
+
+  test('the host pauses and resumes, and only the host', async () => {
+    const host = await connectClient();
+    const { guest } = await createTournamentWithGuest(host, { startsAt: Date.now() + 60000 });
+    await startAndDeal(host, guest);
+
+    const refused = waitFor(guest, 'error', (e) => /Only the host/.test(e.message));
+    guest.emit('pauseTournament');
+    expect((await refused).message).toBe('Only the host can do that');
+
+    const paused = waitFor(host, 'tournamentState', (st) => st.paused === true);
+    host.emit('pauseTournament');
+    expect((await paused).paused).toBe(true);
+    const line = waitFor(guest, 'gameMessage', (m) => m === 'Paused by the host');
+    await line;
+
+    const resumed = waitFor(host, 'tournamentState', (st) => st.paused === false);
+    host.emit('resumeTournament');
+    expect((await resumed).paused).toBe(false);
+    await cancelGame(host);
+  });
+
+  test('the host removes the guest, who is sent to the lobby and cannot come back', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host, {
+      startsAt: Date.now() + 60000,
+    });
+    await startAndDeal(host, guest);
+    // A hand is in play, so the seat goes at its end; the guest is told at
+    // once and is out of the game from that moment.
+    const gone = waitFor(guest, 'leftTournament', (p) => p.reason === 'removed');
+    host.emit('removePlayer', { uid: guest.__identity.uid });
+    expect(await gone).toMatchObject({ id: created.id, reason: 'removed' });
+    const entry = serverModule.registry.tournaments.get(created.id);
+    expect(entry.registrations.has(guest.__identity.uid)).toBe(false);
+    expect(entry.removedUids.has(guest.__identity.uid)).toBe(true);
+
+    const refused = waitFor(guest, 'error', (e) => /removed/.test(e.message));
+    guest.emit('joinTournament', { code: created.code });
+    expect((await refused).message).toBe('You were removed from this game');
+  });
 });
