@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.9.0 - 2026-09-11
+
 ### Added
 
 - Watching a table. Every game has a rail link, a second code that is a way

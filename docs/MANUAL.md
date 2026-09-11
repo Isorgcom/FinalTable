@@ -11,11 +11,13 @@ Everything here is play chips. FinalTable keeps no money and moves none.
 ## What is new
 
 The last few releases changed how a game is found, who can get in, how the
-host reaches the whole room, how the blinds run, and what the host can do
-once the cards are out. The short version, with where to read more:
+host reaches the whole room, how the blinds run, what the host can do once
+the cards are out, and who can watch. The short version, with where to read
+more:
 
 | Version | What arrived                                                                                                                                                                         | See                                                                                              |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| 0.9.0   | A rail link on every game for anyone who wants to watch, with the table's chat open to them; the dealer's log and the chat in separate tabs; up to forty bots.                       | [Watching a game](#watching-a-game), [The side panel](#the-side-panel)                           |
 | 0.8.0   | The host's controls at the table: pause, a level back or forward, a minute on the clock, move a player, remove a player. The bot box takes a count. Tables that should merge now do. | [The host at the table](#the-host-at-the-table), [Creating a tournament](#creating-a-tournament) |
 | 0.7.0   | A blind structure to choose or edit when a game is made: Turbo, Standard or Deep, with antes and breaks, and the ladder in the waiting room and the Info tab.                        | [Creating a tournament](#creating-a-tournament), [How a tournament runs](#how-a-tournament-runs) |
 | 0.6.0   | The host reads and talks at every table: a strip in the Chat tab picks a table, and All announces to every table at once and over the felt.                                          | [The side panel](#the-side-panel), [Chat, reactions and mute](#chat-reactions-and-mute)          |
