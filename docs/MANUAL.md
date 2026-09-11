@@ -92,6 +92,12 @@ Press **Create a tournament**. The form:
   spread across as many tables as it takes.
 - **Starting stack**: 1,000 to 10,000 chips.
 - **Level length**: 2 to 15 minutes per blind level.
+- **Blind structure**: Turbo, Standard or Deep. The line under the choice
+  says how many levels, when the antes start and where the breaks fall.
+  **Edit levels** opens the ladder itself: every level's small and big blind,
+  ante, length in minutes and whether it is a break, with Add level and Add
+  break underneath. An edit makes the structure Custom; picking a preset or
+  another level length puts the preset back, edits and all.
 - **Late registration**: closes at the start, or stays open through level 1,
   2, 3, 4 or 6.
 - **Buy-in (play chips)**: optional. Buy-in times entrants is the prize pool,
@@ -179,8 +185,10 @@ The **top bar** has the game's name and a line of status, then buttons:
 panel), and the **menu** (hand rankings, sound on or off, the operator's
 controls when unlocked, and **leave**).
 
-The **banner** over the felt shows the level, the blinds, the time until the
-next level and how many players are left. When something about the moment
+The **banner** over the felt shows the level, the blinds and the ante when
+there is one, the time until the next level and how many players are left. On
+a break it reads Break and the blinds play resumes at; on the final level
+there is nothing left to count down to. When something about the moment
 changes, the bubble for instance, the banner says so.
 
 On the felt: the pot, the community cards, the seats with each player's stack
@@ -264,12 +272,27 @@ to the lobby.
 
 ## How a tournament runs
 
-**Blinds** start at 10/20 and climb through thirteen levels (15/30, 25/50,
-40/80, 50/100, 75/150, 100/200, 150/300, 200/400, 300/600, 500/1000,
-750/1500, 1000/2000), each lasting the level length chosen at creation. The
-clock runs across every table at once.
+**Blinds** follow the structure chosen at creation. Standard climbs eighteen
+levels from 10/20 to 3000/6000, with antes from level 6 and a break after
+levels 6 and 12. Turbo climbs faster over fifteen, with antes from level 4
+and no break. Deep climbs slowly over twenty-four, with antes from level 9
+and breaks after 8 and 16. Every level lasts the level length chosen at
+creation unless the host edited it. The clock runs across every table at
+once, and the whole ladder is in the waiting room and in the Info tab, with
+the level the clock is on.
 
-**Late registration** stays open through the level chosen at creation. A late
+**Antes** are a big-blind ante: from the level the structure says, the player
+in the big blind posts an ante equal to the big blind straight into the pot,
+then the blind. It is not part of the price to call. A short stack posts the
+ante first and the blind out of what is left.
+
+**Breaks** are levels with no blinds. When one arrives, a hand in play
+finishes and no table deals until it is over; the banner reads Break with the
+blinds play resumes at. A level number counts levels of play, so a break
+never takes one.
+
+**Late registration** stays open through the level chosen at creation, and
+through the break after it if there is one. A late
 entrant sits down with the starting stack at the table with the fewest
 players, joining at that table's next deal.
 

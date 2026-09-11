@@ -15,6 +15,7 @@ const { createAdminCredential } = require('./server/admin-credential');
 const { createSsoRuntime } = require('./server/gamenight-pairing');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
 const { createStructuredLogger } = require('./server/logger');
+const { PRESETS: BLIND_PRESETS } = require('./blind-structures');
 
 loadLocalEnv(__dirname);
 const config = loadConfig();
@@ -106,6 +107,11 @@ app.use(
 
 app.get('/api/tournaments', (req, res) => {
   res.json(tournamentLayer.publicList());
+});
+
+// The blind structures a host can pick from, for the create form's editor.
+app.get('/api/blind-structures', (req, res) => {
+  res.json({ presets: BLIND_PRESETS });
 });
 
 app.get('/api/status', (req, res) => {

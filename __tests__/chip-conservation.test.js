@@ -150,3 +150,19 @@ describe('chip conservation', () => {
     expect(t.players.map((p) => p.seatIndex)).toEqual([0, 1, 2, 3]);
   });
 });
+
+describe('chip conservation with antes', () => {
+  test('totalChips holds when the big blind antes, short or not', () => {
+    const t = new PokerGame('ante', { startChips: 1000, maxPlayers: 6, ante: 25 });
+    t.addPlayer({ id: 'a', name: 'A' });
+    t.addPlayer({ id: 'b', name: 'B' });
+    t.addPlayer({ id: 'c', name: 'C' });
+    // Seats are drawn, so whoever lands in the big blind may be the short one.
+    t.players[2].chips = 10;
+    expect(t.totalChips()).toBe(2010);
+    t.startRound();
+    expect(t.totalChips()).toBe(2010);
+    expect(t.anteTotal).toBeGreaterThan(0);
+    expect(t.pot).toBe(t.anteTotal + t.players.reduce((sum, p) => sum + p.bet, 0));
+  });
+});

@@ -753,6 +753,15 @@
   function onState(state) {
     if (!state || state.id !== currentId) return;
     current = state;
+    // The ladder rides only in the full state; a tick's push carries its
+    // summary. Kept from the last full one so the room can draw it.
+    if (state.structure && Array.isArray(state.structure.levels)) {
+      currentStructure = {
+        id: state.id,
+        name: state.structure.name,
+        levels: state.structure.levels,
+      };
+    }
     // Somebody new at the door while the host is at the table: the Info tab
     // is where the admit controls are, so light it up.
     if (state.isHost && Array.isArray(state.pending)) {
@@ -831,6 +840,7 @@
 
   function returnToLobby(notice) {
     current = null;
+    currentStructure = null;
     currentId = null;
     pendingRequest = null;
     seenPending.clear();
@@ -941,6 +951,7 @@
       players,
       `${t.tableSize}-max`,
       fmtChips(t.startChips),
+      t.structure || null,
       fmtLevel(t.levelDuration),
       t.lateRegLevels ? `late reg through L${t.lateRegLevels}` : 'no late reg',
       t.buyIn ? `buy-in ${fmtChips(t.buyIn)}` : null,
@@ -1049,9 +1060,351 @@
     return active ? active.dataset.vis : 'private';
   }
 
+  // ── Blind structure ──────────────────────────────────────────────────────
+  // The presets come from the server once, the first time the form opens.
+  // The editor's rows are the client's until Create, when the server clamps
+  // them and runs what survives; a preset left alone goes up as its key.
+  let presets = null;
+  let presetsLoading = null;
+  let levelsDraft = null; // the editor's rows, once it has been opened
+  let structureEdited = false; // a hand edit makes the structure Custom
+  let currentStructure = null; // the ladder of the game we are in, from the full state
+
+  function loadPresets() {
+    if (presets) return Promise.resolve(presets);
+    if (presetsLoading) return presetsLoading;
+    presetsLoading = fetch('/api/blind-structures')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        presets = data && Array.isArray(data.presets) ? data.presets : null;
+        if (presets) refreshStructureHint();
+        return presets;
+      })
+      .catch(() => null)
+      .finally(() => {
+        presetsLoading = null;
+      });
+    return presetsLoading;
+  }
+
+  function presetDef(key) {
+    return presets ? presets.find((p) => p.key === key) || null : null;
+  }
+
+  function currentStructureKey() {
+    const active = document.querySelector('#tStructure button.active');
+    return active ? active.dataset.structure : 'standard';
+  }
+
+  function levelLengthSeconds() {
+    return parseInt($('tLevelDuration').value, 10) || 300;
+  }
+
+  // A preset as rows, laid out the way the server lays it out: every row the
+  // chosen level length, breaks included, antes from the level it says.
+  function materializeRows(def, duration) {
+    const rows = [];
+    def.ladder.forEach(([sb, bb], i) => {
+      const n = i + 1;
+      rows.push({
+        sb,
+        bb,
+        ante: def.anteFrom > 0 && n >= def.anteFrom ? bb : 0,
+        duration,
+        break: false,
+      });
+      if (def.breakAfter.includes(n) && n < def.ladder.length) {
+        rows.push({ sb: 0, bb: 0, ante: 0, duration, break: true });
+      }
+    });
+    return rows;
+  }
+
+  // Level numbers count levels of play; a break has none of its own.
+  function summarizeRows(rows) {
+    let n = 0;
+    let anteFrom = 0;
+    const breaks = [];
+    for (const row of rows) {
+      if (row.break) {
+        if (n > 0 && !breaks.includes(n)) breaks.push(n);
+        continue;
+      }
+      n++;
+      if (!anteFrom && row.ante > 0) anteFrom = n;
+    }
+    return { levelCount: n, anteFrom, breaks };
+  }
+
+  // "18 levels · antes from level 6 · breaks after levels 6 and 12"
+  function structureLine(s) {
+    const parts = [`${s.levelCount} level${s.levelCount === 1 ? '' : 's'}`];
+    parts.push(s.anteFrom ? `antes from level ${s.anteFrom}` : 'no antes');
+    const breaks = Array.isArray(s.breaks) ? s.breaks : [];
+    if (breaks.length === 1) parts.push(`a break after level ${breaks[0]}`);
+    else if (breaks.length > 1) parts.push(`breaks after levels ${breaks.join(' and ')}`);
+    return parts.join(' · ');
+  }
+
+  function fmtLength(seconds) {
+    return seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds}s`;
+  }
+
+  function refreshStructureHint() {
+    const hint = $('tStructureHint');
+    const def = presetDef(currentStructureKey());
+    if (structureEdited && levelsDraft) {
+      const from = def ? def.name : 'a preset';
+      hint.textContent = `Custom, edited from ${from} · ${structureLine(summarizeRows(levelsDraft))}`;
+      return;
+    }
+    if (!def) {
+      hint.textContent = '';
+      return;
+    }
+    const rows = materializeRows(def, levelLengthSeconds());
+    hint.textContent = `${def.hint} ${structureLine(summarizeRows(rows))}`;
+  }
+
+  function setStructure(key) {
+    document.querySelectorAll('#tStructure button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.structure === key);
+    });
+    regenerateLevels();
+  }
+
+  // The preset or the level length changed: the grid is that preset again,
+  // edits and all. GameNight's generator does the same, and says so.
+  function regenerateLevels() {
+    structureEdited = false;
+    const def = presetDef(currentStructureKey());
+    levelsDraft = def ? materializeRows(def, levelLengthSeconds()) : null;
+    refreshStructureHint();
+    if (!$('tLevels').classList.contains('hidden')) renderLevels();
+  }
+
+  function resetLevelsEditor() {
+    $('tLevels').classList.add('hidden');
+    $('btnEditLevels').textContent = 'Edit levels';
+    $('btnEditLevels').setAttribute('aria-expanded', 'false');
+    levelsDraft = null;
+    structureEdited = false;
+  }
+
+  function toggleLevelsEditor() {
+    const box = $('tLevels');
+    const open = box.classList.contains('hidden');
+    if (open && !levelsDraft) {
+      const def = presetDef(currentStructureKey());
+      if (!def) return; // no presets from the server: the key still goes up
+      levelsDraft = materializeRows(def, levelLengthSeconds());
+    }
+    box.classList.toggle('hidden', !open);
+    $('btnEditLevels').setAttribute('aria-expanded', String(open));
+    $('btnEditLevels').textContent = open ? 'Hide levels' : 'Edit levels';
+    if (open) renderLevels();
+  }
+
+  // The classic ladder, 1 / 1.5 / 2 / 2.5 / 3 / 4 / 5 / 6 / 8 per decade: the
+  // rule nextLevel in blind-structures.js applies, here as well so adding a
+  // level needs no round trip.
+  const LADDER = [];
+  for (let mag = 10; mag <= 10000000; mag *= 10) {
+    for (const b of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8]) {
+      const v = Math.round(b * mag);
+      if (!LADDER.includes(v)) LADDER.push(v);
+    }
+  }
+  LADDER.sort((a, b) => a - b);
+
+  // A level to add after `rows`: the next rung up from the last level of
+  // play, big blind double, the same length; it inherits whether that level
+  // antes, never its amount.
+  function nextLevel(rows, isBreak) {
+    let ref = null;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (!rows[i].break) {
+        ref = rows[i];
+        break;
+      }
+    }
+    const duration = ref ? ref.duration : levelLengthSeconds();
+    if (isBreak) return { sb: 0, bb: 0, ante: 0, duration, break: true };
+    const target = (ref ? ref.sb || 10 : 10) * 1.5;
+    const sb = ref ? LADDER.find((r) => r >= target - 0.001) || Math.round(target) : 10;
+    return { sb, bb: sb * 2, ante: ref && ref.ante > 0 ? sb * 2 : 0, duration, break: false };
+  }
+
+  function numberInput(value, col, min) {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.inputMode = 'decimal';
+    input.min = String(min);
+    input.dataset.col = col;
+    input.value = String(value);
+    input.setAttribute('aria-label', col);
+    return input;
+  }
+
+  function renderLevels() {
+    const body = $('tLevelsBody');
+    body.textContent = '';
+    if (!levelsDraft) return;
+    let n = 0;
+    levelsDraft.forEach((row, i) => {
+      const tr = document.createElement('tr');
+      tr.dataset.index = String(i);
+      if (row.break) tr.classList.add('is-break');
+      else n++;
+      const num = document.createElement('td');
+      num.className = 'num';
+      num.textContent = row.break ? 'break' : String(n);
+      tr.appendChild(num);
+      for (const col of ['sb', 'bb', 'ante']) {
+        const td = document.createElement('td');
+        const input = numberInput(row.break ? '' : row[col], col, 0);
+        input.disabled = row.break;
+        td.appendChild(input);
+        tr.appendChild(td);
+      }
+      const len = document.createElement('td');
+      const minutes = numberInput(Math.round((row.duration / 60) * 100) / 100, 'minutes', 0.5);
+      minutes.step = '0.5';
+      len.appendChild(minutes);
+      tr.appendChild(len);
+      const brk = document.createElement('td');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.dataset.col = 'break';
+      check.checked = row.break;
+      check.setAttribute('aria-label', 'Break');
+      brk.appendChild(check);
+      tr.appendChild(brk);
+      const rm = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'row-remove';
+      btn.textContent = '×';
+      btn.setAttribute('aria-label', 'Remove level');
+      btn.dataset.remove = String(i);
+      rm.appendChild(btn);
+      tr.appendChild(rm);
+      body.appendChild(tr);
+    });
+  }
+
+  // Every edit lands in the draft at once, so the hint and the payload read
+  // the grid as it stands. Numbers on input; the break box on change.
+  function onLevelsEdit(e) {
+    const el = e.target;
+    const col = el.dataset ? el.dataset.col : null;
+    if (!col || !levelsDraft) return;
+    if ((col === 'break') !== (e.type === 'change')) return;
+    const tr = el.closest('tr');
+    const index = tr ? Number(tr.dataset.index) : -1;
+    const row = levelsDraft[index];
+    if (!row) return;
+    structureEdited = true;
+    if (col === 'break') {
+      row.break = el.checked;
+      if (row.break) {
+        row.sb = 0;
+        row.bb = 0;
+        row.ante = 0;
+      } else if (!row.sb) {
+        Object.assign(row, nextLevel(levelsDraft.slice(0, index), false), {
+          duration: row.duration,
+        });
+      }
+      renderLevels();
+      refreshStructureHint();
+      return;
+    }
+    const v = parseFloat(el.value);
+    if (col === 'minutes') {
+      if (Number.isFinite(v) && v > 0) row.duration = Math.round(v * 60);
+    } else {
+      row[col] = Number.isFinite(v) && v >= 0 ? Math.round(v) : 0;
+    }
+    refreshStructureHint();
+  }
+
+  function onLevelsClick(e) {
+    const btn = e.target.closest('button[data-remove]');
+    if (!btn || !levelsDraft) return;
+    levelsDraft.splice(Number(btn.dataset.remove), 1);
+    structureEdited = true;
+    renderLevels();
+    refreshStructureHint();
+  }
+
+  function addLevel(isBreak) {
+    if (!levelsDraft) return;
+    levelsDraft.push(nextLevel(levelsDraft, isBreak));
+    structureEdited = true;
+    renderLevels();
+    refreshStructureHint();
+    const rows = $('tLevelsBody').querySelectorAll('tr');
+    const last = rows[rows.length - 1];
+    const first = last && last.querySelector('input:not(:disabled)');
+    if (first) first.focus();
+  }
+
+  // What goes up with Create: the preset's key, or the host's own rows.
+  function structurePayload() {
+    if (structureEdited && levelsDraft) {
+      return { name: 'Custom', levels: levelsDraft.map((r) => ({ ...r })) };
+    }
+    return currentStructureKey();
+  }
+
+  // The ladder as lines, for the waiting room and the Info tab. `current`
+  // marks a row: `{ number, onBreak }` from the field, or null before start.
+  function structureRows(levels, current) {
+    const rows = [];
+    let n = 0;
+    (levels || []).forEach((row) => {
+      if (!row.break) n++;
+      const line = document.createElement('div');
+      line.className = 'structure-row' + (row.break ? ' is-break' : '');
+      const isCurrent =
+        !!current && n === current.number && (row.break ? !!current.onBreak : !current.onBreak);
+      if (isCurrent) line.classList.add('current');
+      const num = document.createElement('span');
+      num.className = 's-num';
+      num.textContent = row.break ? '' : `L${n}`;
+      const blinds = document.createElement('span');
+      blinds.className = 's-blinds';
+      blinds.textContent = row.break ? 'Break' : `${row.sb}/${row.bb}`;
+      const ante = document.createElement('span');
+      ante.className = 's-ante';
+      ante.textContent = row.ante ? `ante ${row.ante}` : '';
+      const len = document.createElement('span');
+      len.className = 's-len';
+      len.textContent = fmtLength(row.duration);
+      line.append(num, blinds, ante, len);
+      rows.push(line);
+    });
+    return rows;
+  }
+
+  function renderStructure(t) {
+    const box = $('wrStructure');
+    const s = currentStructure && currentStructure.id === t.id ? currentStructure : null;
+    box.classList.toggle('hidden', !s);
+    if (!s) return;
+    const list = $('wrStructureList');
+    list.textContent = '';
+    const current = t.status === 'running' ? { number: t.level, onBreak: !!t.onBreak } : null;
+    structureRows(s.levels, current).forEach((row) => list.appendChild(row));
+  }
+
   function openCreate() {
     if (!$('tName').value) $('tName').value = 'Game Night';
     setVisibility('private');
+    resetLevelsEditor();
+    setStructure('standard');
+    loadPresets();
     setQuick(10);
     document.querySelectorAll('#tStartQuick button').forEach((b) => b.classList.remove('active'));
     showView('create');
@@ -1074,6 +1427,7 @@
       buyIn: Math.max(0, Math.min(10000, parseInt($('tBuyIn').value, 10) || 0)),
       bots: !!$('tBots').checked,
       visibility: currentVisibility(),
+      structure: structurePayload(),
     };
     if (identity && socket && socket.connected) {
       socket.emit('createTournament', payload);
@@ -1237,6 +1591,9 @@
       VISIBILITY_LINE[s.visibility] || null,
       `${s.tableSize}-max tables`,
       `${fmtChips(s.startChips)} starting stack`,
+      s.structure && s.structure.name
+        ? `${s.structure.name} · ${structureLine(s.structure)}`
+        : null,
       fmtLevel(s.levelDuration),
       s.lateRegLevels
         ? `late registration through level ${s.lateRegLevels}`
@@ -1253,6 +1610,7 @@
         'Pays ' + t.payouts.map((p) => `#${p.place} ${fmtChips(p.amount)}`).join(' · ');
       settings.appendChild(ladder);
     }
+    renderStructure(t);
     const host = $('wrHostControls');
     host.classList.toggle('hidden', !(t.isHost && t.status === 'registering'));
     $('btnStartNow').disabled = (t.entrants || 0) < 2;
@@ -1349,6 +1707,16 @@
     document.querySelectorAll('#tVisibility button').forEach((b) => {
       b.addEventListener('click', () => setVisibility(b.dataset.vis));
     });
+    document.querySelectorAll('#tStructure button').forEach((b) => {
+      b.addEventListener('click', () => setStructure(b.dataset.structure));
+    });
+    $('tLevelDuration').addEventListener('change', regenerateLevels);
+    $('btnEditLevels').addEventListener('click', toggleLevelsEditor);
+    $('btnAddLevel').addEventListener('click', () => addLevel(false));
+    $('btnAddBreak').addEventListener('click', () => addLevel(true));
+    $('tLevelsBody').addEventListener('input', onLevelsEdit);
+    $('tLevelsBody').addEventListener('change', onLevelsEdit);
+    $('tLevelsBody').addEventListener('click', onLevelsClick);
     $('btnCancelRequest').addEventListener('click', () => {
       if (socket && socket.connected) socket.emit('cancelRequest');
     });
@@ -1470,6 +1838,8 @@
     joinCode,
     showView,
     current: () => current,
+    structure: () => currentStructure,
+    structureRows,
   };
 
   if (document.readyState === 'loading') {

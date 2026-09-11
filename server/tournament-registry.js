@@ -21,6 +21,7 @@ const VISIBILITIES = ['public', 'private', 'invite'];
 // than a rule: nobody runs a home game with fifty at the door.
 const MAX_PENDING = 50;
 const random = require('../random');
+const { clampStructure, summary: structureSummary } = require('../blind-structures');
 
 const TICK_MS = 1200;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -319,9 +320,10 @@ function createTournamentRegistry(deps = {}) {
       tableSize: d.tableSize,
       startChips: d.startChips,
       levelDuration: d.tournament.levelDuration,
+      structure: entry.settings.structure ? entry.settings.structure.name : 'Standard',
       lateRegLevels: d.lateRegLevels,
       lateRegOpen: d.lateRegOpen(),
-      level: d.tournament.currentLevel + 1,
+      level: d.tournament.levelNumber(),
       remaining: entry.status === 'registering' ? total : d.playersRemaining(),
       buyIn: d.buyIn,
       prizePool: d.prizePool(),
@@ -412,8 +414,11 @@ function createTournamentRegistry(deps = {}) {
       waitingReason: entry.waitingReason,
       host: { uid: entry.hostUid, name: shared.hostName },
       isHost: requireHost(entry, uid),
-      settings: { ...entry.settings },
-      ...(includeRoster ? { roster } : {}),
+      // The ladder itself rides only in the full state, like the roster: a
+      // push goes to every player every tick and the structure never changes
+      // after creation. The push carries its summary.
+      settings: { ...entry.settings, structure: structureSummary(entry.settings.structure) },
+      ...(includeRoster ? { roster, structure: entry.settings.structure || null } : {}),
       // Who is waiting at the door. The host's business and nobody else's, so
       // it rides the personal push rather than the shared roster broadcast.
       ...(requireHost(entry, uid) ? { pending: pendingRows(entry) } : {}),
@@ -693,12 +698,16 @@ function createTournamentRegistry(deps = {}) {
     let startsAt = int(payload.startsAt, t);
     if (startsAt < t - 60 * 1000 || startsAt > t + WEEK_MS) startsAt = t;
     const startChips = int(payload.startChips, 5000);
+    const levelDuration = Math.max(30, Math.min(3600, int(payload.levelDuration, 300)));
     return {
       startsAt,
       settings: {
         tableSize: Math.max(2, Math.min(8, int(payload.tableSize, 8))),
         startChips: START_CHIPS.includes(startChips) ? startChips : 5000,
-        levelDuration: Math.max(30, Math.min(3600, int(payload.levelDuration, 300))),
+        levelDuration,
+        // A preset's key, or the host's own levels; anything else runs
+        // Standard. Idempotent, so a saved one comes back as it was.
+        structure: clampStructure(payload.structure, levelDuration),
         lateRegLevels: Math.max(0, Math.min(8, int(payload.lateRegLevels, 3))),
         buyIn: Math.max(0, Math.min(10000, int(payload.buyIn, 0))),
         // Private unless the host says otherwise: on a server anyone can
@@ -799,6 +808,7 @@ function createTournamentRegistry(deps = {}) {
       startChips: settings.startChips,
       buyIn: settings.buyIn,
       levelDuration: settings.levelDuration,
+      blindSchedule: settings.structure ? settings.structure.levels : undefined,
       lateRegLevels: settings.lateRegLevels,
       handPauseMs,
       gameOptions: { gameMode: 'tournament', ...tableOptions },
@@ -811,6 +821,9 @@ function createTournamentRegistry(deps = {}) {
         sendChatField(entry); // and loses one
       },
       onMessage: (msg) => emitAll(entry, 'gameMessage', msg),
+      // A level change, a break included. The line itself arrives as a
+      // gameMessage like any other; this is what the client chimes on.
+      onLevelChange: (info) => emitAll(entry, 'tournamentLevelUp', info),
       onPlayerMoved: (move) => {
         emitTo(entry, move.uid, 'tableMoved', move);
         // They have landed among different people mid-conversation, so send

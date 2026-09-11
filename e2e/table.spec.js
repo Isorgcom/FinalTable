@@ -1887,3 +1887,66 @@ test('an action bubble expires on the clock, not on the next state push', async 
     })
     .toBe(true);
 });
+
+test('the banner reads the ante, a break and the final level, and the Info tab lists the structure', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'LadderWatch');
+  await deal(page);
+  await expect(page.locator('#tournamentBanner')).toBeVisible();
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 1');
+  await expect(page.locator('#tbBlinds')).toHaveText('10/20');
+
+  // Later levels take a whole night to reach, so the clock's state is set by
+  // hand: this is about what the felt says, not how the clock gets there.
+  await page.evaluate(() => {
+    gameState.tournament = {
+      ...gameState.tournament,
+      isActive: true,
+      levelNumber: 6,
+      blinds: { sb: 75, bb: 150, ante: 150 },
+      onBreak: false,
+      finalLevel: false,
+      timeUntilNextLevel: 100,
+    };
+    updateBlindClock();
+  });
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 6');
+  await expect(page.locator('#tbBlinds')).toHaveText('75/150 · ante 150');
+  await expect(page.locator('#tbNext')).toBeVisible();
+
+  await page.evaluate(() => {
+    gameState.tournament = {
+      ...gameState.tournament,
+      levelNumber: 6,
+      blinds: { sb: 100, bb: 200, ante: 200 },
+      onBreak: true,
+      finalLevel: false,
+      timeUntilNextLevel: 300,
+    };
+    updateBlindClock();
+  });
+  await expect(page.locator('#tbLevelLabel')).toContainText('Break');
+  await expect(page.locator('#tbBlinds')).toHaveText('back at 100/200 · ante 200');
+  await expect(page.locator('#tournamentBanner')).toHaveClass(/on-break/);
+
+  await page.evaluate(() => {
+    gameState.tournament = {
+      ...gameState.tournament,
+      levelNumber: 18,
+      blinds: { sb: 3000, bb: 6000, ante: 6000 },
+      onBreak: false,
+      finalLevel: true,
+      timeUntilNextLevel: 0,
+    };
+    updateBlindClock();
+  });
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 18');
+  await expect(page.locator('#tbNext')).toBeHidden();
+  await expect(page.locator('#tournamentBanner')).not.toHaveClass(/on-break/);
+
+  await page.click('#tabInfo');
+  await expect(page.locator('#panelInfoBody')).toContainText('Structure · Standard');
+  await expect(page.locator('#panelInfoBody .structure-row')).toHaveCount(20);
+  expect(pageErrors).toEqual([]);
+});

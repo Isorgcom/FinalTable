@@ -48,6 +48,7 @@ class HandHistory {
       bbIndex: bbIdx,
       smallBlind: blinds.sb,
       bigBlind: blinds.bb,
+      ante: blinds.ante || 0,
       holeCards: {}, // playerId → [card, card], every seat, server-side
       shownPlayerIds: [], // who actually turned them face up at showdown
       communityCards: [],

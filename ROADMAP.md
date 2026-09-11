@@ -20,14 +20,6 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
-### A real blind structure
-
-There is a thirteen-level ladder in `tournament.js`, fixed, from 10/20 to
-1000/2000. `director.js` already accepts a `blindSchedule` option and nothing
-ever passes one, so the wiring is half there. Wanted: choosing a structure when
-the game is made - turbo, deep, slow - editing the levels, seeing the ladder
-before you sit down, and antes, which do not exist at all.
-
 ### Re-entry
 
 Busting should not always be the end of it. Re-entry while late registration is
@@ -95,6 +87,13 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+A real blind structure: Turbo, Standard or Deep when a game is made, or the
+levels edited by hand; antes, posted by the big blind from the level the
+structure says; breaks, which every table sits out; and the ladder in the
+waiting room and the Info tab before anyone sits down. What a host cannot do
+yet is change a level once the game is running, which stays under More
+control, below.
 
 The host at every table: a strip in the host's Chat tab reads and answers
 any table, All announces to every table at once and over the felt, and the

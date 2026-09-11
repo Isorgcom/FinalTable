@@ -21,6 +21,9 @@ test.beforeAll(async () => {
   // a spec that waits for hands to turn over waits out the real pacing.
   process.env.STREET_PAUSE_MS = '400';
   process.env.HAND_PAUSE_MS = '400';
+  // Every test in this file creates a tournament against one in-process
+  // server, and the default cap of eight is reached part way down the file.
+  process.env.MAX_TOURNAMENTS = '50';
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(repoRoot) && !key.includes(`${path.sep}node_modules${path.sep}`)) {
       delete require.cache[key];
@@ -389,4 +392,41 @@ test('a page that is stale at a table says so and reloads once you leave', async
   await expect(guest.locator('#updateStatus')).toBeHidden();
   await expect(guest.locator('#lobbyHome')).toBeVisible();
   await guestContext.close();
+});
+
+test('a host picks a structure, edits a level, and the waiting room shows the ladder', async ({
+  page,
+}) => {
+  await identifyAs(page, 'Host');
+  await page.click('#btnCreateTournament');
+  await expect(page.locator('#lobbyCreate')).toBeVisible();
+  await page.fill('#tName', 'Deep Night');
+  await page.click('#tVisibility button[data-vis="public"]');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#tStructure button[data-structure="deep"]');
+  await expect(page.locator('#tStructureHint')).toContainText('24 levels');
+  await expect(page.locator('#tStructureHint')).toContainText('antes from level 9');
+  await expect(page.locator('#tStructureHint')).toContainText('breaks after levels 8 and 16');
+
+  await page.click('#btnEditLevels');
+  await expect(page.locator('#tLevels')).toBeVisible();
+  await expect(page.locator('#tLevelsBody tr')).toHaveCount(26);
+  await expect(page.locator('#tLevelsBody tr.is-break')).toHaveCount(2);
+  await page.locator('#tLevelsBody tr').nth(1).locator('input[data-col="bb"]').fill('35');
+  await expect(page.locator('#tStructureHint')).toContainText('Custom');
+  // A break at the very end has nothing to pause between; the server drops it.
+  await page.click('#btnAddBreak');
+  await expect(page.locator('#tLevelsBody tr')).toHaveCount(27);
+
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  await expect(page.locator('#wrSettings')).toContainText(
+    'Custom · 24 levels · antes from level 9'
+  );
+  await expect(page.locator('#wrStructure')).toBeVisible();
+  await page.click('#wrStructure summary');
+  await expect(page.locator('#wrStructureList')).toContainText('15/35');
+  await expect(page.locator('#wrStructureList .structure-row')).toHaveCount(26);
+  const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+  expect(list.find((t) => t.name === 'Deep Night')).toMatchObject({ structure: 'Custom' });
 });

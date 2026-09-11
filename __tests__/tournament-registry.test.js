@@ -1447,3 +1447,142 @@ describe('tournament registry', () => {
     expect(registry.tournaments.get('legacy').settings.visibility).toBe('private');
   });
 });
+
+describe('blind structures in the registry', () => {
+  let registry;
+  let io;
+  const names = { h: 'Host', g: 'Guest' };
+  const CUSTOM = {
+    name: 'Sunday',
+    levels: [
+      { sb: 25, bb: 50, ante: 0, duration: 60 },
+      { break: true, duration: 90 },
+      { sb: 50, bb: 100, ante: 100, duration: 60 },
+    ],
+  };
+
+  function makeRegistry(store) {
+    return createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      store,
+      tableOptions: { actionTimeoutMs: 0 },
+      connectedSockets: () => live.values(),
+      socketById: (id) => live.get(id) || null,
+    });
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-11T20:00:00Z'));
+    io = makeIo();
+    live.clear();
+    registry = makeRegistry(undefined);
+  });
+
+  afterEach(() => {
+    registry.stop();
+    jest.useRealTimers();
+  });
+
+  test('a game runs the structure its host chose, and the ladder rides only in the full state', () => {
+    const { entry } = registry.create(
+      'h',
+      {
+        name: 'Fast',
+        startsAt: Date.now() + 60000,
+        structure: 'turbo',
+        levelDuration: 120,
+        visibility: 'public',
+      },
+      makeSocket('sh')
+    );
+    expect(entry.settings.structure.name).toBe('Turbo');
+    expect(entry.settings.structure.levels).toHaveLength(15);
+    expect(entry.settings.structure.levels[0].duration).toBe(120);
+    expect(entry.director.tournament.blindSchedule).toHaveLength(15);
+    expect(entry.director.tournament.blindSchedule[3].ante).toBe(100);
+
+    const full = registry.stateFor(entry, 'h');
+    expect(full.structure.name).toBe('Turbo');
+    expect(full.structure.levels).toHaveLength(15);
+    expect(full.settings.structure).toEqual({
+      name: 'Turbo',
+      levelCount: 15,
+      anteFrom: 4,
+      breaks: [],
+    });
+    const slim = registry.stateFor(entry, 'h', undefined, { includeRoster: false });
+    expect(slim.structure).toBeUndefined();
+    expect(slim.settings.structure).toEqual(full.settings.structure);
+
+    const card = registry.publicList().find((t) => t.id === entry.id);
+    expect(card.structure).toBe('Turbo');
+    expect(card.level).toBe(1);
+  });
+
+  test('a hand-edited structure is persisted and comes back exactly as it was', () => {
+    const store = makeStore();
+    const first = makeRegistry(store);
+    const { entry } = first.create(
+      'h',
+      { name: 'Edited', startsAt: Date.now() + 60000, structure: CUSTOM },
+      makeSocket('sh')
+    );
+    expect(entry.settings.structure.name).toBe('Sunday');
+    expect(entry.settings.structure.levels).toHaveLength(3);
+    first.flush();
+    const saved = store.load()[0].settings.structure;
+    expect(saved).toEqual(entry.settings.structure);
+    first.stop();
+
+    const second = makeRegistry(store);
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back.settings.structure).toEqual(entry.settings.structure);
+    expect(back.director.tournament.blindSchedule[1]).toEqual({
+      sb: 0,
+      bb: 0,
+      ante: 0,
+      duration: 90,
+      break: true,
+    });
+    expect(back.director.tournament.blindSchedule[2].ante).toBe(100);
+    second.stop();
+  });
+
+  test('a structure that cannot be played runs Standard', () => {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Junk', startsAt: Date.now() + 60000, structure: { levels: 'nope' } },
+      makeSocket('sh')
+    );
+    expect(entry.settings.structure.name).toBe('Standard');
+    expect(entry.settings.structure.levels.filter((r) => !r.break)).toHaveLength(18);
+  });
+
+  test('a level change reaches every registered socket as tournamentLevelUp', () => {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Chime', startsAt: Date.now() + 1000, structure: CUSTOM },
+      makeSocket('sh')
+    );
+    registry.join('g', { code: entry.code }, makeSocket('sg'));
+    jest.advanceTimersByTime(2000);
+    expect(entry.status).toBe('running');
+    io.sent.length = 0;
+    entry.director.tournament.currentLevel = 1;
+    entry.director.tournament.onLevelUp(1, entry.director.tournament.getCurrentBlinds());
+    const ups = io.sent.filter((m) => m.event === 'tournamentLevelUp');
+    expect(ups.map((m) => m.to).sort()).toEqual(['sg', 'sh']);
+    expect(ups[0].payload).toEqual({
+      level: 1,
+      blinds: { sb: 50, bb: 100, ante: 100 },
+      onBreak: true,
+      nextLevelIn: expect.any(Number),
+    });
+    const lines = io.sent.filter((m) => m.event === 'gameMessage').map((m) => m.payload);
+    expect(lines).toContain('Break: 90s · play resumes at 50/100 ante 100');
+  });
+});

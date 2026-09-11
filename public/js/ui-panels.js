@@ -103,8 +103,20 @@ function updateBlindClock() {
   }
   banner.classList.remove('hidden');
   const t = gameState.tournament;
-  document.getElementById('tbLevel').textContent = t.currentLevel + 1;
-  document.getElementById('tbBlinds').textContent = t.blinds.sb + '/' + t.blinds.bb;
+  // "Level 6 · 75/150 · ante 150"; on a break, "Break · back at 100/200".
+  // The number counts levels of play, which is what the structure shows.
+  const levelNumber = t.levelNumber || t.currentLevel + 1;
+  const blindsText =
+    t.blinds.sb + '/' + t.blinds.bb + (t.blinds.ante ? ' · ante ' + t.blinds.ante : '');
+  document.getElementById('tbLevelLabel').textContent = t.onBreak
+    ? 'Break · '
+    : 'Level ' + levelNumber + ' · ';
+  document.getElementById('tbBlinds').textContent = t.onBreak
+    ? 'back at ' + blindsText
+    : blindsText;
+  // Nothing follows the final level, so nothing to count down to.
+  document.getElementById('tbNext').classList.toggle('hidden', !!t.finalLevel);
+  banner.classList.toggle('on-break', !!t.onBreak);
   // How many are left in the tournament, which is not how many are left at this
   // table. gameState.players is this table only, so pairing its count with the
   // field's starting number read as a field count and was not one: two players
@@ -235,22 +247,46 @@ function renderInfoTab() {
     body.appendChild(table);
 
     const bb = gameState.bigBlind || 0;
-    const rows = [['Blinds', `${gameState.smallBlind} / ${gameState.bigBlind}`]];
+    const rows = [
+      [
+        'Blinds',
+        `${gameState.smallBlind} / ${gameState.bigBlind}` +
+          (gameState.ante ? ` · ante ${gameState.ante}` : ''),
+      ],
+    ];
     if (me && bb)
       rows.push(['Your stack', `${fmtNum(me.chips)} · ${(me.chips / bb).toFixed(1)} bb`]);
     if (t) {
-      rows.push(['Level', String(t.currentLevel + 1)]);
+      rows.push(['Level', t.onBreak ? 'Break' : String(t.levelNumber || t.currentLevel + 1)]);
       rows.push(['Next level', formatClock(_blindClockRemaining), 'infoNextLevel']);
       // A multi-table field shares one clock across tables; its head count
       // belongs to the Field section, not this table's roster.
       if (!field) rows.push(['Alive', `${alive} / ${t.startingPlayers}`]);
     } else if (field) {
-      rows.push(['Level', String(field.level)]);
+      rows.push(['Level', field.onBreak ? 'Break' : String(field.level)]);
       rows.push(['Next level', formatClock(field.nextLevelIn)]);
     }
     const blinds = infoSection('Blinds');
     blinds.appendChild(infoGrid(rows));
     body.appendChild(blinds);
+
+    // The whole ladder, with where the clock is on it. The lobby keeps the
+    // structure from the full tournament state and knows how to draw it.
+    const structure =
+      window.Lobby && typeof Lobby.structure === 'function' ? Lobby.structure() : null;
+    if (structure && Array.isArray(structure.levels) && structure.levels.length) {
+      const section = infoSection(`Structure · ${structure.name}`);
+      const list = document.createElement('div');
+      list.className = 'structure-list';
+      const where = t
+        ? { number: t.levelNumber || t.currentLevel + 1, onBreak: !!t.onBreak }
+        : field && field.isRunning
+          ? { number: field.level, onBreak: !!field.onBreak }
+          : null;
+      Lobby.structureRows(structure.levels, where).forEach((row) => list.appendChild(row));
+      section.appendChild(list);
+      body.appendChild(section);
+    }
   }
 
   if (finished) {
@@ -498,7 +534,9 @@ function renderReplayDetail(hand) {
   replayTitle.append(
     backBtn,
     document.createTextNode(
-      `Hand ${hand.handNum} · Pot ${hand.pot} · Blinds ${hand.smallBlind}/${hand.bigBlind} · Ended on ${phaseLabel}`
+      `Hand ${hand.handNum} · Pot ${hand.pot} · Blinds ${hand.smallBlind}/${hand.bigBlind}` +
+        (hand.ante ? ` ante ${hand.ante}` : '') +
+        ` · Ended on ${phaseLabel}`
     )
   );
   const replayWinnerSummary = document.getElementById('replayWinnerSummary');

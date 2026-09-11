@@ -857,3 +857,127 @@
     background: linear-gradient(180deg, transparent, var(--bg-deep) 40%);
   }
 }
+
+/* ── Blind structure ── */
+/* A link-shaped button: what it opens is optional and below the fold of the
+   form, so it should not weigh what Create weighs. */
+.btn-text {
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  color: var(--gold);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.levels-editor {
+  margin-top: 4px;
+}
+.levels-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+.levels-table th {
+  padding: 4px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--smoke);
+  text-align: left;
+}
+.levels-table td {
+  padding: 2px 3px;
+}
+.levels-table td.num {
+  color: var(--smoke);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+.levels-table input[type='number'] {
+  width: 100%;
+  min-width: 3.2em;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(92, 61, 26, 0.4);
+  border-radius: 4px;
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  outline: none;
+  color-scheme: dark;
+}
+.levels-table input[type='number']:focus {
+  border-color: var(--gold);
+}
+.levels-table input:disabled {
+  opacity: 0.3;
+}
+.levels-table tr.is-break td {
+  background: rgba(201, 168, 76, 0.06);
+}
+.levels-table .row-remove {
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  color: var(--smoke);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.levels-table .row-remove:hover {
+  color: var(--cream);
+}
+.levels-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* The ladder as lines: in the waiting room, and in the table's Info tab. */
+.wr-structure {
+  margin: -6px 0 12px;
+  font-size: 0.72rem;
+  color: var(--smoke);
+}
+.wr-structure summary {
+  cursor: pointer;
+  color: var(--gold);
+}
+.structure-list {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+.structure-row {
+  display: flex;
+  gap: 10px;
+  line-height: 1.7;
+  color: var(--smoke);
+}
+.structure-row .s-num {
+  width: 2.6em;
+  flex: none;
+}
+.structure-row .s-blinds {
+  min-width: 7em;
+  color: var(--cream);
+}
+.structure-row .s-ante {
+  min-width: 6em;
+}
+.structure-row .s-len {
+  margin-left: auto;
+}
+.structure-row.is-break .s-blinds {
+  color: var(--gold);
+  opacity: 0.85;
+}
+.structure-row.current,
+.structure-row.current .s-blinds {
+  color: var(--gold);
+}

@@ -656,6 +656,10 @@
   border-color: #c9a84c;
   box-shadow: 0 0 0 1px rgba(201, 168, 76, 0.35);
 }
+/* A break: the level line is not a level, so it drops the gold. */
+.tournament-banner.on-break .tb-level {
+  color: var(--cream);
+}
 /* The host's announcement over the felt: below the banner's lane, on its
    own, because the banner hides between hands and that is when a host talks. */
 .host-note {

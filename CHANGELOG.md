@@ -13,6 +13,33 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- A blind structure to choose when a game is made: Turbo, Standard or Deep,
+  or Edit levels and set every level's blinds, ante, length and breaks by
+  hand. The waiting room says which and lists the whole ladder before anyone
+  sits down, the lobby card names it, and the table's Info tab shows it with
+  the level the clock is on.
+- Antes. From the level the structure says, the big blind posts an ante equal
+  to the big blind straight into the pot, before the blind; a short stack
+  covers the ante first. The chat says who posted it, the banner and the Info
+  tab show it, and the hand history keeps it.
+- Breaks. A structure can carry breaks; when one arrives the hand in play
+  finishes, no table deals until it is over, the banner reads Break with the
+  blinds play resumes at, and late registration through a level stays open
+  through the break after it.
+- A chime on every level change, breaks included.
+
+### Changed
+
+- A new game runs Standard unless the host picks otherwise: eighteen levels
+  from 10/20 to 3000/6000, antes from level 6 and a break after levels 6 and
+  12, in place of the fixed thirteen. The first six levels are the ones the
+  old ladder had. The level length chosen at creation is still the length of
+  every level, breaks included, unless the host edits one.
+- Level numbers count levels of play, so a break never takes a number; and
+  the final level no longer counts down to a level that does not come.
+
 ## 0.6.0 - 2026-09-11
 
 ### Added

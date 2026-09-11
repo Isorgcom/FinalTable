@@ -319,6 +319,42 @@
               </select>
             </div>
           </div>
+          <div class="form-group">
+            <label>Blind structure</label>
+            <div class="seg" id="tStructure" role="group" aria-label="Blind structure">
+              <button type="button" data-structure="turbo">Turbo</button>
+              <button type="button" data-structure="standard" class="active">Standard</button>
+              <button type="button" data-structure="deep">Deep</button>
+            </div>
+            <div class="seg-hint" id="tStructureHint"></div>
+            <!-- The levels themselves, for a host who wants them other than
+                 the preset has them. Closed until asked for: most nights the
+                 preset is the structure, and a grid of numbers is not what a
+                 create form should open on. -->
+            <button class="btn-text" id="btnEditLevels" type="button" aria-expanded="false">
+              Edit levels
+            </button>
+            <div class="levels-editor hidden" id="tLevels">
+              <table class="levels-table" aria-label="Blind levels">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Small</th>
+                    <th>Big</th>
+                    <th>Ante</th>
+                    <th>Min</th>
+                    <th>Break</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="tLevelsBody"></tbody>
+              </table>
+              <div class="levels-actions">
+                <button class="btn-secondary" id="btnAddLevel" type="button">Add level</button>
+                <button class="btn-secondary" id="btnAddBreak" type="button">Add break</button>
+              </div>
+            </div>
+          </div>
           <div class="form-row form-row-3">
             <div class="form-group">
               <label for="tLateRegLevels">Late registration</label>
@@ -368,6 +404,13 @@
             <div class="wr-roster" id="wrPendingList" aria-label="Waiting to be let in"></div>
           </div>
           <div class="wr-settings" id="wrSettings"></div>
+          <!-- The ladder, before you sit down. Closed by default: the line
+               above says what kind of night it is, and this is for whoever
+               wants to know when the antes start. -->
+          <details class="wr-structure hidden" id="wrStructure">
+            <summary>Blind structure</summary>
+            <div class="structure-list" id="wrStructureList"></div>
+          </details>
           <!-- Before the cards are out there is no table to talk at, so the
                waiting room carries the conversation until one exists. -->
           <div class="wr-chat" id="wrChat">
@@ -473,10 +516,12 @@
       <div class="table-stage" id="tableStage">
         <div class="tournament-banner hidden" id="tournamentBanner">
           <div class="tb-level">
-            Level <span id="tbLevel">1</span> &middot; <span id="tbBlinds">10/20</span>
+            <span id="tbLevelLabel">Level 1 &middot; </span><span id="tbBlinds">10/20</span>
           </div>
           <div>
-            <span class="tb-timer">next <span id="tbTimer">3:00</span></span> &middot;
+            <span id="tbNext"
+              ><span class="tb-timer">next <span id="tbTimer">3:00</span></span> &middot;
+            </span>
             <span class="tb-alive"><span id="tbAlive">0</span> left</span>
           </div>
           <!-- The bubble was a line in a side panel that is often closed. It is

@@ -881,4 +881,33 @@ describe('Tournament socket layer', () => {
     // And it does not leak whether this socket is privileged.
     expect(blob).not.toContain('isAdmin');
   });
+
+  test('a custom structure goes up with the create and comes back in the full state', async () => {
+    const host = await connectClient();
+    const created = await createTournament(host, {
+      structure: {
+        name: 'Mine',
+        levels: [
+          { sb: 25, bb: 50, ante: 0, duration: 60 },
+          { break: true, duration: 90 },
+          { sb: 50, bb: 100, ante: 100, duration: 60 },
+        ],
+      },
+    });
+    expect(created.code).toMatch(/^[A-Z2-9]{5}$/);
+    // The full state follows the join at once, before a listener could be
+    // set; asking for it again is the same payload without the race.
+    const state = waitFor(host, 'tournamentState', (st) => !!st.structure);
+    host.emit('requestTournamentState');
+    const full = await state;
+    expect(full.structure.name).toBe('Mine');
+    expect(full.structure.levels).toHaveLength(3);
+    expect(full.structure.levels[1]).toEqual({ sb: 0, bb: 0, ante: 0, duration: 90, break: true });
+    expect(full.settings.structure).toEqual({
+      name: 'Mine',
+      levelCount: 2,
+      anteFrom: 2,
+      breaks: [1],
+    });
+  });
 });

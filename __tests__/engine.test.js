@@ -2966,3 +2966,118 @@ describe('Turning the hands face up', () => {
     expect(opponentCards(game, 'p1')).toEqual({ p2: null });
   });
 });
+
+// ============================================================
+//  The big-blind ante
+// ============================================================
+describe('big-blind ante', () => {
+  function table(ante, names = ['A', 'B', 'C']) {
+    const game = new PokerGame('ante', { smallBlind: 10, bigBlind: 20, ante });
+    game.onMessage = () => {};
+    game.onUpdate = () => {};
+    game.onChat = () => {};
+    game.onRoundEnd = () => {};
+    for (const [i, name] of names.entries()) game.addPlayer({ id: `p${i + 1}`, name });
+    return game;
+  }
+
+  test('the big blind posts the ante before the blind, into the pot and off the bet line', () => {
+    const game = table(20);
+    game.dealerIndex = 0;
+    game.startRound();
+    const bb = game.players[game.bbIndex];
+    const sb = game.players[game.sbIndex];
+    expect(bb.ante).toBe(20);
+    expect(bb.bet).toBe(20);
+    expect(bb.totalBet).toBe(20);
+    expect(bb.chips).toBe(960);
+    expect(sb.ante).toBe(0);
+    expect(game.pot).toBe(50);
+    expect(game.anteTotal).toBe(20);
+    // Dead money: the price to call is still the big blind.
+    expect(game.currentBet).toBe(20);
+    expect(game.minRaise).toBe(20);
+    expect(game.totalChips()).toBe(3000);
+    expect(game.handHistory.current.ante).toBe(20);
+  });
+
+  test('a short big blind covers the ante first and is all in', () => {
+    const game = table(20);
+    game.dealerIndex = 0;
+    // Seats are drawn: the short stack is whoever the deal puts in the big blind.
+    const bbIdx = game.getNextActiveIndex(game.getNextActiveIndex(0));
+    game.players[bbIdx].chips = 15;
+    game.startRound();
+    const bb = game.players[game.bbIndex];
+    expect(game.bbIndex).toBe(bbIdx);
+    expect(bb.ante).toBe(15);
+    expect(bb.bet).toBe(0);
+    expect(bb.allIn).toBe(true);
+    expect(game.pot).toBe(25);
+    expect(game.totalChips()).toBe(2015);
+  });
+
+  test('the antes go to the best hand at showdown', () => {
+    const game = table(20, ['Button', 'Big']);
+    game.dealerIndex = 0;
+    game.startRound();
+    // Heads up the dealer is the small blind; the other seat is the big blind.
+    const button = game.players[game.sbIndex];
+    const big = game.players[game.bbIndex];
+    expect(game.pot).toBe(50);
+    game.handleAction(button.id, 'call');
+    game.handleAction(big.id, 'check');
+    expect(game.pot).toBe(60);
+
+    game.phase = 'river';
+    game.communityCards = [
+      Card('hearts', 10),
+      Card('spades', 9),
+      Card('diamonds', 8),
+      Card('clubs', 3),
+      Card('hearts', 2),
+    ];
+    button.holeCards = [Card('diamonds', 14), Card('hearts', 14)];
+    big.holeCards = [Card('clubs', 13), Card('spades', 12)];
+    game.showdown();
+
+    expect(button.chips).toBe(1040);
+    expect(big.chips).toBe(960);
+    expect(game.lastRoundRefunds).toEqual([]);
+    expect(game.totalChips()).toBe(2000);
+  });
+
+  test('on a fold-out the last player standing takes the antes too', () => {
+    const game = table(20);
+    game.dealerIndex = 0;
+    game.startRound();
+    const bb = game.players[game.bbIndex];
+    game.handleAction(game.players[game.currentPlayerIndex].id, 'fold');
+    game.handleAction(game.players[game.currentPlayerIndex].id, 'fold');
+    expect(game.isRunning).toBe(false);
+    expect(bb.chips).toBe(1010);
+    expect(game.totalChips()).toBe(3000);
+  });
+
+  test('a hand narrates the ante, and says nothing about one when there is none', () => {
+    const game = table(20, ['Hero', 'Villain']);
+    const lines = [];
+    game.onMessage = (msg, meta) => lines.push({ msg, meta });
+    game.startRound();
+    const ofKind = (kind) => lines.filter((l) => l.meta && l.meta.kind === kind);
+    expect(ofKind('handStart')[0].msg).toMatch(/blinds 10\/20 ante 20$/);
+    expect(ofKind('blind').map((l) => l.msg)).toEqual([
+      expect.stringMatching(/ posts the ante 20$/),
+      expect.stringMatching(/ posts small blind 10$/),
+      expect.stringMatching(/ posts big blind 20$/),
+    ]);
+
+    const quiet = table(0, ['Hero', 'Villain']);
+    const quietLines = [];
+    quiet.onMessage = (msg, meta) => quietLines.push({ msg, meta });
+    quiet.startRound();
+    expect(quietLines.filter((l) => l.meta && l.meta.kind === 'blind')).toHaveLength(2);
+    expect(quietLines.some((l) => /ante/.test(l.msg))).toBe(false);
+    expect(quiet.getStateForPlayer('p1').ante).toBe(0);
+  });
+});

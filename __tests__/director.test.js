@@ -1102,3 +1102,132 @@ describe('Lobby phase 2: late registration, unregister, roster, placements', () 
     expect(d.canStartHand(table)).toBe(true);
   });
 });
+
+// ============================================================
+//  Blind structures: breaks, antes and the structure a restore runs on
+// ============================================================
+describe('blind structures', () => {
+  const SCHEDULE = [
+    { sb: 10, bb: 20, ante: 0, duration: 99999 },
+    { break: true, duration: 99999 },
+    { sb: 20, bb: 40, ante: 40, duration: 99999 },
+    { sb: 30, bb: 60, ante: 60, duration: 99999 },
+  ];
+
+  function levelUp(d, level) {
+    d.tournament.currentLevel = level;
+    d.tournament.onLevelUp(level, d.tournament.getCurrentBlinds());
+  }
+
+  test('a break holds every table, a hand in play finishes, and dealing resumes after it', () => {
+    const said = [];
+    const d = makeDirector(8, {
+      tableSize: 4,
+      blindSchedule: SCHEDULE,
+      onMessage: (m) => said.push(m),
+    });
+    d.start();
+    const [a, b] = d.tables;
+    expect(d.canStartHand(a)).toBe(true);
+    a.startRound();
+    expect(a.isRunning).toBe(true);
+
+    levelUp(d, 1);
+    expect(d.tournament.onBreak()).toBe(true);
+    expect(said.some((m) => /^Break: 99999s · play resumes at 20\/40 ante 40$/.test(m))).toBe(true);
+    // The hand already dealt plays on at the blinds it was dealt with.
+    expect(a.isRunning).toBe(true);
+    expect(a.bigBlind).toBe(20);
+    // Nothing new deals.
+    expect(d.canStartHand(b)).toBe(false);
+    expect(d.startHandsWhereReady()).toBe(0);
+
+    levelUp(d, 2);
+    expect(d.tournament.onBreak()).toBe(false);
+    expect(said.some((m) => /^Blinds up: 20\/40 ante 40 \(level 2\)$/.test(m))).toBe(true);
+    for (const t of d.tables) {
+      expect(t.smallBlind).toBe(20);
+      expect(t.bigBlind).toBe(40);
+      expect(t.ante).toBe(40);
+    }
+    expect(d.canStartHand(b)).toBe(true);
+    b.startRound();
+    expect(b.ante).toBe(40);
+    expect(b.players[b.bbIndex].ante).toBe(40);
+    d.stop();
+  });
+
+  test('late registration stays open through the break after its last level', () => {
+    const said = [];
+    const d = makeDirector(4, {
+      tableSize: 4,
+      lateRegLevels: 1,
+      blindSchedule: SCHEDULE,
+      onMessage: (m) => said.push(m),
+    });
+    d.start();
+    expect(d.lateRegOpen()).toBe(true);
+    levelUp(d, 1); // the break after level 1
+    expect(d.lateRegOpen()).toBe(true);
+    expect(said.filter((m) => /Late registration closed/.test(m))).toHaveLength(0);
+    levelUp(d, 2); // level 2 begins
+    expect(d.lateRegOpen()).toBe(false);
+    expect(said.filter((m) => /Late registration closed/.test(m))).toHaveLength(1);
+    d.stop();
+  });
+
+  test('onLevelChange fires with the level number and the break flag', () => {
+    const changes = [];
+    const d = makeDirector(4, {
+      tableSize: 4,
+      blindSchedule: SCHEDULE,
+      onLevelChange: (info) => changes.push(info),
+    });
+    d.start();
+    levelUp(d, 1);
+    levelUp(d, 2);
+    expect(changes).toEqual([
+      {
+        level: 1,
+        blinds: { sb: 20, bb: 40, ante: 40 },
+        onBreak: true,
+        nextLevelIn: expect.any(Number),
+      },
+      {
+        level: 2,
+        blinds: { sb: 20, bb: 40, ante: 40 },
+        onBreak: false,
+        nextLevelIn: expect.any(Number),
+      },
+    ]);
+    expect(d.fieldSummary()).toMatchObject({
+      level: 2,
+      levelCount: 3,
+      onBreak: false,
+      finalLevel: false,
+    });
+    d.stop();
+  });
+
+  test('a restore runs on the structure the field was dealt with', () => {
+    const d = makeDirector(4, { tableSize: 4, blindSchedule: SCHEDULE });
+    d.start();
+    levelUp(d, 2);
+    const snap = d.snapshot();
+    expect(snap.clock.schedule).toHaveLength(4);
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: snap.tableSize,
+      startChips: snap.startChips,
+      levelDuration: 300, // Standard, which the snapshot must override
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    revived.restoreFrom(snap);
+    expect(revived.tournament.blindSchedule).toEqual(d.tournament.blindSchedule);
+    expect(revived.tournament.currentLevel).toBe(2);
+    expect(revived.tables[0].ante).toBe(40);
+    expect(revived.fieldSummary().level).toBe(2);
+    revived.stop();
+    d.stop();
+  });
+});

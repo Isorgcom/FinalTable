@@ -101,6 +101,7 @@ as the memory ceiling and watch the clock separately on a small box.
 | `director.js`                                                | `TournamentDirector`: N tables on one clock, seating, balancing, breaking, payouts           |
 | `engine.js`                                                  | `PokerGame`: one table, one hand loop, betting and showdown                                  |
 | `tournament.js`                                              | Blind schedule, level timer, elimination ledger                                              |
+| `blind-structures.js`                                        | The Turbo, Standard and Deep presets, the clamp on a hand-edited structure, the rung rule    |
 | `hand-eval.js`, `hand-describe.js`                           | Hand ranking, and the hand in words for the table's readout                                  |
 | `public/js/lobby.js`, `socket-client.js`                     | The lobby and the one socket for the life of the page                                        |
 | `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Info / Stats / History panel                  |

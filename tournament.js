@@ -1,29 +1,22 @@
 // tournament.js - Sit & Go Tournament Mode
 // Blind levels increase on a timer, players eliminated when busted
 
+const { materialize } = require('./blind-structures');
+
 class Tournament {
   constructor(options = {}) {
     this.isActive = false;
     this.startTime = null;
 
-    // Blind schedule: each level lasts `levelDuration` seconds
+    // The level length a row falls back to when it carries none of its own:
+    // a hand-built schedule in a test, or a caller from before rows had one.
     this.levelDuration = options.levelDuration || 180; // 3 minutes per level
     this.currentLevel = 0;
-    this.blindSchedule = options.blindSchedule || [
-      { sb: 10, bb: 20 },
-      { sb: 15, bb: 30 },
-      { sb: 25, bb: 50 },
-      { sb: 40, bb: 80 },
-      { sb: 50, bb: 100 },
-      { sb: 75, bb: 150 },
-      { sb: 100, bb: 200 },
-      { sb: 150, bb: 300 },
-      { sb: 200, bb: 400 },
-      { sb: 300, bb: 600 },
-      { sb: 500, bb: 1000 },
-      { sb: 750, bb: 1500 },
-      { sb: 1000, bb: 2000 },
-    ];
+    // Standard, at this clock's level length: the rows come without one so
+    // setSchedule gives them the length asked for, clamped or not.
+    this.setSchedule(
+      options.blindSchedule || materialize('standard').levels.map(({ duration: _d, ...row }) => row)
+    );
 
     // When a TournamentDirector runs several tables on one clock, it supplies
     // a provider returning every player in the field. Without it the class
@@ -36,6 +29,27 @@ class Tournament {
     this.timer = null;
     this.onLevelUp = null; // callback(level, blinds)
     this.onTournamentEnd = null; // callback(results)
+  }
+
+  // The schedule as the clock runs it: every row with its own length, and
+  // the second at which each begins worked out once rather than on every
+  // tick. A break is a row with no blinds.
+  setSchedule(rows) {
+    const list = Array.isArray(rows) && rows.length ? rows : [{ sb: 10, bb: 20 }];
+    this.blindSchedule = list.map((r) => ({
+      sb: r.sb || 0,
+      bb: r.bb || 0,
+      ante: r.ante || 0,
+      duration: r.duration > 0 ? r.duration : this.levelDuration,
+      break: !!r.break,
+    }));
+    this._startsAt = [];
+    let t = 0;
+    for (const row of this.blindSchedule) {
+      this._startsAt.push(t);
+      t += row.duration;
+    }
+    this._startsAt.push(t);
   }
 
   start(playerCount) {
@@ -59,12 +73,14 @@ class Tournament {
   // The clock as a plain object. Elapsed rather than the absolute start, so a
   // restore resumes where the field left off instead of charging it for the
   // time the server was down: a tournament that crashed at level 3 and came
-  // back ten minutes later is still at level 3.
+  // back ten minutes later is still at level 3. The schedule rides along, so
+  // the field comes back on the structure it was dealt with.
   snapshotClock() {
     return {
       currentLevel: this.currentLevel,
       elapsedMs: this.startTime ? Date.now() - this.startTime : 0,
       levelDuration: this.levelDuration,
+      schedule: this.blindSchedule.map((r) => ({ ...r })),
       startingPlayers: this.startingPlayers,
       eliminations: this.eliminations.map((e) => ({ ...e })),
     };
@@ -75,12 +91,15 @@ class Tournament {
   // not recomputed.
   resumeFrom(snap = {}) {
     this.isActive = true;
-    this.currentLevel = Number.isInteger(snap.currentLevel) ? snap.currentLevel : 0;
+    if (snap.levelDuration) this.levelDuration = snap.levelDuration;
+    if (Array.isArray(snap.schedule) && snap.schedule.length) this.setSchedule(snap.schedule);
+    this.currentLevel = Number.isInteger(snap.currentLevel)
+      ? Math.min(snap.currentLevel, this.blindSchedule.length - 1)
+      : 0;
     this.startingPlayers = snap.startingPlayers || 0;
     this.eliminations = Array.isArray(snap.eliminations)
       ? snap.eliminations.map((e) => ({ ...e }))
       : [];
-    if (snap.levelDuration) this.levelDuration = snap.levelDuration;
     const elapsed = Math.max(0, Number(snap.elapsedMs) || 0);
     this.startTime = Date.now() - elapsed;
 
@@ -100,13 +119,23 @@ class Tournament {
     }
   }
 
+  _elapsedSeconds() {
+    return this.startTime ? (Date.now() - this.startTime) / 1000 : 0;
+  }
+
+  // The row the clock is on after this many seconds; the last row holds.
+  _levelAt(elapsed) {
+    let level = 0;
+    for (let i = 1; i < this.blindSchedule.length; i++) {
+      if (this._startsAt[i] <= elapsed) level = i;
+      else break;
+    }
+    return level;
+  }
+
   checkLevelUp() {
     if (!this.isActive) return;
-    const elapsed = (Date.now() - this.startTime) / 1000;
-    const newLevel = Math.min(
-      Math.floor(elapsed / this.levelDuration),
-      this.blindSchedule.length - 1
-    );
+    const newLevel = this._levelAt(this._elapsedSeconds());
 
     if (newLevel > this.currentLevel) {
       this.currentLevel = newLevel;
@@ -116,15 +145,52 @@ class Tournament {
     }
   }
 
+  _row(index = this.currentLevel) {
+    return this.blindSchedule[Math.min(Math.max(0, index), this.blindSchedule.length - 1)];
+  }
+
+  isFinalLevel() {
+    return this.currentLevel >= this.blindSchedule.length - 1;
+  }
+
+  onBreak() {
+    return this._row().break;
+  }
+
+  // The blinds in play: this level's, or on a break, the level play resumes
+  // at, so a table stamped during the break is stamped with what it will deal.
   getCurrentBlinds() {
-    return this.blindSchedule[Math.min(this.currentLevel, this.blindSchedule.length - 1)];
+    let row = this._row();
+    if (row.break) {
+      const i = this.currentLevel;
+      row =
+        this.blindSchedule.slice(i + 1).find((r) => !r.break) ||
+        [...this.blindSchedule.slice(0, i)].reverse().find((r) => !r.break) ||
+        row;
+    }
+    return { sb: row.sb, bb: row.bb, ante: row.ante };
+  }
+
+  // The number a player sees. Levels of play count; a break carries the
+  // number of the level before it, so "through level 3" reaches the end of
+  // the break that follows level 3.
+  levelNumber() {
+    let n = 0;
+    for (let i = 0; i <= Math.min(this.currentLevel, this.blindSchedule.length - 1); i++) {
+      if (!this.blindSchedule[i].break) n++;
+    }
+    return n;
+  }
+
+  playLevelCount() {
+    return this.blindSchedule.filter((r) => !r.break).length;
   }
 
   getTimeUntilNextLevel() {
     if (!this.isActive || !this.startTime) return 0;
-    const elapsed = (Date.now() - this.startTime) / 1000;
-    const nextLevelAt = (this.currentLevel + 1) * this.levelDuration;
-    return Math.max(0, Math.ceil(nextLevelAt - elapsed));
+    if (this.isFinalLevel()) return 0;
+    const nextLevelAt = this._startsAt[this.currentLevel + 1];
+    return Math.max(0, Math.ceil(nextLevelAt - this._elapsedSeconds()));
   }
 
   recordElimination(playerName, handNum, uid = null) {
@@ -184,7 +250,7 @@ class Tournament {
       duration: this.startTime ? Date.now() - this.startTime : 0,
       totalHands:
         this.eliminations.length > 0 ? Math.max(...this.eliminations.map((e) => e.handNum)) : 0,
-      finalLevel: this.currentLevel,
+      finalLevel: this.levelNumber(),
     };
   }
 
@@ -192,6 +258,10 @@ class Tournament {
     return {
       isActive: this.isActive,
       currentLevel: this.currentLevel,
+      levelNumber: this.levelNumber(),
+      levelCount: this.playLevelCount(),
+      onBreak: this.onBreak(),
+      finalLevel: this.isFinalLevel(),
       blinds: this.getCurrentBlinds(),
       timeUntilNextLevel: this.getTimeUntilNextLevel(),
       levelDuration: this.levelDuration,

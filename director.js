@@ -33,6 +33,15 @@ function payoutPercentagesFor(fieldSize) {
   return PAYOUT_STRUCTURES.find((s) => fieldSize <= s.upTo).pct;
 }
 
+// "75/150 ante 150", or just the blinds when there is no ante.
+function blindsText(blinds) {
+  return `${blinds.sb}/${blinds.bb}` + (blinds.ante ? ` ante ${blinds.ante}` : '');
+}
+
+function fmtLength(seconds) {
+  return seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds}s`;
+}
+
 class TournamentDirector {
   constructor(options = {}) {
     this.id = options.id || random.randomId('t_');
@@ -90,6 +99,9 @@ class TournamentDirector {
     // Fired for a human who busts, with their place, before they leave the
     // table, so a host can keep sending them that table as a spectator.
     this.onPlayerEliminated = options.onPlayerEliminated || null;
+    // Fired on every change of level, a break included, with what a client
+    // needs to mark the moment.
+    this.onLevelChange = options.onLevelChange || null;
   }
 
   // ── Field queries ────────────────────────────────────────────────────────
@@ -169,7 +181,10 @@ class TournamentDirector {
       onBubble: this.isOnBubble(),
       inTheMoney: this.paidPlaces ? alive.length <= this.paidPlaces : false,
       blinds: this.tournament.getCurrentBlinds(),
-      level: this.tournament.currentLevel + 1,
+      level: this.tournament.levelNumber(),
+      levelCount: this.tournament.playLevelCount(),
+      onBreak: this.tournament.onBreak(),
+      finalLevel: this.tournament.isFinalLevel(),
       nextLevelIn: this.tournament.getTimeUntilNextLevel(),
     };
   }
@@ -203,7 +218,9 @@ class TournamentDirector {
   }
 
   lateRegOpen() {
-    return this.isRunning && !this.finished && this.tournament.currentLevel < this.lateRegLevels;
+    // Levels of play count, and a break carries the number of the level
+    // before it, so "through level 3" stays open for the break after it.
+    return this.isRunning && !this.finished && this.tournament.levelNumber() <= this.lateRegLevels;
   }
 
   // Late registration: a newcomer sits down with the starting stack at the
@@ -225,6 +242,7 @@ class TournamentDirector {
       const blinds = this.tournament.getCurrentBlinds();
       table.smallBlind = blinds.sb;
       table.bigBlind = blinds.bb;
+      table.ante = blinds.ante;
     }
     this._expectedChips += this.startChips;
     const seated = table.addPlayer({
@@ -325,12 +343,7 @@ class TournamentDirector {
     this.tournament.start(this.entrants.length);
 
     this._wireLevelUp();
-
-    const blinds = this.tournament.getCurrentBlinds();
-    for (const table of this.tables) {
-      table.smallBlind = blinds.sb;
-      table.bigBlind = blinds.bb;
-    }
+    this._stampBlinds(this.tournament.getCurrentBlinds());
 
     this._say(
       `Tournament started: ${this.entrants.length} players across ${tableCount} table${tableCount === 1 ? '' : 's'}` +
@@ -441,6 +454,9 @@ class TournamentDirector {
   canStartHand(table) {
     if (!this.isRunning || this.finished || this._paused) return false;
     if (table.isRunning) return false;
+    // A break: the hand in play finishes and nothing new is dealt until the
+    // clock moves on. tick() picks dealing back up by itself.
+    if (this.tournament.onBreak()) return false;
     if (
       this.handPauseMs &&
       table._handEndedAt &&
@@ -843,18 +859,43 @@ class TournamentDirector {
   // a resumed tournament needs the same wiring a fresh one gets.
   _wireLevelUp() {
     this.tournament.onLevelUp = (level, blinds) => {
-      for (const table of this.tables) {
-        table.smallBlind = blinds.sb;
-        table.bigBlind = blinds.bb;
+      const onBreak = this.tournament.onBreak();
+      const number = this.tournament.levelNumber();
+      if (onBreak) {
+        // The tables keep the blinds they have: a hand still running plays
+        // out at its own level, and nothing deals until the break is over.
+        const row = this.tournament.blindSchedule[level];
+        this._say(`Break: ${fmtLength(row.duration)} · play resumes at ${blindsText(blinds)}`);
+      } else {
+        this._stampBlinds(blinds);
+        this._say(`Blinds up: ${blindsText(blinds)} (level ${number})`);
       }
-      this._say(`Blinds up: ${blinds.sb}/${blinds.bb} (level ${level + 1})`);
       if (this.lateRegLevels > 0 && !this._lateRegClosedAnnounced && !this.lateRegOpen()) {
         this._lateRegClosedAnnounced = true;
         this._say(
           `Late registration closed: ${this.entrants.length} entrants, ${this.paidPlaces} paid`
         );
       }
+      if (this.onLevelChange) {
+        this.onLevelChange({
+          level: number,
+          blinds: { ...blinds },
+          onBreak,
+          nextLevelIn: this.tournament.getTimeUntilNextLevel(),
+        });
+      }
     };
+  }
+
+  // Every table takes the level's blinds, so a player moved at level 6 does
+  // not find themselves playing level 3 blinds. The engine re-reads the
+  // clock at each deal anyway; this is what the table shows between hands.
+  _stampBlinds(blinds) {
+    for (const table of this.tables) {
+      table.smallBlind = blinds.sb;
+      table.bigBlind = blinds.bb;
+      table.ante = blinds.ante;
+    }
   }
 
   // A table is only worth recording between hands: mid-hand its stacks are
@@ -967,11 +1008,7 @@ class TournamentDirector {
     this._expectedChips = this.totalChips();
     this.tournament.resumeFrom(snap.clock || {});
     this._wireLevelUp();
-    const blinds = this.tournament.getCurrentBlinds();
-    for (const table of this.tables) {
-      table.smallBlind = blinds.sb;
-      table.bigBlind = blinds.bb;
-    }
+    this._stampBlinds(this.tournament.getCurrentBlinds());
     return true;
   }
 

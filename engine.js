@@ -44,6 +44,9 @@ class PokerGame {
     this.id = id;
     this.smallBlind = options.smallBlind || 10;
     this.bigBlind = options.bigBlind || 20;
+    // A big-blind ante: the big blind posts it, into the pot, before the
+    // blind. Zero at any level without one.
+    this.ante = options.ante || 0;
     this.startChips = options.startChips || 1000;
     this.maxPlayers = options.maxPlayers || DEFAULT_MAX_PLAYERS;
     this.timeBankGrantMs = options.timeBankGrantMs || TIME_BANK_GRANT_MS;
@@ -52,6 +55,7 @@ class PokerGame {
     this.communityCards = [];
     this.pot = 0;
     this.sidePots = [];
+    this.anteTotal = 0; // dead money this hand, awarded with the main pot
     this.phase = 'waiting';
     this.dealerIndex = 0;
     this.currentPlayerIndex = 0;
@@ -442,12 +446,14 @@ class PokerGame {
     this.communityCards = [];
     this.pot = 0;
     this.sidePots = [];
+    this.anteTotal = 0;
     this.currentBet = 0;
     // Tournament: update blinds from current level
     if (this.tournament && this.tournament.isActive) {
       const blinds = this.tournament.getCurrentBlinds();
       this.smallBlind = blinds.sb;
       this.bigBlind = blinds.bb;
+      this.ante = blinds.ante || 0;
     }
     this.minRaise = this.bigBlind;
     this.roundBets = {};
@@ -466,6 +472,7 @@ class PokerGame {
       p.holeCards = [];
       p.bet = 0;
       p.totalBet = 0;
+      p.ante = 0;
       p.folded = p.chips <= 0;
       p.allIn = false;
       p.lastAction = null;
@@ -508,6 +515,10 @@ class PokerGame {
     }
     this.sbIndex = sbIdx;
     this.bbIndex = bbIdx;
+    // The ante first and the blind out of what is left: a short stack in the
+    // big blind covers the ante before the blind, which is the order the
+    // rules give it.
+    this.postAnte(bbIdx, this.ante);
     this.postBlind(sbIdx, this.smallBlind);
     this.postBlind(bbIdx, this.bigBlind);
     this.currentBet = this.bigBlind;
@@ -536,7 +547,7 @@ class PokerGame {
       this.dealerIndex,
       sbIdx,
       bbIdx,
-      { sb: this.smallBlind, bb: this.bigBlind }
+      { sb: this.smallBlind, bb: this.bigBlind, ante: this.ante }
     );
 
     const dealer = this.players[this.dealerIndex];
@@ -544,9 +555,15 @@ class PokerGame {
     const bbPlayer = this.players[bbIdx];
     this.emitMessage(
       `🃏 Hand ${this.roundCount} starts! Dealer: ${this.players[this.dealerIndex].name}` +
-        ` | blinds ${this.smallBlind}/${this.bigBlind}`,
+        ` | blinds ${this.smallBlind}/${this.bigBlind}` +
+        (this.ante ? ` ante ${this.ante}` : ''),
       { kind: 'handStart', handNum: this.roundCount }
     );
+    if (bbPlayer.ante > 0) {
+      this.emitMessage(`${this.getPublicName(bbPlayer)} posts the ante ${bbPlayer.ante}`, {
+        kind: 'blind',
+      });
+    }
     this.emitMessage(`${this.getPublicName(sbPlayer)} posts small blind ${sbPlayer.bet}`, {
       kind: 'blind',
     });
@@ -567,6 +584,7 @@ class PokerGame {
         bigBlindPlayer: this.getPublicName(bbPlayer),
         smallBlind: this.smallBlind,
         bigBlind: this.bigBlind,
+        ante: this.ante,
         playerOrder: this.players.map((player) => ({
           id: player.id,
           name: this.getPublicName(player),
@@ -580,7 +598,8 @@ class PokerGame {
 
     // Log deal: dealer, blinds, hole cards
     this._log(
-      `🎰 D:${dealer.name} SB:${sbPlayer.name}(${this.smallBlind}) BB:${bbPlayer.name}(${this.bigBlind})`
+      `🎰 D:${dealer.name} SB:${sbPlayer.name}(${this.smallBlind}) BB:${bbPlayer.name}(${this.bigBlind})` +
+        (this.ante ? ` A:${this.ante}` : '')
     );
     for (const p of this.players) {
       if (!p.folded && p.holeCards.length === 2) {
@@ -601,6 +620,21 @@ class PokerGame {
     player.totalBet = actual;
     this.pot += actual;
     if (player.chips === 0) player.allIn = true;
+  }
+
+  // The ante is dead money: it goes into the pot and onto nobody's bet line,
+  // so it is not part of the price to call and forms no side pot of its own.
+  // distributePot hands it over with the main pot.
+  postAnte(playerIdx, amount) {
+    if (!(amount > 0)) return 0;
+    const player = this.players[playerIdx];
+    const actual = Math.min(amount, player.chips);
+    player.chips -= actual;
+    player.ante = actual;
+    this.pot += actual;
+    this.anteTotal += actual;
+    if (player.chips === 0) player.allIn = true;
+    return actual;
   }
 
   getNextActiveIndex(fromIndex) {
@@ -1208,10 +1242,15 @@ class PokerGame {
 
     let previousLevel = 0;
     let totalAwarded = 0;
+    // The antes are in the pot and on nobody's bet line. They go with the
+    // first slice, which every contender is eligible for, so the best hand
+    // at the table takes them: the main pot, as the rules have it.
+    let dead = this.anteTotal;
 
     for (const level of betLevels) {
       // Calculate this pot slice: each player contributes (level - previousLevel) capped by their totalBet
-      let potSlice = 0;
+      let potSlice = dead;
+      dead = 0;
       for (const p of allPlayers) {
         const contribution = Math.min(p.totalBet, level) - Math.min(p.totalBet, previousLevel);
         potSlice += Math.max(0, contribution);
@@ -1777,6 +1816,7 @@ class PokerGame {
       roundCount: this.roundCount,
       smallBlind: this.smallBlind,
       bigBlind: this.bigBlind,
+      ante: this.ante,
       maxPlayers: this.maxPlayers,
       hostName: hostPlayer ? hostPlayer.name : null,
       hostId: this.hostPlayerId || null,
@@ -1921,6 +1961,7 @@ class PokerGame {
       bbIndex: h.bbIndex,
       smallBlind: h.smallBlind,
       bigBlind: h.bigBlind,
+      ante: h.ante || 0,
     }));
     this._historyCache.set(playerId, built);
     return built;
