@@ -9,6 +9,8 @@ and merging down to a final table. See [FORK.md](./FORK.md) for lineage, what
 was removed, and an important licence caution, and
 [CHANGELOG.md](./CHANGELOG.md) for what has changed since.
 
+There is a [user manual](./docs/MANUAL.md) for players, hosts and operators.
+
 Status: **playable.** Multi-table tournaments run end to end: a lobby where
 friends register by code or link, a scheduled start, tables that balance and
 break as players bust, late registration, payouts and hand-for-hand at the
