@@ -163,7 +163,9 @@ tournaments**. And whatever the mode, the rail link lets somebody watch: see
 ## The waiting room
 
 The room before the cards are out. It shows the game's name and status, the
-**code** with a **Copy link** button, the roster, the settings, and a chat.
+**code** with a **Copy link** button and a **Copy rail link** button beside
+it (the link for watching; see [Watching a game](#watching-a-game)), the
+roster, the settings, and a chat.
 
 **The settings line** says who can join, the table size, the starting stack,
 the blind structure with how many levels, when the antes start and where the
@@ -314,10 +316,11 @@ button opens and closes it). Five tabs:
 - **Info**: the table (mode, players), the blinds and the ante, the level
   and the time to the next one, the whole structure with the level the clock
   is on marked, the field (tables left, which one you are at, players
-  remaining, payouts), and, for the host, the Host block described in
+  remaining, payouts), how many are watching from the rail and a **Copy
+  rail link** button, and, for the host, the Host block described in
   [The host at the table](#the-host-at-the-table) and, in an invite-only
-  game, whoever is waiting at the door. When the game ends, the final
-  standings.
+  game, whoever is waiting at the door. A watcher sees a **Watching** block
+  here instead, to pick a table. When the game ends, the final standings.
 - **Stats**: a leaderboard for this game (wins, hands, win rate, biggest
   pot) and your last ten hands.
 - **History**: every hand you were dealt, replayable card by card and action

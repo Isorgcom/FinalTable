@@ -155,7 +155,10 @@ Anyone can watch. A game carries a rail link beside its join code, a way to
 look that is never a way in: a watcher gets the same blanked view a busted
 player gets, picks which table to watch, and talks in that table's chat with
 a rail badge on their lines. Held in memory only, never on the roster, never
-the host, and never able to keep a game alive.
+the host, and never able to keep a game alive. The dealer's log and the chat
+are separate tabs beside the felt, so a conversation and a hand never bury
+each other, and the create form seats up to forty bots for a field of
+several tables.
 
 Next is the rest of that split: Game Night owning invites and records,
 FinalTable owning the live game, talking over an API and webhooks so neither

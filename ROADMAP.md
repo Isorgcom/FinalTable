@@ -85,6 +85,8 @@ Watching a table: a rail link on every game, a second code that looks and
 never seats, a Watch button on a public card, the busted player's view for
 whoever opens it, a block to switch tables, and the decision on chat made:
 watchers talk at the table they watch, badged rail, mutable by the host.
+With it, the dealer's log in its own tab beside Chat, and the bot box up to
+forty, so one person can raise the four-table field the rail was tried on.
 
 The host's controls at the table: pause and resume, a level back or forward,
 a minute on or off the clock, a player moved to a smaller table by hand, a
