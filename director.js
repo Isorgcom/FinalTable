@@ -203,6 +203,7 @@ class TournamentDirector {
       prizePool: this.prizePool(),
       payouts: this.payouts(),
       onBubble: this.isOnBubble(),
+      handForHand: this.isHandForHand(),
       inTheMoney: this.paidPlaces ? alive.length <= this.paidPlaces : false,
       blinds: this.tournament.getCurrentBlinds(),
       level: this.tournament.levelNumber(),
@@ -526,6 +527,15 @@ class TournamentDirector {
     return this.playersRemaining() === this.paidPlaces + 1;
   }
 
+  // Hand for hand is a procedure for a field spread over more than one table:
+  // it exists so that one table cannot deal its way past the money while a
+  // slower one is still in the hand that might burst the bubble. At a final
+  // table there is nothing to be out of step with - everybody is watching the
+  // same hand - so the bubble is still the bubble and play is simply play.
+  isHandForHand() {
+    return this.isOnBubble() && this.activeTables().length > 1;
+  }
+
   // Places, names and prizes together. Eliminations are stored worst-first, so
   // reverse to read as a finishing order.
   finalResults() {
@@ -548,7 +558,8 @@ class TournamentDirector {
     if (!this.paidPlaces) return;
     if (this.isOnBubble() && !this._bubbleAnnounced) {
       this._bubbleAnnounced = true;
-      this._say(`Bubble: ${this.playersRemaining()} left, ${this.paidPlaces} paid. Hand for hand.`);
+      const how = this.isHandForHand() ? ' Hand for hand.' : '';
+      this._say(`Bubble: ${this.playersRemaining()} left, ${this.paidPlaces} paid.${how}`);
     }
     if (
       !this._inTheMoneyAnnounced &&
@@ -582,7 +593,9 @@ class TournamentDirector {
     // Hand for hand on the bubble: a table that finishes early waits for the
     // rest, so no table can stall its way past the money while another plays
     // on. Without it a big stack simply slows down and folds into a payout.
-    if (this.isOnBubble() && this.tables.some((t) => t.isRunning)) return false;
+    // One table left is nobody to wait for, and waiting there would only be
+    // this table waiting on itself.
+    if (this.isHandForHand() && this.tables.some((t) => t.isRunning)) return false;
     return table.players.filter((p) => p.chips > 0).length >= 2;
   }
 
@@ -700,7 +713,8 @@ class TournamentDirector {
       this._say(
         reason === 'forfeit'
           ? `${player.name} forfeits after this hand`
-          : `${player.name} will be removed after this hand`
+          : `${player.name} will be removed after this hand`,
+        { kind: 'system', felt: true }
       );
       // If the hand is waiting on them, it stops waiting: the seat acts for
       // itself from here, the way a dropped connection's does.
@@ -725,10 +739,15 @@ class TournamentDirector {
     this._expectedChips -= player.chips;
     const place = this.tournament.recordElimination(player.name, table.roundCount, player.uid);
     player.chips = 0;
+    // Over the felt, not only into the log. A bust-out announces itself - the
+    // chips go in and the seat empties in front of everybody - but a seat that
+    // is conceded or taken out simply vanishes between hands, and the dealer's
+    // log is not the tab the panel opens on.
     this._say(
       forfeit
         ? `${player.name} forfeits the game, finishing #${place}`
-        : `${player.name} removed from the game by the host, finishing #${place}`
+        : `${player.name} removed from the game by the host, finishing #${place}`,
+      { kind: 'system', felt: true }
     );
     if (this.onPlayerEliminated) {
       this.onPlayerEliminated({
@@ -1225,6 +1244,7 @@ class TournamentDirector {
       paidPlaces: this.paidPlaces || 0,
       prizePool: this.prizePool(),
       onBubble: this.isOnBubble(),
+      handForHand: this.isHandForHand(),
       inTheMoney: this.paidPlaces ? this.playersRemaining() <= this.paidPlaces : false,
       tournament: this.tournament.getState(),
     };
@@ -1413,8 +1433,10 @@ class TournamentDirector {
     return true;
   }
 
-  _say(message) {
-    if (this.onMessage) this.onMessage(message);
+  // meta, when given, rides with the line: the client reads it to decide
+  // whether a line is worth putting over the felt as well as into the log.
+  _say(message, meta = null) {
+    if (this.onMessage) this.onMessage(message, meta);
   }
 }
 

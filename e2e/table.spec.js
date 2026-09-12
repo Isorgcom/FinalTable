@@ -717,7 +717,7 @@ test('the bubble is announced on the felt, and goes away again', async ({ page }
   // the field summary is set directly: this is about what the felt does with
   // it, not about how the director decides it.
   await page.evaluate(() => {
-    window.mttField = { onBubble: true, remaining: 21, paidPlaces: 20 };
+    window.mttField = { onBubble: true, handForHand: true, remaining: 21, paidPlaces: 20 };
     updateBlindClock();
   });
   const badge = page.locator('#tbBubble');
@@ -727,6 +727,17 @@ test('the bubble is announced on the felt, and goes away again', async ({ page }
   await expect(badge).toContainText('21');
   await expect(badge).toContainText('20');
   await expect(badge).toContainText(/hand for hand/i);
+  await expect(page.locator('#tournamentBanner')).toHaveClass(/on-bubble/);
+
+  // Down to one table there is nobody to hold a hand for, so the bubble is
+  // still announced and the phrase that describes waiting on other tables is
+  // not.
+  await page.evaluate(() => {
+    window.mttField = { onBubble: true, handForHand: false, remaining: 21, paidPlaces: 20 };
+    updateBlindClock();
+  });
+  await expect(badge).toContainText(/bubble/i);
+  await expect(badge).not.toContainText(/hand for hand/i);
   await expect(page.locator('#tournamentBanner')).toHaveClass(/on-bubble/);
 
   // And it is taken away the moment it stops being true, rather than lingering.
@@ -2017,7 +2028,7 @@ test('the host has controls in the Info tab: the level, a pause, and removing a 
   await page.waitForTimeout(1500);
   await expect(page.locator('#actionsPanel')).toHaveClass(/hidden/);
 
-  await block.locator('.host-btn-danger').click();
+  await block.locator('.host-btn-danger:not(.host-btn-end)').click();
   await expect(page.locator('#appDialogBody')).toContainText('They cannot come back in');
   await page.click('#btnAppDialogConfirm');
   await expect(guest.locator('#lobbyHome')).toBeVisible({ timeout: 10000 });

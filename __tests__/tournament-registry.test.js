@@ -3,10 +3,17 @@ const { createTournamentRegistry } = require('../server/tournament-registry');
 
 function makeIo() {
   const sent = [];
+  // meta is recorded only when a call actually carried one, so every row that
+  // never had one still reads as the three keys the assertions here expect.
+  const record = (to, event, payload, meta) => {
+    const row = { to, event, payload };
+    if (meta !== undefined && meta !== null) row.meta = meta;
+    sent.push(row);
+  };
   return {
     sent,
-    emit: (event, payload) => sent.push({ to: '*', event, payload }),
-    to: (sid) => ({ emit: (event, payload) => sent.push({ to: sid, event, payload }) }),
+    emit: (event, payload, meta) => record('*', event, payload, meta),
+    to: (sid) => ({ emit: (event, payload, meta) => record(sid, event, payload, meta) }),
   };
 }
 
@@ -2321,6 +2328,34 @@ describe('re-entry and the add-on in the registry', () => {
     });
     second.stop();
     registry = makeRegistry(store); // for afterEach
+  });
+
+  test('a seat that goes without a hand is put over the felt, and the rail counts who is out', () => {
+    const entry = running({ reentryLevels: 0, structure: BREAKS, visibility: 'public' });
+    const before = io.sent.length;
+    expect(registry.forfeit(entry, 'g')).toMatchObject({ removed: true });
+
+    // The dealer's log is not the tab the panel opens on, so the line is
+    // marked for the felt as well.
+    const line = io.sent
+      .slice(before)
+      .find((m) => m.event === 'gameMessage' && /forfeits the game/.test(m.payload));
+    expect(line).toBeTruthy();
+    expect(line.meta).toEqual({ kind: 'system', felt: true });
+    // An ordinary line still travels with nothing attached.
+    const plain = io.sent.find(
+      (m) => m.event === 'gameMessage' && /Tournament started/.test(m.payload)
+    );
+    expect(plain && plain.meta).toBeFalsy();
+
+    // Out of the game and watching it: on the rail, and counted there, the
+    // same as somebody who arrived by the rail link.
+    expect(entry.watching.has('g')).toBe(true);
+    expect(registry.stateFor(entry, 'h').watchers).toBe(1);
+    expect(registry.stateFor(entry, 'g').watchers).toBe(1);
+    // Their socket gone, they are off it again.
+    entry.registrations.get('g').socketId = null;
+    expect(registry.stateFor(entry, 'h').watchers).toBe(0);
   });
 
   test('a forfeit is refused before the start, and the stack of somebody who left can still go', () => {

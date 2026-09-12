@@ -293,12 +293,17 @@ function createTournamentRegistry(deps = {}) {
 
   // Everyone in the game and everyone watching it: what the director says
   // about the field is for the rail as well.
-  function emitAll(entry, event, payload) {
+  // extra, when given, is a second argument for the event - the meta a game
+  // message carries. Left off entirely when there is none, so every call that
+  // never had one sends exactly what it always sent.
+  function emitAll(entry, event, payload, extra = null) {
+    const send = (id) =>
+      extra ? io.to(id).emit(event, payload, extra) : io.to(id).emit(event, payload);
     for (const reg of entry.registrations.values()) {
-      if (reg.socketId) io.to(reg.socketId).emit(event, payload);
+      if (reg.socketId) send(reg.socketId);
     }
     for (const row of entry.watchers.values()) {
-      if (row.socketId) io.to(row.socketId).emit(event, payload);
+      if (row.socketId) send(row.socketId);
     }
   }
 
@@ -999,7 +1004,7 @@ function createTournamentRegistry(deps = {}) {
         chat.dropRoom(chat.tableRoom(entry.id, table.tableNumber));
         sendChatField(entry); // and loses one
       },
-      onMessage: (msg) => emitAll(entry, 'gameMessage', msg),
+      onMessage: (msg, meta) => emitAll(entry, 'gameMessage', msg, meta || null),
       // A level change, a break included. The line itself arrives as a
       // gameMessage like any other; this is what the client chimes on.
       onLevelChange: (info) => emitAll(entry, 'tournamentLevelUp', info),
@@ -1354,9 +1359,18 @@ function createTournamentRegistry(deps = {}) {
   // request at the door. Reached by the rail code, or by id for a game that
   // is listed for everyone anyway.
 
+  // Who is on the rail, as the number the Info tab shows. Two kinds of people
+  // are on it and they are counted as one, because from a seat they are the
+  // same thing: somebody watching who is not playing. One arrived by the rail
+  // link; the other was playing until their tournament ended, and a player
+  // whose game is over is on the rail whether they came by the link or not.
   function connectedWatchers(entry) {
     let n = 0;
     for (const row of entry.watchers.values()) if (row.socketId) n++;
+    for (const uid of entry.watching.keys()) {
+      const reg = entry.registrations.get(uid);
+      if (reg && reg.socketId && !entry.watchers.has(uid)) n++;
+    }
     return n;
   }
 

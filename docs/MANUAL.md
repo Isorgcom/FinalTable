@@ -276,6 +276,12 @@ nobody else has:
   **Remove**, which asks first. A removed player's chips leave play, they
   finish in the place they hold at that moment, paid if that place pays,
   they are sent to the lobby, and they cannot come back in.
+- **End tournament**, set apart at the foot of the block. The game stops
+  where it is, with no winner and no payouts, and everyone still in it is
+  sent back to the lobby with a note saying the host called it off. It asks
+  first and cannot be undone. The operator's own way to end a game is still
+  in the table menu, behind the server's password, for games the operator
+  does not host.
 
 A move or a removal asked for while that table is mid-hand happens when the
 hand ends. Every one of these is checked on the server; the block is only
@@ -392,6 +398,10 @@ The host can also remove you. Then your chips leave play, you finish in the
 place you held, paid if that place pays, you are sent back to the lobby with
 a note saying so, and the code will not let you back into that game.
 
+A seat that goes without a hand to account for it — a forfeit, or the host
+removing somebody — is said over the felt for a few seconds as well as in the
+dealer's log, so nobody has to have the Log tab open to notice.
+
 ## How a tournament runs
 
 **Blinds** follow the structure chosen at creation. Standard climbs eighteen
@@ -440,9 +450,11 @@ than a seat apart, sits out one hand while the other finishes; then the move
 is made and dealing carries on. No table waits otherwise.
 
 **The bubble.** With a prize pool, one place before the money the game
-announces the bubble and plays hand for hand: a table that finishes its hand
-early waits for the others, so nobody can stall their way into a payout. When
-the bubble bursts, everyone left is in the money.
+announces the bubble. While the field is still spread over more than one
+table it also plays hand for hand: a table that finishes its hand early waits
+for the others, so nobody can stall their way into a payout. Down to one
+table there is nobody to wait for, so the bubble is announced and play simply
+carries on. When the bubble bursts, everyone left is in the money.
 
 **Payouts** come from the prize pool (buy-in times entries) by field size:
 

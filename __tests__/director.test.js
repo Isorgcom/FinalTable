@@ -501,6 +501,58 @@ describe('TournamentDirector money (phase 5)', () => {
     d.stop();
   });
 
+  test('at a final table the bubble is still the bubble, but not hand for hand', () => {
+    const said = [];
+    const d = makeDirector(6, { tableSize: 9, buyIn: 10, onMessage: (m) => said.push(m) });
+    d.start();
+    expect(d.activeTables()).toHaveLength(1);
+    expect(d.paidPlaces).toBe(2); // 6 players
+    const doomed = d.fieldPlayers().slice(0, 3);
+    for (const p of doomed) p.chips = 0;
+    for (const table of d.tables) {
+      for (const p of table.players.filter((x) => x.chips <= 0)) table.removePlayer(p.id);
+    }
+    d._expectedChips = d.totalChips();
+
+    // One away from the money, and the players are told so.
+    expect(d.isOnBubble()).toBe(true);
+    // Nobody to be out of step with, so nothing is held hand for hand.
+    expect(d.isHandForHand()).toBe(false);
+    d._checkMoneyMilestones();
+    expect(said).toContain('Bubble: 3 left, 2 paid.');
+    expect(said.join(' ')).not.toContain('Hand for hand');
+    expect(d.fieldSummary(null).onBubble).toBe(true);
+    expect(d.fieldSummary(null).handForHand).toBe(false);
+    expect(d.getState().handForHand).toBe(false);
+    d.stop();
+  });
+
+  test('the bubble across two tables does say hand for hand', () => {
+    const said = [];
+    const d = makeDirector(27, { tableSize: 9, buyIn: 10, onMessage: (m) => said.push(m) });
+    d.start();
+    expect(d.paidPlaces).toBe(4); // 27 players
+    // Keep the survivors deliberately spread over two tables, so the field is
+    // still in more than one room when the bubble arrives.
+    const keep = new Set([
+      ...d.tables[0].players.slice(0, 3).map((p) => p.id),
+      ...d.tables[1].players.slice(0, 2).map((p) => p.id),
+    ]);
+    for (const p of d.fieldPlayers()) if (!keep.has(p.id)) p.chips = 0;
+    for (const table of d.tables) {
+      for (const p of table.players.filter((x) => x.chips <= 0)) table.removePlayer(p.id);
+    }
+    d._expectedChips = d.totalChips();
+    expect(d.playersRemaining()).toBe(5);
+    expect(d.activeTables()).toHaveLength(2);
+    expect(d.isOnBubble()).toBe(true);
+    expect(d.isHandForHand()).toBe(true);
+    d._checkMoneyMilestones();
+    expect(said.join(' ')).toContain('Hand for hand.');
+    expect(d.fieldSummary(null).handForHand).toBe(true);
+    d.stop();
+  });
+
   test('off the bubble, tables do not wait for each other', () => {
     const d = makeDirector(20, { tableSize: 9, buyIn: 10 });
     d.start();

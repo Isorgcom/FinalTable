@@ -217,6 +217,63 @@ test('a player forfeits from the menu and hands the game over', async ({ browser
   await guestContext.close();
 });
 
+test('the host ends a running tournament from the Info tab, without the operator password', async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Runner');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Runner');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Called Off');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code}`);
+  await guest.fill('#playerName', 'Player');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // The operator's cancel in the menu stays locked: this socket has no
+  // password, and the host should not need one to stop their own game.
+  await page.click('#menuToggle');
+  await expect(page.locator('#btnAdminCancel')).toBeHidden();
+  await page.click('#menuToggle');
+
+  // It lives with the host's other controls, under a rule of its own.
+  await page.click('#tabInfo');
+  const end = page.locator('#panelInfoHost button', { hasText: 'End tournament' });
+  await expect(end).toBeVisible();
+  await end.click();
+  await expect(page.locator('#appDialogBody')).toContainText('no winner');
+  await page.click('#btnAppDialogConfirm');
+
+  // Everybody is sent back to the lobby and told why.
+  await expect(page.locator('#appDialogBody')).toContainText('cancelled by the host', {
+    timeout: 10000,
+  });
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#lobbyHome')).toBeVisible();
+  await expect(guest.locator('#lobbyHome')).toBeVisible({ timeout: 10000 });
+
+  // And a player has no such control.
+  await guest.goto(baseUrl);
+
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
 test('a dropped connection sits the seat out, and coming back resumes it', async ({
   browser,
   page,

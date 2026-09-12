@@ -15,6 +15,10 @@ Release on GitHub to go with it.
 
 ### Added
 
+- The host can end their own running tournament. It sits with the host's other
+  controls in the Info tab, asks first, and needs no operator password. Until
+  now a host could call a game off from the waiting room, but once the cards
+  were out only somebody holding the server's password could stop it.
 - Forfeit: a way out of a game for good, under leave in the table menu and on
   the lobby card of a game you have walked out of. Leaving parks your stack at
   the table, where it blinds down for as long as the game runs; forfeiting
@@ -26,6 +30,18 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- A seat that goes without a hand to explain it is now said over the felt for a
+  few seconds, not only written into the dealer's log: a player forfeiting, and
+  a player the host removes. The log opens on Chat, so a seat could simply
+  vanish between hands with nothing anyone saw to account for it.
+- Somebody watching after their own game ended is counted on the rail. The Info
+  tab's Rail line only ever counted people who arrived by the rail link, so a
+  busted player watching the table showed up nowhere.
+- The bubble no longer says "hand for hand" at a final table. Holding a table
+  until the others have finished is a thing you do to a field spread over more
+  than one table; with one table left there is nobody to wait for, so the
+  bubble is announced on the felt and in the Info tab without it. Nothing
+  about the waiting itself changes while there is more than one table.
 - The Watch button on a running game's lobby card no longer sits on top of the
   button beside it. Join late and Watch were drawn in the same place, so the
   way into a game with late registration open was covered by the way to the

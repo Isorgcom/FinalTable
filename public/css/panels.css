@@ -1238,6 +1238,13 @@
   border-color: #e0a48f;
   color: #e0a48f;
 }
+/* Ending the game is not one of the controls above it, so it is set apart by
+   a rule rather than sitting in the same row of buttons. */
+.host-controls.host-end {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(92, 61, 26, 0.35);
+}
 .host-players .wr-row {
   min-height: 36px;
   font-size: 0.8rem;

@@ -185,6 +185,10 @@ function ensureSocket() {
 
   socket.on('gameMessage', (msg, meta) => {
     addLog(msg, meta);
+    // A line the server marked for the felt: a seat that went without a hand
+    // to explain it. The log keeps it; this is so somebody who never opens
+    // that tab still sees it happen.
+    if (meta && meta.felt && typeof showHostNote === 'function') showHostNote(null, msg);
     // Nothing about chips or cards is sounded here. Both are timed to their
     // animation instead: chips from flyChips, cards from the deal and the
     // board flip. A log line arrives on the socket tick, which for the board

@@ -183,10 +183,11 @@ function updateBlindClock() {
     (aliveField === null ? aliveHere : aliveField) + '/' + t.startingPlayers;
 
   // The bubble, on the felt rather than only in a panel nobody has open. It is
-  // the one moment where the right way to play changes — every table is held
-  // hand for hand and one more bust-out ends somebody's tournament with
-  // nothing — so it is worth saying loudly and worth taking away again the
-  // moment it stops being true.
+  // the one moment where the right way to play changes — one more bust-out
+  // ends somebody's tournament with nothing — so it is worth saying loudly and
+  // worth taking away again the moment it stops being true. Hand for hand is
+  // said only while it is true: it holds tables against each other, and at a
+  // final table there is no other table to hold.
   const bubble = document.getElementById('tbBubble');
   const banner2 = document.getElementById('tournamentBanner');
   const onBubble = !!(summary && summary.onBubble);
@@ -195,7 +196,8 @@ function updateBlindClock() {
     if (onBubble) {
       const left = summary.remaining;
       const paid = summary.paidPlaces;
-      bubble.textContent = `ON THE BUBBLE · ${left} left, ${paid} paid · hand for hand`;
+      const how = summary.handForHand ? ' · hand for hand' : '';
+      bubble.textContent = `ON THE BUBBLE · ${left} left, ${paid} paid${how}`;
     }
   }
   if (banner2) banner2.classList.toggle('on-bubble', onBubble);
@@ -306,10 +308,10 @@ function renderInfoHost() {
   const send = (event, payload) => {
     if (socket && socket.connected) socket.emit(event, payload);
   };
-  const button = (label, onClick, { disabled = false, danger = false } = {}) => {
+  const button = (label, onClick, { disabled = false, danger = false, cls = '' } = {}) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = danger ? 'host-btn host-btn-danger' : 'host-btn';
+    b.className = (danger ? 'host-btn host-btn-danger' : 'host-btn') + (cls ? ' ' + cls : '');
     b.textContent = label;
     b.disabled = disabled;
     b.addEventListener('click', onClick);
@@ -401,6 +403,34 @@ function renderInfoHost() {
     list.appendChild(createTextElement('div', 'host-empty', 'Nobody else is seated.'));
   }
   block.appendChild(list);
+
+  // Ending the whole thing. The host could do this from the waiting room until
+  // the cards came out, and after that only somebody holding the operator's
+  // password could - which left a host with a game they could not stop. It
+  // sits last, under a line, and asks first.
+  const end = document.createElement('div');
+  end.className = 'host-controls host-end';
+  end.appendChild(
+    button(
+      'End tournament',
+      async () => {
+        let ok = true;
+        if (typeof window.showConfirmDialog === 'function') {
+          ok = await window.showConfirmDialog({
+            title: 'End this tournament?',
+            message:
+              'It stops now, with no winner and no payouts, and everyone still in it is sent ' +
+              'back to the lobby. There is no way to restart it.',
+            confirmLabel: 'End it',
+            cancelLabel: 'Keep playing',
+          });
+        }
+        if (ok) send('cancelTournament');
+      },
+      { danger: true, cls: 'host-btn-end' }
+    )
+  );
+  block.appendChild(end);
 }
 
 // Whoever is watching, from the rail or after busting: the table they are
@@ -668,7 +698,8 @@ function renderInfoTab() {
         money.textContent = `In the money · ${field.paidPlaces} paid`;
       } else if (field.onBubble) {
         money.classList.add('on-bubble');
-        money.textContent = `Bubble · ${field.remaining} left, ${field.paidPlaces} paid · hand for hand`;
+        const how = field.handForHand ? ' · hand for hand' : '';
+        money.textContent = `Bubble · ${field.remaining} left, ${field.paidPlaces} paid${how}`;
       } else {
         money.textContent = `${field.paidPlaces} paid · ${field.remaining - field.paidPlaces} from the money`;
       }
