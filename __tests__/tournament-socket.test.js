@@ -952,6 +952,50 @@ describe('Tournament socket layer', () => {
     expect((await refused).message).toBe('You were removed from this game');
   });
 
+  test('the guest forfeits from the lobby: the seat goes, the rail stays, and the card is out', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host, {
+      startsAt: Date.now() + 60000,
+    });
+    await startAndDeal(host, guest);
+    const uid = guest.__identity.uid;
+    const entry = serverModule.registry.tournaments.get(created.id);
+
+    // Out to the lobby first, the way somebody does who is not coming back.
+    // The stack stays at the table, and that is the thing being given up.
+    const left = waitFor(guest, 'leftTournament', (p) => p.reason === 'left');
+    guest.emit('leaveTournament');
+    await left;
+    expect(entry.director.playerByUid(uid)).not.toBeNull();
+
+    // No socket is bound to the game any more, so the card names it. A hand
+    // is in play, so the answer is "at the end of this one".
+    const acked = waitFor(guest, 'tournamentForfeited');
+    const over = waitFor(host, 'tournamentFinished', () => true, 8000);
+    guest.emit('forfeitTournament', { tournamentId: created.id });
+    // A hand is in play, so the seat goes at its end rather than under it.
+    expect(await acked).toEqual({ queued: true, place: null });
+    expect(entry.forfeitedUids.has(uid)).toBe(true);
+    // Not thrown out: the registration is still theirs, so the rail is open.
+    expect(entry.registrations.has(uid)).toBe(true);
+
+    // Play the hand out from the server so the wait does not depend on whose
+    // turn it happened to be, then the queued seat goes at its end.
+    const table = entry.director.tables[0];
+    entry.director.holdField();
+    expect(
+      await until(() => {
+        if (!table.isRunning) return true;
+        const cur = table.players[table.currentPlayerIndex];
+        if (cur && !table.handleAction(cur.id, 'fold')) table.handleAction(cur.id, 'call');
+        return !table.isRunning;
+      })
+    ).toBe(true);
+    expect(entry.director.playerByUid(uid)).toBeNull();
+    // Heads-up, so conceding hands the other player the tournament.
+    expect((await over).winner).toBe('Host');
+  });
+
   test('a third socket opens the rail: the table with no cards, a badged line, and a way out', async () => {
     const host = await connectClient();
     const { created, guest } = await createTournamentWithGuest(host, {

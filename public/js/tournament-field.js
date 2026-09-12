@@ -14,8 +14,26 @@
     return node;
   }
 
+  // Conceding is offered to whoever has something to concede: a seat in a
+  // game still running. Not the rail, not somebody already out, not a table
+  // whose tournament has finished.
+  function paintForfeit(state) {
+    const btn = document.getElementById('btnForfeit');
+    if (!btn) return;
+    const you = state && state.you;
+    const show = !!(
+      state &&
+      state.status === 'running' &&
+      !window.mttFinished &&
+      you &&
+      you.seated
+    );
+    btn.classList.toggle('hidden', !show);
+  }
+
   function render(state) {
     window.mttField = state || null;
+    paintForfeit(state);
     if (window.SidePanel) SidePanel.refresh('info');
     // The felt's banner reads the same summary, and the bubble can turn on or
     // off on a push that carries no game state with it.

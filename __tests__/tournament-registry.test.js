@@ -2263,6 +2263,89 @@ describe('re-entry and the add-on in the registry', () => {
     registry = makeRegistry(store); // for afterEach
   });
 
+  test('a forfeit takes the seat out of play, keeps the rail, and shuts the way back in', () => {
+    const entry = running({ reentryLevels: 2, structure: BREAKS, visibility: 'public' });
+    const chips = entry.director.totalChips();
+    const stack = entry.director.playerByUid('g').player.chips;
+    const before = io.sent.length;
+
+    expect(registry.forfeit(entry, 'g')).toMatchObject({ removed: true, place: 4 });
+
+    // The seat is gone and the chips are out of the ledger with it.
+    expect(entry.director.playerByUid('g')).toBeNull();
+    expect(entry.director.totalChips()).toBe(chips - stack);
+    expect(() => entry.director.assertChipConservation()).not.toThrow();
+    expect(entry.director.roster().find((r) => r.uid === 'g')).toMatchObject({ place: 4 });
+
+    // Nobody was thrown out: the registration stays and the rail is open, the
+    // way it is for anyone who busts.
+    expect(entry.registrations.has('g')).toBe(true);
+    expect(entry.removedUids.has('g')).toBe(false);
+    expect(entry.forfeitedUids.has('g')).toBe(true);
+    expect(entry.watching.has('g')).toBe(true);
+
+    const sent = io.sent.slice(before);
+    expect(sent).toContainEqual({
+      to: 'sg',
+      event: 'tournamentForfeited',
+      payload: { queued: false, place: 4 },
+    });
+    // Told where they finished, as a bust-out is, but with no way back offered
+    // even though the window is open for everybody else.
+    const told = sent.find((m) => m.event === 'tournamentEliminated');
+    expect(told).toMatchObject({ to: 'sg', payload: { place: 4, canReenter: false } });
+    expect(told.payload.lateRegOpen).toBe(true);
+    expect(registry.stateFor(entry, 'g').you).toMatchObject({
+      seated: false,
+      eliminated: true,
+      canReenter: false,
+    });
+    expect(registry.reenter(entry, 'g', live.get('sg'))).toEqual({
+      error: 'You forfeited this tournament',
+    });
+
+    // Asking twice, and asking with nothing to give up.
+    expect(registry.forfeit(entry, 'g')).toEqual({ error: 'You have no stack in this game' });
+    expect(registry.forfeit(entry, 'nobody')).toEqual({ error: 'You are not in this tournament' });
+
+    // A restart must not hand back what the forfeit gave up.
+    registry.flush();
+    expect(store.load()[0].forfeitedUids).toEqual(['g']);
+    registry.stop();
+    const second = makeRegistry(store);
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back.forfeitedUids.has('g')).toBe(true);
+    expect(second.reenter(back, 'g', live.get('sg'))).toEqual({
+      error: 'You forfeited this tournament',
+    });
+    second.stop();
+    registry = makeRegistry(store); // for afterEach
+  });
+
+  test('a forfeit is refused before the start, and the stack of somebody who left can still go', () => {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Night', startsAt: Date.now() + 60000, tableSize: 6, buyIn: 100 },
+      makeSocket('sh', 'h')
+    );
+    registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+    expect(registry.forfeit(entry, 'g')).toEqual({ error: 'The tournament is not running' });
+
+    registry.join('t', { code: entry.code }, makeSocket('st', 't'));
+    jest.advanceTimersByTime(60500);
+    expect(entry.status).toBe('running');
+    entry.director.holdField();
+
+    // Walking out parks the stack; this is what the lobby card's Forfeit does
+    // to it afterwards, without a socket bound to the game any more.
+    registry.leave(entry, 'g', live.get('sg'));
+    expect(entry.registrations.get('g').left).toBe(true);
+    expect(entry.director.playerByUid('g')).not.toBeNull();
+    expect(registry.forfeit(entry, 'g')).toMatchObject({ removed: true, place: 3 });
+    expect(entry.director.playerByUid('g')).toBeNull();
+  });
+
   test('re-entry is refused when the window is shut, for a removed player, and before the start', () => {
     const entry = running({ reentryLevels: 1, structure: BREAKS });
     bust(entry, 'g');

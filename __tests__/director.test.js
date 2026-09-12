@@ -1377,6 +1377,63 @@ describe('the host at the table', () => {
     d.stop();
   });
 
+  test('a forfeit takes the seat out the same way, and says so differently', () => {
+    const said = [];
+    const out = [];
+    const d = makeDirector(6, {
+      tableSize: 6,
+      onMessage: (m) => said.push(m),
+      onPlayerEliminated: (e) => out.push(e),
+    });
+    d.start();
+    const table = d.tables[0];
+    const quitter = table.players[2];
+    const total = d._expectedChips;
+    expect(d.removeFromPlay(quitter.uid, 'forfeit')).toEqual({ removed: true, place: 6 });
+    expect(table.players.some((p) => p.uid === quitter.uid)).toBe(false);
+    expect(d._expectedChips).toBe(total - 2000);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    expect(out).toEqual([
+      { uid: quitter.uid, name: quitter.name, place: 6, tableId: table.id, forfeit: true },
+    ]);
+    expect(said).toContain(`${quitter.name} forfeits the game, finishing #6`);
+    expect(said.join(' ')).not.toContain('by the host');
+    expect(d.roster().find((r) => r.uid === quitter.uid)).toMatchObject({ place: 6, table: null });
+    expect(d.playersRemaining()).toBe(5);
+    d.stop();
+  });
+
+  test('a forfeit during a hand waits for the hand, like a removal', () => {
+    const said = [];
+    const out = [];
+    const d = makeDirector(3, {
+      tableSize: 3,
+      onMessage: (m) => said.push(m),
+      onPlayerEliminated: (e) => out.push(e),
+    });
+    d.start();
+    const table = d.tables[0];
+    table.startRound();
+    const quitter = table.players[0];
+    expect(d.removeFromPlay(quitter.uid, 'forfeit')).toEqual({ queued: true });
+    expect(said).toContain(`${quitter.name} forfeits after this hand`);
+    expect(table.players.some((p) => p.uid === quitter.uid)).toBe(true);
+    expect(quitter.autoPlay).toBe(true);
+    expect(quitter.sitOutReason).toBe('forfeit');
+    expect(out).toEqual([]);
+    playHand(table, lcg(), 0);
+    expect(table.players.some((p) => p.uid === quitter.uid)).toBe(false);
+    // The reason survived the wait: it is a forfeit at the end of the hand,
+    // not a host removal.
+    expect(out.filter((e) => e.uid === quitter.uid)).toEqual([
+      expect.objectContaining({ forfeit: true }),
+    ]);
+    expect(out.some((e) => e.removed)).toBe(false);
+    expect(d._pendingRemovals.size).toBe(0);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    d.stop();
+  });
+
   test('removing down to one player finishes the tournament with a winner', () => {
     const finished = [];
     const d = makeDirector(2, { tableSize: 2, onFinished: (f) => finished.push(f) });

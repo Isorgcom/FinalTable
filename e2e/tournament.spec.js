@@ -142,9 +142,9 @@ test('the host can leave the table and rejoin it, back in control', async ({ bro
   // offering late registration, which closes, and then nothing at all.
   const card = page.locator('#listYours .t-card').first();
   await expect(card).toBeVisible();
-  await expect(card.locator('.t-card-btn')).toHaveText('Rejoin');
+  await expect(card.locator('.t-card-go')).toHaveText('Rejoin');
 
-  await card.locator('.t-card-btn').click();
+  await card.locator('.t-card-go').click();
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
 
   // Back in control: the seat is the viewer's again and is not sitting out.
@@ -157,6 +157,62 @@ test('the host can leave the table and rejoin it, back in control', async ({ bro
     )
     .toBe(false);
   await expect(page.locator('.player-auto-badge')).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
+test('a player forfeits from the menu and hands the game over', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Stayer');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Stayer');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Conceded');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code}`);
+  await guest.fill('#playerName', 'Quitter');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // Conceding sits under leave, is offered to a seat that has a stack, and
+  // says plainly that it does not come back.
+  await guest.click('#menuToggle');
+  await expect(guest.locator('#btnForfeit')).toBeVisible();
+  await guest.click('#btnForfeit');
+  await expect(guest.locator('#appDialogBody')).toContainText('cannot come back in');
+  await guest.click('#btnAppDialogConfirm');
+
+  // A hand is in play, so the seat goes at its end, and the other seat is a
+  // real browser that has to act for the hand to get there. Heads-up, so the
+  // seat going hands the game to whoever stayed.
+  await expect
+    .poll(
+      async () => {
+        const live = await page.evaluate(() =>
+          ['btnCheck', 'btnCall', 'btnFold'].find((id) => {
+            const el = document.getElementById(id);
+            return el && !el.disabled && el.offsetParent !== null;
+          })
+        );
+        if (live) await page.click('#' + live, { timeout: 2000 }).catch(() => {});
+        return page.locator('#appDialogTitle').textContent();
+      },
+      { timeout: 40000 }
+    )
+    .toContain('You won the tournament');
+
   expect(errors).toEqual([]);
   await guestContext.close();
 });

@@ -341,6 +341,12 @@ function init() {
     closeMenu();
     if (window.Lobby) Lobby.leave();
   });
+  // The other way out, for somebody who is not coming back: the seat goes
+  // instead of staying to blind down. Asked for once, because nothing undoes it.
+  document.getElementById('btnForfeit').addEventListener('click', () => {
+    closeMenu();
+    if (window.Lobby) Lobby.forfeit();
+  });
   wireSeatMenu();
   wireMuteToggle();
   wireButtonPress();

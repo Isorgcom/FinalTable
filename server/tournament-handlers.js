@@ -341,6 +341,18 @@ function registerTournamentHandlers(deps) {
     socket.on('leaveTournament', leave);
     socket.on('exitGame', leave); // the table's menu says "exit"
 
+    // Conceding works from the table and from the lobby both. A player who
+    // already walked out is exactly the one whose stack is blinding down with
+    // nobody behind it, so the card that offers Rejoin can offer this instead,
+    // and it names the game rather than relying on a socket bound to it.
+    socket.on('forfeitTournament', (payload = {}) => {
+      const id = payload.tournamentId ? String(payload.tournamentId) : '';
+      const entry = (id && registry.tournaments.get(id)) || entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.forfeit(entry, socket.data.uid, socket);
+      if (error) notice(socket, error);
+    });
+
     function sendState() {
       const entry = entryFor(socket);
       if (!entry) return;

@@ -54,22 +54,13 @@ exists now; for a guest it is the device, which is the best there is.
 
 ### More control over your own games
 
-For a player: see and end your own sessions, and a way out of a game for
-good. Leave today is a walk to the lobby: the stack stays in the seat,
-sitting out and blinding down until it is gone or the player is back, and
-only the host can take it off the table. What is wanted beside it is a
-forfeit - leave and concede - that does to your own seat what the host's
-Remove does: the chips leave play, you finish in the place you held, paid
-if that place pays, and the seat is gone rather than folding down to
-nothing over the next twenty hands. It asks first, since there is no way
-back. Whether re-entry should stay open to somebody who conceded, while the
-window is, is the one decision to make. The host's half is done: pause a
-running game, remove somebody, step the level or put a minute on it, move a
-player by hand, and mute. An operator (the server's password, not the game's
-host) can end a running tournament from the table menu or from the Operator
-page, which holds the server's own settings and a list of every game on it.
-Some of the rest arrives with the API below, but a host with no Game Night
-should have it too.
+For a player, what is left is to see and end your own sessions. The way out
+is done (Forfeit, below). The host's half is done too: pause a running game,
+remove somebody, step the level or put a minute on it, move a player by hand,
+and mute. An operator (the server's password, not the game's host) can end a
+running tournament from the table menu or from the Operator page, which holds
+the server's own settings and a list of every game on it. Some of the rest
+arrives with the API below, but a host with no Game Night should have it too.
 
 ### Showing a hand nobody paid to see
 
@@ -94,6 +85,18 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+Forfeit, the way out for somebody who is not coming back. Leave parks the
+stack and it blinds down for the rest of the game, and only the host could
+take it off the table; this does to your own seat what the host's Remove
+does - the chips leave play, the place is recorded and paid if it pays, the
+seat goes - while leaving you a player rather than throwing you out, so the
+rail is still open. It sits under leave in the table menu and on the lobby
+card of a game already walked out of, which is where a stack blinding down
+with nobody behind it actually is. The decision that was open: re-entry does
+not stay open to somebody who conceded, because a forfeit that could be
+re-entered is a button for turning a short stack into a fresh one, and the
+question the button asks would not be true.
 
 Re-entry and the add-on: a host allows re-entry through a level, or not, and
 an add-on at the first break, or not; a busted player is offered the way back

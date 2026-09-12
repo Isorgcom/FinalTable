@@ -207,6 +207,7 @@ function createTournamentRegistry(deps = {}) {
       })),
       mutedUids: [...entry.mutedUids],
       removedUids: [...entry.removedUids],
+      forfeitedUids: [...entry.forfeitedUids],
       status: entry.status,
       // How many times this field has been seated again without getting a hand
       // out. See the guard in restore().
@@ -543,7 +544,13 @@ function createTournamentRegistry(deps = {}) {
         // The two self-service buttons: a busted entrant while the re-entry
         // window is open; a seated one during the first break who has not
         // taken the add-on yet.
-        canReenter: !!reg && !reg.left && !seat && entry.watching.has(uid) && d.reentryOpen(),
+        canReenter:
+          !!reg &&
+          !reg.left &&
+          !seat &&
+          entry.watching.has(uid) &&
+          !entry.forfeitedUids.has(uid) &&
+          d.reentryOpen(),
         canAddOn: !!seat && d.addOnOpen() && !d.hasAddOn(uid),
       },
     };
@@ -957,6 +964,11 @@ function createTournamentRegistry(deps = {}) {
       // Players the host removed. Kept like the mutes, so a restart does not
       // let them back in by the door their registration would have left.
       removedUids: new Set(),
+      // Players who conceded their own seat. They keep their registration and
+      // may watch, like anyone else who is out; what they give up is the way
+      // back in, because a forfeit that could be re-entered would be a button
+      // for turning a short stack into a fresh one.
+      forfeitedUids: new Set(),
       // People asking to join an invite-only game, waiting on the host:
       // uid -> { socketId, askedAt, disconnectedAt }. Not an entrant, not a
       // registration, not written to the file. A restart empties the queue
@@ -1023,8 +1035,10 @@ function createTournamentRegistry(deps = {}) {
           inTheMoney: !!prize,
           lateRegOpen: director.lateRegOpen(),
           // The dialog offers Re-enter while the window is open: what it
-          // costs and how long the offer stands.
-          canReenter: director.reentryOpen(),
+          // costs and how long the offer stands. Not to somebody who conceded
+          // the seat, though - they were told there was no way back, and the
+          // dialog must not put one in front of them a moment later.
+          canReenter: director.reentryOpen() && !entry.forfeitedUids.has(outUid),
           buyIn: director.buyIn,
           reentryLevels: director.reentryLevels,
         });
@@ -1640,6 +1654,40 @@ function createTournamentRegistry(deps = {}) {
     return { entry };
   }
 
+  // Conceding. Leaving parks the stack, and it blinds down for as long as the
+  // game runs; this is the other way out, where the seat actually goes. What
+  // happens to it is what the host's Remove does - the chips leave play, the
+  // place is recorded, the seat is taken off the table - and the difference is
+  // that nobody is thrown out of the game: the registration stays, so the rail
+  // is still open. What is given up is the way back in, and that is the whole
+  // reason the button asks first.
+  function forfeit(entry, uid, socket = null) {
+    if (entry.status !== 'running') return { error: 'The tournament is not running' };
+    if (!entry.registrations.has(uid)) return { error: 'You are not in this tournament' };
+    if (!entry.director.playerByUid(uid)) return { error: 'You have no stack in this game' };
+    // Marked before the director acts, for the reason removePlayer marks
+    // early: the elimination it reports on the way out reads this to know the
+    // way back in is shut. A refusal unmarks only what this call marked.
+    const already = entry.forfeitedUids.has(uid);
+    entry.forfeitedUids.add(uid);
+    const result = entry.director.removeFromPlay(uid, 'forfeit');
+    if (result.error) {
+      if (!already) entry.forfeitedUids.delete(uid);
+      return result;
+    }
+    // A seat mid-hand cannot go until the hand is over, so the answer to the
+    // button is sometimes "after this one". The answer goes to whoever asked
+    // rather than to the registration's socket: pressed from a lobby card, by
+    // somebody who already walked out, there is no socket bound to the game.
+    const answer = { queued: !!result.queued, place: result.place || null };
+    if (socket) socket.emit('tournamentForfeited', answer);
+    else emitTo(entry, uid, 'tournamentForfeited', answer);
+    persist();
+    emitState(entry);
+    emitList();
+    return { entry, ...result };
+  }
+
   function startNow(entry, uid) {
     if (!requireHost(entry, uid)) return { error: 'Only the host can start the tournament' };
     if (entry.status !== 'registering') return { error: 'Already started' };
@@ -1783,6 +1831,7 @@ function createTournamentRegistry(deps = {}) {
   function reenter(entry, uid, socket) {
     if (entry.status !== 'running') return { error: 'The tournament is not running' };
     if (entry.removedUids.has(uid)) return { error: 'The host removed you from this tournament' };
+    if (entry.forfeitedUids.has(uid)) return { error: 'You forfeited this tournament' };
     const reg = entry.registrations.get(uid);
     if (!reg) return { error: 'You are not in this tournament' };
     if (entry.director.playerByUid(uid)) return { error: 'You are still seated' };
@@ -2099,6 +2148,7 @@ function createTournamentRegistry(deps = {}) {
       }
       for (const uid of saved.mutedUids || []) entry.mutedUids.add(uid);
       for (const uid of saved.removedUids || []) entry.removedUids.add(uid);
+      for (const uid of saved.forfeitedUids || []) entry.forfeitedUids.add(uid);
       // Chat comes back before, and regardless of, whether the field is seated
       // again. The rooms are keyed by a string and need no table object to
       // exist - and a field held by the restore guard below is precisely the
@@ -2178,6 +2228,7 @@ function createTournamentRegistry(deps = {}) {
     stepLevel,
     adjustClock,
     removePlayer,
+    forfeit,
     movePlayer,
     reenter,
     takeAddOn,

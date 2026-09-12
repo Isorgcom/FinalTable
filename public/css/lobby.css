@@ -419,8 +419,18 @@
   color: var(--smoke);
   line-height: 1.5;
 }
-.t-card-btn {
+/* The card keeps one cell for its buttons, and a card can want three: the way
+   in, Watch on a game you are not in, and Forfeit on a stack you walked away
+   from. They sit in a column here. Giving each button the cell itself put them
+   on top of one another, which is how Watch came to cover Join late. */
+.t-card-actions {
   grid-area: btn;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+.t-card-btn {
   min-width: 96px;
   min-height: 44px;
   padding: 8px 14px;
@@ -442,6 +452,17 @@
 .t-card-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+/* Giving a stack up, next to the way back to it. It should not read as the
+   thing to press. */
+.t-card-btn.t-card-forfeit {
+  color: #d98d8d;
+  border-color: rgba(139, 58, 58, 0.5);
+}
+.t-card-btn.t-card-forfeit:hover:not(:disabled) {
+  background: rgba(139, 58, 58, 0.22);
+  border-color: #d98d8d;
+  color: #f0b4b4;
 }
 .room-status-tag {
   display: inline-flex;
@@ -837,6 +858,7 @@
       'meta'
       'btn';
   }
+  .t-card-actions,
   .t-card-btn {
     width: 100%;
   }

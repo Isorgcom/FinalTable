@@ -142,6 +142,27 @@ function ensureSocket() {
   socket.on('tournamentAddOn', (data) => {
     addLog(data && data.queued ? '➕ Your add-on lands after this hand' : '➕ Add-on taken');
   });
+  // The seat cannot go mid-hand, so the answer to the button is sometimes "at
+  // the end of this one". At the table the elimination dialog says the rest;
+  // pressed from a lobby card there is no table and no dialog coming, because
+  // this socket is not in the game, so the answer is a notice of its own.
+  socket.on('tournamentForfeited', (data) => {
+    const queued = !!(data && data.queued);
+    const screen = document.getElementById('gameScreen');
+    if (screen && screen.classList.contains('active')) {
+      if (queued) addLog('🏳️ You forfeit; your seat goes at the end of this hand');
+      return;
+    }
+    if (typeof window.showNoticeDialog !== 'function') return;
+    const place = data && data.place ? ` You finish #${data.place}.` : '';
+    window.showNoticeDialog({
+      title: 'Forfeited',
+      message: queued
+        ? 'Your seat goes at the end of the hand being played.'
+        : `Your chips are out of play.${place} You can still watch the rest.`,
+      confirmLabel: 'OK',
+    });
+  });
   socket.on('tournamentLevelUp', () => {
     // The line itself arrives as a gameMessage from the server.
     SFX.play('turn');

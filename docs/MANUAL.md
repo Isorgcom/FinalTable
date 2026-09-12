@@ -238,7 +238,7 @@ table. Up to fifty people can wait at once.
 The **top bar** has the game's name and a line of status, then buttons:
 **stats**, **replay**, **sit out**, **panel** (shows or hides the side
 panel), and the **menu** (hand rankings, sound on or off, the operator's
-controls when unlocked, and **leave**).
+controls when unlocked, **leave**, and **forfeit**).
 
 The **banner** over the felt shows the level, the blinds and the ante when
 there is one, the time until the next level and how many players are left. On
@@ -355,6 +355,17 @@ button opens and closes it). Five tabs:
 the game, sitting out and blinding down, and the game stays under **Your
 tournaments** with a **Rejoin** button that puts you back in control of it.
 
+**forfeit**, under it in the same menu, is the other way out: the one for
+somebody who is not coming back. Your chips leave play there and then, you
+finish in the place you hold at that moment and are paid if that place pays,
+and the seat is gone rather than blinding down for the rest of the game. It
+asks first, because nothing undoes it: a player who forfeits is not offered
+re-entry, even if the window is open. You can still watch, and a game you
+walked out of earlier carries a **Forfeit** button beside **Rejoin** on its
+lobby card, so a stack you left behind can be given up without sitting down
+again. Asked for while a hand is being played, the seat goes when that hand
+ends.
+
 A dropped connection does the same without the leaving: the top of the page
 says _Reconnecting…_, your seat sits out until you are back, and the page
 rejoins on its own. So does a reload, and so does the same identity on
@@ -370,7 +381,9 @@ table.
 
 If the game allows re-entry and the window is still open, the same dialog
 offers **Re-enter** beside Watch, and the Info tab keeps a **Re-enter**
-block for as long as the offer stands. Taking it costs another buy-in and
+block for as long as the offer stands. Neither is offered to somebody who
+forfeited: giving the seat up is final, which is what the question before it
+is for. Taking it costs another buy-in and
 seats you with a fresh starting stack at the table with the fewest players,
 joining at its next deal. Your bust-out is struck from the standings, as if
 it had not happened.

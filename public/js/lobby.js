@@ -1006,7 +1006,7 @@
     meta.textContent = parts.join(' · ');
 
     const btn = document.createElement('button');
-    btn.className = 't-card-btn';
+    btn.className = 't-card-btn t-card-go';
     btn.type = 'button';
     // A tournament you left is still yours: your stack is at the table, and
     // the way back must not be the late-registration button, which closes.
@@ -1029,6 +1029,16 @@
     // Anyone may watch a listed game while it runs: a second button beside
     // the way in, and it never takes a seat.
     const buttons = [btn];
+    // A stack walked away from is still posting blinds with nobody behind it.
+    // The way to stop that sits beside the way back to it.
+    if (mine && t.you.left && t.status === 'running' && !t.you.eliminated) {
+      const give = document.createElement('button');
+      give.className = 't-card-btn t-card-forfeit';
+      give.type = 'button';
+      give.textContent = 'Forfeit';
+      give.addEventListener('click', () => forfeit(t.id));
+      buttons.push(give);
+    }
     if (!mine && t.status === 'running') {
       const watch = document.createElement('button');
       watch.className = 't-card-btn t-card-watch';
@@ -1038,7 +1048,13 @@
       buttons.push(watch);
     }
 
-    card.append(head, status, meta, ...buttons);
+    // The card's grid keeps one cell for buttons, and there can be three of
+    // them, so they go in a column of their own. Placing each at the cell
+    // stacked them on top of one another instead.
+    const actions = document.createElement('div');
+    actions.className = 't-card-actions';
+    actions.append(...buttons);
+    card.append(head, status, meta, actions);
     return card;
   }
 
@@ -1826,6 +1842,28 @@
     if (ok) socket.emit('leaveTournament');
   }
 
+  // The seat given up rather than left behind. Leaving parks the stack and it
+  // blinds down for as long as the game runs; this takes it off the table and
+  // writes the finishing place down. Asked for once, because the way back in
+  // closes with it - a forfeit that could be re-entered would be a button for
+  // turning a short stack into a fresh one.
+  async function forfeit(tournamentId) {
+    const id = tournamentId || currentId;
+    if (!socket || !id) return;
+    let ok = true;
+    if (typeof window.showConfirmDialog === 'function') {
+      ok = await window.showConfirmDialog({
+        title: 'Forfeit the tournament?',
+        message:
+          'Your chips leave play and you finish where you stand now, paid if that place pays. ' +
+          'You can watch the rest, but you cannot come back in, and re-entry will not open to you.',
+        confirmLabel: 'Forfeit',
+        cancelLabel: 'Keep playing',
+      });
+    }
+    if (ok) socket.emit('forfeitTournament', { tournamentId: id });
+  }
+
   // ── Wiring ───────────────────────────────────────────────────────────────
 
   function init() {
@@ -1970,6 +2008,7 @@
     onLeft,
     onCancelled,
     onEliminated,
+    forfeit,
     reenter,
     takeAddOn,
     onError,

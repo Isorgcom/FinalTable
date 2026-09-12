@@ -13,6 +13,24 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- Forfeit: a way out of a game for good, under leave in the table menu and on
+  the lobby card of a game you have walked out of. Leaving parks your stack at
+  the table, where it blinds down for as long as the game runs; forfeiting
+  takes it off the table. Your chips leave play, you finish in the place you
+  hold at that moment and are paid if that place pays, and you can still watch
+  the rest from the rail. It asks first, because it does not come back: a
+  player who forfeits is not offered re-entry, even while the window is open.
+  Asked for during a hand, the seat goes when that hand ends.
+
+### Fixed
+
+- The Watch button on a running game's lobby card no longer sits on top of the
+  button beside it. Join late and Watch were drawn in the same place, so the
+  way into a game with late registration open was covered by the way to the
+  rail.
+
 ## 0.10.0 - 2026-09-12
 
 ### Added

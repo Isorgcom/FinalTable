@@ -170,12 +170,12 @@ test('a guest joins from the lobby card without ever seeing the code', async ({
   guest.on('pageerror', (err) => guestErrors.push(err.message));
   await identifyAs(guest, 'Walk-in');
   const card = guest.locator('#listRegistering .t-card', { hasText: 'Open Door' });
-  await expect(card.locator('.t-card-btn')).toHaveText('Join');
+  await expect(card.locator('.t-card-go')).toHaveText('Join');
   // Nothing the lobby holds for this card is the code.
   expect(await card.evaluate((el) => el.outerHTML)).not.toContain(code);
   expect(await guest.evaluate(() => JSON.stringify(window.Lobby.current()))).not.toContain(code);
 
-  await card.locator('.t-card-btn').click();
+  await card.locator('.t-card-go').click();
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await expect(guest.locator('#wrName')).toHaveText('Open Door');
   // Once in, the waiting room shows the same code the host has, for sharing on.

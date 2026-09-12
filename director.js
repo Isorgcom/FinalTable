@@ -70,9 +70,11 @@ class TournamentDirector {
     this._tableSnapshots = new Map();
     this._bubbleAnnounced = false;
     this._inTheMoneyAnnounced = false;
-    // What the host asked for while a hand was in the way. A removal waits
-    // for that table's hand; a move waits for both tables to be idle.
-    this._pendingRemovals = new Set();
+    // What the host asked for, or a player asked for themselves, while a hand
+    // was in the way. A removal waits for that table's hand; a move waits for
+    // both tables to be idle. The value is why the seat is going: the host
+    // took it out, or the player conceded it.
+    this._pendingRemovals = new Map(); // uid -> 'removed' | 'forfeit'
     this._pendingMoves = new Map(); // uid -> tableNumber
 
     // One Tournament instance is shared by every table, which is what gives a
@@ -680,18 +682,26 @@ class TournamentDirector {
   // the place they hold at that moment, the way a bust-out would; the ledger
   // of places stays complete. A table mid-hand cannot lose a seat safely, so
   // there the seat sits out and goes at that hand's end.
-  removeFromPlay(uid) {
+  //
+  // The same road serves the host taking somebody out and a player conceding
+  // their own seat: what is done to the seat is identical, and the reason is
+  // only what the table is told and what goes out with the elimination.
+  removeFromPlay(uid, reason = 'removed') {
     if (!this.isRunning || this.finished) return { error: 'The tournament is not running' };
     const seat = this.playerByUid(uid);
     if (!seat) return { error: 'They are not seated' };
     const { table, player } = seat;
     if (table.isRunning) {
       player.autoPlay = true;
-      player.sitOutReason = 'removed';
+      player.sitOutReason = reason;
       player.preAction = null;
       player.sitOutNextHand = false;
-      this._pendingRemovals.add(uid);
-      this._say(`${player.name} will be removed after this hand`);
+      this._pendingRemovals.set(uid, reason);
+      this._say(
+        reason === 'forfeit'
+          ? `${player.name} forfeits after this hand`
+          : `${player.name} will be removed after this hand`
+      );
       // If the hand is waiting on them, it stops waiting: the seat acts for
       // itself from here, the way a dropped connection's does.
       const idx = table.players.indexOf(player);
@@ -702,7 +712,7 @@ class TournamentDirector {
       }
       return { queued: true };
     }
-    const place = this._takeOutOfPlay(table, player);
+    const place = this._takeOutOfPlay(table, player, reason);
     this._afterFieldChange(table);
     return { removed: true, place };
   }
@@ -710,18 +720,25 @@ class TournamentDirector {
   // Ledger first, seat second: the mirror of registerLate. Removing the chips
   // from what the field is accountable for is what keeps the conservation
   // check true at the next hand's end.
-  _takeOutOfPlay(table, player) {
+  _takeOutOfPlay(table, player, reason = 'removed') {
+    const forfeit = reason === 'forfeit';
     this._expectedChips -= player.chips;
     const place = this.tournament.recordElimination(player.name, table.roundCount, player.uid);
     player.chips = 0;
-    this._say(`${player.name} removed from the game by the host, finishing #${place}`);
+    this._say(
+      forfeit
+        ? `${player.name} forfeits the game, finishing #${place}`
+        : `${player.name} removed from the game by the host, finishing #${place}`
+    );
     if (this.onPlayerEliminated) {
       this.onPlayerEliminated({
         uid: player.uid,
         name: player.name,
         place,
         tableId: table.id,
-        removed: true,
+        // One flag or the other, never both and never a false one: a listener
+        // asking "was this a bust-out" reads the absence of both.
+        ...(forfeit ? { forfeit: true } : { removed: true }),
       });
     }
     table.removePlayer(player.id);
@@ -811,11 +828,12 @@ class TournamentDirector {
     }
     for (const p of busted) table.removePlayer(p.id);
 
-    // Removals the host asked for while this table was dealing. One who
-    // busted on their own in the meantime is already out, and recorded once.
-    for (const uid of [...this._pendingRemovals]) {
+    // Removals asked for while this table was dealing, by the host or by the
+    // player themselves. One who busted on their own in the meantime is
+    // already out, and recorded once.
+    for (const [uid, reason] of [...this._pendingRemovals]) {
       const seated = table.players.find((p) => p.uid === uid);
-      if (seated) this._takeOutOfPlay(table, seated);
+      if (seated) this._takeOutOfPlay(table, seated, reason);
       if (!this.playerByUid(uid)) this._pendingRemovals.delete(uid);
     }
 
