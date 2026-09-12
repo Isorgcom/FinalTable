@@ -124,6 +124,24 @@ function ensureSocket() {
   socket.on('tournamentEliminated', (data) => {
     if (window.Lobby) Lobby.onEliminated(data);
   });
+  // The answer to a button: a refusal the player pressed for, so a dialog
+  // rather than the log line `error` gets at the table.
+  socket.on('tournamentNotice', (data) => {
+    const message = data && data.message ? data.message : 'Something went wrong';
+    addLog('⚠️ ' + message);
+    if (typeof window.showNoticeDialog === 'function') {
+      window.showNoticeDialog({ title: 'Tournament', message, confirmLabel: 'OK' });
+    }
+  });
+  socket.on('tournamentReentered', (data) => {
+    const where = data && data.table ? ` at table ${data.table}` : '';
+    addLog(
+      `🔁 You re-enter with ${data && data.chips ? data.chips.toLocaleString() : 'a fresh stack'}${where}`
+    );
+  });
+  socket.on('tournamentAddOn', (data) => {
+    addLog(data && data.queued ? '➕ Your add-on lands after this hand' : '➕ Add-on taken');
+  });
   socket.on('tournamentLevelUp', () => {
     // The line itself arrives as a gameMessage from the server.
     SFX.play('turn');

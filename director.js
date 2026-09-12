@@ -54,6 +54,17 @@ class TournamentDirector {
     // Late registration stays open through this many levels (0 = closes at start).
     this.lateRegLevels = Number.isInteger(options.lateRegLevels) ? options.lateRegLevels : 3;
     this._lateRegClosedAnnounced = false;
+    // Re-entry: a busted player may buy a fresh starting stack through this
+    // many levels (0 = a freezeout). The add-on is one starting stack, once,
+    // during the first break, when the host allows it.
+    this.reentryLevels = Number.isInteger(options.reentryLevels) ? options.reentryLevels : 0;
+    this.addOn = !!options.addOn;
+    // Paid entries beyond the people: each re-entry and each add-on puts a
+    // buy-in in the pool without adding a place to the ladder.
+    this.extraEntries = 0;
+    this._reentries = new Map(); // uid -> how many times
+    this._addOns = new Set(); // uids that have taken theirs
+    this._pendingAddOns = new Set(); // asked for while the seat's table was dealing
     // tableNumber -> the last state that table was in while it was not
     // dealing. See _captureIdleTables for why it is kept per table.
     this._tableSnapshots = new Map();
@@ -173,6 +184,13 @@ class TournamentDirector {
       buyIn: this.buyIn,
       lateRegLevels: this.lateRegLevels,
       lateRegOpen: this.lateRegOpen(),
+      reentryLevels: this.reentryLevels,
+      reentryOpen: this.reentryOpen(),
+      addOn: this.addOn,
+      addOnOpen: this.addOnOpen(),
+      entries: this.entrants.length + this.extraEntries,
+      myReentries: viewerUid ? this._reentries.get(viewerUid) || 0 : 0,
+      myAddOn: viewerUid ? this.hasAddOn(viewerUid) : false,
       averageStack: alive.length ? Math.floor(this.totalChips() / alive.length) : 0,
       chipLeader: leader ? { name: leader.name, chips: leader.chips } : null,
       myChips: mePlayer ? mePlayer.chips : null,
@@ -237,6 +255,25 @@ class TournamentDirector {
   // half-registered stack.
   registerLate(entrant) {
     if (!this.lateRegOpen()) throw new Error('Late registration is closed');
+    const seat = this._seat(entrant);
+    this.entrants.push(entrant);
+    this.tournament.setFieldSize(this.entrants.length);
+    if (!this._payoutOverride) {
+      this.payoutPct = payoutPercentagesFor(this.entrants.length);
+      this.paidPlaces = this.payoutPct.length;
+    }
+    this._say(
+      `${entrant.name} registers late and sits at table ${seat.table.tableNumber} · ${this.entrants.length} entrants, ${this.paidPlaces} paid`
+    );
+    if (this.onFieldUpdate) this.onFieldUpdate();
+    return seat;
+  }
+
+  // The seating half of a late entry, shared with re-entry: the table with
+  // the fewest players, or a new one that breaks first; the ledger before
+  // the seat, rolled back if the seat fails; a folded spectator when the
+  // table is mid-hand.
+  _seat(entrant) {
     let table = this.tables
       .filter((t) => !t._broken && t.players.length > 0 && t.players.length < this.tableSize)
       .sort((a, b) => a.players.length - b.players.length)[0];
@@ -266,17 +303,86 @@ class TournamentDirector {
       seated.folded = true;
       seated.holeCards = [];
     }
-    this.entrants.push(entrant);
-    this.tournament.setFieldSize(this.entrants.length);
-    if (!this._payoutOverride) {
-      this.payoutPct = payoutPercentagesFor(this.entrants.length);
-      this.paidPlaces = this.payoutPct.length;
+    return { table, player: seated };
+  }
+
+  // ── Re-entry and the add-on ──────────────────────────────────────────────
+
+  reentryOpen() {
+    return this.isRunning && !this.finished && this.tournament.levelNumber() <= this.reentryLevels;
+  }
+
+  firstBreakIndex() {
+    return this.tournament.blindSchedule.findIndex((r) => r.break);
+  }
+
+  // The add-on is offered during the first break only, and only when the
+  // host allowed one. A structure with no break never offers it.
+  addOnOpen() {
+    if (!this.addOn || !this.isRunning || this.finished) return false;
+    const first = this.firstBreakIndex();
+    return first >= 0 && this.tournament.onBreak() && this.tournament.currentLevel === first;
+  }
+
+  // A busted player buys a fresh starting stack. The same person, not a new
+  // entrant: their bust-out leaves the ledger and everyone who busted before
+  // them moves down a place, the way late registration renumbers, so places
+  // stay complete and unique. The ladder's depth follows the number of
+  // people and does not move; the pool grows by a buy-in. Seated first, so
+  // a seat that cannot be had leaves the ledger as it was.
+  reenter(entrant) {
+    if (!this.reentryOpen()) throw new Error('Re-entry is closed');
+    const known = this.entrants.find((e) => e.uid === entrant.uid);
+    if (!known) throw new Error('Not an entrant');
+    if (this.playerByUid(entrant.uid)) throw new Error('Still seated');
+    if (!this.tournament.eliminations.some((e) => e.uid === entrant.uid)) {
+      throw new Error('Not busted');
     }
+    if (entrant.id) known.id = entrant.id;
+    const seat = this._seat({ ...known });
+    this.tournament.eliminations = this.tournament.eliminations.filter(
+      (e) => e.uid !== entrant.uid
+    );
+    this.tournament.setFieldSize(this.tournament.startingPlayers);
+    this.extraEntries += 1;
+    this._reentries.set(entrant.uid, (this._reentries.get(entrant.uid) || 0) + 1);
     this._say(
-      `${entrant.name} registers late and sits at table ${table.tableNumber} · ${this.entrants.length} entrants, ${this.paidPlaces} paid`
+      `${known.name} re-enters with ${this.startChips} at table ${seat.table.tableNumber} · ${this.entrants.length + this.extraEntries} entries, pool ${this.prizePool()}`
     );
     if (this.onFieldUpdate) this.onFieldUpdate();
-    return { table, player: seated };
+    return seat;
+  }
+
+  // One starting stack, once, during the first break. A table still dealing
+  // takes it at that hand's end, the way a removal waits.
+  takeAddOn(uid) {
+    if (!this.addOnOpen()) throw new Error('The add-on is offered during the first break only');
+    const seat = this.playerByUid(uid);
+    if (!seat) throw new Error('You are not seated');
+    if (this.hasAddOn(uid)) throw new Error('You have taken your add-on');
+    if (seat.table.isRunning) {
+      this._pendingAddOns.add(uid);
+      this._say(`${seat.player.name} takes the add-on after this hand`);
+      return { queued: true };
+    }
+    this._applyAddOn(seat.table, seat.player, { settle: true });
+    return { queued: false, chips: seat.player.chips };
+  }
+
+  // Taken, or asked for and waiting on the hand: either way, not on offer.
+  hasAddOn(uid) {
+    return this._addOns.has(uid) || this._pendingAddOns.has(uid);
+  }
+
+  _applyAddOn(table, player, { settle = false } = {}) {
+    player.chips += this.startChips;
+    this._expectedChips += this.startChips;
+    this._addOns.add(player.uid);
+    this.extraEntries += 1;
+    this._say(
+      `${player.name} takes the add-on: ${this.startChips} more · ${this.entrants.length + this.extraEntries} entries, pool ${this.prizePool()}`
+    );
+    if (settle) this._afterFieldChange(table);
   }
 
   // uid -> where that player is sitting, in one pass over the field. Callers
@@ -305,6 +411,8 @@ class TournamentDirector {
         chips: seat ? seat.player.chips : null,
         table: seat ? seat.table.tableNumber : null,
         place: placeByUid.get(e.uid) || null,
+        reentries: this._reentries.get(e.uid) || 0,
+        addOn: this._addOns.has(e.uid),
         autoPlay: seat ? !!seat.player.autoPlay : false,
         isBot: !!e.isBot,
         // Where the player came from: a typed name, or a GameNight account.
@@ -387,7 +495,7 @@ class TournamentDirector {
   // ── Money ────────────────────────────────────────────────────────────────
 
   prizePool() {
-    return this.buyIn * this.entrants.length;
+    return this.buyIn * (this.entrants.length + this.extraEntries);
   }
 
   // Percentages resolved to whole chips. Floor each share and give the
@@ -709,6 +817,18 @@ class TournamentDirector {
       const seated = table.players.find((p) => p.uid === uid);
       if (seated) this._takeOutOfPlay(table, seated);
       if (!this.playerByUid(uid)) this._pendingRemovals.delete(uid);
+    }
+
+    // Add-ons asked for while this table was dealing. One who busted in the
+    // meantime is not charged for a stack they never got.
+    for (const uid of [...this._pendingAddOns]) {
+      const seated = table.players.find((p) => p.uid === uid);
+      if (!seated) {
+        if (!this.playerByUid(uid)) this._pendingAddOns.delete(uid);
+        continue;
+      }
+      this._pendingAddOns.delete(uid);
+      this._applyAddOn(table, seated);
     }
 
     this._afterFieldChange(table, tournamentResult);
@@ -1103,7 +1223,10 @@ class TournamentDirector {
         // The tables keep the blinds they have: a hand still running plays
         // out at its own level, and nothing deals until the break is over.
         const row = this.tournament.blindSchedule[level];
-        this._say(`Break: ${fmtLength(row.duration)} · play resumes at ${blindsText(blinds)}`);
+        const addOns = this.addOnOpen() ? ' · add-ons open' : '';
+        this._say(
+          `Break: ${fmtLength(row.duration)} · play resumes at ${blindsText(blinds)}${addOns}`
+        );
       } else {
         this._stampBlinds(blinds);
         const verb = info.back ? 'Blinds back to' : 'Blinds up:';
@@ -1193,6 +1316,11 @@ class TournamentDirector {
       breakOrder: [...(this.breakOrder || [])],
       expectedChips: this._expectedChips,
       paused: this.isPaused(),
+      reentryLevels: this.reentryLevels,
+      addOn: this.addOn,
+      extraEntries: this.extraEntries,
+      reentries: [...this._reentries],
+      addOns: [...this._addOns],
       entrants: this.entrants.map((e) => ({
         uid: e.uid,
         name: e.name,
@@ -1216,6 +1344,11 @@ class TournamentDirector {
     this.entrants = (snap.entrants || []).map((e) => ({ ...e }));
     this.payoutPct = snap.payoutPct || this.payoutPct;
     this.paidPlaces = snap.paidPlaces || (this.payoutPct ? this.payoutPct.length : 0);
+    // What the pool and the roster owe to re-entries and add-ons cannot be
+    // read back off the seats, so it is carried.
+    this.extraEntries = Number(snap.extraEntries) || 0;
+    this._reentries = new Map(Array.isArray(snap.reentries) ? snap.reentries : []);
+    this._addOns = new Set(Array.isArray(snap.addOns) ? snap.addOns : []);
 
     for (const entry of snap.tables) {
       const table = this._createTable(entry.tableNumber - 1);

@@ -809,17 +809,41 @@
     returnToLobby(`"${data.name}" was cancelled: ${data.reason}.`);
   }
 
-  function onEliminated(data) {
+  async function onEliminated(data) {
     if (!data) return;
     const prize = data.prize ? ` and won ${data.prize.toLocaleString()}` : '';
     const note = data.lateRegOpen ? ' Late registration is still open, so this may move.' : '';
+    const title = `You finished #${data.place} of ${data.entrants}`;
+    // The window is open: the same dialog offers the way back in. Re-enter
+    // asks the server, which is the judge of whether it is still open.
+    if (data.canReenter && typeof window.showConfirmDialog === 'function') {
+      const cost = data.buyIn ? ` for a buy-in of ${fmtChips(data.buyIn)}` : '';
+      const ok = await window.showConfirmDialog({
+        title,
+        message: `You are out${prize}.${note} Re-enter${cost}? Open through level ${data.reentryLevels}.`,
+        confirmLabel: 'Re-enter',
+        cancelLabel: 'Watch',
+      });
+      if (ok) reenter();
+      return;
+    }
     if (typeof window.showNoticeDialog === 'function') {
       window.showNoticeDialog({
-        title: `You finished #${data.place} of ${data.entrants}`,
+        title,
         message: `You are out${prize}.${note} You can keep watching the table.`,
         confirmLabel: 'Watch',
       });
     }
+  }
+
+  // A fresh stack for another buy-in, while the window is open. The server
+  // answers with the seat on the next push, or a notice saying why not.
+  function reenter() {
+    if (socket && socket.connected) socket.emit('reenterTournament');
+  }
+
+  function takeAddOn() {
+    if (socket && socket.connected) socket.emit('takeAddOn');
   }
 
   function onError(message) {
@@ -975,6 +999,8 @@
       t.structure || null,
       fmtLevel(t.levelDuration),
       t.lateRegLevels ? `late reg through L${t.lateRegLevels}` : 'no late reg',
+      t.reentryLevels ? `re-entry through L${t.reentryLevels}` : null,
+      t.addOn ? 'add-on' : null,
       t.buyIn ? `buy-in ${fmtChips(t.buyIn)}` : null,
     ].filter(Boolean);
     meta.textContent = parts.join(' · ');
@@ -1032,6 +1058,7 @@
         t.startsAt,
         t.you,
         t.visibility,
+        t.entries,
       ])
     );
     if (sig === _drawnListSig) return;
@@ -1190,14 +1217,32 @@
     if (structureEdited && levelsDraft) {
       const from = def ? def.name : 'a preset';
       hint.textContent = `Custom, edited from ${from} · ${structureLine(summarizeRows(levelsDraft))}`;
+      refreshAddOnRow(levelsDraft);
       return;
     }
     if (!def) {
       hint.textContent = '';
+      refreshAddOnRow(null);
       return;
     }
     const rows = materializeRows(def, levelLengthSeconds());
     hint.textContent = `${def.hint} ${structureLine(summarizeRows(rows))}`;
+    refreshAddOnRow(rows);
+  }
+
+  // The add-on is offered at the first break, so a structure without one
+  // cannot offer it: the row goes grey and says why. Until the presets have
+  // arrived the rows are unknown, and the server clamps anyway.
+  function refreshAddOnRow(rows) {
+    const box = $('tAddOn');
+    const note = $('tAddOnNote');
+    if (!box || !note) return;
+    const hasBreak = !rows || rows.some((r) => r.break);
+    box.disabled = !hasBreak;
+    box.closest('.check-row').classList.toggle('disabled', !hasBreak);
+    note.textContent = hasBreak
+      ? 'a starting stack for another buy-in'
+      : 'needs a break in the structure';
   }
 
   function setStructure(key) {
@@ -1458,6 +1503,8 @@
       startChips: parseInt($('tStartChips').value, 10),
       levelDuration: parseInt($('tLevelDuration').value, 10),
       lateRegLevels: parseInt($('tLateRegLevels').value, 10),
+      reentryLevels: parseInt($('tReentryLevels').value, 10),
+      addOn: $('tAddOn').checked && !$('tAddOn').disabled,
       buyIn: Math.max(0, Math.min(10000, parseInt($('tBuyIn').value, 10) || 0)),
       bots: $('tBots').checked ? parseInt($('tBotCount').value, 10) || 5 : 0,
       visibility: currentVisibility(),
@@ -1650,6 +1697,8 @@
       s.lateRegLevels
         ? `late registration through level ${s.lateRegLevels}`
         : 'no late registration',
+      s.reentryLevels ? `re-entry through level ${s.reentryLevels}` : 'no re-entry',
+      s.addOn ? 'add-on at the first break' : null,
       s.buyIn ? `buy-in ${fmtChips(s.buyIn)} · prize pool ${fmtChips(t.prizePool)}` : null,
     ].filter(Boolean);
     const settings = $('wrSettings');
@@ -1921,6 +1970,8 @@
     onLeft,
     onCancelled,
     onEliminated,
+    reenter,
+    takeAddOn,
     onError,
     setConnection,
     enterTable,

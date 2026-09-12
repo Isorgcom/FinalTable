@@ -103,6 +103,7 @@ test('creating a tournament lands in the waiting room with roster, code and sett
   await expect(page.locator('#wrRoster .wr-badge').first()).toHaveText('host');
   await expect(page.locator('#wrSettings')).toContainText('8-max');
   await expect(page.locator('#wrSettings')).toContainText('late registration through level 3');
+  await expect(page.locator('#wrSettings')).toContainText('no re-entry');
   await expect(page.locator('#wrHostControls')).toBeVisible();
   // A field of one cannot deal, so the host waits for a second person.
   await expect(page.locator('#btnStartNow')).toBeDisabled();
@@ -447,4 +448,29 @@ test('the bot box takes a count, and eight bots at 6-max make two tables', async
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await page.click('#tabInfo');
   await expect(page.locator('#panelInfoBody')).toContainText('2 · you');
+});
+
+test('re-entry and the add-on chosen on the create form reach the waiting room', async ({
+  page,
+}) => {
+  await identifyAs(page, 'Host');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Rebuy Night');
+  await page.click('#tStartQuick button[data-min="15"]');
+  // The add-on is offered at the first break, so Turbo, which has none,
+  // cannot offer it; Standard can.
+  await page.click('#tStructure button[data-structure="turbo"]');
+  await expect(page.locator('#tAddOn')).toBeDisabled();
+  await expect(page.locator('#tAddOnNote')).toHaveText('needs a break in the structure');
+  await page.click('#tStructure button[data-structure="standard"]');
+  await expect(page.locator('#tAddOn')).toBeEnabled();
+  await expect(page.locator('#tAddOnNote')).toHaveText('a starting stack for another buy-in');
+  await page.selectOption('#tReentryLevels', '2');
+  await page.check('#tAddOn');
+  await page.fill('#tBuyIn', '100');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  await expect(page.locator('#wrSettings')).toContainText('re-entry through level 2');
+  await expect(page.locator('#wrSettings')).toContainText('add-on at the first break');
+  await expect(page.locator('#wrSettings')).toContainText('buy-in 100');
 });

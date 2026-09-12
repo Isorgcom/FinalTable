@@ -410,6 +410,10 @@ function createTournamentRegistry(deps = {}) {
       structure: entry.settings.structure ? entry.settings.structure.name : 'Standard',
       lateRegLevels: d.lateRegLevels,
       lateRegOpen: d.lateRegOpen(),
+      reentryLevels: d.reentryLevels,
+      reentryOpen: d.reentryOpen(),
+      addOn: d.addOn,
+      entries: total + d.extraEntries,
       level: d.tournament.levelNumber(),
       paused: d.isPaused(),
       remaining: entry.status === 'registering' ? total : d.playersRemaining(),
@@ -536,6 +540,11 @@ function createTournamentRegistry(deps = {}) {
           : entry.watching.has(uid)
             ? (d.tables.find((t) => t.id === entry.watching.get(uid)) || {}).tableNumber || null
             : null,
+        // The two self-service buttons: a busted entrant while the re-entry
+        // window is open; a seated one during the first break who has not
+        // taken the add-on yet.
+        canReenter: !!reg && !reg.left && !seat && entry.watching.has(uid) && d.reentryOpen(),
+        canAddOn: !!seat && d.addOnOpen() && !d.hasAddOn(uid),
       },
     };
   }
@@ -829,6 +838,7 @@ function createTournamentRegistry(deps = {}) {
     if (startsAt < t - 60 * 1000 || startsAt > t + WEEK_MS) startsAt = t;
     const startChips = int(payload.startChips, 5000);
     const levelDuration = Math.max(30, Math.min(3600, int(payload.levelDuration, 300)));
+    const structure = clampStructure(payload.structure, levelDuration);
     return {
       startsAt,
       settings: {
@@ -837,8 +847,13 @@ function createTournamentRegistry(deps = {}) {
         levelDuration,
         // A preset's key, or the host's own levels; anything else runs
         // Standard. Idempotent, so a saved one comes back as it was.
-        structure: clampStructure(payload.structure, levelDuration),
+        structure,
         lateRegLevels: Math.max(0, Math.min(8, int(payload.lateRegLevels, 3))),
+        // A freezeout unless the host says otherwise: no re-entry, no add-on.
+        // The add-on is offered at the first break, so a structure without
+        // one cannot offer it, whatever the form said.
+        reentryLevels: Math.max(0, Math.min(8, int(payload.reentryLevels, 0))),
+        addOn: !!payload.addOn && structure.levels.some((row) => row.break),
         buyIn: Math.max(0, Math.min(10000, int(payload.buyIn, 0))),
         // Private unless the host says otherwise: on a server anyone can
         // reach, a game a stranger can sit at should be a choice, not the
@@ -960,6 +975,8 @@ function createTournamentRegistry(deps = {}) {
       levelDuration: settings.levelDuration,
       blindSchedule: settings.structure ? settings.structure.levels : undefined,
       lateRegLevels: settings.lateRegLevels,
+      reentryLevels: settings.reentryLevels,
+      addOn: settings.addOn,
       handPauseMs,
       gameOptions: { gameMode: 'tournament', ...tableOptions },
       onTableCreated: (table) => {
@@ -1005,6 +1022,11 @@ function createTournamentRegistry(deps = {}) {
           prize: prize ? prize.amount : 0,
           inTheMoney: !!prize,
           lateRegOpen: director.lateRegOpen(),
+          // The dialog offers Re-enter while the window is open: what it
+          // costs and how long the offer stands.
+          canReenter: director.reentryOpen(),
+          buyIn: director.buyIn,
+          reentryLevels: director.reentryLevels,
         });
       },
       onFinished: (result) => {
@@ -1752,6 +1774,61 @@ function createTournamentRegistry(deps = {}) {
     return { entry, ...result };
   }
 
+  // ── Re-entry and the add-on ──────────────────────────────────────────────
+  //
+  // Both are self-service: play chips, so there is nothing to collect, and
+  // the director is the judge of whether the window is open. Somebody the
+  // host removed is out for good.
+
+  function reenter(entry, uid, socket) {
+    if (entry.status !== 'running') return { error: 'The tournament is not running' };
+    if (entry.removedUids.has(uid)) return { error: 'The host removed you from this tournament' };
+    const reg = entry.registrations.get(uid);
+    if (!reg) return { error: 'You are not in this tournament' };
+    if (entry.director.playerByUid(uid)) return { error: 'You are still seated' };
+    let seat;
+    try {
+      seat = entry.director.reenter({ uid, id: socket ? socket.id : reg.socketId });
+    } catch (err) {
+      return { error: err.message };
+    }
+    // Back in the game: no longer a busted player at the rail of the table
+    // that took them out, and a leaver who came back is a player again. The
+    // socket is the one already bound, so no second tournamentJoined; the
+    // seat carries its id from the director.
+    reg.left = false;
+    if (socket) reg.socketId = socket.id;
+    reg.disconnectedAt = null;
+    entry.watching.delete(uid);
+    seat.table.emitUpdate();
+    // The seat may be at another table than the one they were watching: the
+    // chat history follows the seat, as it does after a move.
+    sendChatHistory(entry, uid);
+    emitTo(entry, uid, 'tournamentReentered', {
+      chips: seat.player.chips,
+      table: seat.table.tableNumber,
+    });
+    persist();
+    emitState(entry);
+    emitList();
+    return { entry, seat };
+  }
+
+  function takeAddOn(entry, uid) {
+    if (entry.status !== 'running') return { error: 'The tournament is not running' };
+    let result;
+    try {
+      result = entry.director.takeAddOn(uid);
+    } catch (err) {
+      return { error: err.message };
+    }
+    emitTo(entry, uid, 'tournamentAddOn', { queued: !!result.queued });
+    persist();
+    emitState(entry);
+    emitList();
+    return { entry, ...result };
+  }
+
   // Everything start() does except the draw: the field is already seated from
   // a snapshot, so only the clock and the tick need starting.
   function resume(entry) {
@@ -2102,6 +2179,8 @@ function createTournamentRegistry(deps = {}) {
     adjustClock,
     removePlayer,
     movePlayer,
+    reenter,
+    takeAddOn,
     stateFor,
     listFor,
     publicList,

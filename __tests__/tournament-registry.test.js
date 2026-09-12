@@ -2082,3 +2082,250 @@ describe('the rail', () => {
     expect(registry.setChatMute(entry, 'g', 'w', true).error).toMatch(/host/);
   });
 });
+
+describe('re-entry and the add-on in the registry', () => {
+  let registry;
+  let io;
+  let store;
+  const names = { h: 'Host', g: 'Guest', t: 'Third', u: 'Fourth', v: 'Fifth' };
+  const BREAKS = {
+    name: 'Sunday',
+    levels: [
+      { sb: 25, bb: 50, ante: 0, duration: 60 },
+      { break: true, duration: 90 },
+      { sb: 50, bb: 100, ante: 100, duration: 60 },
+    ],
+  };
+  const FLAT = {
+    name: 'Flat',
+    levels: [
+      { sb: 25, bb: 50, ante: 0, duration: 60 },
+      { sb: 50, bb: 100, ante: 0, duration: 60 },
+    ],
+  };
+
+  function makeRegistry(withStore) {
+    return createTournamentRegistry({
+      io,
+      identity: makeIdentity(names),
+      sweepMs: 1000,
+      abandonGraceMs: 3000,
+      overdueAbandonMs: 20000,
+      hostTransferGraceMs: 2000,
+      store: withStore,
+      tableOptions: { actionTimeoutMs: 0 },
+      connectedSockets: () => live.values(),
+      socketById: (id) => live.get(id) || null,
+    });
+  }
+
+  // Four people, dealt and held: one can bust and one can be removed with a
+  // game still on.
+  function running(extra = {}) {
+    const { entry } = registry.create(
+      'h',
+      { name: 'Night', startsAt: Date.now() + 1000, tableSize: 6, buyIn: 100, ...extra },
+      makeSocket('sh', 'h')
+    );
+    for (const uid of ['g', 't', 'u']) {
+      registry.join(uid, { code: entry.code }, makeSocket(`s${uid}`, uid));
+    }
+    jest.advanceTimersByTime(1500);
+    expect(entry.status).toBe('running');
+    entry.director.holdField();
+    expect(entry.director.tables[0].isRunning).toBe(false);
+    return entry;
+  }
+
+  function bust(entry, uid) {
+    const { table, player } = entry.director.playerByUid(uid);
+    const keeper = table.players.find((p) => p.uid !== uid && p.chips > 0);
+    keeper.chips += player.chips;
+    player.chips = 0;
+    entry.director.tournament.recordElimination(player.name, 1, uid);
+    entry.director._handleRoundEnd(table, null);
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-12T20:00:00Z'));
+    io = makeIo();
+    store = makeStore();
+    live.clear();
+    registry = makeRegistry(store);
+  });
+
+  afterEach(() => {
+    registry.stop();
+    jest.useRealTimers();
+  });
+
+  test('the settings: re-entry clamped to 0..8, the add-on only with a break, a freezeout by default', () => {
+    const a = registry.create(
+      'h',
+      {
+        name: 'A',
+        startsAt: Date.now() + 60000,
+        reentryLevels: 99,
+        addOn: true,
+        structure: BREAKS,
+      },
+      makeSocket('sh', 'h')
+    ).entry;
+    expect(a.settings).toMatchObject({ reentryLevels: 8, addOn: true });
+    expect(a.director).toMatchObject({ reentryLevels: 8, addOn: true });
+
+    const b = registry.create(
+      'g',
+      { name: 'B', startsAt: Date.now() + 60000, reentryLevels: -3, addOn: true, structure: FLAT },
+      makeSocket('sg', 'g')
+    ).entry;
+    expect(b.settings).toMatchObject({ reentryLevels: 0, addOn: false });
+
+    const c = registry.create(
+      't',
+      { name: 'C', startsAt: Date.now() + 60000, visibility: 'public', structure: BREAKS },
+      makeSocket('st', 't')
+    ).entry;
+    expect(c.settings).toMatchObject({ reentryLevels: 0, addOn: false });
+    expect(registry.publicList().find((card) => card.id === c.id)).toMatchObject({
+      reentryLevels: 0,
+      reentryOpen: false,
+      addOn: false,
+      entries: 1,
+    });
+    expect(registry.stateFor(c, 't').settings).toMatchObject({ reentryLevels: 0, addOn: false });
+    expect(registry.stateFor(c, 't').you).toMatchObject({ canReenter: false, canAddOn: false });
+  });
+
+  test('a busted registration re-enters: told at the bust, seated on the socket, the pool up a buy-in', () => {
+    const entry = running({ reentryLevels: 2, structure: BREAKS, visibility: 'public' });
+    const before = io.sent.length;
+    bust(entry, 'g');
+    const told = io.sent.slice(before).find((m) => m.event === 'tournamentEliminated');
+    expect(told).toMatchObject({
+      to: 'sg',
+      payload: { place: 4, canReenter: true, buyIn: 100, reentryLevels: 2 },
+    });
+    expect(entry.watching.has('g')).toBe(true);
+    expect(registry.stateFor(entry, 'g').you).toMatchObject({
+      seated: false,
+      eliminated: true,
+      canReenter: true,
+      canAddOn: false,
+    });
+    expect(registry.stateFor(entry, 'h').you.canReenter).toBe(false);
+    expect(registry.publicList()[0]).toMatchObject({
+      reentryOpen: true,
+      entries: 4,
+      prizePool: 400,
+    });
+
+    const mid = io.sent.length;
+    const result = registry.reenter(entry, 'g', live.get('sg'));
+    expect(result.error).toBeUndefined();
+    expect(result.seat.player.id).toBe('sg');
+    expect(result.seat.player.chips).toBe(5000);
+    expect(entry.watching.has('g')).toBe(false);
+    expect(entry.registrations.get('g').left).toBe(false);
+    expect(io.sent.slice(mid)).toContainEqual({
+      to: 'sg',
+      event: 'tournamentReentered',
+      payload: { chips: 5000, table: 1 },
+    });
+    const state = registry.stateFor(entry, 'g');
+    expect(state.you).toMatchObject({ seated: true, eliminated: false, canReenter: false });
+    expect(state).toMatchObject({ entrants: 4, entries: 5, prizePool: 500 });
+    expect(entry.director.roster().find((r) => r.uid === 'g')).toMatchObject({
+      chips: 5000,
+      reentries: 1,
+      place: null,
+    });
+    expect(entry.director.tournament.eliminations).toEqual([]);
+    expect(registry.publicList()[0]).toMatchObject({ entries: 5, prizePool: 500 });
+
+    expect(registry.reenter(entry, 'g')).toEqual({ error: 'You are still seated' });
+    expect(registry.reenter(entry, 'nobody')).toEqual({ error: 'You are not in this tournament' });
+
+    // Written down, and read back.
+    registry.flush();
+    expect(store.load()[0].settings).toMatchObject({ reentryLevels: 2, addOn: false });
+    registry.stop();
+    const second = makeRegistry(store);
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back.settings.reentryLevels).toBe(2);
+    expect(back.director.extraEntries).toBe(1);
+    expect(back.director.prizePool()).toBe(500);
+    expect(back.director.roster().find((r) => r.uid === 'g')).toMatchObject({ reentries: 1 });
+    expect(() => back.director.assertChipConservation()).not.toThrow();
+    second.stop();
+    registry = makeRegistry(store); // for afterEach
+  });
+
+  test('re-entry is refused when the window is shut, for a removed player, and before the start', () => {
+    const entry = running({ reentryLevels: 1, structure: BREAKS });
+    bust(entry, 'g');
+    entry.director.reentryLevels = 0;
+    expect(registry.reenter(entry, 'g', live.get('sg'))).toEqual({ error: 'Re-entry is closed' });
+    expect(registry.stateFor(entry, 'g').you.canReenter).toBe(false);
+    entry.director.reentryLevels = 1;
+    expect(registry.stateFor(entry, 'g').you.canReenter).toBe(true);
+
+    expect(registry.removePlayer(entry, 'h', 't')).toMatchObject({ removed: true });
+    expect(registry.reenter(entry, 't', live.get('st'))).toEqual({
+      error: 'The host removed you from this tournament',
+    });
+    expect(entry.director.playerByUid('t')).toBeNull();
+
+    const { entry: waiting } = registry.create(
+      'v',
+      { name: 'Later', startsAt: Date.now() + 60000, reentryLevels: 2 },
+      makeSocket('sv', 'v')
+    );
+    expect(registry.reenter(waiting, 'v')).toEqual({ error: 'The tournament is not running' });
+    expect(registry.takeAddOn(waiting, 'v')).toEqual({ error: 'The tournament is not running' });
+  });
+
+  test('the add-on during the first break, once each, and the refusals as answers', () => {
+    const entry = running({ addOn: true, structure: BREAKS });
+    expect(entry.settings.addOn).toBe(true);
+    expect(registry.stateFor(entry, 'h').you.canAddOn).toBe(false);
+    expect(registry.takeAddOn(entry, 'h')).toEqual({
+      error: 'The add-on is offered during the first break only',
+    });
+
+    expect(registry.stepLevel(entry, 'h', 1).error).toBeUndefined();
+    expect(entry.director.tournament.onBreak()).toBe(true);
+    expect(registry.stateFor(entry, 'h').you.canAddOn).toBe(true);
+    const before = io.sent.length;
+    expect(registry.takeAddOn(entry, 'h')).toMatchObject({ queued: false, chips: 10000 });
+    expect(io.sent.slice(before)).toContainEqual({
+      to: 'sh',
+      event: 'tournamentAddOn',
+      payload: { queued: false },
+    });
+    const state = registry.stateFor(entry, 'h');
+    expect(state.you.canAddOn).toBe(false);
+    expect(state).toMatchObject({ entrants: 4, entries: 5, prizePool: 500 });
+    expect(registry.takeAddOn(entry, 'h')).toEqual({ error: 'You have taken your add-on' });
+    expect(registry.stateFor(entry, 'g').you.canAddOn).toBe(true);
+
+    bust(entry, 'g');
+    expect(registry.takeAddOn(entry, 'g')).toEqual({ error: 'You are not seated' });
+    expect(registry.stateFor(entry, 'g').you.canAddOn).toBe(false);
+
+    registry.flush();
+    registry.stop();
+    const second = makeRegistry(store);
+    expect(second.restore()).toBe(1);
+    const back = second.tournaments.get(entry.id);
+    expect(back.settings.addOn).toBe(true);
+    expect(back.director.hasAddOn('h')).toBe(true);
+    expect(back.director.extraEntries).toBe(1);
+    expect(back.director.prizePool()).toBe(500);
+    expect(() => back.director.assertChipConservation()).not.toThrow();
+    second.stop();
+    registry = makeRegistry(store); // for afterEach
+  });
+});

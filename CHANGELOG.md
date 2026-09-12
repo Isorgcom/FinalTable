@@ -13,6 +13,26 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- Re-entry. A host can allow it when the game is made: none, or through
+  level 1, 2, 3, 4 or 6, with the break after that level included, like late
+  registration. A player who busts while it is open is offered Re-enter in
+  the bust-out dialog and in the Info tab, and comes back with a fresh
+  starting stack at the table with the fewest players, as many times as it
+  takes while the window is open. Each re-entry pays the buy-in into the
+  prize pool; the bust-out is struck from the standings, so the places paid
+  still follow the number of people while the pool follows the entries.
+- The add-on: one starting stack more, once, during the first break, for
+  another buy-in into the pool. A host switches it on at creation, and only
+  when the structure has a break to offer it at. During that break a seated
+  player takes it from the Info tab; asked for while the table is still
+  finishing a hand, it lands when the hand does.
+- The waiting room's settings line and the lobby card say whether a game has
+  re-entry and the add-on; the Info tab's Field section shows entries beside
+  players when they differ. A game that asks for neither is a freezeout, as
+  every game was before.
+
 ## 0.9.0 - 2026-09-11
 
 ### Added

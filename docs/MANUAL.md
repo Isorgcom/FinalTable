@@ -130,9 +130,15 @@ Press **Create a tournament**. The form:
   another level length puts the preset back, edits and all.
 - **Late registration**: closes at the start, or stays open through level 1,
   2, 3, 4 or 6.
-- **Buy-in (play chips)**: optional. Buy-in times entrants is the prize pool,
+- **Buy-in (play chips)**: optional. Buy-in times entries is the prize pool,
   paid out by place at the end. Zero means no pool and no payouts, just a
   winner.
+- **Re-entry**: none, or through level 1, 2, 3, 4 or 6. While it is open a
+  player who busts can come back with a fresh starting stack for another
+  buy-in, as many times as it takes. None is a freezeout: busting is the end.
+- **Add-on at the first break**: one starting stack more, once, for another
+  buy-in, offered to everyone still seated during the first break. Greyed out
+  when the structure has no break to offer it at.
 - **Add donkey bots**: one to forty seats the server plays, so you can fill
   a table alone and watch the game move. They are demo opponents and play
   badly on purpose. Eight at 6-max is two tables and twenty-three is four,
@@ -169,7 +175,8 @@ roster, the settings, and a chat.
 
 **The settings line** says who can join, the table size, the starting stack,
 the blind structure with how many levels, when the antes start and where the
-breaks fall, the level length, late registration and the buy-in. Under it,
+breaks fall, the level length, late registration, re-entry, the add-on and
+the buy-in. Under it,
 **Blind structure** opens the whole ladder, level by level, so you can see
 what the night looks like before you sit down.
 
@@ -346,6 +353,13 @@ to the lobby. Watching, you can still talk in that table's chat, marked
 **rail**, and the Info tab's **Watching** block lets you move to another
 table.
 
+If the game allows re-entry and the window is still open, the same dialog
+offers **Re-enter** beside Watch, and the Info tab keeps a **Re-enter**
+block for as long as the offer stands. Taking it costs another buy-in and
+seats you with a fresh starting stack at the table with the fewest players,
+joining at its next deal. Your bust-out is struck from the standings, as if
+it had not happened.
+
 The host can also remove you. Then your chips leave play, you finish in the
 place you held, paid if that place pays, you are sent back to the lobby with
 a note saying so, and the code will not let you back into that game.
@@ -381,6 +395,15 @@ through the break after it if there is one. A late
 entrant sits down with the starting stack at the table with the fewest
 players, joining at that table's next deal.
 
+**Re-entry and add-ons.** A game is a freezeout unless the host chose
+otherwise when making it. With re-entry open through a level, a busted
+player can buy a fresh starting stack and sit down again, the way a late
+entrant does, as many times as it takes while the window is open; with the
+add-on on, everyone still seated during the first break can buy one
+starting stack more, once. Asked for while the table is still finishing a
+hand, the add-on lands when the hand does. Each costs a buy-in, and each
+goes into the prize pool. The host can remove a player who abuses it.
+
 **Tables balance and break** as players bust: no table is ever more than one
 seat different from another, and a table is broken when the field fits on one
 fewer, until one table is left. A move needs both tables between hands, so
@@ -393,7 +416,7 @@ announces the bubble and plays hand for hand: a table that finishes its hand
 early waits for the others, so nobody can stall their way into a payout. When
 the bubble bursts, everyone left is in the money.
 
-**Payouts** come from the prize pool (buy-in times entrants) by field size:
+**Payouts** come from the prize pool (buy-in times entries) by field size:
 
 | Entrants | Places paid | Split (% of pool)                     |
 | -------- | ----------- | ------------------------------------- |
@@ -404,8 +427,9 @@ the bubble bursts, everyone left is in the money.
 | 30 to 49 | 6           | 35 / 22 / 16 / 12 / 9 / 6             |
 | 50 up    | 9           | 30 / 20 / 14 / 10 / 8 / 7 / 5 / 4 / 2 |
 
-The field size is fixed when late registration closes. Whole chips only; any
-rounding goes to first place.
+The field size is the number of people, so a re-entry or an add-on grows the
+pool without adding a place. Whole chips only; any rounding goes to first
+place.
 
 **The end.** The last stack standing wins. The final standings appear at the
 table and on the Info tab, and the game stays on the lobby's Finished list

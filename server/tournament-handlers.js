@@ -56,6 +56,10 @@ function registerTournamentHandlers(deps) {
     socket.emit('error', { message: error });
   }
 
+  function notice(socket, message) {
+    socket.emit('tournamentNotice', { message });
+  }
+
   function entryFor(socket) {
     return registry.tournaments.get(socket.data.tournamentId) || null;
   }
@@ -230,6 +234,23 @@ function registerTournamentHandlers(deps) {
       if (!entry) return;
       const { error } = registry.unwatch(entry, socket.data.tournamentUid, socket);
       if (error) fail(socket, error);
+    });
+
+    // Re-entry after busting and the add-on at the first break. A refusal
+    // here is an answer to a button the player pressed, so it goes out as a
+    // notice they will see; `error` is only a log line once at the table.
+    socket.on('reenterTournament', () => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.reenter(entry, socket.data.tournamentUid, socket);
+      if (error) notice(socket, error);
+    });
+
+    socket.on('takeAddOn', () => {
+      const entry = entryFor(socket);
+      if (!entry) return;
+      const { error } = registry.takeAddOn(entry, socket.data.tournamentUid);
+      if (error) notice(socket, error);
     });
 
     socket.on('admitPlayer', (payload = {}) => {

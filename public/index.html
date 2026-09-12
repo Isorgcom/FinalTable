@@ -371,7 +371,30 @@
               <label for="tBuyIn">Buy-in (play chips)</label>
               <input type="number" id="tBuyIn" min="0" max="10000" value="0" inputmode="numeric" />
             </div>
+            <!-- A freezeout unless the host says otherwise. Re-entry is a
+                 re-buy after busting: a fresh starting stack for another
+                 buy-in, as many times as it takes while the window is open. -->
+            <div class="form-group">
+              <label for="tReentryLevels">Re-entry</label>
+              <select id="tReentryLevels">
+                <option value="0" selected>None</option>
+                <option value="1">Through level 1</option>
+                <option value="2">Through level 2</option>
+                <option value="3">Through level 3</option>
+                <option value="4">Through level 4</option>
+                <option value="6">Through level 6</option>
+              </select>
+            </div>
           </div>
+          <!-- One starting stack, once, during the first break. Needs a break
+               to be offered at, so the row goes grey when the structure has
+               none. -->
+          <label class="check-row" for="tAddOn">
+            <input type="checkbox" id="tAddOn" />
+            <span>
+              Add-on at the first break <em id="tAddOnNote">a starting stack for another buy-in</em>
+            </span>
+          </label>
           <!-- Seats the server plays, so a table can be filled to try something
                out without waiting for five friends. Not an opponent worth
                beating, and not meant to be. -->
@@ -829,6 +852,9 @@
             <div class="panel-info-watch hidden" id="panelInfoWatch"></div>
             <!-- The people in the game: the link that brings a watcher. -->
             <div class="panel-info-rail hidden" id="panelInfoRail"></div>
+            <!-- Busted with the re-entry window open, or seated during the
+                 first break with the add-on on offer: the button for it. -->
+            <div class="panel-info-entry hidden" id="panelInfoEntry"></div>
             <!-- Host only, invite-only, once the cards are out: who is at the
                  door. A sibling of the body for the same reason. -->
             <div class="panel-info-pending hidden" id="panelInfoPending"></div>

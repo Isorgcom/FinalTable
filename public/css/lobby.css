@@ -171,6 +171,9 @@
   accent-color: var(--gold);
   cursor: pointer;
 }
+.check-row.disabled {
+  opacity: 0.55;
+}
 .check-row em {
   display: block;
   font-style: normal;

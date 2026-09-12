@@ -20,14 +20,6 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
-### Re-entry
-
-Busting should not always be the end of it. Re-entry while late registration is
-open, re-buys within a level window, add-ons at the break. Needs a decision on
-what it does to the prize pool and to the chip-conservation invariant the
-director checks after every hand, which currently assumes chips only move
-between seats and never appear.
-
 ### Trust, but verify
 
 The first reply to the announcement was "Rigged!", and that is the right
@@ -80,6 +72,15 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+Re-entry and the add-on: a host allows re-entry through a level, or not, and
+an add-on at the first break, or not; a busted player is offered the way back
+in from the bust-out dialog and the Info tab, and a seated one the extra
+stack during the break. The two decisions made: each pays a buy-in into the
+pool while the places paid follow the number of people, and the chip ledger
+takes a re-entry as it takes a late entrant. The re-buy within a level
+window turned out to be the same mechanism as re-entry, so there is one
+setting.
 
 Watching a table: a rail link on every game, a second code that looks and
 never seats, a Watch button on a public card, the busted player's view for

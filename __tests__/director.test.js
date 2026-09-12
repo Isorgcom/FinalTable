@@ -1558,3 +1558,280 @@ describe('a field waiting on a table', () => {
     d.stop();
   });
 });
+
+describe('re-entry and the add-on', () => {
+  // Two levels, the first break, a level, a second break, a level.
+  const SCHEDULE = [
+    { sb: 10, bb: 20, ante: 0, duration: 99999 },
+    { sb: 15, bb: 30, ante: 0, duration: 99999 },
+    { break: true, duration: 99999 },
+    { sb: 20, bb: 40, ante: 40, duration: 99999 },
+    { break: true, duration: 99999 },
+    { sb: 30, bb: 60, ante: 60, duration: 99999 },
+  ];
+  const FLAT = [
+    { sb: 10, bb: 20, ante: 0, duration: 99999 },
+    { sb: 20, bb: 40, ante: 0, duration: 99999 },
+  ];
+
+  function levelUp(d, level) {
+    d.tournament.currentLevel = level;
+    d.tournament.onLevelUp(level, d.tournament.getCurrentBlinds());
+  }
+
+  function rng(seed = 777) {
+    return () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+  }
+
+  // Busts one player by hand between hands: the stack goes to a neighbour,
+  // the ledger records the place, and the round end takes them off the table.
+  function bust(d, uid) {
+    const { table, player } = d.playerByUid(uid);
+    const keeper = table.players.find((p) => p.uid !== uid && p.chips > 0);
+    keeper.chips += player.chips;
+    player.chips = 0;
+    d.tournament.recordElimination(player.name, 1, uid);
+    d._handleRoundEnd(table, null);
+  }
+
+  test('a re-entry seats the busted player with a fresh stack, strikes the bust-out, and grows the pool', () => {
+    const said = [];
+    const d = makeDirector(6, { tableSize: 6, reentryLevels: 2, buyIn: 100 });
+    d.onMessage = (m) => said.push(m);
+    d.start();
+    expect(d.reentryOpen()).toBe(true);
+    expect(d.prizePool()).toBe(600);
+    expect(d.paidPlaces).toBe(2);
+    bust(d, 'p5');
+    expect(d.playerByUid('p5')).toBeNull();
+    expect(d.tournament.eliminations.map((e) => [e.uid, e.place])).toEqual([['p5', 6]]);
+    expect(d.fieldSummary('p5')).toMatchObject({ reentryOpen: true, entries: 6, myReentries: 0 });
+
+    const before = d.totalChips();
+    const seat = d.reenter({ uid: 'p5', id: 'p5-again' });
+    expect(seat.player.chips).toBe(2000);
+    expect(seat.player.id).toBe('p5-again');
+    expect(d.entrants.find((e) => e.uid === 'p5').id).toBe('p5-again');
+    expect(d.totalChips()).toBe(before + 2000);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    // The same person, not a new entrant: the record is gone, the ladder's
+    // depth is unchanged, the pool is up one buy-in.
+    expect(d.tournament.eliminations).toEqual([]);
+    expect(d.entrants).toHaveLength(6);
+    expect(d.tournament.startingPlayers).toBe(6);
+    expect(d.paidPlaces).toBe(2);
+    expect(d.extraEntries).toBe(1);
+    expect(d.prizePool()).toBe(700);
+    expect(d.roster().find((r) => r.uid === 'p5')).toMatchObject({
+      chips: 2000,
+      reentries: 1,
+      place: null,
+      table: 1,
+    });
+    expect(d.fieldSummary('p5')).toMatchObject({ entries: 7, myReentries: 1, prizePool: 700 });
+    expect(said).toContain('P5 re-enters with 2000 at table 1 · 7 entries, pool 700');
+  });
+
+  test('busting again is recorded once more, places stay complete and unique, and the door stays open', () => {
+    const d = makeDirector(5, { tableSize: 6, reentryLevels: 3, buyIn: 50 });
+    d.start();
+    bust(d, 'p4'); // 5th
+    bust(d, 'p3'); // 4th
+    expect(d.tournament.eliminations.map((e) => [e.uid, e.place])).toEqual([
+      ['p4', 5],
+      ['p3', 4],
+    ]);
+    d.reenter({ uid: 'p4' });
+    expect(d.tournament.eliminations.map((e) => [e.uid, e.place])).toEqual([['p3', 5]]);
+    bust(d, 'p2');
+    bust(d, 'p4');
+    expect(d.tournament.eliminations.map((e) => [e.uid, e.place])).toEqual([
+      ['p3', 5],
+      ['p2', 4],
+      ['p4', 3],
+    ]);
+    // Unlimited while the window is open.
+    d.reenter({ uid: 'p4' });
+    expect(d.extraEntries).toBe(2);
+    expect(d.roster().find((r) => r.uid === 'p4')).toMatchObject({ reentries: 2, place: null });
+    expect(d.prizePool()).toBe(50 * 7);
+    expect(d.tournament.eliminations.map((e) => e.place)).toEqual([5, 4]);
+    expect(() => d.assertChipConservation()).not.toThrow();
+  });
+
+  test('the winner is right after a re-entry', () => {
+    const d = makeDirector(3, { tableSize: 6, reentryLevels: 3 });
+    d.start();
+    bust(d, 'p2');
+    d.reenter({ uid: 'p2' });
+    bust(d, 'p0');
+    bust(d, 'p1');
+    expect(d.finished).toBeTruthy();
+    expect(d.finished.winner).toBe('P2');
+    // The finish writes the winner's own record after the bust-outs.
+    expect(d.tournament.eliminations.slice(0, 2).map((e) => [e.uid, e.place])).toEqual([
+      ['p0', 3],
+      ['p1', 2],
+    ]);
+  });
+
+  test('re-entry is refused when closed, for a seated player, and for a stranger; open through the break', () => {
+    const d = makeDirector(4, { tableSize: 6, reentryLevels: 2, blindSchedule: SCHEDULE });
+    d.start();
+    expect(() => d.reenter({ uid: 'p0' })).toThrow(/Still seated/);
+    expect(() => d.reenter({ uid: 'nobody' })).toThrow(/Not an entrant/);
+    bust(d, 'p3');
+    levelUp(d, 1); // level 2
+    expect(d.reentryOpen()).toBe(true);
+    levelUp(d, 2); // the break after level 2 counts as level 2
+    expect(d.reentryOpen()).toBe(true);
+    levelUp(d, 3); // level 3: shut
+    expect(d.reentryOpen()).toBe(false);
+    expect(() => d.reenter({ uid: 'p3' })).toThrow(/closed/);
+    expect(d.fieldSummary('p3')).toMatchObject({ reentryOpen: false, reentryLevels: 2 });
+
+    const none = makeDirector(3, { reentryLevels: 0 });
+    none.start();
+    expect(none.reentryOpen()).toBe(false);
+    d.stop();
+  });
+
+  test('the add-on at an idle table: one stack, once, during the first break only', () => {
+    const said = [];
+    const d = makeDirector(4, { tableSize: 6, addOn: true, buyIn: 100, blindSchedule: SCHEDULE });
+    d.onMessage = (m) => said.push(m);
+    d.start();
+    expect(d.addOnOpen()).toBe(false);
+    expect(() => d.takeAddOn('p0')).toThrow(/first break only/);
+    levelUp(d, 1);
+    levelUp(d, 2); // the first break
+    expect(d.tournament.onBreak()).toBe(true);
+    expect(d.addOnOpen()).toBe(true);
+    expect(said).toContain('Break: 99999s · play resumes at 20/40 ante 40 · add-ons open');
+
+    const before = d.totalChips();
+    expect(d.takeAddOn('p0')).toEqual({ queued: false, chips: 4000 });
+    expect(d.totalChips()).toBe(before + 2000);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    expect(d.extraEntries).toBe(1);
+    expect(d.prizePool()).toBe(500);
+    expect(d.hasAddOn('p0')).toBe(true);
+    expect(() => d.takeAddOn('p0')).toThrow(/have taken/);
+    expect(d.roster().find((r) => r.uid === 'p0')).toMatchObject({ chips: 4000, addOn: true });
+    expect(d.fieldSummary('p0')).toMatchObject({ addOnOpen: true, myAddOn: true, entries: 5 });
+    expect(d.fieldSummary('p1')).toMatchObject({ addOnOpen: true, myAddOn: false });
+    expect(said).toContain('P0 takes the add-on: 2000 more · 5 entries, pool 500');
+
+    // Not seated: nothing to add to.
+    bust(d, 'p3');
+    expect(() => d.takeAddOn('p3')).toThrow(/not seated/);
+
+    // The second break is not the first.
+    levelUp(d, 3);
+    expect(d.addOnOpen()).toBe(false);
+    levelUp(d, 4);
+    expect(d.tournament.onBreak()).toBe(true);
+    expect(d.addOnOpen()).toBe(false);
+    expect(() => d.takeAddOn('p1')).toThrow(/first break only/);
+    expect(said.filter((m) => /add-ons open/.test(m))).toHaveLength(1);
+    d.stop();
+  });
+
+  test('no add-on without a break in the structure, or when the host did not ask', () => {
+    const flat = makeDirector(3, { addOn: true, blindSchedule: FLAT });
+    flat.start();
+    expect(flat.firstBreakIndex()).toBe(-1);
+    levelUp(flat, 1);
+    expect(flat.addOnOpen()).toBe(false);
+    expect(() => flat.takeAddOn('p0')).toThrow(/first break only/);
+    flat.stop();
+
+    const said = [];
+    const off = makeDirector(3, { addOn: false, blindSchedule: SCHEDULE });
+    off.onMessage = (m) => said.push(m);
+    off.start();
+    levelUp(off, 1);
+    levelUp(off, 2);
+    expect(off.tournament.onBreak()).toBe(true);
+    expect(off.addOnOpen()).toBe(false);
+    expect(() => off.takeAddOn('p0')).toThrow(/first break only/);
+    expect(said.some((m) => /add-ons open/.test(m))).toBe(false);
+    off.stop();
+  });
+
+  test('an add-on asked for mid-hand lands when the hand does', () => {
+    const d = makeDirector(4, { tableSize: 6, addOn: true, buyIn: 100, blindSchedule: SCHEDULE });
+    d.start();
+    const table = d.tables[0];
+    levelUp(d, 1);
+    expect(d.startHandsWhereReady()).toBe(1);
+    levelUp(d, 2); // the break arrives with a hand in play
+    expect(table.isRunning).toBe(true);
+    expect(d.addOnOpen()).toBe(true);
+    const before = d.totalChips();
+    expect(d.takeAddOn('p0')).toEqual({ queued: true });
+    expect(d.totalChips()).toBe(before);
+    expect(d.hasAddOn('p0')).toBe(true);
+    expect(d.fieldSummary('p0').myAddOn).toBe(true);
+    expect(() => d.takeAddOn('p0')).toThrow(/have taken/);
+    expect(d.extraEntries).toBe(0);
+
+    playHand(table, rng(), 0);
+    expect(table.isRunning).toBe(false);
+    expect(d.totalChips()).toBe(before + 2000);
+    expect(() => d.assertChipConservation()).not.toThrow();
+    expect(d._pendingAddOns.size).toBe(0);
+    expect(d.roster().find((r) => r.uid === 'p0').addOn).toBe(true);
+    expect(d.extraEntries).toBe(1);
+    expect(d.prizePool()).toBe(500);
+    d.stop();
+  });
+
+  test('entries, re-entries and add-ons survive a snapshot and a restore', () => {
+    const d = makeDirector(4, {
+      tableSize: 6,
+      reentryLevels: 2,
+      addOn: true,
+      buyIn: 100,
+      blindSchedule: SCHEDULE,
+    });
+    d.start();
+    bust(d, 'p3');
+    d.reenter({ uid: 'p3' });
+    levelUp(d, 1);
+    levelUp(d, 2);
+    d.takeAddOn('p0');
+    const snap = d.snapshot();
+    expect(snap).toMatchObject({
+      reentryLevels: 2,
+      addOn: true,
+      extraEntries: 2,
+      reentries: [['p3', 1]],
+      addOns: ['p0'],
+    });
+
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: snap.tableSize,
+      startChips: snap.startChips,
+      buyIn: 100,
+      reentryLevels: 2,
+      addOn: true,
+      levelDuration: 99999,
+      blindSchedule: SCHEDULE,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    expect(revived.restoreFrom(snap)).toBe(true);
+    expect(revived.extraEntries).toBe(2);
+    expect(revived.prizePool()).toBe(600);
+    expect(revived.hasAddOn('p0')).toBe(true);
+    expect(revived.roster().find((r) => r.uid === 'p3')).toMatchObject({ reentries: 1 });
+    expect(revived.totalChips()).toBe(d.totalChips());
+    expect(() => revived.assertChipConservation()).not.toThrow();
+    d.stop();
+    revived.stop();
+  });
+});

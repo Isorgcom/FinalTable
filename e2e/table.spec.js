@@ -2048,3 +2048,67 @@ test('the rail link brings a watcher to the table, who can talk but not play', a
   expect(pageErrors).toEqual([]);
   await railContext.close();
 });
+
+test('the Info tab offers the way back in, and the add-on, when the server says so', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Rebuyer');
+  await deal(page);
+  await page.click('#tabInfo');
+  await expect(page.locator('#panelInfoEntry')).toBeHidden();
+
+  // Whether the offer stands is the server's call, made on a real bust or a
+  // real break; what the tab does with it is what this checks. The state is
+  // set and read in one go, before the next push from the server replaces it.
+  const reenter = await page.evaluate(() => {
+    const field = window.mttField || {};
+    window.mttField = {
+      ...field,
+      status: 'running',
+      buyIn: 100,
+      entrants: 2,
+      entries: 3,
+      you: { ...(field.you || {}), canReenter: true, canAddOn: false },
+    };
+    renderInfoTab();
+    const block = document.getElementById('panelInfoEntry');
+    return {
+      hidden: block.classList.contains('hidden'),
+      text: block.textContent,
+      button: block.querySelector('button').textContent,
+      field: document.getElementById('panelInfoBody').textContent,
+    };
+  });
+  expect(reenter.hidden).toBe(false);
+  expect(reenter.text).toContain('Re-enter');
+  expect(reenter.text).toContain('buy-in of 100');
+  expect(reenter.button).toBe('Re-enter');
+  expect(reenter.field).toContain('Entries');
+
+  const addOn = await page.evaluate(() => {
+    window.mttField.you = { ...window.mttField.you, canReenter: false, canAddOn: true };
+    renderInfoTab();
+    const block = document.getElementById('panelInfoEntry');
+    const button = block.querySelector('button');
+    const out = { hidden: block.classList.contains('hidden'), text: block.textContent };
+    out.button = button.textContent;
+    // Pressing it asks the server, whose answer is a dialog rather than a
+    // log line: at this table the first break has not come.
+    button.click();
+    return out;
+  });
+  expect(addOn.hidden).toBe(false);
+  expect(addOn.text).toContain('Add-on');
+  expect(addOn.text).toContain('until the break ends');
+  expect(addOn.button).toBe('Take the add-on');
+  await expect(page.locator('#appDialogBody')).toContainText('first break only');
+  await page.click('#btnAppDialogConfirm');
+
+  const gone = await page.evaluate(() => {
+    window.mttField.you = { ...window.mttField.you, canReenter: false, canAddOn: false };
+    renderInfoTab();
+    return document.getElementById('panelInfoEntry').classList.contains('hidden');
+  });
+  expect(gone).toBe(true);
+  expect(pageErrors).toEqual([]);
+});

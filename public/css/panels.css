@@ -1270,15 +1270,30 @@
   color: var(--cream);
 }
 
-/* Whoever is watching: which table. The people in the game: the rail link. */
+/* Whoever is watching: which table. The people in the game: the rail link.
+   Busted with the window open, or seated at the first break: the way back
+   in, or the extra stack. */
 .panel-info-watch,
-.panel-info-rail {
+.panel-info-rail,
+.panel-info-entry {
   padding: 10px 12px 6px;
   border-bottom: 1px solid rgba(92, 61, 26, 0.35);
 }
 .panel-info-watch.hidden,
-.panel-info-rail.hidden {
+.panel-info-rail.hidden,
+.panel-info-entry.hidden {
   display: none;
+}
+.info-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+.info-entry-note {
+  font-size: 0.78rem;
+  color: var(--smoke);
 }
 .host-btn.current {
   border-color: var(--gold);

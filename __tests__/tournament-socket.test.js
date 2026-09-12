@@ -980,4 +980,62 @@ describe('Tournament socket layer', () => {
     expect(await gone).toMatchObject({ id: created.id, reason: 'unwatched' });
     expect(entry.watchers.size).toBe(0);
   });
+
+  test('a busted player re-enters from their socket and lands a fresh seat and stack', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host, {
+      reentryLevels: 3,
+      buyIn: 100,
+    });
+    const third = await connectClient();
+    await joinByCode(third, created.code, { name: 'Third', avatar: '🦉' });
+    await startAndDeal(host, guest);
+
+    // A seated player asking is answered with a notice, not a log line.
+    const seatedNotice = waitFor(host, 'tournamentNotice', (n) => /still seated/.test(n.message));
+    host.emit('reenterTournament');
+    await seatedNotice;
+
+    // Bust the guest on the server between hands: hold the field, fold the
+    // hand out, hand the stack to a neighbour and let the round end take them.
+    const entry = serverModule.tournaments.get(created.id);
+    const director = entry.director;
+    director.holdField();
+    const table = director.tables[0];
+    expect(
+      await until(() => {
+        if (!table.isRunning) return true;
+        const cur = table.players[table.currentPlayerIndex];
+        if (cur && !table.handleAction(cur.id, 'fold')) table.handleAction(cur.id, 'call');
+        return !table.isRunning;
+      })
+    ).toBe(true);
+    const guestUid = guest.__identity.uid;
+    const { player } = director.playerByUid(guestUid);
+    const keeper = table.players.find((p) => p.uid !== guestUid && p.chips > 0);
+    const out = waitFor(guest, 'tournamentEliminated');
+    keeper.chips += player.chips;
+    player.chips = 0;
+    director.tournament.recordElimination(player.name, 1, guestUid);
+    director._handleRoundEnd(table, null);
+    expect(await out).toMatchObject({ place: 3, canReenter: true, buyIn: 100, reentryLevels: 3 });
+    expect(director.playerByUid(guestUid)).toBeNull();
+
+    const back = waitFor(guest, 'tournamentReentered');
+    const seated = waitFor(guest, 'gameState', (st) =>
+      st.players.some((p) => p.id === guest.id && p.chips === 1000)
+    );
+    guest.emit('reenterTournament');
+    expect(await back).toEqual({ chips: 1000, table: 1 });
+    await seated;
+    expect(director.playerByUid(guestUid).player.id).toBe(guest.id);
+    expect(serverModule.registry.stateFor(entry, guestUid)).toMatchObject({
+      entrants: 3,
+      entries: 4,
+      prizePool: 400,
+      you: { seated: true, eliminated: false, canReenter: false },
+    });
+    expect(() => director.assertChipConservation()).not.toThrow();
+    director.releaseField();
+  });
 });

@@ -430,10 +430,63 @@ function renderInfoRail() {
   block.appendChild(line);
 }
 
+// The way back in, and the extra stack: a busted player while re-entry is
+// open, a seated one during the first break while the add-on is on offer.
+// The server is the judge; the button only asks.
+let _infoEntrySig = null;
+function renderInfoEntry() {
+  const block = document.getElementById('panelInfoEntry');
+  if (!block) return;
+  const field = window.mttField || null;
+  const you = field && field.you;
+  const running = !!(field && field.status === 'running' && !window.mttFinished);
+  const reenter = !!(running && you && you.canReenter);
+  const addOn = !!(running && you && you.canAddOn);
+  const show = reenter || addOn;
+  const sig = show ? `${reenter}/${addOn}/${field.buyIn}/${field.entries}` : '';
+  if (sig === _infoEntrySig) return;
+  _infoEntrySig = sig;
+  block.textContent = '';
+  block.classList.toggle('hidden', !show);
+  if (!show) return;
+  const cost = field.buyIn ? ` for a buy-in of ${fmtNum(field.buyIn)}` : '';
+  const row = document.createElement('div');
+  row.className = 'info-entry';
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'host-btn';
+  if (reenter) {
+    block.appendChild(createTextElement('div', 'info-section-title', 'Re-enter'));
+    row.appendChild(createTextElement('span', 'info-entry-note', `A fresh starting stack${cost}`));
+    b.textContent = 'Re-enter';
+    b.addEventListener('click', () => {
+      b.disabled = true;
+      if (window.Lobby && typeof Lobby.reenter === 'function') Lobby.reenter();
+    });
+  } else {
+    block.appendChild(createTextElement('div', 'info-section-title', 'Add-on'));
+    row.appendChild(
+      createTextElement(
+        'span',
+        'info-entry-note',
+        `A starting stack more${cost}, until the break ends`
+      )
+    );
+    b.textContent = 'Take the add-on';
+    b.addEventListener('click', () => {
+      b.disabled = true;
+      if (window.Lobby && typeof Lobby.takeAddOn === 'function') Lobby.takeAddOn();
+    });
+  }
+  row.appendChild(b);
+  block.appendChild(row);
+}
+
 function renderInfoTab() {
   renderInfoHost();
   renderInfoWatch();
   renderInfoRail();
+  renderInfoEntry();
   renderInfoPending();
   const body = document.getElementById('panelInfoBody');
   if (!body) return;
@@ -543,6 +596,11 @@ function renderInfoTab() {
     section.appendChild(
       infoGrid([
         ['Left', `${field.remaining} / ${field.entrants}`],
+        // Re-entries and add-ons: the pool follows the entries, the places
+        // paid follow the people, so the two are shown apart when they differ.
+        ...(field.entries && field.entries !== field.entrants
+          ? [['Entries', `${field.entries}`]]
+          : []),
         ['Your rank', field.myRank ? `#${field.myRank}` : '-'],
         ['Average', fmtNum(field.averageStack)],
         [
