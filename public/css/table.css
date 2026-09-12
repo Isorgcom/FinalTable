@@ -163,6 +163,63 @@
   white-space: nowrap;
   z-index: 2;
 }
+/* On a break the felt is cleared: the board, the pot, the bets, the hole
+   cards, the button and the badges go, the seats and their stacks stay.
+   visibility rather than display, so nothing that measures a card or the pot
+   for a flight finds it gone, and the layout holds for the resume. */
+.table-stage.on-break .board-stack,
+.table-stage.on-break .felt-bets,
+.table-stage.on-break .player-hole-cards,
+.table-stage.on-break .dealer-chip,
+.table-stage.on-break .sb-chip,
+.table-stage.on-break .bb-chip,
+.table-stage.on-break .player-action-badge,
+.table-stage.on-break .seat-caption,
+.table-stage.on-break .table-brand {
+  visibility: hidden;
+}
+.felt-break {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -52%);
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 26px 12px;
+  border-radius: 12px;
+  background: rgba(13, 31, 18, 0.55);
+  border: 1px solid rgba(201, 168, 76, 0.35);
+  color: var(--cream);
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.felt-break.hidden {
+  display: none;
+}
+.felt-break-title {
+  font-family: var(--font-display);
+  font-size: clamp(0.9rem, 2.6vw, 1.5rem);
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.felt-break-clock {
+  font-family: var(--font-mono);
+  font-size: clamp(1.6rem, 6vw, 3.2rem);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.felt-break-note {
+  font-size: clamp(0.62rem, 1.6vw, 0.82rem);
+  color: var(--smoke);
+  letter-spacing: 0.04em;
+}
+
 /* The board and the pot as one unit. .board-stack shrink-wraps the card row,
    so its height IS the cards: the pot can hang off `bottom: 100%` and land
    correctly whether the cards are 34px or 98px, with no per-breakpoint

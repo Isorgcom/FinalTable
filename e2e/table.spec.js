@@ -1934,6 +1934,31 @@ test('the banner reads the ante, a break and the final level, and the Info tab l
   await expect(page.locator('#tbLevelLabel')).toContainText('Break');
   await expect(page.locator('#tbBlinds')).toHaveText('back at 100/200 · ante 200');
   await expect(page.locator('#tournamentBanner')).toHaveClass(/on-break/);
+  // The hand in play finishes at its own pace: the felt is not cleared under it.
+  await expect(page.locator('#feltBreak')).toBeHidden();
+  await expect(page.locator('#tableStage')).not.toHaveClass(/on-break/);
+
+  // The hand over, the result gets its beat before the felt is cleared, then
+  // the middle of the table says break and counts it down.
+  await page.evaluate(() => {
+    gameState.isRunning = false;
+    _breakHandEndedAt = Date.now();
+    updateBlindClock();
+  });
+  await expect(page.locator('#feltBreak')).toBeHidden();
+  await expect(page.locator('#feltBreak')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('#tableStage')).toHaveClass(/on-break/);
+  await expect(page.locator('#feltBreak')).toContainText('On break');
+  await expect(page.locator('#feltBreakClock')).toHaveText(/^(5:00|4:5\d)$/);
+  await expect(page.locator('#feltBreakNote')).toHaveText('play resumes at 100/200 · ante 200');
+  await expect(page.locator('#communityCards')).toBeHidden();
+  await expect(page.locator('#potDisplay')).toBeHidden();
+  await page.evaluate(() => {
+    gameState.isRunning = true;
+    updateBlindClock();
+  });
+  await expect(page.locator('#feltBreak')).toBeHidden();
+  await expect(page.locator('#tableStage')).not.toHaveClass(/on-break/);
 
   await page.evaluate(() => {
     gameState.tournament = {

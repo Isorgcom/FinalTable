@@ -242,6 +242,11 @@ Paused and the clock stands still; on the final level there is nothing left
 to count down to. When something about the moment changes, the bubble for
 instance, the banner says so.
 
+On a break the felt itself is cleared once the last hand's result has been
+up for a few seconds: the cards, the pot and the button go, the seats and
+their stacks stay, and the middle of the table reads **On break** with the
+time to the end of it and the blinds play resumes at.
+
 On the felt: the pot, the community cards, the seats with each player's stack
 and last action, and your own two cards. A **You have …** line under the
 action buttons names your hand as the board develops.
@@ -382,8 +387,8 @@ ante first and the blind out of what is left.
 
 **Breaks** are levels with no blinds. When one arrives, a hand in play
 finishes and no table deals until it is over; the banner reads Break with the
-blinds play resumes at. A level number counts levels of play, so a break
-never takes one.
+blinds play resumes at, and the cleared felt counts the break down. A level
+number counts levels of play, so a break never takes one.
 
 **A pause** is the host's: the hand in play finishes, no table deals, and the
 clock stands still until the host resumes. **A removed player** is out as if

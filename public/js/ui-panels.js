@@ -89,6 +89,53 @@ function paintBlindClock() {
   if (timerEl) timerEl.textContent = text;
   const infoEl = document.getElementById('infoNextLevel');
   if (infoEl) infoEl.textContent = text;
+  paintBreakPlate();
+}
+
+// ── The felt on a break ──
+// When the hand in play is over and the clock says break, the felt is cleared
+// and the middle of the table says so, with the time to the end of the break
+// and the blinds play resumes at. The last hand's result keeps the felt for a
+// few seconds first, so a river is not swept the instant it is dealt.
+// _breakHandEndedAt is stamped by updateGameState when a hand ends.
+let _breakHandEndedAt = 0;
+let _breakPlateTimer = null;
+const BREAK_PLATE_DELAY_MS = 4000;
+
+function paintBreakPlate() {
+  const stage = document.getElementById('tableStage');
+  const plate = document.getElementById('feltBreak');
+  if (!stage || !plate) return;
+  const t = gameState && gameState.tournament;
+  const onBreak = !!(t && t.isActive && t.onBreak && !gameState.isRunning && !window.mttFinished);
+  const sinceHand = Date.now() - _breakHandEndedAt;
+  const settled = sinceHand >= BREAK_PLATE_DELAY_MS;
+  const show = onBreak && settled;
+  if (_breakPlateTimer) {
+    clearTimeout(_breakPlateTimer);
+    _breakPlateTimer = null;
+  }
+  // The break is on but the hand's result is still up: come back for it.
+  if (onBreak && !settled) {
+    _breakPlateTimer = setTimeout(paintBreakPlate, BREAK_PLATE_DELAY_MS - sinceHand + 50);
+  }
+  const was = stage.classList.contains('on-break');
+  stage.classList.toggle('on-break', show);
+  plate.classList.toggle('hidden', !show);
+  // The seats read the stage: cleared, they drop the last hand's all-in and
+  // winner marks and show their stacks; resumed, they take them back.
+  if (was !== show && gameState && typeof renderPlayersIncremental === 'function') {
+    renderPlayersIncremental();
+  }
+  if (!show) return;
+  document.getElementById('feltBreakClock').textContent = formatClock(_blindClockRemaining);
+  const paused = !!(t.paused || (window.mttField && window.mttField.paused));
+  const blinds =
+    t.blinds.sb + '/' + t.blinds.bb + (t.blinds.ante ? ' · ante ' + t.blinds.ante : '');
+  const addOns = window.mttField && window.mttField.addOnOpen ? ' · add-ons open' : '';
+  document.getElementById('feltBreakNote').textContent = paused
+    ? 'Paused by the host · back at ' + blinds
+    : 'play resumes at ' + blinds + addOns;
 }
 
 function updateBlindClock() {
@@ -99,6 +146,7 @@ function updateBlindClock() {
       clearInterval(tournamentTimer);
       tournamentTimer = null;
     }
+    paintBreakPlate();
     return;
   }
   banner.classList.remove('hidden');

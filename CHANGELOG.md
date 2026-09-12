@@ -32,6 +32,9 @@ Release on GitHub to go with it.
   re-entry and the add-on; the Info tab's Field section shows entries beside
   players when they differ. A game that asks for neither is a freezeout, as
   every game was before.
+- On a break the felt is cleared, once the last hand's result has had a few
+  seconds, and the middle of the table reads On break with the clock to the
+  end of it and the blinds play resumes at. Paused during a break, it says so.
 
 ## 0.9.0 - 2026-09-11
 

@@ -593,6 +593,15 @@
           </div>
           <div class="felt-bets" id="feltBets"></div>
           <div id="playerSeats"></div>
+          <!-- A break, on the felt itself: the cards and the pot are cleared
+               and the middle of the table says so, with the clock to the end
+               of it. The banner is small and the chat may be closed, and a
+               break is exactly when people look up from the cards. -->
+          <div class="felt-break hidden" id="feltBreak" role="status" aria-live="polite">
+            <div class="felt-break-title">On break</div>
+            <div class="felt-break-clock" id="feltBreakClock">0:00</div>
+            <div class="felt-break-note" id="feltBreakNote"></div>
+          </div>
         </div>
 
         <!-- Which chair you are shown in. The table has fixed places now, so

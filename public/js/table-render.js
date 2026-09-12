@@ -303,6 +303,9 @@ function updateGameState(state) {
   // street in between. Carrying the last set forward is what lets every reader
   // below go on treating it as a plain field of the state.
   if (!state.recentHands && gameState) state.recentHands = gameState.recentHands;
+  // A hand just ended: the break plate, if one is due, waits for the result
+  // to be read before it clears the felt.
+  if (gameState && gameState.isRunning && !state.isRunning) _breakHandEndedAt = Date.now();
   gameState = state;
 
   // Detect new round → force full rebuild
@@ -591,8 +594,12 @@ window.addEventListener('resize', () => {
 });
 
 function seatRenderContext() {
+  // The stage says when the felt is cleared for a break: the seats drop the
+  // last hand's story with it, and show their stacks.
+  const stage = document.getElementById('tableStage');
   return {
     isRunning: !!gameState.isRunning,
+    onBreak: !!(stage && stage.classList.contains('on-break')),
     currentPlayerIndex: gameState.currentPlayerIndex,
     winnerIds: gameState.lastRoundWinnerIds || [],
     now: Date.now(),
@@ -663,7 +670,10 @@ function updateSeatDynamic(seat, player, ctx) {
   // The seat that took the pot. At showdown the cards carry the story, but a
   // hand won by everyone folding reveals nothing, and that ending should not
   // be silent.
-  seat.classList.toggle('hand-winner', !!(ctx.winnerIds && ctx.winnerIds.includes(player.id)));
+  seat.classList.toggle(
+    'hand-winner',
+    !ctx.onBreak && !!(ctx.winnerIds && ctx.winnerIds.includes(player.id))
+  );
   seat.classList.toggle(
     'active-turn',
     ctx.isRunning && player.originalIndex === ctx.currentPlayerIndex
@@ -712,7 +722,7 @@ function updateSeatDynamic(seat, player, ctx) {
 function seatStatus(player, ctx) {
   if (player.isSpectator) return { code: 'out', label: 'Sitting out' };
   if (player.isConnected === false) return { code: 'offline', label: 'Disconnected' };
-  if (player.allIn) return { code: 'allin', label: 'All in' };
+  if (player.allIn && !ctx.onBreak) return { code: 'allin', label: 'All in' };
   if (player.folded && ctx.isRunning) return { code: 'folded', label: 'Folded' };
   return null;
 }
