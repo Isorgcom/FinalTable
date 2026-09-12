@@ -70,6 +70,10 @@ Games appear in four groups:
 - **Finished**: public games that ended in the last ten minutes, with the
   winner.
 
+The line under a game's name carries what matters before joining: the table
+size, the starting stack, the structure, the level length, late registration,
+re-entry and the add-on when the game has them, and the buy-in.
+
 Only **public** games are on the list for people who are not in them. A
 private or invite-only game reaches nobody's list but its own players'.
 
@@ -329,11 +333,16 @@ button opens and closes it). Five tabs:
 - **Info**: the table (mode, players), the blinds and the ante, the level
   and the time to the next one, the whole structure with the level the clock
   is on marked, the field (tables left, which one you are at, players
-  remaining, payouts), how many are watching from the rail and a **Copy
-  rail link** button, and, for the host, the Host block described in
+  remaining, entries when re-entries or add-ons have made them more, the
+  payouts), how many are watching from the rail and a **Copy rail link**
+  button, and, for the host, the Host block described in
   [The host at the table](#the-host-at-the-table) and, in an invite-only
   game, whoever is waiting at the door. A watcher sees a **Watching** block
-  here instead, to pick a table. When the game ends, the final standings.
+  here instead, to pick a table. Busted with re-entry open, a **Re-enter**
+  block with its button; seated during the first break with the add-on on,
+  an **Add-on** block with its ([Being eliminated](#being-eliminated) and
+  [How a tournament runs](#how-a-tournament-runs) say what each costs). When
+  the game ends, the final standings.
 - **Stats**: a leaderboard for this game (wins, hands, win rate, biggest
   pot) and your last ten hands.
 - **History**: every hand you were dealt, replayable card by card and action

@@ -80,7 +80,8 @@ stack during the break. The two decisions made: each pays a buy-in into the
 pool while the places paid follow the number of people, and the chip ledger
 takes a re-entry as it takes a late entrant. The re-buy within a level
 window turned out to be the same mechanism as re-entry, so there is one
-setting.
+setting. With it, the break on the felt: the table cleared once the last
+hand's result has been read, and the middle of it counting the break down.
 
 Watching a table: a rail link on every game, a second code that looks and
 never seats, a Watch button on a public card, the busted player's view for
