@@ -244,17 +244,22 @@ function registerTournamentHandlers(deps) {
     // Re-entry after busting and the add-on at the first break. A refusal
     // here is an answer to a button the player pressed, so it goes out as a
     // notice they will see; `error` is only a log line once at the table.
-    socket.on('reenterTournament', () => {
-      const entry = entryFor(socket);
+    // Both of these are asked for from the table and from the lobby. A player
+    // who busted and walked out has nothing on this socket pointing at the
+    // game any more, so the card names it, and the identity does the rest.
+    socket.on('reenterTournament', (payload = {}) => {
+      const id = payload && payload.tournamentId ? String(payload.tournamentId) : '';
+      const entry = (id && registry.tournaments.get(id)) || entryFor(socket);
       if (!entry) return;
-      const { error } = registry.reenter(entry, socket.data.tournamentUid, socket);
+      const { error } = registry.reenter(entry, socket.data.uid, socket);
       if (error) notice(socket, error);
     });
 
-    socket.on('takeAddOn', () => {
-      const entry = entryFor(socket);
+    socket.on('takeAddOn', (payload = {}) => {
+      const id = payload && payload.tournamentId ? String(payload.tournamentId) : '';
+      const entry = (id && registry.tournaments.get(id)) || entryFor(socket);
       if (!entry) return;
-      const { error } = registry.takeAddOn(entry, socket.data.tournamentUid);
+      const { error } = registry.takeAddOn(entry, socket.data.uid, socket);
       if (error) notice(socket, error);
     });
 

@@ -399,6 +399,33 @@ function createTournamentRegistry(deps = {}) {
     return requireHost(entry, uid) || (!!uid && uid === entry.creatorUid);
   }
 
+  // The two self-service offers, answered in one place because they are asked
+  // from two: the Info tab at the table, and the game's own card in the lobby.
+  //
+  // Neither cares whether the player is at a table when they ask. Walking out
+  // to the lobby is not declining the offer - the stack or the bust-out is
+  // still there, and the window is still open or it is not - and a busted
+  // player in the lobby is exactly who wants to buy back in.
+  //
+  // The cheap questions go first in both. The lobby asks these for every card
+  // for every connected person, and finding somebody's seat means walking
+  // every table; almost always one of the plain flags has said no by then.
+  function canReenterNow(entry, uid) {
+    return !!(
+      entry.watching.has(uid) &&
+      entry.registrations.has(uid) &&
+      !entry.removedUids.has(uid) &&
+      !entry.forfeitedUids.has(uid) &&
+      entry.director.reentryOpen() &&
+      !entry.director.playerByUid(uid)
+    );
+  }
+
+  function canAddOnNow(entry, uid) {
+    const d = entry.director;
+    return !!(d.addOnOpen() && !d.hasAddOn(uid) && d.playerByUid(uid));
+  }
+
   // ── Views ────────────────────────────────────────────────────────────────
 
   function summarize(entry) {
@@ -483,8 +510,11 @@ function createTournamentRegistry(deps = {}) {
         eliminated: entry.watching.has(uid),
         // The host's controls live at the table, and somebody who busts out and
         // goes back to the lobby has left them behind. The card carries the one
-        // that is not about a hand.
+        // that is not about a hand, and the two that are a player's own to ask
+        // for: the way back in, and the extra stack at the break.
         canEnd: canEnd(entry, uid),
+        canReenter: canReenterNow(entry, uid),
+        canAddOn: canAddOnNow(entry, uid),
       },
     }));
   }
@@ -563,14 +593,8 @@ function createTournamentRegistry(deps = {}) {
         // window is open; a seated one during the first break who has not
         // taken the add-on yet.
         canEnd: canEnd(entry, uid),
-        canReenter:
-          !!reg &&
-          !reg.left &&
-          !seat &&
-          entry.watching.has(uid) &&
-          !entry.forfeitedUids.has(uid) &&
-          d.reentryOpen(),
-        canAddOn: !!seat && d.addOnOpen() && !d.hasAddOn(uid),
+        canReenter: canReenterNow(entry, uid),
+        canAddOn: canAddOnNow(entry, uid),
       },
     };
   }
@@ -1027,7 +1051,15 @@ function createTournamentRegistry(deps = {}) {
       onMessage: (msg, meta) => emitAll(entry, 'gameMessage', msg, meta || null),
       // A level change, a break included. The line itself arrives as a
       // gameMessage like any other; this is what the client chimes on.
-      onLevelChange: (info) => emitAll(entry, 'tournamentLevelUp', info),
+      onLevelChange: (info) => {
+        emitAll(entry, 'tournamentLevelUp', info);
+        // The cards in the lobby turn on a level as much as the felt does: a
+        // break opens the add-on, a level closes re-entry or late
+        // registration. Nothing else pushes the list during a break, when by
+        // definition no hand is ending, so without this a player sitting in
+        // the lobby would never be shown the add-on at all.
+        emitList();
+      },
       onPlayerMoved: (move) => {
         emitTo(entry, move.uid, 'tableMoved', move);
         // They have landed among different people mid-conversation, so send
@@ -1871,24 +1903,44 @@ function createTournamentRegistry(deps = {}) {
     const reg = entry.registrations.get(uid);
     if (!reg) return { error: 'You are not in this tournament' };
     if (entry.director.playerByUid(uid)) return { error: 'You are still seated' };
+    // Whether this was asked for from the lobby, by somebody who walked out
+    // after busting. Worked out before anything happens, acted on after the
+    // answer is yes: the window can have shut while they sat in the lobby, and
+    // a refusal must leave them exactly where they were rather than dropping
+    // them at a table they were just told they could not sit at.
+    const fromLobby = !!socket && socket.data.tournamentId !== entry.id;
     let seat;
     try {
       seat = entry.director.reenter({ uid, id: socket ? socket.id : reg.socketId });
     } catch (err) {
       return { error: err.message };
     }
-    // Back in the game: no longer a busted player at the rail of the table
-    // that took them out, and a leaver who came back is a player again. The
-    // socket is the one already bound, so no second tournamentJoined; the
-    // seat carries its id from the director.
-    reg.left = false;
-    if (socket) reg.socketId = socket.id;
-    reg.disconnectedAt = null;
+    // Not at the rail of the table that took them out any more. Struck before
+    // a word goes out, because the first state after this has to say they are
+    // sitting down rather than watching.
     entry.watching.delete(uid);
-    seat.table.emitUpdate();
-    // The seat may be at another table than the one they were watching: the
-    // chat history follows the seat, as it does after a move.
-    sendChatHistory(entry, uid);
+    if (fromLobby) {
+      // Their page is in the lobby and the seat is at a table. bind is what
+      // opens it, and it does the rest of this branch's work on the way: the
+      // socket, the left flag, the seat's id, the table and the chat. Any
+      // other door they were standing at closes behind them, as it would on
+      // a join.
+      withdrawAll(uid, entry);
+      unwatchAll(uid);
+      bind(entry, uid, socket, { resumed: true });
+    } else {
+      // Back in the game from the table they were watching it from: a leaver
+      // who came back is a player again. The socket is the one already bound,
+      // so no second tournamentJoined; the seat carries its id from the
+      // director.
+      reg.left = false;
+      if (socket) reg.socketId = socket.id;
+      reg.disconnectedAt = null;
+      seat.table.emitUpdate();
+      // The seat may be at another table than the one they were watching: the
+      // chat history follows the seat, as it does after a move.
+      sendChatHistory(entry, uid);
+    }
     emitTo(entry, uid, 'tournamentReentered', {
       chips: seat.player.chips,
       table: seat.table.tableNumber,
@@ -1899,15 +1951,27 @@ function createTournamentRegistry(deps = {}) {
     return { entry, seat };
   }
 
-  function takeAddOn(entry, uid) {
+  function takeAddOn(entry, uid, socket = null) {
     if (entry.status !== 'running') return { error: 'The tournament is not running' };
+    const fromLobby = !!socket && socket.data.tournamentId !== entry.id;
     let result;
     try {
       result = entry.director.takeAddOn(uid);
     } catch (err) {
       return { error: err.message };
     }
-    emitTo(entry, uid, 'tournamentAddOn', { queued: !!result.queued });
+    // After the answer, like the re-entry above. Buying a second starting
+    // stack for a seat and leaving it in the lobby to blind down would be a
+    // strange thing to do on purpose, so taking it from there is read as
+    // coming back: bind sits them down again and takes the seat off sit-out.
+    if (fromLobby) {
+      withdrawAll(uid, entry);
+      unwatchAll(uid);
+      bind(entry, uid, socket, { resumed: true });
+    }
+    const answer = { queued: !!result.queued };
+    if (socket) socket.emit('tournamentAddOn', answer);
+    else emitTo(entry, uid, 'tournamentAddOn', answer);
     persist();
     emitState(entry);
     emitList();

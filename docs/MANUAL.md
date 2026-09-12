@@ -395,7 +395,12 @@ table.
 
 If the game allows re-entry and the window is still open, the same dialog
 offers **Re-enter** beside Watch, and the Info tab keeps a **Re-enter**
-block for as long as the offer stands. Neither is offered to somebody who
+block for as long as the offer stands. Saying no is not final and neither is
+leaving: the game's card in the lobby, under **Your tournaments**, carries a
+**Re-enter** button too, for as long as the window is open, and taking it
+from there puts you straight back at a table. The **Add-on** is on the card
+in the same way during the break, for somebody who is not at their table when
+it starts. Neither is offered to somebody who
 forfeited: giving the seat up is final, which is what the question before it
 is for. Taking it costs another buy-in and
 seats you with a fresh starting stack at the table with the fewest players,

@@ -1082,4 +1082,58 @@ describe('Tournament socket layer', () => {
     expect(() => director.assertChipConservation()).not.toThrow();
     director.releaseField();
   });
+
+  test('a busted player who left the table re-enters by naming the game from the lobby', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host, {
+      reentryLevels: 3,
+      buyIn: 100,
+    });
+    const third = await connectClient();
+    await joinByCode(third, created.code, { name: 'Third', avatar: '🦉' });
+    await startAndDeal(host, guest);
+
+    const entry = serverModule.tournaments.get(created.id);
+    const director = entry.director;
+    director.holdField();
+    const table = director.tables[0];
+    expect(
+      await until(() => {
+        if (!table.isRunning) return true;
+        const cur = table.players[table.currentPlayerIndex];
+        if (cur && !table.handleAction(cur.id, 'fold')) table.handleAction(cur.id, 'call');
+        return !table.isRunning;
+      })
+    ).toBe(true);
+    const guestUid = guest.__identity.uid;
+    const { player } = director.playerByUid(guestUid);
+    const keeper = table.players.find((p) => p.uid !== guestUid && p.chips > 0);
+    const out = waitFor(guest, 'tournamentEliminated');
+    keeper.chips += player.chips;
+    player.chips = 0;
+    director.tournament.recordElimination(player.name, 1, guestUid);
+    director._handleRoundEnd(table, null);
+    await out;
+
+    // Decline the offer and walk out, which is the whole of the bug: the
+    // socket stops pointing at the game, and used to take the offer with it.
+    const left = waitFor(guest, 'leftTournament');
+    guest.emit('leaveTournament');
+    await left;
+    expect(entry.registrations.get(guestUid).left).toBe(true);
+    // The card in front of them still offers it.
+    const card = serverModule.registry.listFor(guestUid).find((c) => c.id === created.id);
+    expect(card.you.canReenter).toBe(true);
+
+    // Pressing it names the game, and the answer puts them back at the table.
+    const joined = waitFor(guest, 'tournamentJoined');
+    const back = waitFor(guest, 'tournamentReentered');
+    guest.emit('reenterTournament', { tournamentId: created.id });
+    expect(await joined).toMatchObject({ id: created.id });
+    expect(await back).toMatchObject({ chips: 1000 });
+    expect(director.playerByUid(guestUid)).not.toBeNull();
+    expect(entry.registrations.get(guestUid).left).toBe(false);
+    expect(() => director.assertChipConservation()).not.toThrow();
+    director.releaseField();
+  });
 });

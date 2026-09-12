@@ -838,12 +838,16 @@
 
   // A fresh stack for another buy-in, while the window is open. The server
   // answers with the seat on the next push, or a notice saying why not.
-  function reenter() {
-    if (socket && socket.connected) socket.emit('reenterTournament');
+  // tournamentId is passed by the lobby card, where this socket is not bound
+  // to any game; from the table it is left off and the socket says which.
+  function reenter(tournamentId) {
+    if (!socket || !socket.connected) return;
+    socket.emit('reenterTournament', tournamentId ? { tournamentId } : {});
   }
 
-  function takeAddOn() {
-    if (socket && socket.connected) socket.emit('takeAddOn');
+  function takeAddOn(tournamentId) {
+    if (!socket || !socket.connected) return;
+    socket.emit('takeAddOn', tournamentId ? { tournamentId } : {});
   }
 
   function onError(message) {
@@ -1039,6 +1043,25 @@
       give.addEventListener('click', () => forfeit(t.id));
       buttons.push(give);
     }
+    // A bust-out with the window still open, and the break's extra stack. Both
+    // live in the Info tab at the table; a player in the lobby has no table,
+    // and being in the lobby is not a decision about either one.
+    if (t.you && t.you.canReenter) {
+      const back = document.createElement('button');
+      back.className = 't-card-btn t-card-reenter';
+      back.type = 'button';
+      back.textContent = 'Re-enter';
+      back.addEventListener('click', () => reenterFromCard(t));
+      buttons.push(back);
+    }
+    if (t.you && t.you.canAddOn) {
+      const more = document.createElement('button');
+      more.className = 't-card-btn t-card-addon';
+      more.type = 'button';
+      more.textContent = 'Add-on';
+      more.addEventListener('click', () => addOnFromCard(t));
+      buttons.push(more);
+    }
     // The way to stop it, for whoever is entitled to. Every other host control
     // is at the table, which somebody who busted and came back to the lobby no
     // longer has - and the host title has usually moved on by then too.
@@ -1059,9 +1082,9 @@
       buttons.push(watch);
     }
 
-    // The card's grid keeps one cell for buttons, and there can be three of
-    // them, so they go in a column of their own. Placing each at the cell
-    // stacked them on top of one another instead.
+    // The card's grid keeps one cell for buttons, and there can be several,
+    // so they go in a column of their own. Placing each at the cell stacked
+    // them on top of one another instead.
     const actions = document.createElement('div');
     actions.className = 't-card-actions';
     actions.append(...buttons);
@@ -1893,6 +1916,40 @@
       });
     }
     if (ok) socket.emit('cancelTournament', { tournamentId: id });
+  }
+
+  // The two self-service offers, from the lobby. Both are at the table too, in
+  // the Info tab; these are the same offers reaching a player who is not at
+  // one - busted and back in the lobby with the window still open, or out of
+  // the room when the break started.
+  async function reenterFromCard(t) {
+    const cost = t.buyIn ? ` for a buy-in of ${fmtChips(t.buyIn)}` : '';
+    let ok = true;
+    if (typeof window.showConfirmDialog === 'function') {
+      ok = await window.showConfirmDialog({
+        title: 'Buy back in?',
+        message:
+          `A fresh starting stack${cost}, at the table with the fewest players, from its next ` +
+          'deal. Your bust-out is struck from the standings.',
+        confirmLabel: 'Re-enter',
+        cancelLabel: 'Stay out',
+      });
+    }
+    if (ok) reenter(t.id);
+  }
+
+  async function addOnFromCard(t) {
+    const cost = t.buyIn ? ` for another buy-in of ${fmtChips(t.buyIn)}` : '';
+    let ok = true;
+    if (typeof window.showConfirmDialog === 'function') {
+      ok = await window.showConfirmDialog({
+        title: 'Take the add-on?',
+        message: `A starting stack more on top of what you have${cost}, once, before the break ends.`,
+        confirmLabel: 'Take it',
+        cancelLabel: 'No thanks',
+      });
+    }
+    if (ok) takeAddOn(t.id);
   }
 
   // ── Wiring ───────────────────────────────────────────────────────────────

@@ -419,10 +419,12 @@
   color: var(--smoke);
   line-height: 1.5;
 }
-/* The card keeps one cell for its buttons, and a card can want three: the way
-   in, Watch on a game you are not in, and Forfeit on a stack you walked away
-   from. They sit in a column here. Giving each button the cell itself put them
-   on top of one another, which is how Watch came to cover Join late. */
+/* The card keeps one cell for its buttons, and a card can want four of them:
+   the way in, the offer that stands right now (the way back in after busting,
+   or the add-on at the break), Forfeit on a stack you walked away from, End on
+   a game you made, Watch on one you are not in. They sit in a column here.
+   Giving each button the cell itself put them on top of one another, which is
+   how Watch came to cover Join late. */
 .t-card-actions {
   grid-area: btn;
   display: flex;

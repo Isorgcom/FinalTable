@@ -34,6 +34,12 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- Busting out, saying no to the re-entry offer and going back to the lobby no
+  longer costs you the way back in. The game's card under **Your tournaments**
+  carries a **Re-enter** button for as long as the window is open, and one
+  press puts you back at a table with a fresh stack rather than leaving you to
+  guess that **Rejoin** was the way. The add-on is on the card the same way, so
+  a player who steps out during the break can still take it.
 - A seat that goes without a hand to explain it is now said over the felt for a
   few seconds, not only written into the dealer's log: a player forfeiting, and
   a player the host removes. The log opens on Chat, so a seat could simply

@@ -345,6 +345,82 @@ test('a host who busts out and goes back to the lobby can still end their game',
   for (const s of seats) await s.ctx.close();
 });
 
+test('a busted player who declines and leaves is still offered the way back in', async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Rebuyer');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Rebuyer');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Second Chances');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.fill('#tBuyIn', '100');
+  await page.selectOption('#tReentryLevels', '3');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const seats = [];
+  for (const name of ['Alpha', 'Beta']) {
+    const ctx = await browser.newContext();
+    const pg = await ctx.newPage();
+    pg.on('pageerror', (err) => errors.push(err.message));
+    await pg.goto(`${baseUrl}/?t=${code}`);
+    await pg.fill('#playerName', name);
+    await pg.locator('#playerName').blur();
+    await expect(pg.locator('#lobbyWaiting')).toBeVisible();
+    seats.push({ ctx, pg });
+  }
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // Bust them on the server: playing a whole field down is not what this is
+  // about, and the stack has to go somewhere.
+  const id = await page.evaluate(() => window.mttField.id);
+  const entry = serverModule.registry.tournaments.get(id);
+  const uid = await page.evaluate(() => window.mttField.you.uid);
+  const seat = entry.director.playerByUid(uid);
+  const keeper = seat.table.players.find((p) => p.uid !== uid && p.chips > 0);
+  entry.director.holdField();
+  keeper.chips += seat.player.chips;
+  seat.player.chips = 0;
+  entry.director.tournament.recordElimination(seat.player.name, 1, uid);
+  entry.director._handleRoundEnd(seat.table, null);
+
+  // The dialog offers the way back in; decline it, which is what starts this.
+  await expect(page.locator('#appDialogBody')).toContainText('Re-enter', { timeout: 10000 });
+  await page.click('#btnAppDialogCancel');
+
+  // And leave the table, which used to take the offer away with it.
+  await page.click('#menuToggle');
+  await page.click('#btnExit');
+  await page.click('#btnAppDialogConfirm');
+  await page.click('#btnAppDialogConfirm').catch(() => {});
+  await expect(page.locator('#lobbyHome')).toBeVisible({ timeout: 10000 });
+
+  // The card still offers it, and taking it lands them back at a table with
+  // a fresh stack rather than leaving them in the lobby holding a seat.
+  const card = page.locator('#listYours .t-card').first();
+  const again = card.locator('.t-card-reenter');
+  await expect(again).toHaveText('Re-enter');
+  await again.click();
+  await expect(page.locator('#appDialogBody')).toContainText('fresh starting stack');
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect
+    .poll(() => page.evaluate(() => (window.mttField ? window.mttField.you.seated : null)), {
+      timeout: 10000,
+    })
+    .toBe(true);
+
+  expect(errors).toEqual([]);
+  for (const s of seats) await s.ctx.close();
+});
+
 test('a dropped connection sits the seat out, and coming back resumes it', async ({
   browser,
   page,

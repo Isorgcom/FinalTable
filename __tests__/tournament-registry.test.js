@@ -2436,6 +2436,111 @@ describe('re-entry and the add-on in the registry', () => {
     expect(entry.director.playerByUid('g')).toBeNull();
   });
 
+  test('a busted player who went back to the lobby is still offered the way in, and takes it', () => {
+    const entry = running({ reentryLevels: 2, structure: BREAKS, visibility: 'public' });
+    bust(entry, 'g');
+    expect(registry.stateFor(entry, 'g').you.canReenter).toBe(true);
+
+    // Declining the offer and walking out is not a decision about the window,
+    // which is the whole of this bug: the offer used to go with them.
+    registry.leave(entry, 'g', live.get('sg'));
+    const reg = entry.registrations.get('g');
+    expect(reg.left).toBe(true);
+    expect(reg.socketId).toBeNull();
+    expect(entry.watching.has('g')).toBe(true);
+    expect(registry.stateFor(entry, 'g').you.canReenter).toBe(true);
+    // And the card they are looking at in the lobby says so too.
+    const card = registry.listFor('g').find((c) => c.id === entry.id);
+    expect(card.you).toMatchObject({ left: true, eliminated: true, canReenter: true });
+    expect(registry.listFor('t').find((c) => c.id === entry.id).you.canReenter).toBe(false);
+
+    // Taking it from the lobby: the socket is not bound to the game, so the
+    // seat would land somewhere they could not see without the bind.
+    const back = makeSocket('sg2', 'g');
+    expect(back.data.tournamentId).toBeUndefined();
+    const result = registry.reenter(entry, 'g', back);
+    expect(result.error).toBeUndefined();
+    expect(back.data.tournamentId).toBe(entry.id);
+    expect(back.emitted.some((m) => m.event === 'tournamentJoined')).toBe(true);
+    expect(result.seat.player.chips).toBe(5000);
+    expect(reg.left).toBe(false);
+    expect(entry.watching.has('g')).toBe(false);
+    expect(entry.director.playerByUid('g')).not.toBeNull();
+    expect(registry.stateFor(entry, 'g').you).toMatchObject({
+      seated: true,
+      canReenter: false,
+    });
+  });
+
+  test('the add-on reaches somebody who stepped out to the lobby for the break', () => {
+    const entry = running({ addOn: true, structure: BREAKS, visibility: 'public' });
+    // Into the break, where the offer stands.
+    entry.director.tournament.currentLevel = 1;
+    expect(entry.director.addOnOpen()).toBe(true);
+    expect(registry.stateFor(entry, 'g').you.canAddOn).toBe(true);
+
+    registry.leave(entry, 'g', live.get('sg'));
+    // The stack is still in the seat, so the offer is still theirs.
+    expect(registry.stateFor(entry, 'g').you.canAddOn).toBe(true);
+    expect(registry.listFor('g').find((c) => c.id === entry.id).you.canAddOn).toBe(true);
+
+    const back = makeSocket('sg3', 'g');
+    const before = entry.director.playerByUid('g').player.chips;
+    expect(registry.takeAddOn(entry, 'g', back).error).toBeUndefined();
+    expect(back.data.tournamentId).toBe(entry.id);
+    // The answer goes to the socket that asked; their registration had none.
+    expect(back.emitted.some((m) => m.event === 'tournamentAddOn')).toBe(true);
+    expect(entry.director.playerByUid('g').player.chips).toBe(before + 5000);
+    expect(registry.stateFor(entry, 'g').you.canAddOn).toBe(false);
+  });
+
+  test('a refusal from the lobby leaves them in the lobby, not at a table', () => {
+    const entry = running({ reentryLevels: 2, structure: BREAKS });
+    bust(entry, 'g');
+    registry.leave(entry, 'g', live.get('sg'));
+    const reg = entry.registrations.get('g');
+
+    // The window shuts while they sit in the lobby looking at a card that
+    // still offers it. Pressing it must not seat them, and must not drag
+    // their page to a table they were just told they could not sit at.
+    entry.director.reentryLevels = 0;
+    const sock = makeSocket('sg9', 'g');
+    expect(registry.reenter(entry, 'g', sock)).toEqual({ error: 'Re-entry is closed' });
+    expect(sock.data.tournamentId).toBeUndefined();
+    expect(sock.emitted).toEqual([]);
+    expect(reg.left).toBe(true);
+    expect(entry.watching.has('g')).toBe(true);
+    expect(entry.director.playerByUid('g')).toBeNull();
+
+    // The same for the add-on, asked for when there is no break to take it in.
+    const seated = makeSocket('st9', 't');
+    registry.leave(entry, 't', live.get('st'));
+    expect(registry.takeAddOn(entry, 't', seated).error).toBeTruthy();
+    expect(seated.data.tournamentId).toBeUndefined();
+    expect(seated.emitted).toEqual([]);
+    expect(entry.registrations.get('t').left).toBe(true);
+  });
+
+  test('a break turning over pushes the lobby list, or the add-on is never offered there', () => {
+    const entry = running({ addOn: true, structure: BREAKS });
+    const lobby = live.get('sg');
+    const lists = () => lobby.emitted.filter((m) => m.event === 'tournamentList').length;
+    const before = lists();
+    // The clock reaching the break, rather than the host stepping it: that
+    // path pushes the list itself, and this is the one that did not. Nothing
+    // deals during a break, so no round ending is coming to do it either.
+    entry.director.tournament.goToLevel(1);
+    jest.advanceTimersByTime(500);
+    expect(entry.director.addOnOpen()).toBe(true);
+    expect(lists()).toBeGreaterThan(before);
+    // And the card that push carries is the one with the offer on it.
+    const card = lobby.emitted
+      .filter((m) => m.event === 'tournamentList')
+      .pop()
+      .payload.find((c) => c.id === entry.id);
+    expect(card.you.canAddOn).toBe(true);
+  });
+
   test('re-entry is refused when the window is shut, for a removed player, and before the start', () => {
     const entry = running({ reentryLevels: 1, structure: BREAKS });
     bust(entry, 'g');
