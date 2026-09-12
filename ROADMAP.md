@@ -54,13 +54,35 @@ exists now; for a guest it is the device, which is the best there is.
 
 ### More control over your own games
 
-For a player: see and end your own sessions, leave properly rather than by
-closing the tab. The host's half is done: pause a running game, remove
-somebody, step the level or put a minute on it, move a player by hand, and
-mute. An operator (the server's password, not the game's host) can end a
-running tournament from the table menu or from the Operator page, which holds
-the server's own settings and a list of every game on it. Some of the rest
-arrives with the API below, but a host with no Game Night should have it too.
+For a player: see and end your own sessions, and a way out of a game for
+good. Leave today is a walk to the lobby: the stack stays in the seat,
+sitting out and blinding down until it is gone or the player is back, and
+only the host can take it off the table. What is wanted beside it is a
+forfeit - leave and concede - that does to your own seat what the host's
+Remove does: the chips leave play, you finish in the place you held, paid
+if that place pays, and the seat is gone rather than folding down to
+nothing over the next twenty hands. It asks first, since there is no way
+back. Whether re-entry should stay open to somebody who conceded, while the
+window is, is the one decision to make. The host's half is done: pause a
+running game, remove somebody, step the level or put a minute on it, move a
+player by hand, and mute. An operator (the server's password, not the game's
+host) can end a running tournament from the table menu or from the Operator
+page, which holds the server's own settings and a list of every game on it.
+Some of the rest arrives with the API below, but a host with no Game Night
+should have it too.
+
+### Showing a hand nobody paid to see
+
+A pot taken uncontested is never shown: the last player standing keeps the
+hole cards face down, and the history and the replay keep them that way,
+because turning up at a showdown is the only thing that makes a holding
+public. Live, the winner turns them over anyway - the bluff shown to needle,
+the ace shown to prove it was there - and that is half the table talk. What
+is wanted is the choice: after an uncontested pot, a Show on the winner's
+seat for the few seconds before the next deal, one card or both, and nothing
+happens if it is never pressed. A hand shown that way goes through the same
+path as a showdown, so it is on the felt for everyone and in the history
+afterwards, and a hand not shown stays as unseen as a fold.
 
 ### Games other than Hold'em
 
