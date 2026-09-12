@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.10.0 - 2026-09-12
+
 ### Added
 
 - Re-entry. A host can allow it when the game is made: none, or through
