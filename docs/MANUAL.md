@@ -283,6 +283,14 @@ nobody else has:
   in the table menu, behind the server's password, for games the operator
   does not host.
 
+The host is whoever is running the clock, and that is not always the person
+who made the game: the title passes to another player when a host drops out
+or walks back to the lobby. Ending the game stays with both. Whoever made it
+keeps an **End** button on its card under **Your tournaments**, so a host who
+busts out and goes back to the lobby can still call off their own game, and
+the Info tab shows them that one control under **Your game** if they come
+back to watch.
+
 A move or a removal asked for while that table is mid-hand happens when the
 hand ends. Every one of these is checked on the server; the block is only
 how the host asks.

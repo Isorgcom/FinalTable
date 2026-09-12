@@ -1707,6 +1707,61 @@ describe('the host controls in the registry', () => {
     });
   });
 
+  test('whoever made the game can still end it after the host title moves on', () => {
+    const entry = running({ visibility: 'public' });
+    expect(entry.creatorUid).toBe('h');
+    expect(registry.stateFor(entry, 'h').you.canEnd).toBe(true);
+    expect(registry.stateFor(entry, 'g').you.canEnd).toBe(false);
+
+    // Busting out and walking back to the lobby is exactly when the title
+    // moves: the host is marked as having left, and the sweep hands it on.
+    registry.leave(entry, 'h', live.get('sh'));
+    jest.advanceTimersByTime(1500);
+    expect(entry.hostUid).not.toBe('h');
+    expect(entry.creatorUid).toBe('h');
+
+    // The clock is somebody else's now, and calling the game off is not.
+    expect(registry.stateFor(entry, 'h').you).toMatchObject({ canEnd: true });
+    expect(registry.stateFor(entry, 'h').isHost).toBe(false);
+    const card = registry.listFor('h').find((c) => c.id === entry.id);
+    expect(card.you.canEnd).toBe(true);
+    // On a public card everybody else sees the game and none of them may end it.
+    expect(registry.listFor('t').find((c) => c.id === entry.id).you.canEnd).toBe(false);
+
+    // Somebody who neither made it nor holds the title still cannot.
+    expect(registry.cancel(entry, 't')).toEqual({
+      error: 'Only the host or whoever made the game can cancel it',
+    });
+    expect(registry.cancel(entry, 'h').entry).toBe(entry);
+    // Cancelling takes the game off the server rather than finishing it.
+    expect(registry.tournaments.has(entry.id)).toBe(false);
+    expect(io.sent.some((m) => m.event === 'tournamentCancelled')).toBe(true);
+  });
+
+  test('the creator is written down and comes back, and an old file falls back to its host', () => {
+    const entry = running();
+    registry.flush();
+    const saved = store.load()[0];
+    expect(saved.creatorUid).toBe('h');
+
+    registry.stop();
+    const second = makeRegistry(store);
+    expect(second.restore()).toBe(1);
+    expect(second.tournaments.get(entry.id).creatorUid).toBe('h');
+    second.stop();
+
+    // A file written before any of this has no creator in it; the host it was
+    // saved with is the best answer there is, and it is the right one.
+    const older = store.load();
+    delete older[0].creatorUid;
+    store.save(older);
+    const third = makeRegistry(store);
+    expect(third.restore()).toBe(1);
+    expect(third.tournaments.get(entry.id).creatorUid).toBe(saved.hostUid);
+    third.stop();
+    registry = makeRegistry(store); // for afterEach
+  });
+
   test('pausing and resuming reach the state and the card', () => {
     const entry = running({ visibility: 'public' });
     expect(registry.pause(entry, 'h').entry).toBe(entry);

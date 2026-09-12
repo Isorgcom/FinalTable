@@ -274,6 +274,77 @@ test('the host ends a running tournament from the Info tab, without the operator
   await guestContext.close();
 });
 
+test('a host who busts out and goes back to the lobby can still end their game', async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Maker');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Maker');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Made It');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const seats = [];
+  for (const name of ['Alpha', 'Beta']) {
+    const ctx = await browser.newContext();
+    const pg = await ctx.newPage();
+    pg.on('pageerror', (err) => errors.push(err.message));
+    await pg.goto(`${baseUrl}/?t=${code}`);
+    await pg.fill('#playerName', name);
+    await pg.locator('#playerName').blur();
+    await expect(pg.locator('#lobbyWaiting')).toBeVisible();
+    seats.push({ ctx, pg });
+  }
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // Bust the maker on the server: a whole field playing down to them is not
+  // what this is about, and the stack has to go to somebody.
+  const id = await page.evaluate(() => window.mttField.id);
+  await page.evaluate(() => 0);
+  const entry = serverModule.registry.tournaments.get(id);
+  const seat = entry.director.playerByUid(entry.hostUid);
+  const keeper = seat.table.players.find((p) => p.uid !== entry.hostUid && p.chips > 0);
+  keeper.chips += seat.player.chips;
+  seat.player.chips = 0;
+  entry.director.tournament.recordElimination(seat.player.name, 1, entry.hostUid);
+  entry.director._handleRoundEnd(seat.table, null);
+  await expect(page.locator('#appDialogBody')).toContainText('You are out', { timeout: 10000 });
+  await page.click('#btnAppDialogConfirm');
+
+  // Out to the lobby, which is where the host title stops being theirs.
+  await page.click('#menuToggle');
+  await page.click('#btnExit');
+  await page.click('#btnAppDialogConfirm');
+  await page.click('#btnAppDialogConfirm').catch(() => {});
+  await expect(page.locator('#lobbyHome')).toBeVisible({ timeout: 10000 });
+
+  // The card they made carries the one control that was never about a hand.
+  const card = page.locator('#listYours .t-card').first();
+  await expect(card).toBeVisible();
+  const end = card.locator('.t-card-end');
+  await expect(end).toHaveText('End');
+  await end.click();
+  await expect(page.locator('#appDialogBody')).toContainText('no winner');
+  await page.click('#btnAppDialogConfirm');
+
+  // And it really ends, for the people still playing it.
+  await expect(seats[0].pg.locator('#appDialogBody')).toContainText('cancelled by the host', {
+    timeout: 10000,
+  });
+  await expect(page.locator('#listYours .t-card')).toHaveCount(0, { timeout: 10000 });
+
+  expect(errors).toEqual([]);
+  for (const s of seats) await s.ctx.close();
+});
+
 test('a dropped connection sits the seat out, and coming back resumes it', async ({
   browser,
   page,

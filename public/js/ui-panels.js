@@ -281,11 +281,18 @@ function renderInfoHost() {
   const block = document.getElementById('panelInfoHost');
   if (!block) return;
   const field = window.mttField || null;
-  const show = !!(field && field.isHost && field.status === 'running' && !window.mttFinished);
+  const you = field && field.you;
+  // Running the hands is the host's; calling the game off belongs to them and
+  // to whoever made it, who may be neither seated nor holding the title by the
+  // time they want it.
+  const isHost = !!(field && field.isHost);
+  const mayEnd = !!(you && you.canEnd);
+  const show = !!(field && (isHost || mayEnd) && field.status === 'running' && !window.mttFinished);
   const roster = show && Array.isArray(field.roster) ? field.roster : [];
   const seated = roster.filter((r) => r.table && r.chips > 0 && !r.isHost);
   const sig = show
     ? [
+        isHost ? 'h' : 'e',
         field.paused ? 'p' : 'r',
         field.level,
         field.onBreak ? 'b' : '',
@@ -303,7 +310,16 @@ function renderInfoHost() {
   block.textContent = '';
   block.classList.toggle('hidden', !show);
   if (!show) return;
-  block.appendChild(createTextElement('div', 'info-section-title', 'Host'));
+  block.appendChild(createTextElement('div', 'info-section-title', isHost ? 'Host' : 'Your game'));
+  if (!isHost) {
+    block.appendChild(
+      createTextElement(
+        'div',
+        'host-empty',
+        'Somebody else is running the clock. You made this game, so you can still call it off.'
+      )
+    );
+  }
 
   const send = (event, payload) => {
     if (socket && socket.connected) socket.emit(event, payload);
@@ -320,28 +336,30 @@ function renderInfoHost() {
 
   const controls = document.createElement('div');
   controls.className = 'host-controls';
-  controls.appendChild(
-    button(field.paused ? 'Resume' : 'Pause', () =>
-      send(field.paused ? 'resumeTournament' : 'pauseTournament')
-    )
-  );
-  controls.appendChild(
-    button('◀ Level', () => send('stepLevel', { delta: -1 }), {
-      disabled: field.level <= 1 && !field.onBreak,
-    })
-  );
-  controls.appendChild(
-    button('Level ▶', () => send('stepLevel', { delta: 1 }), { disabled: !!field.finalLevel })
-  );
-  controls.appendChild(
-    button('−1 min', () => send('adjustClock', { seconds: -60 }), {
-      disabled: !!field.finalLevel,
-    })
-  );
-  controls.appendChild(
-    button('+1 min', () => send('adjustClock', { seconds: 60 }), { disabled: !!field.finalLevel })
-  );
-  block.appendChild(controls);
+  if (isHost) {
+    controls.appendChild(
+      button(field.paused ? 'Resume' : 'Pause', () =>
+        send(field.paused ? 'resumeTournament' : 'pauseTournament')
+      )
+    );
+    controls.appendChild(
+      button('◀ Level', () => send('stepLevel', { delta: -1 }), {
+        disabled: field.level <= 1 && !field.onBreak,
+      })
+    );
+    controls.appendChild(
+      button('Level ▶', () => send('stepLevel', { delta: 1 }), { disabled: !!field.finalLevel })
+    );
+    controls.appendChild(
+      button('−1 min', () => send('adjustClock', { seconds: -60 }), {
+        disabled: !!field.finalLevel,
+      })
+    );
+    controls.appendChild(
+      button('+1 min', () => send('adjustClock', { seconds: 60 }), { disabled: !!field.finalLevel })
+    );
+    block.appendChild(controls);
+  }
 
   // Seats per table, so the destinations offered are the ones with room.
   const counts = new Map();
@@ -402,14 +420,16 @@ function renderInfoHost() {
   if (!seated.length) {
     list.appendChild(createTextElement('div', 'host-empty', 'Nobody else is seated.'));
   }
-  block.appendChild(list);
+  if (isHost) block.appendChild(list);
 
   // Ending the whole thing. The host could do this from the waiting room until
   // the cards came out, and after that only somebody holding the operator's
   // password could - which left a host with a game they could not stop. It
   // sits last, under a line, and asks first.
   const end = document.createElement('div');
-  end.className = 'host-controls host-end';
+  // The rule above it separates it from the controls; with no controls above,
+  // there is nothing to separate it from.
+  end.className = 'host-controls' + (isHost ? ' host-end' : '');
   end.appendChild(
     button(
       'End tournament',

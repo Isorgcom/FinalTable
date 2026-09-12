@@ -196,8 +196,13 @@ function registerTournamentHandlers(deps) {
     socket.on('startTournamentNow', startNow);
     socket.on('startTournament', startNow); // pre-lobby client
 
-    socket.on('cancelTournament', () => {
-      const entry = entryFor(socket);
+    // Like the forfeit, this names the game when it has to: a host who busted
+    // and went back to the lobby has no socket bound to it any more, and the
+    // control they had at the table went with the table. registry.cancel is
+    // the one that decides whether this uid may, as it always was.
+    socket.on('cancelTournament', (payload = {}) => {
+      const id = payload && payload.tournamentId ? String(payload.tournamentId) : '';
+      const entry = (id && registry.tournaments.get(id)) || entryFor(socket);
       if (!entry) return;
       const { error } = registry.cancel(entry, socket.data.uid);
       if (error) fail(socket, error);

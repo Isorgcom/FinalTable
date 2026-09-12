@@ -1039,6 +1039,17 @@
       give.addEventListener('click', () => forfeit(t.id));
       buttons.push(give);
     }
+    // The way to stop it, for whoever is entitled to. Every other host control
+    // is at the table, which somebody who busted and came back to the lobby no
+    // longer has - and the host title has usually moved on by then too.
+    if (t.you && t.you.canEnd && t.status === 'running') {
+      const end = document.createElement('button');
+      end.className = 't-card-btn t-card-end';
+      end.type = 'button';
+      end.textContent = 'End';
+      end.addEventListener('click', () => endTournament(t.id, t.name));
+      buttons.push(end);
+    }
     if (!mine && t.status === 'running') {
       const watch = document.createElement('button');
       watch.className = 't-card-btn t-card-watch';
@@ -1864,6 +1875,26 @@
     if (ok) socket.emit('forfeitTournament', { tournamentId: id });
   }
 
+  // Calling the whole game off. The host has this at the table in the Info
+  // tab; this is the same thing from the lobby, for a host who is not at one -
+  // busted out, or simply looking at the list.
+  async function endTournament(tournamentId, name) {
+    const id = tournamentId || currentId;
+    if (!socket || !id) return;
+    let ok = true;
+    if (typeof window.showConfirmDialog === 'function') {
+      ok = await window.showConfirmDialog({
+        title: name ? `End "${name}"?` : 'End this tournament?',
+        message:
+          'It stops now, with no winner and no payouts, and everyone still in it is sent back ' +
+          'to the lobby. There is no way to restart it.',
+        confirmLabel: 'End it',
+        cancelLabel: 'Keep it',
+      });
+    }
+    if (ok) socket.emit('cancelTournament', { tournamentId: id });
+  }
+
   // ── Wiring ───────────────────────────────────────────────────────────────
 
   function init() {
@@ -2009,6 +2040,7 @@
     onCancelled,
     onEliminated,
     forfeit,
+    endTournament,
     reenter,
     takeAddOn,
     onError,

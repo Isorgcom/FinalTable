@@ -15,10 +15,14 @@ Release on GitHub to go with it.
 
 ### Added
 
-- The host can end their own running tournament. It sits with the host's other
-  controls in the Info tab, asks first, and needs no operator password. Until
-  now a host could call a game off from the waiting room, but once the cards
-  were out only somebody holding the server's password could stop it.
+- Whoever made a tournament can end it while it runs, and goes on being able
+  to after they bust out of it. It sits with the host's other controls in the
+  Info tab, and on the game's card in the lobby for somebody who is not at a
+  table. It asks first and needs no operator password. Until now a host could
+  call a game off from the waiting room, but once the cards were out only
+  somebody holding the server's password could stop it - and the host title
+  passes to another player the moment a host walks back to the lobby, which
+  busting out is the usual reason for doing.
 - Forfeit: a way out of a game for good, under leave in the table menu and on
   the lobby card of a game you have walked out of. Leaving parks your stack at
   the table, where it blinds down for as long as the game runs; forfeiting

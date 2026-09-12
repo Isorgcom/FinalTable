@@ -193,6 +193,7 @@ function createTournamentRegistry(deps = {}) {
       createdAt: entry.createdAt,
       startsAt: entry.startsAt,
       hostUid: entry.hostUid,
+      creatorUid: entry.creatorUid,
       settings: { ...entry.settings },
       entrants: entry.director.entrants.map((e) => ({
         uid: e.uid,
@@ -390,6 +391,14 @@ function createTournamentRegistry(deps = {}) {
     return !!uid && uid === entry.hostUid;
   }
 
+  // Who may call the whole game off: whoever is holding the host's clock, and
+  // whoever started it. The two are the same person until the host title moves
+  // on, which it does the moment a host walks back to the lobby - and busting
+  // out is exactly when they do.
+  function canEnd(entry, uid) {
+    return requireHost(entry, uid) || (!!uid && uid === entry.creatorUid);
+  }
+
   // ── Views ────────────────────────────────────────────────────────────────
 
   function summarize(entry) {
@@ -472,6 +481,10 @@ function createTournamentRegistry(deps = {}) {
         // back, and it must not depend on late registration being open.
         left: !!(entry.registrations.has(uid) && entry.registrations.get(uid).left),
         eliminated: entry.watching.has(uid),
+        // The host's controls live at the table, and somebody who busts out and
+        // goes back to the lobby has left them behind. The card carries the one
+        // that is not about a hand.
+        canEnd: canEnd(entry, uid),
       },
     }));
   }
@@ -549,6 +562,7 @@ function createTournamentRegistry(deps = {}) {
         // The two self-service buttons: a busted entrant while the re-entry
         // window is open; a seated one during the first break who has not
         // taken the add-on yet.
+        canEnd: canEnd(entry, uid),
         canReenter:
           !!reg &&
           !reg.left &&
@@ -890,7 +904,7 @@ function createTournamentRegistry(deps = {}) {
 
     const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
     const { startsAt, settings } = clampSettings(payload);
-    const entry = buildEntry({ name, startsAt, hostUid: uid, settings });
+    const entry = buildEntry({ name, startsAt, hostUid: uid, creatorUid: uid, settings });
     entry.director.register({
       id: socket ? socket.id : null,
       uid,
@@ -936,6 +950,7 @@ function createTournamentRegistry(deps = {}) {
     name,
     startsAt,
     hostUid,
+    creatorUid = null,
     settings,
     createdAt,
   }) {
@@ -952,6 +967,11 @@ function createTournamentRegistry(deps = {}) {
       startedAt: null,
       finishedAt: null,
       hostUid,
+      // Who made this game. The host title moves - to whoever is still at the
+      // table when the host drops or walks off - but calling the game off is
+      // not a job for whoever happens to be holding the clock. It stays with
+      // the person who started it, busted or not, at the table or not.
+      creatorUid: creatorUid || hostUid,
       settings,
       director: null,
       registrations: new Map(),
@@ -1726,7 +1746,9 @@ function createTournamentRegistry(deps = {}) {
   }
 
   function cancel(entry, uid) {
-    if (!requireHost(entry, uid)) return { error: 'Only the host can cancel the tournament' };
+    if (!canEnd(entry, uid)) {
+      return { error: 'Only the host or whoever made the game can cancel it' };
+    }
     if (entry.status === 'finished') return { error: 'Already finished' };
     cancelEntry(entry, 'cancelled by the host');
     return { entry };
@@ -2129,6 +2151,7 @@ function createTournamentRegistry(deps = {}) {
         name: saved.name,
         startsAt: Number(saved.startsAt) || now(),
         hostUid: saved.hostUid,
+        creatorUid: saved.creatorUid || saved.hostUid,
         settings,
         createdAt: saved.createdAt,
       });
