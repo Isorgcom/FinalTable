@@ -452,9 +452,12 @@ player can buy a fresh starting stack and sit down again, the way a late
 entrant does, as many times as it takes while the window is open; with the
 add-on on, everyone still seated during the first break can buy one
 starting stack more, once. The break asks each of them, so the offer does not
-have to be gone looking for - never over a hand still being played, though:
-the question waits for that table to finish. Saying no leaves it where it is,
-in the Info tab and on the game's lobby card, for as long as the break lasts.
+have to be gone looking for. It waits its turn: the hand in play finishes, the
+felt clears, the break clock comes up, and then the question slides in under
+it with **No thanks** and **Take it** on it. Nothing is covered, so the clock
+that says how long you have to decide stays where you can read it. Saying no
+puts it away for that break and leaves it where it was, in the Info tab and on
+the game's lobby card.
 Asked for while the table is still finishing a hand, the add-on lands when
 the hand does. Each costs a buy-in, and each
 goes into the prize pool. The host can remove a player who abuses it.

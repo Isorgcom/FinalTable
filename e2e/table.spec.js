@@ -2085,52 +2085,77 @@ test('the rail link brings a watcher to the table, who can talk but not play', a
   await railContext.close();
 });
 
-test('the add-on asks when the break opens it, rather than waiting in a tab', async ({ page }) => {
+test('the add-on waits for the felt, then slides in beside the clock', async ({ page }) => {
   const pageErrors = await seatAtTournamentTable(page, 'AddOnee');
   await deal(page);
-  // The panel opens on Chat, which is the whole point: nothing here touches
-  // the Info tab, and the offer still has to reach the player.
-  await expect(page.locator('#appDialogModal')).toBeHidden();
+  const panel = page.locator('#addOnOffer');
+  await expect(panel).not.toHaveClass(/show/);
+  // The field state is set by hand below, because reaching a real break with
+  // the add-on on takes a whole structure and a clock. Stop the server's own
+  // pushes first or they overwrite it a tick later, part way through the wait
+  // this is here to measure.
+  await page.evaluate(() => {
+    socket.off('tournamentState');
+    socket.off('tournamentField');
+  });
 
-  // The server deciding the add-on is open is what a break amounts to here;
-  // what the felt does with it is what this checks. The clock turns over in
-  // the middle of the hand the table is still finishing, which is the usual
-  // way a break arrives, and nothing should land on top of that.
+  // The clock turns over in the middle of the hand the table is still
+  // finishing, which is the usual way a break arrives. Nothing lands on top
+  // of that: the pot is still going to whoever won it.
   await page.evaluate(() => {
     gameState = { ...(gameState || {}), isRunning: true };
+    gameState.tournament = {
+      isActive: true,
+      onBreak: true,
+      currentLevel: 1,
+      blinds: { sb: 100, bb: 200, ante: 200 },
+      timeUntilNextLevel: 300,
+    };
     const field = window.mttField || {};
     TournamentField.render({
       ...field,
       status: 'running',
       buyIn: 100,
-      onBreak: true,
+      startChips: 5000,
       you: { ...(field.you || {}), canAddOn: true, canReenter: false },
     });
   });
-  await page.waitForTimeout(300);
-  await expect(page.locator('#appDialogModal')).toBeHidden();
+  await page.waitForTimeout(400);
+  await expect(page.locator('#tableStage')).not.toHaveClass(/on-break/);
+  await expect(panel).not.toHaveClass(/show/);
 
-  // The hand ends, the felt clears, and it asks then.
+  // The hand ends. The felt still holds the result for its few seconds, and
+  // the question is not asked over that either.
   await page.evaluate(() => {
-    gameState = { ...(gameState || {}), isRunning: false };
-    TournamentField.offerAddOn(window.mttField);
+    // Through updateGameState, so the action bar goes the way it does when a
+    // hand really ends: during a break nobody is being asked to act.
+    updateGameState({ ...gameState, isRunning: false, isMyTurn: false });
+    _breakHandEndedAt = Date.now();
+    updateBlindClock();
   });
-  await expect(page.locator('#appDialogTitle')).toContainText('add-on is open');
-  await expect(page.locator('#appDialogBody')).toContainText('100');
+  await expect(panel).not.toHaveClass(/show/);
 
-  // Saying no leaves it alone rather than asking again on the next push.
-  await page.click('#btnAppDialogCancel');
+  // The felt clears, ON BREAK comes up, and only then, after a beat, the
+  // question arrives - under the clock rather than over it.
+  await expect(page.locator('#feltBreak')).toBeVisible({ timeout: 8000 });
+  await expect(panel).not.toHaveClass(/show/);
+  await expect(panel).toHaveClass(/show/, { timeout: 4000 });
+  await expect(panel).toContainText('5,000');
+  await expect(panel).toContainText('100');
+  // The clock it is asking against is still readable.
+  await expect(page.locator('#feltBreak')).toBeVisible();
   await expect(page.locator('#appDialogModal')).toBeHidden();
+
+  // Saying no puts it away and does not ask again this break.
+  await page.click('#btnAddOnNo');
+  await expect(panel).not.toHaveClass(/show/);
   await page.evaluate(() => {
     const field = window.mttField || {};
     TournamentField.render({ ...field, you: { ...field.you, canAddOn: true } });
+    updateBlindClock();
   });
-  await page.waitForTimeout(300);
-  await expect(page.locator('#appDialogModal')).toBeHidden();
-  // Nor when the next hand of the break's end comes round.
-  await page.evaluate(() => TournamentField.offerAddOn(window.mttField));
-  await page.waitForTimeout(200);
-  await expect(page.locator('#appDialogModal')).toBeHidden();
+  await page.waitForTimeout(2200);
+  await expect(panel).not.toHaveClass(/show/);
 
   expect(pageErrors).toEqual([]);
 });

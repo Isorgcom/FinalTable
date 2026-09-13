@@ -127,6 +127,13 @@ function paintBreakPlate() {
   if (was !== show && gameState && typeof renderPlayersIncremental === 'function') {
     renderPlayersIncremental();
   }
+  // The plate turning on is the moment the table has finished being watched:
+  // the pot has landed, the felt is clear, and the clock is up. Anything with
+  // something to ask the player waits for exactly this. Turning off is the
+  // break ending, which takes the question with it.
+  if (was !== show && window.TournamentField) {
+    TournamentField.offerAddOn(window.mttField);
+  }
   if (!show) return;
   document.getElementById('feltBreakClock').textContent = formatClock(_blindClockRemaining);
   const paused = !!(t.paused || (window.mttField && window.mttField.paused));

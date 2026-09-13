@@ -580,6 +580,25 @@
              hands, and a break is exactly when the host speaks. -->
         <div class="host-note hidden" id="tbHostNote" role="status"></div>
 
+        <!-- The add-on, asked on the felt rather than over it: the break clock
+             says how long there is to answer, so covering it with a dialog was
+             asking the question and hiding the deadline. It slides up once the
+             break has settled and stays for the rest of it. A sibling of the
+             table rather than a child of it, so it sits under the felt and
+             above the pre-action row, which a break does not take away. Not a
+             modal - nothing behind it is blocked. -->
+        <div class="felt-addon" id="addOnOffer" role="region" aria-live="polite">
+          <div class="felt-addon-text">
+            <span class="felt-addon-title">Add-on</span>
+            <span class="felt-addon-note" id="addOnOfferNote"></span>
+          </div>
+          <div class="felt-addon-actions">
+            <button class="felt-addon-btn" id="btnAddOnNo" type="button">No thanks</button>
+            <button class="felt-addon-btn felt-addon-take" id="btnAddOnTake" type="button">
+              Take it
+            </button>
+          </div>
+        </div>
         <div class="poker-table-wrapper">
           <div class="poker-table">
             <div class="table-brand">FinalTable</div>

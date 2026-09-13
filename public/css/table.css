@@ -178,6 +178,121 @@
 .table-stage.on-break .table-brand {
   visibility: hidden;
 }
+/* The add-on asked on the felt. Sits between the break plate, which is centred,
+   and the pre-action row at the floor, which a break does not take away - so it
+   has to clear 20px plus that row's own height rather than sit at the bottom.
+   Built like .mtt-move below: never display:none, so the transition has
+   something to run on without waiting a frame for the box to exist. */
+.felt-addon {
+  position: absolute;
+  bottom: 68px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(92vw, 420px);
+  padding: 10px 14px;
+  border: 1px solid rgba(201, 168, 76, 0.45);
+  border-radius: 10px;
+  background: rgba(13, 31, 18, 0.94);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+.felt-addon.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.felt-addon-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.felt-addon-title {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+}
+.felt-addon-note {
+  font-size: 0.68rem;
+  color: var(--smoke);
+  line-height: 1.35;
+}
+.felt-addon-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.felt-addon-btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--wood);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--smoke);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.felt-addon-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.felt-addon-take {
+  color: var(--gold);
+  border-color: rgba(201, 168, 76, 0.55);
+}
+.felt-addon-take:hover {
+  background: var(--gold-glow);
+}
+/* A slide is decoration; the words are the message. */
+@media (prefers-reduced-motion: reduce) {
+  .felt-addon {
+    transition: none;
+  }
+}
+/* No room for a row here: the words and the buttons stack, and the whole thing
+   still clears the reaction strip at the floor. Squeezed side by side they ran
+   into each other, a word to a line. */
+@media (max-width: 640px) {
+  .felt-addon {
+    bottom: 58px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 12px;
+    max-width: 94vw;
+  }
+  .felt-addon-text {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .felt-addon-note {
+    font-size: 0.64rem;
+  }
+  .felt-addon-actions {
+    justify-content: flex-end;
+  }
+  .felt-addon-btn {
+    padding: 5px 10px;
+    font-size: 0.72rem;
+  }
+}
+
 .felt-break {
   position: absolute;
   top: 50%;

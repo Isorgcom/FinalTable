@@ -41,10 +41,13 @@ Release on GitHub to go with it.
   is told the moment they land, the press is answered with "at the end of this
   hand" over the felt rather than in a tab, and the stack that arrives says how
   much and what you now have.
-- The add-on asks, once the hand is over. When the break opens it, everyone
-  still seated is offered it, the way a bust-out offers the way back in - but
-  never across a live hand: the clock turns over in the middle of the hand a
-  table is still finishing, and the question waits for the felt to clear. It was only
+- The add-on asks on the felt, in the table's own order. When the break opens
+  it, the hand in play finishes, the pot goes to whoever won it, the felt
+  clears and the break clock comes up; a beat after that the question slides in
+  under the clock, with No thanks and Take it on it. It is not a dialog and
+  covers nothing: the clock above it is what says how long there is to decide,
+  which the dialog used to hide. Saying no puts it away for that break, and the
+  Info tab and the lobby card still hold it. It was only
   ever a block in the Info tab, and the side panel opens on Chat, so a whole
   break could go by without a player knowing the offer had been on the table.
   Saying no leaves it alone; the Info tab and the lobby card keep it for as

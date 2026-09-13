@@ -31,47 +31,105 @@
     btn.classList.toggle('hidden', !show);
   }
 
-  // The add-on is an offer on a clock: it opens when the break starts and it
-  // is gone when the break ends, and there is nothing to prompt it later the
-  // way a bust-out prompts the way back in. A player with the Chat tab open -
-  // which is the tab the panel opens on - would watch the whole window go by
-  // without being told it was there. So it asks, once, and the Info tab and
-  // the lobby card keep it for anybody who says no and changes their mind.
-  let addOnAsked = false;
-  async function offerAddOn(state) {
-    const you = state && state.you;
+  // The add-on is an offer on a clock: it opens when the break starts and it is
+  // gone when the break ends, and nothing prompts it later the way a bust-out
+  // prompts the way back in. A player with the Chat tab open - which is the tab
+  // the panel opens on - would watch the whole window go by without being told
+  // it was there.
+  //
+  // So it asks on the felt. The order matters and it is the order a table has:
+  // the pot finishes travelling to whoever won it, the felt clears, the break
+  // clock comes up, and only then, after a beat, does the question slide in
+  // under it. The clock is what says how long there is to answer, so putting
+  // the question over it was asking and hiding the deadline in one move.
+  //
+  // The break plate is what the wait hangs on. It already holds the felt for
+  // four seconds so the last hand can be read, which is longer than the chips
+  // take to land, so by the time it is up the table has finished being watched.
+  const ADD_ON_SETTLE_MS = 1500;
+  let addOnAnswered = false;
+  let addOnTimer = null;
+
+  function addOnPanel() {
+    return document.getElementById('addOnOffer');
+  }
+
+  function hideAddOn() {
+    if (addOnTimer) {
+      clearTimeout(addOnTimer);
+      addOnTimer = null;
+    }
+    const panel = addOnPanel();
+    if (panel) panel.classList.remove('show');
+  }
+
+  function showAddOn(state) {
+    const panel = addOnPanel();
+    if (!panel) return;
+    const note = document.getElementById('addOnOfferNote');
+    if (note) {
+      // One line. It shares the floor with the seats and the reaction strip,
+      // and the Info tab holds the long version for anyone who wants it.
+      const more = state && state.startChips ? `${fmtNum(state.startChips)} more` : 'A stack more';
+      const cost = state && state.buyIn ? ` for a buy-in of ${fmtNum(state.buyIn)}` : '';
+      note.textContent = `${more}${cost}`;
+    }
+    panel.classList.add('show');
+  }
+
+  // Called from two places because either can be the later one: the break plate
+  // landing, and a push that opens the offer when the plate is already up.
+  function offerAddOn(state) {
+    const field = state || window.mttField;
+    const you = field && field.you;
     const open = !!(
-      state &&
-      state.status === 'running' &&
+      field &&
+      field.status === 'running' &&
       !window.mttFinished &&
       you &&
       you.canAddOn
     );
     if (!open) {
-      // Taken, or the break is over: the next one that opens asks again.
-      addOnAsked = false;
+      // Taken, or the break is over. Whatever is on screen goes with it, and
+      // the next break that opens one asks again.
+      addOnAnswered = false;
+      hideAddOn();
       return;
     }
-    if (addOnAsked) return;
-    // Never over a live hand. The clock opens the add-on the moment the break
-    // starts, which is often in the middle of the hand the table is still
-    // finishing, and a dialog across somebody's decision is no way to ask.
-    // The hand ending pushes state again and it asks then, with the felt
-    // clear and the whole break to answer in.
-    if (typeof gameState !== 'undefined' && gameState && gameState.isRunning) return;
-    // Latched before the await, so the pushes that arrive while the dialog is
-    // up do not stack a second one behind it.
-    addOnAsked = true;
-    if (typeof window.showConfirmDialog !== 'function') return;
-    const cost = state.buyIn ? ` for another buy-in of ${state.buyIn.toLocaleString()}` : '';
-    const ok = await window.showConfirmDialog({
-      title: 'The add-on is open',
-      message:
-        `A starting stack more on top of what you have${cost}, once, ` + 'until the break ends.',
-      confirmLabel: 'Take it',
-      cancelLabel: 'No thanks',
-    });
-    if (ok && window.Lobby && typeof Lobby.takeAddOn === 'function') Lobby.takeAddOn();
+    if (addOnAnswered || addOnTimer) return;
+    const panel = addOnPanel();
+    if (panel && panel.classList.contains('show')) return;
+    // Only once the felt actually says On break. Before that the table is
+    // still finishing its hand in front of everybody.
+    const stage = document.getElementById('tableStage');
+    if (!stage || !stage.classList.contains('on-break')) return;
+    addOnTimer = setTimeout(function () {
+      addOnTimer = null;
+      // The break can end while the beat is running.
+      const now = window.mttField && window.mttField.you;
+      if (!now || !now.canAddOn || addOnAnswered) return;
+      showAddOn(window.mttField);
+    }, ADD_ON_SETTLE_MS);
+  }
+
+  function wireAddOn() {
+    const take = document.getElementById('btnAddOnTake');
+    const no = document.getElementById('btnAddOnNo');
+    if (take) {
+      take.addEventListener('click', function () {
+        addOnAnswered = true;
+        hideAddOn();
+        if (window.Lobby && typeof Lobby.takeAddOn === 'function') Lobby.takeAddOn();
+      });
+    }
+    if (no) {
+      no.addEventListener('click', function () {
+        // Not asked again this break. The Info tab and the lobby card still
+        // hold it for anybody who changes their mind.
+        addOnAnswered = true;
+        hideAddOn();
+      });
+    }
   }
 
   function render(state) {
@@ -150,8 +208,14 @@
     socket.on('tournamentFinished', (payload) => showFinished(payload));
   }
 
-  // offerAddOn is exported because the thing it waits on is the table, not the
-  // field: the hand ending arrives as a gameState push, and that is the moment
-  // to ask.
+  // offerAddOn is exported because the thing it waits on is the felt, not the
+  // field: the break plate coming up is what says the table has finished being
+  // watched, and that is painted elsewhere.
   window.TournamentField = { bind, render, showMove, showFinished, offerAddOn };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireAddOn);
+  } else {
+    wireAddOn();
+  }
 })();
