@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.13.0 - 2026-09-13
+
 ### Fixed
 
 - Stepping away no longer ends the tournament. A running game whose people had
