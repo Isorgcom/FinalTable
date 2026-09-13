@@ -938,6 +938,12 @@
 .player-seat.folded {
   opacity: 0.35;
 }
+/* Unless it is your own seat and you are being asked whether to show what you
+   folded: a card at a third of its colour is not something anybody would think
+   to press. */
+.player-seat.folded.can-show {
+  opacity: 1;
+}
 .player-seat.active-turn .player-info {
   border-color: var(--gold);
   box-shadow: 0 0 15px rgba(201, 168, 76, 0.2);

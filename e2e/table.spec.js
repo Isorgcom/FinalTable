@@ -2094,13 +2094,21 @@ test('the add-on waits for the felt, then slides in beside the clock', async ({ 
   await deal(page);
   const panel = page.locator('#addOnOffer');
   await expect(panel).not.toHaveClass(/show/);
-  // The field state is set by hand below, because reaching a real break with
-  // the add-on on takes a whole structure and a clock. Stop the server's own
-  // pushes first or they overwrite it a tick later, part way through the wait
-  // this is here to measure.
+  // Reaching a real break with the add-on on takes a whole structure and a
+  // clock, so the field is said to be at one. Every state that reaches the
+  // felt is doctored on the way in rather than the socket being silenced:
+  // turning the listeners off left the server's own pushes a way back through
+  // a reconnect, and one of them landing mid-wait says the offer has closed.
   await page.evaluate(() => {
-    socket.off('tournamentState');
-    socket.off('tournamentField');
+    const real = TournamentField.render;
+    TournamentField.render = (state) =>
+      real({
+        ...(state || {}),
+        status: 'running',
+        buyIn: 100,
+        startChips: 5000,
+        you: { ...((state && state.you) || {}), canAddOn: true, canReenter: false },
+      });
   });
 
   // The clock turns over in the middle of the hand the table is still
@@ -2115,14 +2123,7 @@ test('the add-on waits for the felt, then slides in beside the clock', async ({ 
       blinds: { sb: 100, bb: 200, ante: 200 },
       timeUntilNextLevel: 300,
     };
-    const field = window.mttField || {};
-    TournamentField.render({
-      ...field,
-      status: 'running',
-      buyIn: 100,
-      startChips: 5000,
-      you: { ...(field.you || {}), canAddOn: true, canReenter: false },
-    });
+    TournamentField.render(window.mttField || {});
   });
   await page.waitForTimeout(400);
   await expect(page.locator('#tableStage')).not.toHaveClass(/on-break/);
@@ -2142,8 +2143,11 @@ test('the add-on waits for the felt, then slides in beside the clock', async ({ 
   // The felt clears, ON BREAK comes up, and only then, after a beat, the
   // question arrives - under the clock rather than over it.
   await expect(page.locator('#feltBreak')).toBeVisible({ timeout: 8000 });
+  // The order is the assertion: not before the plate, and only after it. The
+  // beat itself is a second and a half, but this runs alongside a suite that
+  // keeps a machine busy, so the budget for it is generous on purpose.
   await expect(panel).not.toHaveClass(/show/);
-  await expect(panel).toHaveClass(/show/, { timeout: 4000 });
+  await expect(panel).toHaveClass(/show/, { timeout: 15000 });
   await expect(panel).toContainText('5,000');
   await expect(panel).toContainText('100');
   // The clock it is asking against is still readable.

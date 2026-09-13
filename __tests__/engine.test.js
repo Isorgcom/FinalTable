@@ -2906,16 +2906,54 @@ describe('Turning the hands face up', () => {
       return game.players.find((p) => !p.folded);
     };
 
-    test('an uncontested pot offers the winner the choice, and a showdown does not', () => {
+    test('everybody whose cards stayed down is offered the choice', () => {
       const game = offering();
       const winner = foldTo(game);
       expect(game.showWindowOpen(winner.id)).toBe(true);
       expect(game.getStateForPlayer(winner.id).myShow).toMatchObject({ shown: [] });
-      // Nobody else is told somebody is thinking about it.
-      const other = game.players.find((p) => p.id !== winner.id);
-      expect(game.getStateForPlayer(other.id).myShow).toBeNull();
-      // And nothing is shown until they say so.
+      // The two who folded kept their cards too, and showing a fold is a thing
+      // people do. Nothing is shown until one of them says so.
+      for (const p of game.players.filter((x) => x.folded)) {
+        expect(game.showWindowOpen(p.id)).toBe(true);
+      }
       expect(opponentCards(game, 'nobody-watching')).toEqual({ p1: null, p2: null, p3: null });
+      // And the table waits, because a pot nobody contested leaves nothing
+      // else on the felt to be looking at.
+      expect(game.showWindowHolds()).toBe(true);
+    });
+
+    test('after a showdown the folders are offered it and the contenders are not', () => {
+      // No street pause, so the whole board lands in one synchronous stack and
+      // the hand can be played to the end without a clock.
+      const game = new PokerGame('show-sd', { smallBlind: 10, bigBlind: 20, showWindowMs: 5000 });
+      for (const id of ['p1', 'p2', 'p3']) seat(game, id, 1000);
+      for (const p of game.players) p.isConnected = true;
+      game.startRound();
+      act(game, 'fold');
+      const folder = game.players.find((p) => p.folded);
+      let guard = 0;
+      while (game.isRunning && guard++ < 60) {
+        const up = game.players[game.currentPlayerIndex];
+        if (!game.handleAction(up.id, 'check')) game.handleAction(up.id, 'call');
+      }
+      expect(game.phase).toBe('showdown');
+
+      // The two who went to the end already turned theirs over; nothing is
+      // left for them to decide.
+      for (const p of game.players.filter((x) => !x.folded)) {
+        expect(game.showWindowOpen(p.id)).toBe(false);
+      }
+      expect(game.showWindowOpen(folder.id)).toBe(true);
+      // The field is not held for a fold: the showdown on the table is what
+      // everyone is reading, and the pause that exists is the window.
+      expect(game.showWindowHolds()).toBe(false);
+
+      const mine = [...folder.holeCards];
+      expect(game.showHoleCards(folder.id, [0])).toBe(true);
+      const seen = game
+        .getStateForPlayer('nobody-watching')
+        .players.find((p) => p.id === folder.id);
+      expect(seen.holeCards).toEqual([mine[0], null]);
     });
 
     test('showing one card leaves the other down, to everyone but its owner', () => {
@@ -2936,19 +2974,32 @@ describe('Turning the hands face up', () => {
       expect(Object.values(opponentCards(game, winner.id))).toEqual([null, null]);
     });
 
-    test('the second card can follow the first, and both together shut the window', () => {
+    test('the second card can follow the first, and the table waits to be looked at', () => {
       const game = offering();
       const winner = foldTo(game);
       const mine = [...winner.holeCards];
       game.showHoleCards(winner.id, [1]);
       expect(game.showWindowOpen(winner.id)).toBe(true);
       game.showHoleCards(winner.id, [0]);
-      // Nothing left to decide, so the table stops waiting.
-      expect(game.showWindowOpen(winner.id)).toBe(false);
       const seen = game
         .getStateForPlayer('nobody-watching')
         .players.find((p) => p.id === winner.id);
       expect(seen.holeCards).toEqual(mine);
+
+      // Both over is nothing left to decide, but everybody else has still to
+      // look at it. Dealing over the top would make showing pointless.
+      expect(game.showWindowHolds()).toBe(true);
+      expect(game.showWindow.until).toBeGreaterThan(Date.now());
+    });
+
+    test('a card shown at the last second still gets its look', () => {
+      const game = offering();
+      const winner = foldTo(game);
+      // The window is almost out when they finally press it.
+      game.showWindow.until = Date.now() + 20;
+      game.showHoleCards(winner.id, [0, 1]);
+      expect(game.showWindowHolds()).toBe(true);
+      expect(game.showWindow.until - Date.now()).toBeGreaterThan(1000);
     });
 
     test('it says so on the felt, the way a showdown does', () => {
@@ -2977,19 +3028,28 @@ describe('Turning the hands face up', () => {
       expect(game.visibleHistoryCards(hand, 'nobody-watching')[winner.id]).toEqual([null, mine[1]]);
     });
 
-    test('saying no, and asking after the window has shut, show nothing', () => {
+    test('saying no takes that seat out of it, and everybody saying no ends the wait', () => {
       const game = offering();
       const winner = foldTo(game);
       expect(game.declineShow(winner.id)).toBe(true);
       expect(game.showWindowOpen(winner.id)).toBe(false);
       expect(game.showHoleCards(winner.id, [0])).toBe(false);
+      // The others were still being asked, so the window is not over yet.
+      expect(game.showWindowOpen()).toBe(true);
+      for (const p of game.players.filter((x) => x.folded)) game.declineShow(p.id);
+      // Nobody left deciding and nothing turned over: deal on.
+      expect(game.showWindowOpen()).toBe(false);
+      expect(game.showWindowHolds()).toBe(false);
       expect(opponentCards(game, 'nobody-watching')).toEqual({ p1: null, p2: null, p3: null });
+    });
 
-      // And it was never anybody else's to answer.
-      const game2 = offering();
-      const w2 = foldTo(game2);
-      const other = game2.players.find((p) => p.id !== w2.id);
-      expect(game2.showHoleCards(other.id, [0])).toBe(false);
+    test('a seat with no offer cannot show, and nothing works once the window is out', () => {
+      const game = offering();
+      const winner = foldTo(game);
+      expect(game.showHoleCards('nobody-here', [0])).toBe(false);
+      game.showWindow.until = 0;
+      expect(game.showHoleCards(winner.id, [0])).toBe(false);
+      expect(opponentCards(game, 'nobody-watching')).toEqual({ p1: null, p2: null, p3: null });
     });
 
     test('no window opens for a seat that cannot answer, or when it is switched off', () => {

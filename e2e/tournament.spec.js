@@ -460,16 +460,18 @@ test('the winner of an uncontested pot can turn one card over', async ({ browser
     if (!cur) break;
     table.handleAction(cur.id, 'fold');
   }
-  const winnerId = table.showWindow ? table.showWindow.playerId : null;
+  const offers = table.showWindow ? Object.keys(table.showWindow.offers) : [];
+  const winnerId = offers.find((pid) => !table.players.find((p) => p.id === pid).folded);
   expect(winnerId).toBeTruthy();
   await page.waitForTimeout(900);
 
-  // Whoever took it is offered the choice; the other is offered nothing.
+  // Whoever took it is offered the choice, and so is whoever folded: showing
+  // what you laid down is as much a part of it as showing what won.
   const winner = (await page.evaluate(() => myId)) === winnerId ? page : guest;
   const other = winner === page ? guest : page;
   await expect(winner.locator('#showRow')).not.toHaveClass(/hidden/);
   await expect(winner.locator('.player-seat.can-show')).toHaveCount(1);
-  await expect(other.locator('#showRow')).toHaveClass(/hidden/);
+  await expect(other.locator('#showRow')).not.toHaveClass(/hidden/);
 
   // Tap one of the two. The other table sees that card and a back beside it,
   // which is the whole of the feature: one card, not the holding.
@@ -488,6 +490,9 @@ test('the winner of an uncontested pot can turn one card over', async ({ browser
       { timeout: 8000 }
     )
     .toBe('1/1');
+
+  // And the table held on to let it be looked at, rather than dealing over it.
+  expect(entry.director.canStartHand(table)).toBe(false);
 
   expect(errors).toEqual([]);
   await guestContext.close();
@@ -592,10 +597,14 @@ test('the way back in stays put across hand boundaries', async ({ browser, page 
   await guest.click('#btnAutoPlay');
   await expect(page.locator('#seatBanner')).toBeVisible();
 
+  // Long enough to be sure a hand really turned over underneath the sampling.
+  // A hand costs the pause between them plus a director tick, and a pot nobody
+  // contested can hold the table a few seconds longer again, so four seconds
+  // of samples was close enough to one boundary to miss it under load.
   const startRound = await page.evaluate(() => gameState.roundCount);
   let hidden = 0;
   let samples = 0;
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 90; i++) {
     const shown = await page.evaluate(
       () => !document.getElementById('seatBanner').classList.contains('hidden')
     );
@@ -605,7 +614,7 @@ test('the way back in stays put across hand boundaries', async ({ browser, page 
   }
   const endRound = await page.evaluate(() => gameState.roundCount);
 
-  expect(samples).toBe(40);
+  expect(samples).toBe(90);
   expect(endRound).toBeGreaterThan(startRound); // hands really did turn over
   expect(hidden).toBe(0);
   expect(errors).toEqual([]);

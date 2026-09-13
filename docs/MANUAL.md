@@ -310,16 +310,24 @@ blinds still post while you sit out.
 
 ### Showing a hand
 
-Win a pot with everybody folded and you are not made to show anything — but
-for five seconds before the next deal you may, and the table waits that long.
-Your own two cards go gold: **tap one** to turn just that one over, tap the
-other as well for both, or use **both** in the row beside sit out. **no** puts
-it away and deals on at once, and so does showing, so the wait is only ever
-spent while somebody is deciding.
+When a hand ends, anybody whose cards stayed down may turn them over for the
+few seconds before the next deal. That is the winner of a pot everybody folded
+to, and anybody who folded, whether the hand went to a showdown or not: showing
+what you laid down is as much a part of the game as showing what won.
+
+Your own cards go gold when you are being asked. **Tap one** to turn just that
+one over, tap the other as well for both, or use **both** in the row beside sit
+out. **no** puts it away.
 
 A card you turn over goes where a showdown's cards go: face up on the felt for
 everyone, named in the dealer's log, and in the replay afterwards. A card you
 keep down stays as unseen as a fold. Doing nothing is a complete answer.
+
+The table waits five seconds after a pot nobody contested, because there is
+nothing else on the felt to be looking at. After a showdown it does not — the
+cards on the table are what everyone is reading, so a fold is shown quickly or
+not at all. Either way, once you have turned something over the table holds
+long enough for it to be seen.
 
 ### Before your turn
 

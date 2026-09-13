@@ -1162,13 +1162,20 @@ describe('Lobby phase 2: late registration, unregister, roster, placements', () 
     expect(d.canStartHand(table)).toBe(true);
 
     // The engine puts the offer up; the director's business is only that a
-    // table with one open does not deal over it.
-    table.showWindow = { playerId: table.players[0].id, until: Date.now() + 5000, shown: [] };
+    // table holding one does not deal over it.
+    const who = table.players[0].id;
+    table.showWindow = { until: Date.now() + 5000, hold: true, offers: { [who]: [] } };
     expect(d.canStartHand(table)).toBe(false);
 
-    // Answering shuts it, and the table is ready again on the next tick
-    // rather than waiting the window out.
-    table.declineShow(table.players[0].id);
+    // Everybody saying no shuts it, and the table is ready again on the next
+    // tick rather than waiting the window out.
+    table.declineShow(who);
+    expect(d.canStartHand(table)).toBe(true);
+
+    // A fold shown after a showdown does not hold the field: that window is
+    // open without the hold, and the pause that already exists is its own.
+    table.showWindow = { until: Date.now() + 5000, hold: false, offers: { [who]: [] } };
+    expect(table.showWindowOpen(who)).toBe(true);
     expect(d.canStartHand(table)).toBe(true);
   });
 });

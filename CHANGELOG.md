@@ -15,15 +15,20 @@ Release on GitHub to go with it.
 
 ### Added
 
-- Showing a hand nobody paid to see. Take a pot with everybody folded and, for
-  five seconds before the next deal, your own two cards can be turned over:
-  tap one to show just that one, tap the other as well, or use **both** beside
-  the sit-out button. The table waits those few seconds and no longer, because
-  answering ends the wait. A card you show goes where a showdown's cards go -
-  face up on the felt for everyone, named in the dealer's log, and in the
-  replay afterwards - and the one you keep down stays as unseen as a fold. Do
-  nothing and nothing happens, which is the point. `SHOW_WINDOW_MS` sets the
-  five seconds, and zero switches the whole thing off.
+- Showing a hand nobody paid to see. When a hand ends, anybody whose cards
+  stayed down can turn them over for the few seconds before the next deal: the
+  winner of a pot everybody folded to, and anybody who folded, whether the hand
+  went to a showdown or not. Tap one of your own cards to show just that one,
+  tap the other as well, or use **both** beside the sit-out button. A card you
+  show goes where a showdown's cards go - face up on the felt for everyone,
+  named in the dealer's log, and in the replay afterwards - and the one you
+  keep down stays as unseen as a fold. Turn something over and the table waits
+  long enough for it to be looked at, because a bluff shown and then wiped by
+  the next deal is no bluff shown at all. Do nothing and nothing happens, which
+  is the point. The table only ever waits on the decision itself after a pot
+  nobody contested; a fold shown after a showdown rides the pause that is
+  already there. `SHOW_WINDOW_MS` sets the five seconds, and zero switches the
+  whole thing off.
 
 ## 0.11.0 - 2026-09-13
 

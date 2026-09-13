@@ -90,8 +90,12 @@ class PokerGame {
     // few seconds afterwards its winner may turn a card over anyway - the
     // bluff shown to needle, the ace shown to prove it was there - and the
     // table holds that long before dealing on. Null when nothing is on offer.
-    this.showWindow = null; // { playerId, until, shown: [] }
+    this.showWindow = null; // { until, hold, offers: { playerId: [shown] } }
     this.showWindowMs = Math.max(0, options.showWindowMs ?? 0);
+    // How long the table holds after somebody actually turns a card over, so
+    // that the thing they showed can be looked at. Showing a bluff to needle
+    // is pointless if the next deal wipes it half a second later.
+    this.showLookMs = Math.min(this.showWindowMs, 2500);
 
     this.sbIndex = -1;
 
@@ -1409,27 +1413,57 @@ class PokerGame {
   // they feel like it, and that is half the table talk. This is the few
   // seconds in which they can, and nothing at all happens if they do not.
 
-  // Opened by endRound when a hand finished with one player unfolded. Not for
-  // a seat that cannot answer: a bot or somebody sitting out would only hold
-  // the table up for the length of the window and then say nothing.
+  // Opened by endRound. Anybody whose cards did not become public during the
+  // hand may turn them over now: the winner of a pot nobody contested, and
+  // anybody who folded, whether the hand ended in a showdown or not. Showing a
+  // fold is a thing people do, and the server had no way to do it.
+  //
+  // Not offered to a seat that cannot answer - a bot, a sat-out seat, a
+  // dropped connection - which is also what keeps the table from being held
+  // for somebody who was never going to press anything.
   _openShowWindow() {
-    if (!this.showWindowMs) return;
+    if (!this.showWindowMs || this.gameOver) return;
     const live = this.players.filter((p) => !p.folded);
-    if (live.length !== 1) return;
-    const winner = live[0];
-    if (!winner.holeCards || winner.holeCards.length !== 2) return;
-    if (this.isAutomatedPlayer(winner) || !winner.isConnected) return;
-    // The hand is over, so there is nothing to hold the table for.
-    if (this.gameOver) return;
-    this.showWindow = { playerId: winner.id, until: Date.now() + this.showWindowMs, shown: [] };
+    // Whose holdings the hand itself made public: a showdown or a run-out
+    // with two or more still in turns those hands up, and there is nothing
+    // left for their owners to decide.
+    const facedUp = (this.phase === 'showdown' || this.cardsExposed) && live.length >= 2;
+    const offers = {};
+    for (const p of this.players) {
+      if (facedUp && !p.folded) continue;
+      if (!p.holeCards || p.holeCards.length !== 2) continue;
+      if (this.isAutomatedPlayer(p) || !p.isConnected) continue;
+      offers[p.id] = [];
+    }
+    if (!Object.keys(offers).length) return;
+    // The table is held only when the hand ended with nobody having shown
+    // anything: there is nothing else on the felt to look at, and the winner's
+    // choice is the whole of what happens next. After a showdown the pause
+    // that already exists is the window, because the cards on the table are
+    // what everyone is reading and a fold shown late is shown fast or not at
+    // all. Turning a card over extends the hold either way - see below.
+    this.showWindow = {
+      until: Date.now() + this.showWindowMs,
+      hold: live.length === 1,
+      offers,
+    };
   }
 
-  // Whether the offer still stands for this seat right now.
+  // Whether the offer still stands, for this seat or for anybody.
   showWindowOpen(playerId = null) {
     const w = this.showWindow;
     if (!w) return false;
     if (Date.now() >= w.until) return false;
-    return playerId === null || w.playerId === playerId;
+    if (playerId === null) return true;
+    return Object.prototype.hasOwnProperty.call(w.offers, playerId);
+  }
+
+  // Whether the table should wait rather than deal on. Not the same question:
+  // a fold can be shown during the pause that already exists without the
+  // whole field waiting on it.
+  showWindowHolds() {
+    const w = this.showWindow;
+    return !!(w && w.hold && Date.now() < w.until);
   }
 
   // Turn one card over, or both. The same road a showdown takes: said on the
@@ -1438,28 +1472,36 @@ class PokerGame {
     if (!this.showWindowOpen(playerId)) return false;
     const player = this.players.find((p) => p.id === playerId);
     if (!player || !player.holeCards || player.holeCards.length !== 2) return false;
+    const already = this.showWindow.offers[playerId] || [];
     const wanted = (Array.isArray(indices) ? indices : [indices])
       .map((i) => Number(i))
       .filter((i) => i === 0 || i === 1)
-      .filter((i) => !this.showWindow.shown.includes(i));
+      .filter((i) => !already.includes(i));
     if (!wanted.length) return false;
-    this.showWindow.shown = [...this.showWindow.shown, ...wanted].sort();
-    const cards = this.showWindow.shown.map((i) => player.holeCards[i]);
+    const shown = [...already, ...wanted].sort();
+    this.showWindow.offers[playerId] = shown;
+    const cards = shown.map((i) => player.holeCards[i]);
     this.emitMessage(`${this.getPublicName(player)} shows ${this._cards(cards)}`, { kind: 'show' });
     // The hand was filed by endRound before any of this, so the replay has to
     // be amended rather than recorded.
-    this.handHistory.recordShownOnLast(playerId, this.showWindow.shown);
-    // Both cards over is the whole holding: there is nothing left to decide,
-    // so the table stops waiting.
-    if (this.showWindow.shown.length === 2) this.showWindow.until = 0;
+    this.handHistory.recordShownOnLast(playerId, shown);
+    // Something has been turned over, so the table waits long enough for it to
+    // be looked at. Without this a card shown late, or both at once, was gone
+    // with the next deal about a second later - which is no way to needle
+    // anybody with a bluff.
+    this.showWindow.hold = true;
+    this.showWindow.until = Math.max(this.showWindow.until, Date.now() + this.showLookMs);
     this.emitUpdate();
     return true;
   }
 
-  // No thanks. The table deals on without waiting out the rest of the window.
+  // No thanks. Nothing was turned over, so there is nothing to look at: this
+  // seat stops being asked, and the table deals on as soon as nobody else is
+  // still deciding.
   declineShow(playerId) {
     if (!this.showWindowOpen(playerId)) return false;
-    this.showWindow.until = 0;
+    delete this.showWindow.offers[playerId];
+    if (!Object.keys(this.showWindow.offers).length) this.showWindow.until = 0;
     this.emitUpdate();
     return true;
   }
@@ -1469,10 +1511,10 @@ class PokerGame {
   // between. A null in the array is a card that stayed down.
   _visibleHoleCards(player, handsFaceUp) {
     if (handsFaceUp && !player.folded) return player.holeCards;
-    const w = this.showWindow;
-    if (!w || w.playerId !== player.id || !w.shown.length) return null;
+    const shown = this.showWindow && this.showWindow.offers[player.id];
+    if (!shown || !shown.length) return null;
     if (!player.holeCards || player.holeCards.length !== 2) return null;
-    return player.holeCards.map((c, i) => (w.shown.includes(i) ? c : null));
+    return player.holeCards.map((c, i) => (shown.includes(i) ? c : null));
   }
 
   awardPot(winners) {
@@ -1977,10 +2019,9 @@ class PokerGame {
       // The offer to turn a card over after taking a pot nobody contested. Only
       // ever the viewer's own: whether somebody else is thinking about it is
       // not a thing to broadcast, and the shown cards speak for themselves.
-      myShow:
-        this.showWindow && this.showWindow.playerId === playerId && this.showWindowOpen(playerId)
-          ? { until: this.showWindow.until, shown: [...this.showWindow.shown] }
-          : null,
+      myShow: this.showWindowOpen(playerId)
+        ? { until: this.showWindow.until, shown: [...this.showWindow.offers[playerId]] }
+        : null,
       myHand:
         viewer &&
         !viewer.folded &&

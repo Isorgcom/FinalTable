@@ -75,15 +75,17 @@ cases bolted to a Hold'em loop.
 
 ### Done
 
-Showing a hand nobody paid to see. A pot taken uncontested is still nobody's
-business by default - the winner is never made to show and the replay keeps
-the cards down - but for five seconds before the next deal they may turn one
-over if they feel like it, and the table waits that long. Tap the card you
-mean, or take both. The decisions made: the window is the winner's alone and
-one card is a real answer, so the state and the replay both had to learn that
-a holding can be half public, which is a null where the card that stayed down
-was. Answering ends the wait, so the pause is only ever spent while somebody
-is deciding, and a seat with nobody behind it is never waited for at all.
+Showing a hand nobody paid to see. Nothing is shown by default and nobody is
+ever made to - but when a hand ends, anybody whose cards stayed down may turn
+them over for a few seconds: the winner of a pot everybody folded to, and
+anybody who folded, showdown or not. Tap the card you mean, or take both. One
+card is a real answer, so the state and the replay both had to learn that a
+holding can be half public, which is a null where the card that stayed down
+was. Two things came out of playing it: turning a card over has to hold the
+table long enough for it to be looked at, or the next deal wipes the bluff you
+just showed; and the wait on the decision belongs only to a pot nobody
+contested, because after a showdown the cards on the table are what everyone
+is reading and a fold is shown fast or not at all.
 
 A game belongs to whoever made it. The host title is not a possession - it
 passes to another player the moment a host walks back to the lobby, and busting
