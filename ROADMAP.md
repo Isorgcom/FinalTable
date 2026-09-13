@@ -54,13 +54,15 @@ exists now; for a guest it is the device, which is the best there is.
 
 ### More control over your own games
 
-For a player, what is left is to see and end your own sessions. The way out
-is done (Forfeit, below). The host's half is done too: pause a running game,
-remove somebody, step the level or put a minute on it, move a player by hand,
-and mute. An operator (the server's password, not the game's host) can end a
-running tournament from the table menu or from the Operator page, which holds
-the server's own settings and a list of every game on it. Some of the rest
-arrives with the API below, but a host with no Game Night should have it too.
+For a player, what is left is to see and end your own sessions - the devices
+a Game Night account is signed in on, which is the other half of the identity
+bridge below. Everything else here is done. The way out is Forfeit; calling
+the whole game off belongs to whoever made it as well as to whoever is holding
+the clock; and the host's own controls are pause, remove somebody, step the
+level or put a minute on it, move a player by hand, and mute. An operator (the
+server's password, not the game's host) can still end any game on the server
+from the table menu or the Operator page, which is for the games they do not
+host.
 
 ### Showing a hand nobody paid to see
 
@@ -85,6 +87,22 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+A game belongs to whoever made it. The host title is not a possession - it
+passes to another player the moment a host walks back to the lobby, and busting
+out is the usual reason for doing that - so a host who was eliminated used to
+find their own game could only be stopped by somebody holding the server's
+password. Ending it stays with the maker and with whoever holds the clock, from
+the Info tab at a table and from the game's card in the lobby.
+
+And the table saying what it is doing, which was most of the release and none
+of it planned. A seat that went without a hand to explain it, an add-on
+landing, an add-on being on offer at all, the way back in after a bust-out:
+each was working and each was being written only into the dealer's log, which
+is not the tab the side panel opens on. They are on the felt now, in the order
+a table does things - the pot lands, the felt clears, the break clock comes up,
+and then the question. The lesson is worth keeping: on this server, a line in
+the log is not telling anybody.
 
 Forfeit, the way out for somebody who is not coming back. Leave parks the
 stack and it blinds down for the rest of the game, and only the host could
