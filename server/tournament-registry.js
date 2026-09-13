@@ -1079,6 +1079,12 @@ function createTournamentRegistry(deps = {}) {
         repointWatchers(entry);
         emitState(entry);
       },
+      // The stack a player asked for mid-hand, arriving at the hand's end.
+      // Their press was answered with "after this hand"; this is the rest of
+      // the sentence, and without it the only sign is a number changing.
+      onAddOnLanded: ({ uid: paidUid, chips, added }) => {
+        emitTo(entry, paidUid, 'tournamentAddOn', { queued: false, chips, added });
+      },
       onPlayerEliminated: ({ uid: outUid, place, tableId }) => {
         // Somebody the host removed is told so by removePlayer, and is not
         // kept watching a game they are no longer in.
@@ -1970,6 +1976,10 @@ function createTournamentRegistry(deps = {}) {
       bind(entry, uid, socket, { resumed: true });
     }
     const answer = { queued: !!result.queued };
+    if (!result.queued) {
+      answer.chips = result.chips;
+      answer.added = entry.director.startChips;
+    }
     if (socket) socket.emit('tournamentAddOn', answer);
     else emitTo(entry, uid, 'tournamentAddOn', answer);
     persist();

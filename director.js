@@ -116,6 +116,9 @@ class TournamentDirector {
     // Fired for a human who busts, with their place, before they leave the
     // table, so a host can keep sending them that table as a spectator.
     this.onPlayerEliminated = options.onPlayerEliminated || null;
+    // A queued add-on reaching the seat it was asked for. The press itself is
+    // answered where it was made; this is the other end of the wait.
+    this.onAddOnLanded = options.onAddOnLanded || null;
     // Fired on every change of level, a break included, with what a client
     // needs to mark the moment.
     this.onLevelChange = options.onLevelChange || null;
@@ -385,6 +388,12 @@ class TournamentDirector {
     this._say(
       `${player.name} takes the add-on: ${this.startChips} more · ${this.entrants.length + this.extraEntries} entries, pool ${this.prizePool()}`
     );
+    // The felt reads stacks off the table's own state, which otherwise moves
+    // only when a hand does - and the whole point of the add-on is that it
+    // arrives while nothing is being dealt. Without this the chips are really
+    // there and the seat goes on showing the old number until the break ends
+    // and a hand is dealt, which looks exactly like nothing having happened.
+    table.emitUpdate();
     if (settle) this._afterFieldChange(table);
   }
 
@@ -866,6 +875,9 @@ class TournamentDirector {
       }
       this._pendingAddOns.delete(uid);
       this._applyAddOn(table, seated);
+      if (this.onAddOnLanded) {
+        this.onAddOnLanded({ uid, name: seated.name, chips: seated.chips, added: this.startChips });
+      }
     }
 
     this._afterFieldChange(table, tournamentResult);

@@ -2494,6 +2494,56 @@ describe('re-entry and the add-on in the registry', () => {
     expect(registry.stateFor(entry, 'g').you.canAddOn).toBe(false);
   });
 
+  test('an add-on asked for mid-hand says so, and says again when the stack lands', () => {
+    const entry = running({ addOn: true, structure: BREAKS });
+    const table = entry.director.tables[0];
+    // A hand still in play when the break arrives under it: the seat cannot
+    // take a stack in the middle of one, so the answer is "after this hand".
+    table.startRound();
+    entry.director.tournament.goToLevel(1);
+    expect(entry.director.addOnOpen()).toBe(true);
+    expect(table.isRunning).toBe(true);
+
+    const sock = live.get('sg');
+    expect(registry.takeAddOn(entry, 'g', sock)).toMatchObject({ queued: true });
+    // The press is answered on the socket that made it.
+    expect(sock.emitted.filter((m) => m.event === 'tournamentAddOn')).toEqual([
+      { event: 'tournamentAddOn', payload: { queued: true } },
+    ]);
+    // Asked for and not yet arrived, which is exactly why the answer has to
+    // say so: the stack has not moved.
+    expect(entry.director._addOns.has('g')).toBe(false);
+    expect(entry.director._pendingAddOns.has('g')).toBe(true);
+
+    // Play the hand out; the stack arrives with its end.
+    const mid = io.sent.length;
+    const stack = entry.director.playerByUid('g').player.chips;
+    let guard = 0;
+    while (table.isRunning && guard++ < 200) {
+      const cur = table.players[table.currentPlayerIndex];
+      if (!cur) break;
+      if (!table.handleAction(cur.id, 'fold')) table.handleAction(cur.id, 'call');
+    }
+    expect(entry.director._addOns.has('g')).toBe(true);
+    const landed = io.sent.slice(mid).filter((m) => m.event === 'tournamentAddOn' && m.to === 'sg');
+    expect(landed).toHaveLength(1);
+    expect(landed[0].payload).toMatchObject({ queued: false, added: 5000 });
+    expect(landed[0].payload.chips).toBeGreaterThanOrEqual(stack + 5000);
+
+    // And the felt is told. Nothing is dealt during a break, so without a push
+    // of the table's own state the seat goes on showing the old number until
+    // the break ends - the chips are really there and it looks like they are
+    // not, which is worse than either.
+    const felt = io.sent
+      .slice(mid)
+      .filter((m) => m.event === 'gameState' && m.to === 'sg')
+      .pop();
+    expect(felt).toBeTruthy();
+    const me = felt.payload.players.find((pl) => pl.id === 'sg');
+    expect(me.chips).toBe(landed[0].payload.chips);
+    expect(() => entry.director.assertChipConservation()).not.toThrow();
+  });
+
   test('a refusal from the lobby leaves them in the lobby, not at a table', () => {
     const entry = running({ reentryLevels: 2, structure: BREAKS });
     bust(entry, 'g');
@@ -2581,7 +2631,9 @@ describe('re-entry and the add-on in the registry', () => {
     expect(io.sent.slice(before)).toContainEqual({
       to: 'sh',
       event: 'tournamentAddOn',
-      payload: { queued: false },
+      // The numbers ride with it: a player who just pressed a button is owed
+      // something they can read without counting their own stack.
+      payload: { queued: false, chips: 10000, added: 5000 },
     });
     const state = registry.stateFor(entry, 'h');
     expect(state.you.canAddOn).toBe(false);

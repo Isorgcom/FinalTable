@@ -34,6 +34,13 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- Taking the add-on shows. The stack asked for while a hand was still being
+  played landed correctly at the hand's end, but nothing on the felt moved to
+  say so: the seat went on showing the old number until the break ended and a
+  hand was dealt, which looks exactly like the chips never arriving. The table
+  is told the moment they land, the press is answered with "at the end of this
+  hand" over the felt rather than in a tab, and the stack that arrives says how
+  much and what you now have.
 - The add-on asks. When the break opens it, everyone still seated is offered
   it there and then, the way a bust-out offers the way back in. It was only
   ever a block in the Info tab, and the side panel opens on Chat, so a whole

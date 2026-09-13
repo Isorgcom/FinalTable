@@ -139,8 +139,19 @@ function ensureSocket() {
       `🔁 You re-enter with ${data && data.chips ? data.chips.toLocaleString() : 'a fresh stack'}${where}`
     );
   });
+  // Both ends of the add-on: the answer to the press, and the stack landing
+  // afterwards when the seat was mid-hand. Over the felt as well as into the
+  // log, because a player who has just pressed a button is owed something they
+  // can see, and the log is not the tab the panel opens on.
   socket.on('tournamentAddOn', (data) => {
-    addLog(data && data.queued ? '➕ Your add-on lands after this hand' : '➕ Add-on taken');
+    const queued = !!(data && data.queued);
+    const more = data && data.added ? data.added.toLocaleString() : 'a starting stack';
+    const now = data && data.chips ? `, ${data.chips.toLocaleString()} in front of you` : '';
+    const line = queued
+      ? '➕ Your add-on lands at the end of this hand'
+      : `➕ Add-on taken: ${more} more${now}`;
+    addLog(line);
+    if (typeof showHostNote === 'function') showHostNote(null, line.replace('➕ ', ''));
   });
   // The seat cannot go mid-hand, so the answer to the button is sometimes "at
   // the end of this one". At the table the elimination dialog says the rest;
