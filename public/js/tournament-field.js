@@ -53,6 +53,12 @@
       return;
     }
     if (addOnAsked) return;
+    // Never over a live hand. The clock opens the add-on the moment the break
+    // starts, which is often in the middle of the hand the table is still
+    // finishing, and a dialog across somebody's decision is no way to ask.
+    // The hand ending pushes state again and it asks then, with the felt
+    // clear and the whole break to answer in.
+    if (typeof gameState !== 'undefined' && gameState && gameState.isRunning) return;
     // Latched before the await, so the pushes that arrive while the dialog is
     // up do not stack a second one behind it.
     addOnAsked = true;
@@ -144,5 +150,8 @@
     socket.on('tournamentFinished', (payload) => showFinished(payload));
   }
 
-  window.TournamentField = { bind, render, showMove, showFinished };
+  // offerAddOn is exported because the thing it waits on is the table, not the
+  // field: the hand ending arrives as a gameState push, and that is the moment
+  // to ask.
+  window.TournamentField = { bind, render, showMove, showFinished, offerAddOn };
 })();

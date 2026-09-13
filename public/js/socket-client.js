@@ -190,8 +190,15 @@ function ensureSocket() {
     // page loading into a hand rather than the action reaching you.
     const hadState = !!gameState;
     const wasMyTurn = !!(gameState && gameState.isMyTurn);
+    const wasDealing = !!(gameState && gameState.isRunning);
     updateGameState(state);
     if (state.isMyTurn && !wasMyTurn && hadState) SFX.play('turn');
+    // A hand finishing is what the add-on offer waits for when the break
+    // opened underneath one. Nothing else would prompt it: the field's own
+    // state has not changed, only the table's.
+    if (wasDealing && !state.isRunning && window.TournamentField) {
+      TournamentField.offerAddOn(window.mttField);
+    }
   });
 
   socket.on('gameMessage', (msg, meta) => {

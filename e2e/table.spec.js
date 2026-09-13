@@ -2093,8 +2093,11 @@ test('the add-on asks when the break opens it, rather than waiting in a tab', as
   await expect(page.locator('#appDialogModal')).toBeHidden();
 
   // The server deciding the add-on is open is what a break amounts to here;
-  // what the felt does with it is what this checks.
+  // what the felt does with it is what this checks. The clock turns over in
+  // the middle of the hand the table is still finishing, which is the usual
+  // way a break arrives, and nothing should land on top of that.
   await page.evaluate(() => {
+    gameState = { ...(gameState || {}), isRunning: true };
     const field = window.mttField || {};
     TournamentField.render({
       ...field,
@@ -2103,6 +2106,14 @@ test('the add-on asks when the break opens it, rather than waiting in a tab', as
       onBreak: true,
       you: { ...(field.you || {}), canAddOn: true, canReenter: false },
     });
+  });
+  await page.waitForTimeout(300);
+  await expect(page.locator('#appDialogModal')).toBeHidden();
+
+  // The hand ends, the felt clears, and it asks then.
+  await page.evaluate(() => {
+    gameState = { ...(gameState || {}), isRunning: false };
+    TournamentField.offerAddOn(window.mttField);
   });
   await expect(page.locator('#appDialogTitle')).toContainText('add-on is open');
   await expect(page.locator('#appDialogBody')).toContainText('100');
@@ -2115,6 +2126,10 @@ test('the add-on asks when the break opens it, rather than waiting in a tab', as
     TournamentField.render({ ...field, you: { ...field.you, canAddOn: true } });
   });
   await page.waitForTimeout(300);
+  await expect(page.locator('#appDialogModal')).toBeHidden();
+  // Nor when the next hand of the break's end comes round.
+  await page.evaluate(() => TournamentField.offerAddOn(window.mttField));
+  await page.waitForTimeout(200);
   await expect(page.locator('#appDialogModal')).toBeHidden();
 
   expect(pageErrors).toEqual([]);
