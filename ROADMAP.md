@@ -64,19 +64,6 @@ server's password, not the game's host) can still end any game on the server
 from the table menu or the Operator page, which is for the games they do not
 host.
 
-### Showing a hand nobody paid to see
-
-A pot taken uncontested is never shown: the last player standing keeps the
-hole cards face down, and the history and the replay keep them that way,
-because turning up at a showdown is the only thing that makes a holding
-public. Live, the winner turns them over anyway - the bluff shown to needle,
-the ace shown to prove it was there - and that is half the table talk. What
-is wanted is the choice: after an uncontested pot, a Show on the winner's
-seat for the few seconds before the next deal, one card or both, and nothing
-happens if it is never pressed. A hand shown that way goes through the same
-path as a showdown, so it is on the felt for everyone and in the history
-afterwards, and a hand not shown stays as unseen as a fold.
-
 ### Games other than Hold'em
 
 The largest of these by far. The engine deals two cards and makes the best five
@@ -87,6 +74,16 @@ deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
 ### Done
+
+Showing a hand nobody paid to see. A pot taken uncontested is still nobody's
+business by default - the winner is never made to show and the replay keeps
+the cards down - but for five seconds before the next deal they may turn one
+over if they feel like it, and the table waits that long. Tap the card you
+mean, or take both. The decisions made: the window is the winner's alone and
+one card is a real answer, so the state and the replay both had to learn that
+a holding can be half public, which is a null where the card that stayed down
+was. Answering ends the wait, so the pause is only ever spent while somebody
+is deciding, and a seat with nobody behind it is never waited for at all.
 
 A game belongs to whoever made it. The host title is not a possession - it
 passes to another player the moment a host walks back to the lobby, and busting

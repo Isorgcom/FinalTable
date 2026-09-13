@@ -1153,6 +1153,24 @@ describe('Lobby phase 2: late registration, unregister, roster, placements', () 
     d._handleRoundEnd(table, null);
     expect(d.canStartHand(table)).toBe(true);
   });
+
+  test('a table waits while the winner of an uncontested pot decides whether to show', () => {
+    const d = makeDirector(3, { handPauseMs: 0 });
+    d.start();
+    const table = d.tables[0];
+    d._handleRoundEnd(table, null);
+    expect(d.canStartHand(table)).toBe(true);
+
+    // The engine puts the offer up; the director's business is only that a
+    // table with one open does not deal over it.
+    table.showWindow = { playerId: table.players[0].id, until: Date.now() + 5000, shown: [] };
+    expect(d.canStartHand(table)).toBe(false);
+
+    // Answering shuts it, and the table is ready again on the next tick
+    // rather than waiting the window out.
+    table.declineShow(table.players[0].id);
+    expect(d.canStartHand(table)).toBe(true);
+  });
 });
 
 // ============================================================

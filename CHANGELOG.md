@@ -13,6 +13,18 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- Showing a hand nobody paid to see. Take a pot with everybody folded and, for
+  five seconds before the next deal, your own two cards can be turned over:
+  tap one to show just that one, tap the other as well, or use **both** beside
+  the sit-out button. The table waits those few seconds and no longer, because
+  answering ends the wait. A card you show goes where a showdown's cards go -
+  face up on the felt for everyone, named in the dealer's log, and in the
+  replay afterwards - and the one you keep down stays as unseen as a fold. Do
+  nothing and nothing happens, which is the point. `SHOW_WINDOW_MS` sets the
+  five seconds, and zero switches the whole thing off.
+
 ## 0.11.0 - 2026-09-13
 
 ### Added

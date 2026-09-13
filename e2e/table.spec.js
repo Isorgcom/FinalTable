@@ -30,6 +30,10 @@ test.beforeAll(async () => {
   // follow it. Long enough here to be observable, short enough to test with.
   process.env.STREET_PAUSE_MS = '400';
   process.env.HAND_PAUSE_MS = '400';
+  // The felt's own pacing is what these tests measure, so the table is not
+  // held after a pot folds round. Showing a hand has its own test, in
+  // tournament.spec.js, which runs at the real five seconds.
+  process.env.SHOW_WINDOW_MS = '0';
   // Every test in this file creates a tournament against one in-process
   // server, and the default cap of eight is reached part way down the file.
   // The short abandon grace also clears each finished test's table instead of

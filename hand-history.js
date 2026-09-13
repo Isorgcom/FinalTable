@@ -22,6 +22,9 @@ class HandHistory {
         ])
       ),
       shownPlayerIds: [...(hand.shownPlayerIds || [])],
+      shownCards: Object.fromEntries(
+        Object.entries(hand.shownCards || {}).map(([playerId, idx]) => [playerId, [...idx]])
+      ),
       communityCards: (hand.communityCards || []).map((card) => HandHistory.cloneCard(card)),
       actions: (hand.actions || []).map((action) => ({ ...action })),
       winners: (hand.winners || []).map((winner) => ({ ...winner })),
@@ -50,7 +53,11 @@ class HandHistory {
       bigBlind: blinds.bb,
       ante: blinds.ante || 0,
       holeCards: {}, // playerId → [card, card], every seat, server-side
-      shownPlayerIds: [], // who actually turned them face up at showdown
+      shownPlayerIds: [], // who turned anything face up
+      // playerId -> which of their two cards were turned over. A showdown
+      // records both; a winner showing after an uncontested pot may record
+      // one. Everybody in shownPlayerIds has an entry here.
+      shownCards: {},
       communityCards: [],
       actions: [], // {phase, playerId, playerName, action, amount, pot}
       winners: [], // {playerId, playerName, amount, handName}
@@ -66,15 +73,42 @@ class HandHistory {
     }
   }
 
-  // Called for each hand turned face up at showdown. That is the only event
-  // that makes a holding public, so it is the only thing that unlocks it in
-  // the replay: a fold takes the cards to the muck unseen, and they stay
-  // unseen afterwards.
-  recordShown(playerId) {
+  // Called for each hand turned face up. Showing is the only event that makes
+  // a holding public, so it is the only thing that unlocks it in the replay: a
+  // fold takes the cards to the muck unseen, and they stay unseen afterwards.
+  //
+  // indices says which of the two were turned over, because a winner who takes
+  // a pot uncontested may show one and keep the other. A showdown passes both
+  // and reads exactly as it always did.
+  recordShown(playerId, indices = [0, 1]) {
     if (!this.current || !playerId) return;
-    if (!this.current.shownPlayerIds.includes(playerId)) {
-      this.current.shownPlayerIds.push(playerId);
-    }
+    this._markShown(this.current, playerId, indices);
+  }
+
+  // The same, for a hand that has already been filed. A pot taken uncontested
+  // is over before its winner decides whether to show: endRound files the hand
+  // and drops `current`, and the answer arrives seconds later. Without this
+  // the reveal would reach the felt and never the replay.
+  recordShownOnLast(playerId, indices = [0, 1]) {
+    const last = this.hands[this.hands.length - 1];
+    if (!last || !playerId) return false;
+    if (!last.holeCards || !last.holeCards[playerId]) return false;
+    this._markShown(last, playerId, indices);
+    // Readers cache what they build against this number, so a hand amended
+    // after it was filed has to say so or nobody refetches it.
+    this.version++;
+    return true;
+  }
+
+  _markShown(hand, playerId, indices) {
+    const wanted = (Array.isArray(indices) ? indices : [indices])
+      .map((i) => Number(i))
+      .filter((i) => i === 0 || i === 1);
+    if (!wanted.length) return;
+    if (!hand.shownPlayerIds.includes(playerId)) hand.shownPlayerIds.push(playerId);
+    if (!hand.shownCards) hand.shownCards = {};
+    const had = hand.shownCards[playerId] || [];
+    hand.shownCards[playerId] = [...new Set([...had, ...wanted])].sort();
   }
 
   recordAction(playerId, playerName, phase, action, amount, pot) {

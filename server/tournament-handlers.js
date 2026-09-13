@@ -401,6 +401,25 @@ function registerTournamentHandlers(deps) {
     socket.on('action', routeAction);
     socket.on('tournamentAction', routeAction);
 
+    // Turning a card over after taking a pot nobody contested. The engine is
+    // the judge of whether the offer still stands and whose it is; this only
+    // finds the seat, which is looked up fresh because a player's table moves
+    // when the field is balanced.
+    socket.on('showCards', (payload = {}) => {
+      const seat = seatFor(socket);
+      if (!seat) return;
+      const raw = payload && payload.cards;
+      const cards = (Array.isArray(raw) ? raw : [raw]).map((n) => parseInt(n, 10));
+      if (!cards.length || cards.some((n) => n !== 0 && n !== 1)) return;
+      seat.table.showHoleCards(seat.player.id, cards);
+    });
+
+    socket.on('declineShow', () => {
+      const seat = seatFor(socket);
+      if (!seat) return;
+      seat.table.declineShow(seat.player.id);
+    });
+
     socket.on('requestTime', () => {
       const seat = seatFor(socket);
       if (!seat) return;

@@ -127,11 +127,16 @@ function paintBreakPlate() {
   if (was !== show && gameState && typeof renderPlayersIncremental === 'function') {
     renderPlayersIncremental();
   }
-  // The plate turning on is the moment the table has finished being watched:
-  // the pot has landed, the felt is clear, and the clock is up. Anything with
-  // something to ask the player waits for exactly this. Turning off is the
-  // break ending, which takes the question with it.
-  if (was !== show && window.TournamentField) {
+  // The plate being up is the moment the table has finished being watched: the
+  // pot has landed, the felt is clear, and the clock is there. Anything with
+  // something to ask the player waits for exactly this, and the edge going the
+  // other way is the break ending, which takes the question with it.
+  //
+  // Asked on every pass rather than only on the edge. offerAddOn is idempotent
+  // - it does nothing while a wait is already running or the panel is up - and
+  // a single push that read the offer as closed used to cancel a pending one
+  // for good, because the edge that would have re-armed it had already gone by.
+  if ((show || was !== show) && window.TournamentField) {
     TournamentField.offerAddOn(window.mttField);
   }
   if (!show) return;
@@ -1024,6 +1029,13 @@ function renderReplayDetail(hand) {
 }
 
 function createReplayCardElement(card) {
+  // A null is a card that stayed down: its owner took the pot uncontested and
+  // turned the other one over. The replay draws a back where the felt did.
+  if (!card) {
+    const back = document.createElement('div');
+    back.className = 'card replay-card replay-card-back';
+    return back;
+  }
   const suitSym = SUIT_SYMBOLS[card.suit];
   const color = card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black';
   const cardEl = document.createElement('div');

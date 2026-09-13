@@ -599,6 +599,11 @@ class TournamentDirector {
       this.now() - table._handEndedAt < this.handPauseMs
     )
       return false;
+    // The winner of a pot nobody contested is deciding whether to turn a card
+    // over. Dealing under that would take the choice away, so the table waits
+    // - and only as long as it has to: showing or waving it off shuts the
+    // window and the next hand goes out on the following tick.
+    if (typeof table.showWindowOpen === 'function' && table.showWindowOpen()) return false;
     // Hand for hand on the bubble: a table that finishes early waits for the
     // rest, so no table can stall its way past the money while another plays
     // on. Without it a big stack simply slows down and folds into a payout.

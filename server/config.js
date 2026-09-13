@@ -133,6 +133,11 @@ function loadConfig() {
     // only deals on its tick, so the felt sits idle for this plus up to one
     // tick - 3500 read as five seconds of nothing at the table.
     handPauseMs: intFromEnv('HAND_PAUSE_MS', 2000, 0, 60000),
+    // How long the winner of a pot nobody contested has to turn a card over
+    // before the table deals on. It is spent only when somebody is actually
+    // deciding: showing or waving it off ends the wait at once. Zero switches
+    // the whole offer off and the felt behaves as it did before it existed.
+    showWindowMs: intFromEnv('SHOW_WINDOW_MS', 5000, 0, 60000),
   };
 }
 

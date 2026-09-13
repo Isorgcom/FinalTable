@@ -521,6 +521,23 @@ function setSitOut(enabled) {
 // Arming a line for a turn that has not opened yet. The server holds it, so it
 // survives a reload and a phone locking itself; the local write is only so the
 // button responds to the tap, and the echo puts it right if the server disagreed.
+// Turning a card over after taking a pot nobody contested. The server decides
+// whether the offer stands and closes it the moment it is answered; this only
+// asks. No optimistic write: the cards coming back face up in the next push is
+// the whole of the feedback, and guessing at it would show a card that the
+// server might have refused.
+function showMyCards(indices) {
+  if (!socket || !gameState || !gameState.myShow) return;
+  const cards = (Array.isArray(indices) ? indices : [indices]).filter((i) => i === 0 || i === 1);
+  if (!cards.length) return;
+  socket.emit('showCards', { cards });
+}
+
+function declineShowMyCards() {
+  if (!socket || !gameState || !gameState.myShow) return;
+  socket.emit('declineShow');
+}
+
 function armPreAction(kind) {
   if (!socket || !gameState) return;
   const me = gameState.players.find((p) => p.id === myId);

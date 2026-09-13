@@ -707,6 +707,16 @@
           >
             sit out next hand
           </button>
+          <!-- The few seconds after taking a pot nobody contested, in which the
+               winner may turn a card over. It lives here rather than on the
+               seat because this row is the one thing on the felt that is still
+               up between hands, which is exactly when the offer stands. Tap a
+               card on your own seat for one; these are for both, or neither. -->
+          <div class="preaction-show hidden" id="showRow" role="group" aria-label="Show your hand">
+            <span class="preaction-show-label" id="showRowLabel">Show?</span>
+            <button class="preaction-btn" type="button" id="btnShowBoth">both</button>
+            <button class="preaction-btn" type="button" id="btnShowNo">no</button>
+          </div>
           <!-- Filled in by reactions.js from the server's set; absent when off. -->
           <div class="reaction-row hidden" id="reactionRow" role="group" aria-label="React"></div>
         </div>

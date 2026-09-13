@@ -308,6 +308,19 @@ If your clock runs out the seat is not played for you: it folds to a bet,
 checks when that is free, and stays sitting out until you sit back in. The
 blinds still post while you sit out.
 
+### Showing a hand
+
+Win a pot with everybody folded and you are not made to show anything — but
+for five seconds before the next deal you may, and the table waits that long.
+Your own two cards go gold: **tap one** to turn just that one over, tap the
+other as well for both, or use **both** in the row beside sit out. **no** puts
+it away and deals on at once, and so does showing, so the wait is only ever
+spent while somebody is deciding.
+
+A card you turn over goes where a showdown's cards go: face up on the felt for
+everyone, named in the dealer's log, and in the replay afterwards. A card you
+keep down stays as unseen as a fold. Doing nothing is a complete answer.
+
 ### Before your turn
 
 While others act, a row of buttons lets you decide early: **check / fold**,
@@ -362,8 +375,9 @@ button opens and closes it). Five tabs:
 - **Stats**: a leaderboard for this game (wins, hands, win rate, biggest
   pot) and your last ten hands.
 - **History**: every hand you were dealt, replayable card by card and action
-  by action. Only cards that were shown at the table appear; nobody's hidden
-  hole cards are ever in a history but their own.
+  by action. Only cards that were shown at the table appear, and a card
+  somebody kept down shows as a back beside the one they turned over; nobody's
+  hidden hole cards are ever in a history but their own.
 
 ### Leaving and coming back
 
@@ -600,8 +614,9 @@ restart:
 ## Privacy and fairness, briefly
 
 Your hole cards are sent to your browser and nobody else's; every other seat
-receives a view with them blanked, and they are shown only at a showdown or
-a run-out with two or more live hands. The deck is shuffled with the
+receives a view with them blanked, and they are shown only at a showdown, at
+a run-out with two or more live hands, or where you turn one over yourself
+after taking a pot nobody contested. The deck is shuffled with the
 operating system's random source. Unlisted games are not on any list or in
 the public API, and a game's id without its code gets "Tournament not found".
 A watcher on the rail gets the same blanked view as any other seat, is never

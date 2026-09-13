@@ -421,6 +421,78 @@ test('a busted player who declines and leaves is still offered the way back in',
   for (const s of seats) await s.ctx.close();
 });
 
+test('the winner of an uncontested pot can turn one card over', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Shower');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Shower');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Needle');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code}`);
+  await guest.fill('#playerName', 'Watcher');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect
+    .poll(() => page.evaluate(() => !!(gameState && gameState.isRunning)), { timeout: 10000 })
+    .toBe(true);
+
+  // Fold it out on the server until one player is left. Playing a whole hand
+  // down to that is not what this is about; what happens afterwards is.
+  const id = await page.evaluate(() => window.mttField.id);
+  const entry = serverModule.registry.tournaments.get(id);
+  const table = entry.director.tables[0];
+  entry.director.holdField();
+  for (let i = 0; i < 50 && table.isRunning; i++) {
+    const cur = table.players[table.currentPlayerIndex];
+    if (!cur) break;
+    table.handleAction(cur.id, 'fold');
+  }
+  const winnerId = table.showWindow ? table.showWindow.playerId : null;
+  expect(winnerId).toBeTruthy();
+  await page.waitForTimeout(900);
+
+  // Whoever took it is offered the choice; the other is offered nothing.
+  const winner = (await page.evaluate(() => myId)) === winnerId ? page : guest;
+  const other = winner === page ? guest : page;
+  await expect(winner.locator('#showRow')).not.toHaveClass(/hidden/);
+  await expect(winner.locator('.player-seat.can-show')).toHaveCount(1);
+  await expect(other.locator('#showRow')).toHaveClass(/hidden/);
+
+  // Tap one of the two. The other table sees that card and a back beside it,
+  // which is the whole of the feature: one card, not the holding.
+  await winner.locator('.player-seat.can-show .player-hole-cards > *').first().click();
+  await expect
+    .poll(
+      () =>
+        other.evaluate((w) => {
+          const seat = document.querySelector(`.player-seat[data-player-id="${w}"]`);
+          if (!seat) return null;
+          return [
+            seat.querySelectorAll('.player-hole-cards > .card').length,
+            seat.querySelectorAll('.player-hole-cards > .card-back').length,
+          ].join('/');
+        }, winnerId),
+      { timeout: 8000 }
+    )
+    .toBe('1/1');
+
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
 test('a dropped connection sits the seat out, and coming back resumes it', async ({
   browser,
   page,

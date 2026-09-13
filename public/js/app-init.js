@@ -470,6 +470,25 @@ function init() {
   document.getElementById('btnSitOutNextHand').addEventListener('click', () => {
     setSitOutNextHand(!(gameState && gameState.mySitOutNextHand));
   });
+  // Both of them, or neither. One at a time is tapped on the card itself.
+  document.getElementById('btnShowBoth').addEventListener('click', () => showMyCards([0, 1]));
+  document.getElementById('btnShowNo').addEventListener('click', () => declineShowMyCards());
+  // Tapping your own hole card turns that one over, which is the whole point
+  // of being allowed to show one. Delegated from the seat container, which
+  // already carries the long-press for the seat menu: a tap that lands on a
+  // card is this and never that, so the menu's handlers stand down for it.
+  document.getElementById('playerSeats').addEventListener('click', (e) => {
+    if (!gameState || !gameState.myShow) return;
+    const card = e.target.closest('.card, .card-back');
+    if (!card) return;
+    const seat = card.closest('.player-seat');
+    if (!seat || seat.dataset.playerId !== myId) return;
+    const cards = [...card.parentElement.children].filter(
+      (n) => n.classList.contains('card') || n.classList.contains('card-back')
+    );
+    const idx = cards.indexOf(card);
+    if (idx === 0 || idx === 1) showMyCards([idx]);
+  });
   document.getElementById('btnCloseReplay').addEventListener('click', () => {
     closeReplayPanel();
   });

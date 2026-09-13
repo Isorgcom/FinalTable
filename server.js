@@ -177,7 +177,7 @@ const tournamentLayer = registerTournamentHandlers({
   sweepMs: config.tournamentSweepMs,
   handPauseMs: config.handPauseMs,
   adminCredential,
-  tableOptions: { streetPauseMs: config.streetPauseMs },
+  tableOptions: { streetPauseMs: config.streetPauseMs, showWindowMs: config.showWindowMs },
   chatStore,
   chatEnabled: config.chatEnabled,
   chatHistory: config.chatHistory,

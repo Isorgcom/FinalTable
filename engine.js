@@ -85,6 +85,14 @@ class PokerGame {
     // being run out. Distinct from the showdown phase, which is the end of the
     // hand: this is the stretch before it, with cards still to come.
     this.cardsExposed = false;
+
+    // A pot taken uncontested ends with nobody having shown anything. For a
+    // few seconds afterwards its winner may turn a card over anyway - the
+    // bluff shown to needle, the ace shown to prove it was there - and the
+    // table holds that long before dealing on. Null when nothing is on offer.
+    this.showWindow = null; // { playerId, until, shown: [] }
+    this.showWindowMs = Math.max(0, options.showWindowMs ?? 0);
+
     this.sbIndex = -1;
 
     // Logging helpers
@@ -465,6 +473,8 @@ class PokerGame {
     this.lastRoundRefunds = [];
     this.showdownWinningCards = [];
     this.cardsExposed = false;
+    // Whatever was on offer belonged to the hand before this one.
+    this.showWindow = null;
 
     // Reset player states
     const sittingOutNow = [];
@@ -1219,7 +1229,7 @@ class PokerGame {
         `${this.getPublicName(r.player)} shows ${this._cards(r.player.holeCards)} · ${describeBest(r.hand)}`,
         { kind: 'show' }
       );
-      this.handHistory.recordShown(r.player.id);
+      this.handHistory.recordShown(r.player.id, [0, 1]);
     }
 
     // Handle side pots and main pot
@@ -1392,6 +1402,79 @@ class PokerGame {
     }
   }
 
+  // ── Showing a hand nobody paid to see ────────────────────────────────────
+  //
+  // Everybody folded, so the pot is pushed with the cards face down and the
+  // replay keeps them that way. Live, the winner turns them over anyway if
+  // they feel like it, and that is half the table talk. This is the few
+  // seconds in which they can, and nothing at all happens if they do not.
+
+  // Opened by endRound when a hand finished with one player unfolded. Not for
+  // a seat that cannot answer: a bot or somebody sitting out would only hold
+  // the table up for the length of the window and then say nothing.
+  _openShowWindow() {
+    if (!this.showWindowMs) return;
+    const live = this.players.filter((p) => !p.folded);
+    if (live.length !== 1) return;
+    const winner = live[0];
+    if (!winner.holeCards || winner.holeCards.length !== 2) return;
+    if (this.isAutomatedPlayer(winner) || !winner.isConnected) return;
+    // The hand is over, so there is nothing to hold the table for.
+    if (this.gameOver) return;
+    this.showWindow = { playerId: winner.id, until: Date.now() + this.showWindowMs, shown: [] };
+  }
+
+  // Whether the offer still stands for this seat right now.
+  showWindowOpen(playerId = null) {
+    const w = this.showWindow;
+    if (!w) return false;
+    if (Date.now() >= w.until) return false;
+    return playerId === null || w.playerId === playerId;
+  }
+
+  // Turn one card over, or both. The same road a showdown takes: said on the
+  // felt, written into the replay, and face up in every other seat's state.
+  showHoleCards(playerId, indices) {
+    if (!this.showWindowOpen(playerId)) return false;
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player || !player.holeCards || player.holeCards.length !== 2) return false;
+    const wanted = (Array.isArray(indices) ? indices : [indices])
+      .map((i) => Number(i))
+      .filter((i) => i === 0 || i === 1)
+      .filter((i) => !this.showWindow.shown.includes(i));
+    if (!wanted.length) return false;
+    this.showWindow.shown = [...this.showWindow.shown, ...wanted].sort();
+    const cards = this.showWindow.shown.map((i) => player.holeCards[i]);
+    this.emitMessage(`${this.getPublicName(player)} shows ${this._cards(cards)}`, { kind: 'show' });
+    // The hand was filed by endRound before any of this, so the replay has to
+    // be amended rather than recorded.
+    this.handHistory.recordShownOnLast(playerId, this.showWindow.shown);
+    // Both cards over is the whole holding: there is nothing left to decide,
+    // so the table stops waiting.
+    if (this.showWindow.shown.length === 2) this.showWindow.until = 0;
+    this.emitUpdate();
+    return true;
+  }
+
+  // No thanks. The table deals on without waiting out the rest of the window.
+  declineShow(playerId) {
+    if (!this.showWindowOpen(playerId)) return false;
+    this.showWindow.until = 0;
+    this.emitUpdate();
+    return true;
+  }
+
+  // What another seat is allowed to see of a holding: everything at a
+  // showdown, nothing after a fold, and exactly what was turned over in
+  // between. A null in the array is a card that stayed down.
+  _visibleHoleCards(player, handsFaceUp) {
+    if (handsFaceUp && !player.folded) return player.holeCards;
+    const w = this.showWindow;
+    if (!w || w.playerId !== player.id || !w.shown.length) return null;
+    if (!player.holeCards || player.holeCards.length !== 2) return null;
+    return player.holeCards.map((c, i) => (w.shown.includes(i) ? c : null));
+  }
+
   awardPot(winners) {
     const share = Math.floor(this.pot / winners.length);
     for (const winner of winners) {
@@ -1524,6 +1607,11 @@ class PokerGame {
       'info',
       'Round ended'
     );
+
+    // Nobody contested this one, so nobody has shown anything. The winner gets
+    // a few seconds to turn a card over if they want to, and the table waits
+    // that long. Opened before the state goes out, so the offer is in it.
+    this._openShowWindow();
 
     this.emitUpdate();
 
@@ -1840,8 +1928,10 @@ class PokerGame {
         lastAction: p.lastAction || null,
         wins: p.wins,
         handsPlayed: p.handsPlayed,
-        // Only to the player themselves, or to everyone once the hands are up.
-        holeCards: p.id === playerId || (handsFaceUp && !p.folded) ? p.holeCards : null,
+        // Only to the player themselves, or to everyone once the hands are up -
+        // or the one card its owner turned over after taking a pot nobody
+        // contested, which arrives with the other entry null.
+        holeCards: p.id === playerId ? p.holeCards : this._visibleHoleCards(p, handsFaceUp),
       })),
       // A seat that is sitting out is not the viewer's turn to act: the seat
       // acts for them. Saying otherwise flashes the action bar up for the
@@ -1884,6 +1974,13 @@ class PokerGame {
       turnExpiresAt: this._streetTimer ? null : this.turnExpiresAt,
       turnDurationMs: this._streetTimer ? null : this.turnDurationMs,
       // The viewer's own hand in words, never anyone else's.
+      // The offer to turn a card over after taking a pot nobody contested. Only
+      // ever the viewer's own: whether somebody else is thinking about it is
+      // not a thing to broadcast, and the shown cards speak for themselves.
+      myShow:
+        this.showWindow && this.showWindow.playerId === playerId && this.showWindowOpen(playerId)
+          ? { until: this.showWindow.until, shown: [...this.showWindow.shown] }
+          : null,
       myHand:
         viewer &&
         !viewer.folded &&
@@ -1922,9 +2019,18 @@ class PokerGame {
   visibleHistoryCards(hand, viewerId) {
     const mine = this.historyIdsForViewer(hand, viewerId);
     const shown = new Set(hand.shownPlayerIds || []);
+    const perCard = hand.shownCards || {};
     const visible = {};
     for (const [id, cards] of Object.entries(hand.holeCards || {})) {
-      if (mine.has(id) || shown.has(id)) visible[id] = cards;
+      if (mine.has(id)) {
+        visible[id] = cards;
+      } else if (shown.has(id)) {
+        // A showdown turns both over; a winner of an uncontested pot may have
+        // turned one. The card that stayed down is a null, not a gap, so the
+        // replay draws a back where the felt drew one.
+        const idx = perCard[id];
+        visible[id] = idx ? cards.map((c, i) => (idx.includes(i) ? c : null)) : cards;
+      }
     }
     return visible;
   }

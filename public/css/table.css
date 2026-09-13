@@ -1591,6 +1591,43 @@
 
 /* The queued sit-out is not one of the three, and does not compete with them:
    green, like the other "you are stepping out" affordances. */
+/* The offer to turn a card over, in the row that is still up between hands.
+   Warmer than the sit-out beside it, because it is an invitation rather than
+   a way out. */
+.preaction-show {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.preaction-show.hidden {
+  display: none;
+}
+.preaction-show-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--gold);
+  white-space: nowrap;
+}
+/* Your own cards, while the offer stands: tapping one turns that one over, so
+   they have to look like something you can press. */
+.player-seat.can-show .player-hole-cards .card,
+.player-seat.can-show .player-hole-cards .card-back {
+  cursor: pointer;
+  outline: 1px solid rgba(201, 168, 76, 0.55);
+  outline-offset: 1px;
+  transition: transform 0.15s ease;
+}
+.player-seat.can-show .player-hole-cards .card:hover,
+.player-seat.can-show .player-hole-cards .card-back:hover {
+  transform: translateY(-3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-seat.can-show .player-hole-cards .card,
+  .player-seat.can-show .player-hole-cards .card-back {
+    transition: none;
+  }
+}
+
 .preaction-sitout {
   margin-left: auto;
   border-color: rgba(123, 202, 149, 0.28);

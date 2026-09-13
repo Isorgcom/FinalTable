@@ -482,7 +482,9 @@ function getPlayerIdentityKey(players) {
         // Whether this seat's cards are face up. The skeleton holds the cards,
         // so the moment the server tables a hand - at showdown, or on an
         // all-in run-out - the seats have to be built again to show them.
-        p.holeCards ? 'up' : '',
+        // How many are up, not merely that some are: showing one card and then the
+        // second has to rebuild the seat, and both states are "up".
+        p.holeCards ? 'up' + p.holeCards.filter(Boolean).length : '',
       ].join(':');
     })
     .join('|');
@@ -599,6 +601,9 @@ function seatRenderContext() {
   const stage = document.getElementById('tableStage');
   return {
     isRunning: !!gameState.isRunning,
+    // The few seconds in which the winner of an uncontested pot may turn a
+    // card over. Only ever theirs, so it is read once per pass here.
+    canShow: !!gameState.myShow,
     onBreak: !!(stage && stage.classList.contains('on-break')),
     currentPlayerIndex: gameState.currentPlayerIndex,
     winnerIds: gameState.lastRoundWinnerIds || [],
@@ -667,6 +672,10 @@ function updateSeatDynamic(seat, player, ctx) {
   seat.classList.toggle('auto-play', !!player.autoPlay);
   seat.classList.toggle('offline', player.isConnected === false);
   seat.classList.toggle('spectating', !!player.isSpectator);
+  // Your own cards are pressable only while the offer to show one stands, and
+  // only on your own seat. ctx carries the offer so every seat in a pass
+  // agrees about it.
+  seat.classList.toggle('can-show', player.id === myId && !!ctx.canShow);
   // The seat that took the pot. At showdown the cards carry the story, but a
   // hand won by everyone folding reveals nothing, and that ending should not
   // be silent.
@@ -1025,6 +1034,14 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   if (player.holeCards && player.holeCards.length === 2) {
     const winners = winningCardKeys();
     for (const card of player.holeCards) {
+      // A null here is a card that stayed down: its owner took the pot
+      // uncontested and turned the other one over. A back, not a gap.
+      if (!card) {
+        const back = document.createElement('div');
+        back.className = 'card-back' + anim;
+        holeCardsDiv.appendChild(back);
+        continue;
+      }
       const marks = [anim.trim(), showdownClassFor(card, winners)].filter(Boolean).join(' ');
       holeCardsDiv.appendChild(createCardElement(card, marks));
     }
@@ -1361,6 +1378,22 @@ function updatePreActionPanel() {
   const row = document.getElementById('preActionRow');
   const inHand = !!gameState.isRunning && !me.folded && !me.allIn && !me.isSpectator;
   row.classList.toggle('hidden', !inHand);
+
+  // The offer to turn a card over, which the server puts up only for the
+  // winner of a pot nobody contested and only for a few seconds. One card is
+  // tapped on the felt; these two are for both of them, or for neither.
+  const showRow = document.getElementById('showRow');
+  if (showRow) {
+    const offer = gameState.myShow;
+    showRow.classList.toggle('hidden', !offer);
+    if (offer) {
+      const label = document.getElementById('showRowLabel');
+      // Said differently once one is over: the question left is the other.
+      if (label) label.textContent = offer.shown.length ? 'Show the other?' : 'Show?';
+      const both = document.getElementById('btnShowBoth');
+      if (both) both.textContent = offer.shown.length ? 'yes' : 'both';
+    }
+  }
 
   const armed = gameState.myPreAction ? gameState.myPreAction.kind : null;
   if (inHand) {
