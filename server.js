@@ -172,7 +172,7 @@ const tournamentLayer = registerTournamentHandlers({
   sanitizeAvatar,
   maxTournaments: config.maxTournaments,
   finishedTtlMs: config.tournamentFinishedTtlMs,
-  abandonGraceMs: config.tournamentAbandonGraceMs,
+  zombieHoldMs: config.tournamentZombieHoldMs,
   hostTransferGraceMs: config.hostTransferGraceMs,
   sweepMs: config.tournamentSweepMs,
   handPauseMs: config.handPauseMs,

@@ -103,8 +103,11 @@ function loadConfig() {
     maxTournaments: intFromEnv('MAX_TOURNAMENTS', 8, 1, 100),
     // How long a finished tournament stays listed with its standings.
     tournamentFinishedTtlMs: intFromEnv('TOURNAMENT_FINISHED_TTL_MS', 600000, 100, 86400000),
-    // How long a tournament with no connected human survives before teardown.
-    tournamentAbandonGraceMs: intFromEnv('TOURNAMENT_ABANDON_GRACE_MS', 120000, 100, 3600000),
+    // How long a field held because its room emptied is kept before it is
+    // written off. A held game deals nothing and nobody loses chips while it
+    // waits, so this is hours: it exists to stop games nobody returns to from
+    // sitting in the server's slots for ever, not to police stepping away.
+    tournamentZombieHoldMs: intFromEnv('TOURNAMENT_ZOMBIE_HOLD_MS', 21600000, 100, 604800000),
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),

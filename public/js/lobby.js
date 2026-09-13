@@ -411,6 +411,9 @@
       `${total} entrant${total === 1 ? '' : 's'}`,
       t.status === 'running' ? `${t.tables} table${t.tables === 1 ? '' : 's'}` : null,
       t.pending ? `${t.pending} at the door` : null,
+      // A game holding for an empty room is the one an operator might want to
+      // end by hand rather than wait out, so the card says since when.
+      t.held ? `holding since ${fmtWhen(t.heldSince)}` : null,
       `${t.tableSize}-max`,
       fmtChips(t.startChips),
       t.startedAt ? `started ${fmtWhen(t.startedAt)}` : `created ${fmtWhen(t.createdAt)}`,
@@ -956,7 +959,7 @@
     if (t.status === 'running') {
       return (
         `Level ${t.level} · ${t.remaining} left` +
-        (t.paused ? ' · paused' : '') +
+        (t.awayHeld ? ' · holding for you' : t.paused ? ' · paused' : '') +
         (t.lateRegOpen ? ' · late reg open' : '')
       );
     }
@@ -1781,7 +1784,7 @@
     if (t.status === 'running') {
       return (
         `${prefix}Running · level ${t.level}` +
-        (t.paused ? ' · paused' : '') +
+        (t.awayHeld ? ' · holding until somebody is back' : t.paused ? ' · paused' : '') +
         (t.lateRegOpen ? ' · late registration open' : '')
       );
     }

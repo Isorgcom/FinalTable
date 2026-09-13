@@ -20,7 +20,7 @@ describe('Tournament socket layer', () => {
     process.env.HTTP_RATE_LIMIT = '1000';
     process.env.HOST = '127.0.0.1';
     process.env.TOURNAMENT_FINISHED_TTL_MS = '200';
-    process.env.TOURNAMENT_ABANDON_GRACE_MS = '400';
+    process.env.TOURNAMENT_ZOMBIE_HOLD_MS = '400';
     process.env.TOURNAMENT_SWEEP_MS = '40';
     process.env.HOST_TRANSFER_GRACE_MS = '300';
     process.env.AUTO_TURN_DELAY_MS = '5';
@@ -192,23 +192,23 @@ describe('Tournament socket layer', () => {
     expect(serverModule.tournaments.has(joined.id)).toBe(false);
   });
 
-  test('a running tournament survives a dropped connection for the grace period, then goes', async () => {
+  test('a dropped connection holds the table, and only a long hold ends it', async () => {
     const host = await connectClient();
     const { created: joined, guest } = await createTournamentWithGuest(host);
     await startAndDeal(host, guest);
     expect(serverModule.tournaments.has(joined.id)).toBe(true);
     const entry = serverModule.tournaments.get(joined.id);
     // No new hands: a heads-up between two sit-out seats could finish and
-    // expire inside the grace window, which is not what this test is about.
+    // expire inside the window, which is not what this test is about.
     entry.director.holdField();
     host.close();
     guest.close();
     // The server notices the drop...
     expect(await until(() => entry.registrations.get(joined.uid).socketId === null)).toBe(true);
-    // ...keeps the tournament through the grace...
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // ...holds the field rather than counting down to a teardown...
+    expect(await until(() => entry.director.isHeldForAbsence())).toBe(true);
     expect(serverModule.tournaments.has(joined.id)).toBe(true);
-    // ...and tears it down once the grace has passed.
+    // ...and writes it off only once the hold has stood with nobody back.
     expect(await until(() => !serverModule.tournaments.has(joined.id))).toBe(true);
   });
 

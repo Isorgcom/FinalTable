@@ -267,7 +267,10 @@ While the game runs, the host's Info tab opens with a **Host** block that
 nobody else has:
 
 - **Pause** and **Resume**. The hand in play finishes, no table deals, and
-  the blind clock stands still until Resume. The banner reads Paused.
+  the blind clock stands still until Resume. The banner reads Paused. While
+  the table is holding because everybody with chips has stepped away the
+  button reads **Waiting for players** and does nothing: that hold is not
+  yours to lift, and it lifts itself when somebody is back.
 - **◀ Level** and **Level ▶**: one level back or forward, breaks included.
   The chat says "Blinds up" or "Blinds back to", and every table takes the
   new blinds at its next deal.
@@ -418,6 +421,15 @@ A dropped connection does the same without the leaving: the top of the page
 says _Reconnecting…_, your seat sits out until you are back, and the page
 rejoins on its own. So does a reload, and so does the same identity on
 another device.
+
+If everybody with chips has gone, the table holds rather than playing on. The
+banner reads _Holding · waiting for players_, no hand is dealt, the blind
+clock stands still, and every stack stays exactly where it was left. Play
+picks up the moment anyone is back at a seat. Watching does not count for
+this and neither do the demo seats: a rail full of people who have busted is
+a room with nobody left to play. A game held this way is written off after
+`TOURNAMENT_ZOMBIE_HOLD_MS`, six hours by default, and the people who were in
+it are told it went.
 
 ### Being eliminated
 
@@ -617,17 +629,17 @@ game on the Operator page, reached without leaving the felt.
 These live in the server's `.env` (see `.env.example`) and take effect on a
 restart:
 
-| Setting                       | Default | What it does                                                     |
-| ----------------------------- | ------- | ---------------------------------------------------------------- |
-| `ADMIN_PASSWORD`              | none    | The first operator password. None means no operator surface.     |
-| `MAX_TOURNAMENTS`             | 8       | How many games the server holds at once.                         |
-| `CHAT_ENABLED`                | true    | Chat exists at all.                                              |
-| `REACTIONS_ENABLED`           | true    | The reaction strip exists at all.                                |
-| `TOURNAMENT_FINISHED_TTL_MS`  | 600000  | How long a finished game stays listed (ten minutes).             |
-| `TOURNAMENT_ABANDON_GRACE_MS` | 120000  | How long a running game survives with nobody connected.          |
-| `HOST_TRANSFER_GRACE_MS`      | 120000  | How long a missing host keeps the game before it passes.         |
-| `CHAT_RATE`, `REACTION_RATE`  | 4, 3    | Messages and reactions allowed per ten seconds.                  |
-| `GAMENIGHT_URL` and friends   | none    | Seed the GameNight pairing on a first boot; the page wins after. |
+| Setting                      | Default  | What it does                                                      |
+| ---------------------------- | -------- | ----------------------------------------------------------------- |
+| `ADMIN_PASSWORD`             | none     | The first operator password. None means no operator surface.      |
+| `MAX_TOURNAMENTS`            | 8        | How many games the server holds at once.                          |
+| `CHAT_ENABLED`               | true     | Chat exists at all.                                               |
+| `REACTIONS_ENABLED`          | true     | The reaction strip exists at all.                                 |
+| `TOURNAMENT_FINISHED_TTL_MS` | 600000   | How long a finished game stays listed (ten minutes).              |
+| `TOURNAMENT_ZOMBIE_HOLD_MS`  | 21600000 | How long a held game waits for somebody before it is written off. |
+| `HOST_TRANSFER_GRACE_MS`     | 120000   | How long a missing host keeps the game before it passes.          |
+| `CHAT_RATE`, `REACTION_RATE` | 4, 3     | Messages and reactions allowed per ten seconds.                   |
+| `GAMENIGHT_URL` and friends  | none     | Seed the GameNight pairing on a first boot; the page wins after.  |
 
 ## Privacy and fairness, briefly
 

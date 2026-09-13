@@ -93,6 +93,14 @@ class TournamentDirector {
     this.finished = null;
     this._expectedChips = null;
     this._paused = false;
+    // Nobody left who could act: every human with chips has dropped or walked
+    // off, so only bots and sat-out seats remain. The field stops dealing and
+    // the blind clock stands still until somebody comes back. Kept apart from
+    // _paused, which is the host's own control, so the two never undo each
+    // other. _awayClockStopped records whether this hold was what stopped the
+    // clock, so releasing it cannot restart a clock the host stopped.
+    this._awayHeld = false;
+    this._awayClockStopped = false;
     // A held beat between hands, so the showdown and the pot going to the
     // winner can be watched rather than glimpsed. Zero keeps the tests'
     // hand driver immediate; the server sets a real one. The director's tick
@@ -214,6 +222,10 @@ class TournamentDirector {
       onBreak: this.tournament.onBreak(),
       finalLevel: this.tournament.isFinalLevel(),
       paused: this.isPaused(),
+      // Held because the room emptied, not because the host stopped it. The
+      // banner says so rather than reading "paused by the host" to a table
+      // whose host is the one who walked off.
+      awayHeld: this._awayHeld,
       nextLevelIn: this.tournament.getTimeUntilNextLevel(),
     };
   }
@@ -587,7 +599,7 @@ class TournamentDirector {
   // hand-for-hand play at the money bubble can be added without reworking this
   // control flow later.
   canStartHand(table) {
-    if (!this.isRunning || this.finished || this._paused) return false;
+    if (!this.isRunning || this.finished || this._paused || this._awayHeld) return false;
     if (table.isRunning) return false;
     if (this._waitingOnField(table)) return false;
     // A break: the hand in play finishes and nothing new is dealt until the
@@ -649,6 +661,48 @@ class TournamentDirector {
     this._paused = false;
   }
 
+  // ── The hold for an empty room ───────────────────────────────────────────
+
+  // A table with nobody at it to play holds rather than deals on. A seat whose
+  // player has dropped is sat out, which is a person who stepped away, not a
+  // reason to end their tournament: their chips sit exactly where they left
+  // them, the blind clock stands still, and the bots do not play the game out
+  // while nobody is watching. The rail does not count - somebody who busted
+  // has no chips and keeps nothing open - and neither do the bots.
+  isHeldForAbsence() {
+    return this._awayHeld;
+  }
+
+  holdForAbsence() {
+    if (this._awayHeld || !this.isRunning || this.finished) return false;
+    this._awayHeld = true;
+    // Only stop the clock if it is running: a hold laid over a break or over
+    // the host's own pause must give back exactly what it took.
+    if (!this.tournament.isPaused()) {
+      this.tournament.pause();
+      this._awayClockStopped = true;
+    }
+    // The log, not the felt. Nobody is here to read a line over the table when
+    // this is laid on - that is what it means - and the banner says "Holding"
+    // for as long as it lasts, which is what the person who comes back reads.
+    // A brief drop and reconnect would otherwise throw two notices at them.
+    this._say('Everybody has stepped away. The table is holding until somebody is back.');
+    if (this.onFieldUpdate) this.onFieldUpdate();
+    return true;
+  }
+
+  releaseFromAbsence() {
+    if (!this._awayHeld) return false;
+    this._awayHeld = false;
+    if (this._awayClockStopped) {
+      this._awayClockStopped = false;
+      this.tournament.resume();
+    }
+    this._say('Somebody is back. Play resumes.');
+    if (this.onFieldUpdate) this.onFieldUpdate();
+    return true;
+  }
+
   // ── The host's controls ──────────────────────────────────────────────────
 
   // Pause: the hand in play finishes, nothing new is dealt, and the blind
@@ -656,6 +710,7 @@ class TournamentDirector {
   // holdField is the machinery's hold; this one is the host's, and it is the
   // clock that says which is in force.
   pause() {
+    if (this._awayHeld) return false;
     if (!this.isRunning || this.finished || this.tournament.isPaused()) return false;
     this._paused = true;
     this.tournament.pause();
@@ -665,6 +720,7 @@ class TournamentDirector {
   }
 
   resume() {
+    if (this._awayHeld) return false;
     if (!this.tournament.isPaused()) return false;
     this.tournament.resume();
     this._paused = false;
@@ -1372,6 +1428,8 @@ class TournamentDirector {
       breakOrder: [...(this.breakOrder || [])],
       expectedChips: this._expectedChips,
       paused: this.isPaused(),
+      awayHeld: this._awayHeld,
+      awayClockStopped: this._awayClockStopped,
       reentryLevels: this.reentryLevels,
       addOn: this.addOn,
       extraEntries: this.extraEntries,
@@ -1444,8 +1502,17 @@ class TournamentDirector {
     this.isRunning = true;
     this._expectedChips = this.totalChips();
     this.tournament.resumeFrom(snap.clock || {});
-    // The clock restores its own half of a pause; this is the field's.
-    this._paused = !!snap.paused && this.tournament.isPaused();
+    // The clock restores its own half of a pause; this is the field's. A clock
+    // the hold for an empty room stopped is not the host's pause and must not
+    // come back as one, or lifting the hold would leave a field that never
+    // deals again: _paused would still be set with nobody able to clear it.
+    this._paused = !!snap.paused && !snap.awayClockStopped && this.tournament.isPaused();
+    // A field recorded while the room was empty comes back held, and comes
+    // back knowing whether the hold is what stopped its clock. Without that
+    // second flag a restored hold would release without starting the clock
+    // again, and the blinds would never move for the people who came back.
+    this._awayHeld = !!snap.awayHeld;
+    this._awayClockStopped = !!snap.awayClockStopped && this.tournament.isPaused();
     this._wireLevelUp();
     this._stampBlinds(this.tournament.getCurrentBlinds());
     return true;

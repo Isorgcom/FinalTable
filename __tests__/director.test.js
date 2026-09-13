@@ -1968,4 +1968,61 @@ describe('re-entry and the add-on', () => {
     d.stop();
     revived.stop();
   });
+
+  // The hold for an empty room. It has to stop the blind clock as well as the
+  // dealing, or a game held overnight comes back at a level nobody played to;
+  // and it has to leave the host's own pause exactly as it found it.
+  test('the hold for an empty room stops the clock and gives back only what it took', () => {
+    const d = makeDirector(4, { levelDuration: 60 });
+    d.start();
+    expect(d.isPaused()).toBe(false);
+
+    expect(d.holdForAbsence()).toBe(true);
+    expect(d.isHeldForAbsence()).toBe(true);
+    // Held is not dealt, and the clock stands still with it.
+    expect(d.canStartHand(d.tables[0])).toBe(false);
+    expect(d.isPaused()).toBe(true);
+    // Laying it on twice is not a second hold to take off.
+    expect(d.holdForAbsence()).toBe(false);
+
+    expect(d.releaseFromAbsence()).toBe(true);
+    expect(d.isHeldForAbsence()).toBe(false);
+    expect(d.isPaused()).toBe(false);
+    expect(d.releaseFromAbsence()).toBe(false);
+
+    // Over the host's own pause it takes nothing, so it gives nothing back.
+    expect(d.pause()).toBe(true);
+    expect(d.holdForAbsence()).toBe(true);
+    // And the host's controls stay out of the way until the room fills again.
+    expect(d.pause()).toBe(false);
+    expect(d.resume()).toBe(false);
+    expect(d.releaseFromAbsence()).toBe(true);
+    expect(d.isPaused()).toBe(true);
+    expect(d.resume()).toBe(true);
+    expect(d.isPaused()).toBe(false);
+    d.stop();
+  });
+
+  // A field recorded while the room was empty comes back held, and comes back
+  // knowing the hold is what stopped its clock. Without the second half, the
+  // people who came back would find the blinds frozen for good.
+  test('a held field is recorded and restored as one', () => {
+    const d = makeDirector(4, { levelDuration: 60 });
+    d.start();
+    d.holdForAbsence();
+    const snap = d.snapshot();
+    expect(snap).toMatchObject({ awayHeld: true, awayClockStopped: true });
+
+    const revived = makeDirector(0, { levelDuration: 60 });
+    expect(revived.restoreFrom(snap)).toBe(true);
+    expect(revived.isHeldForAbsence()).toBe(true);
+    expect(revived.isPaused()).toBe(true);
+    expect(revived.releaseFromAbsence()).toBe(true);
+    expect(revived.isPaused()).toBe(false);
+    // And it deals again. The hold's stopped clock must not come back as the
+    // host's pause, which nobody would be able to lift.
+    expect(revived.canStartHand(revived.tables[0])).toBe(true);
+    d.stop();
+    revived.stop();
+  });
 });

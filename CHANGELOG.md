@@ -13,8 +13,28 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Fixed
+
+- Stepping away no longer ends the tournament. A running game whose people had
+  all dropped was torn down two minutes later, so a phone locking in a game
+  against the demo seats, or a table that all reached for their phones at the
+  break, lost the game and everybody's chips. The table holds instead: the
+  banner reads **Holding · waiting for players**, nothing is dealt, the blind
+  clock stands still, and every stack sits where it was left until somebody is
+  back at a seat. A seat whose player has gone is still sat out, as before, so
+  one person stepping away has never stopped the others playing.
+- Somebody on the rail no longer keeps a game alive on their own. Watching is
+  not playing, so a busted player with a tab open is not a reason to go on
+  dealing to a table nobody is at.
+
 ### Changed
 
+- The host's **Pause** reads **Waiting for players** and is out of use while
+  the table is holding for an empty room, rather than offering a button that
+  does nothing. A game the host paused and then walked away from is held for
+  both reasons, and coming back lifts only the one that was about the room.
+- A game held for an empty room shows as **holding** on its lobby card, and on
+  the Operator page with the time the hold began.
 - The action bar on a phone held upright. It was four rows deep and a third of
   the screen, with nothing on it big enough to hit reliably: the mobile layout
   the stylesheet already had only applied in landscape, so portrait fell
@@ -28,7 +48,6 @@ Release on GitHub to go with it.
 - The bar no longer sits in the home indicator at the bottom of a phone screen.
   The same goes for the sit-out banner and the row of early choices, which
   share that slot.
-
 - Your own two cards are now the size of the cards in the middle of the table.
   They were the smallest thing on the felt, which is a strange place to put the
   hand you are actually reading. Everybody else's stay as they were: eight
@@ -36,6 +55,15 @@ Release on GitHub to go with it.
   window size, including where the board itself changes size, and at phone
   widths the name plate under them gives up the room rather than the cards
   going small again.
+
+### Removed
+
+- `TOURNAMENT_ABANDON_GRACE_MS`, which set how long a running game survived
+  with nobody connected. Nothing is torn down for that reason any more.
+  `TOURNAMENT_ZOMBIE_HOLD_MS` replaces it, and is how long a held game waits
+  for somebody before it is written off: six hours by default, where the old
+  one was two minutes. A server setting the old variable should drop it, or
+  the value will be ignored.
 
 ## 0.12.0 - 2026-09-13
 

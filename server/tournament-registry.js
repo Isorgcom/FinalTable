@@ -2,7 +2,7 @@
 //
 // Everything about a tournament that is not the poker itself lives here:
 // who registered, who is connected, when it starts, who hosts, what happens
-// when the last human drops, and when a finished one is forgotten. The
+// when the last human steps away, and when a finished one is forgotten. The
 // director owns the tables and the chips; the socket handlers are a thin
 // shim over this module; and everything here is keyed by identity uid.
 //
@@ -120,7 +120,12 @@ function createTournamentRegistry(deps = {}) {
     // phone that locks for ten seconds should not lose its place at the door.
     pendingGraceMs = 60 * 1000,
     finishedTtlMs = 10 * 60 * 1000,
-    abandonGraceMs = 2 * 60 * 1000,
+    // How long a field that is held because the room emptied is kept before it
+    // is written off as a game nobody is coming back to. Hours, not minutes: a
+    // held field deals nothing and costs nothing, and the whole point of the
+    // hold is that stepping away never costs somebody their tournament. This
+    // is the only clock that can end a running game nobody ended.
+    zombieHoldMs = 6 * 60 * 60 * 1000,
     hostTransferGraceMs = 2 * 60 * 1000,
     overdueAbandonMs = 30 * 60 * 1000,
     sweepMs = 1000,
@@ -216,6 +221,10 @@ function createTournamentRegistry(deps = {}) {
       // Written down so the next restart holds it too, rather than reading it
       // back as a tournament that is merely waiting for its start time.
       held: !!entry.held,
+      // When the room emptied, so a game nobody is coming back to does not get
+      // a fresh six hours every time the server is restarted. A box that
+      // updates itself nightly would never write one off otherwise.
+      awayHeldSince: entry.awayHeldSince || null,
       // A running tournament carries the field as it stood between hands, so a
       // restart seats everyone again instead of the tournament ceasing to
       // exist. Registrations alone are enough for one that has not dealt. A
@@ -276,8 +285,64 @@ function createTournamentRegistry(deps = {}) {
     return [...tournaments.values()].find((t) => t.rail === key) || null;
   }
 
+  // How many of this game's people have a socket on it right now. A readout for
+  // the Operator page and nothing else: what decides whether a game holds is
+  // the narrower question below, not whether anybody happens to be looking.
   function connectedHumans(entry) {
     return [...entry.registrations.values()].filter((r) => r.socketId).length;
+  }
+
+  // Is there a stack at this field whose owner is not here? That is the whole
+  // question the hold turns on, and three kinds of person are deliberately not
+  // in it. A bot is nobody's stake, so a field down to its demo seats does not
+  // hold: it plays itself out, finishes with standings, and ages off the list
+  // rather than freezing in front of the person who just busted. Somebody on
+  // the rail has no chips in the middle, and watching is not playing. And
+  // somebody who left the table with a stack still in play has a stake and is
+  // not here, which is exactly the shape of somebody who stepped away.
+  //
+  // One pass over the seats with a lookup each, rather than a seat search per
+  // registration: the sweep asks this of every running game every tick, and a
+  // search per person is the shape that made a two hundred player field cost
+  // the square of itself.
+  function shouldHoldForAbsence(entry) {
+    let awayWithChips = 0;
+    for (const table of entry.director.tables) {
+      for (const p of table.players) {
+        // All-in for their last chip is still in the hand and still theirs.
+        if (p.isBot || (p.chips <= 0 && !p.allIn)) continue;
+        const reg = entry.registrations.get(p.uid);
+        if (!reg) continue;
+        // Somebody with a stake is here, so there is nothing to hold for.
+        if (reg.socketId) return false;
+        awayWithChips++;
+      }
+    }
+    return awayWithChips > 0;
+  }
+
+  // The field holds while there is nobody to play it and picks up the moment
+  // anybody is back. Called from the sweep, so elimination and every other way
+  // a seat can empty is covered without each of them remembering to; and from
+  // bind and unbind as well, so coming back is immediate rather than up to a
+  // sweep away.
+  function syncAwayHold(entry) {
+    if (!entry || entry.status !== 'running') return;
+    const changed = shouldHoldForAbsence(entry)
+      ? entry.director.holdForAbsence()
+      : entry.director.releaseFromAbsence();
+    // The clock is reconciled with the director every time rather than only on
+    // a change, because a field restored into an empty room is stamped before
+    // it is held: somebody binding first must clear that stamp, or a game that
+    // is very much alive keeps a write-off date nobody can see.
+    const held = entry.director.isHeldForAbsence();
+    const since = held ? entry.awayHeldSince || now() : null;
+    const restamped = since !== entry.awayHeldSince;
+    entry.awayHeldSince = since;
+    if (!changed && !restamped) return;
+    persist();
+    emitState(entry);
+    emitList();
   }
 
   function hostName(entry) {
@@ -458,6 +523,9 @@ function createTournamentRegistry(deps = {}) {
       entries: total + d.extraEntries,
       level: d.tournament.levelNumber(),
       paused: d.isPaused(),
+      // Held because everybody stepped away, which the card says differently
+      // from a host's pause: one is waiting for you, the other for the host.
+      awayHeld: entry.status === 'running' && d.isHeldForAbsence(),
       remaining: entry.status === 'registering' ? total : d.playersRemaining(),
       buyIn: d.buyIn,
       prizePool: d.prizePool(),
@@ -487,6 +555,11 @@ function createTournamentRegistry(deps = {}) {
         ...summarize(entry),
         code: entry.code,
         connected: connectedHumans(entry),
+        // Held for an empty room, and since when: between them these say which
+        // games are waiting for somebody and which have been written off but
+        // not yet swept. The operator's Cancel is the broom that does not wait.
+        held: entry.status === 'running' && entry.director.isHeldForAbsence(),
+        heldSince: entry.awayHeldSince || null,
         pending: entry.pending.size,
         watchers: entry.watchers.size,
         tables: entry.director.tables.length,
@@ -943,8 +1016,9 @@ function createTournamentRegistry(deps = {}) {
       left: false,
     });
     // Demo seats, if asked for. They are entrants and nothing else: no
-    // registration row, so connectedHumans does not count them and a field of
-    // bots whose only human has gone still gets reaped like any other.
+    // registration row, so they are nobody's stake: a field of bots whose only
+    // human has stepped away holds rather than playing itself out while they
+    // are gone, and one whose last human has busted plays on and finishes.
     if (botCount(payload.bots) > 0) {
       botNames(botCount(payload.bots)).forEach((botName, i) => {
         const botUid = `bot:${entry.id}:${i + 1}`;
@@ -1002,7 +1076,7 @@ function createTournamentRegistry(deps = {}) {
       watching: new Map(),
       timer: null,
       waitingReason: null,
-      noHumansSince: null,
+      awayHeldSince: null,
       // Set by the restore guard: the field would not stay up, so it is kept
       // as it stood rather than seated, and heldField is what it stood as.
       held: false,
@@ -1596,7 +1670,6 @@ function createTournamentRegistry(deps = {}) {
     reg.socketId = socket.id;
     reg.disconnectedAt = null;
     reg.left = false;
-    entry.noHumansSince = null;
     socket.data.tournamentId = entry.id;
     socket.data.tournamentUid = uid;
     const entrant = entry.director.entrants.find((e) => e.uid === uid);
@@ -1607,6 +1680,10 @@ function createTournamentRegistry(deps = {}) {
       seat.player.isConnected = true;
       seat.player.disconnectedAt = null;
       resumeSeat(seat);
+      // Back at a seat with chips: whatever the field was holding for, it is
+      // not holding for it any more. Done here rather than left to the sweep
+      // so the first thing they see is the table moving again.
+      syncAwayHold(entry);
     }
     socket.emit('tournamentJoined', {
       id: entry.id,
@@ -1664,7 +1741,7 @@ function createTournamentRegistry(deps = {}) {
       }
       if (!refreshed) table.emitUpdate();
     }
-    if (connectedHumans(entry) === 0) entry.noHumansSince = now();
+    syncAwayHold(entry);
     emitState(entry);
   }
 
@@ -1816,9 +1893,9 @@ function createTournamentRegistry(deps = {}) {
     const refused = hostRunning(entry, uid);
     if (refused) return { error: refused };
     if (!entry.director.resume()) return { error: 'Not paused' };
-    // Everybody may have walked off during the pause; the short grace for an
-    // abandoned game starts again from here.
-    if (connectedHumans(entry) === 0) entry.noHumansSince = now();
+    // Everybody may have walked off during the pause, in which case the field
+    // goes straight from the host's pause into the hold for an empty room.
+    syncAwayHold(entry);
     persist();
     emitList();
     return { entry };
@@ -2157,15 +2234,21 @@ function createTournamentRegistry(deps = {}) {
         transferHost(entry);
       } else if (entry.status === 'running') {
         transferHost(entry);
-        // A pause is exactly when people walk away, so a paused field gets
-        // the long grace rather than the short one.
-        const grace = entry.director.isPaused() ? overdueAbandonMs : abandonGraceMs;
-        if (
-          connectedHumans(entry) === 0 &&
-          entry.noHumansSince !== null &&
-          t - entry.noHumansSince > grace
-        ) {
-          remove(entry, 'abandoned');
+        // A dropped socket used to start a two minute clock on the whole
+        // tournament, so locking a phone at the break ended the game for
+        // everybody. It holds instead: a seat whose player has gone is sat
+        // out, and a field with nobody left to play it stops dealing rather
+        // than dying. This is where that is decided, so every way a seat can
+        // empty - a disconnect, a walk-out, an elimination - lands here
+        // whether or not it remembered to say so.
+        syncAwayHold(entry);
+        // What is left of the reaper. A held field deals nothing and nobody
+        // is watching it, so the only thing it costs is one of the server's
+        // slots; but a game nobody comes back to must not sit in one forever.
+        // Cancelled rather than quietly dropped: the people who were in it
+        // are told what became of it.
+        if (entry.awayHeldSince !== null && t - entry.awayHeldSince > zombieHoldMs) {
+          cancelEntry(entry, 'nobody came back');
         }
       } else if (entry.status === 'finished') {
         if (t - entry.finishedAt > finishedTtlMs) remove(entry, 'expired');
@@ -2293,13 +2376,17 @@ function createTournamentRegistry(deps = {}) {
           // tournament down for; it falls back to its registrations.
         }
       }
-      // Nobody is connected to a field that has just been seated, and the
-      // clock the sweep abandons on is only ever started by a disconnect. So
-      // it starts here: a field nobody returns to within the grace is cleared
-      // the same as one everybody walked out of, instead of dealing to empty
-      // seats until the process next goes down. Seats that fold every hand
-      // never bust each other, so it would never finish on its own.
-      if (entry.status === 'running') entry.noHumansSince = entry.restoredAt;
+      // Nobody is connected to a field that has just been seated, so it comes
+      // back held rather than dealing to empty seats until the process next
+      // goes down. Seats that fold every hand never bust each other and the
+      // blind ladder stops climbing at its top, so such a field would never
+      // finish on its own; held, it deals nothing at all and waits for the
+      // people who were in it. The first sweep lays the hold on; this is only
+      // its clock, carried across the restart where the file has one so a game
+      // nobody is coming back to is not given a fresh window by every reboot.
+      if (entry.status === 'running') {
+        entry.awayHeldSince = Number(saved.awayHeldSince) || entry.restoredAt;
+      }
       tournaments.set(entry.id, entry);
       restored++;
     }

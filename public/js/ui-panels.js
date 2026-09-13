@@ -108,15 +108,20 @@ function paintBreakPlate() {
   if (!stage || !plate) return;
   const t = gameState && gameState.tournament;
   const onBreak = !!(t && t.isActive && t.onBreak && !gameState.isRunning && !window.mttFinished);
+  // A table holding because everybody stepped away clears the felt the same
+  // way a break does. It is the one thing the person who comes back needs to
+  // be told, and the middle of the table is where they are already looking.
+  const held = !!(window.mttField && window.mttField.awayHeld);
+  const holding = !!(t && t.isActive && held && !gameState.isRunning && !window.mttFinished);
   const sinceHand = Date.now() - _breakHandEndedAt;
   const settled = sinceHand >= BREAK_PLATE_DELAY_MS;
-  const show = onBreak && settled;
+  const show = (onBreak || holding) && settled;
   if (_breakPlateTimer) {
     clearTimeout(_breakPlateTimer);
     _breakPlateTimer = null;
   }
   // The break is on but the hand's result is still up: come back for it.
-  if (onBreak && !settled) {
+  if ((onBreak || holding) && !settled) {
     _breakPlateTimer = setTimeout(paintBreakPlate, BREAK_PLATE_DELAY_MS - sinceHand + 50);
   }
   const was = stage.classList.contains('on-break');
@@ -140,14 +145,18 @@ function paintBreakPlate() {
     TournamentField.offerAddOn(window.mttField);
   }
   if (!show) return;
+  document.getElementById('feltBreakTitle').textContent = held ? 'Holding' : 'On break';
+  // Frozen while the table holds, because the clock it counts is stopped too.
   document.getElementById('feltBreakClock').textContent = formatClock(_blindClockRemaining);
   const paused = !!(t.paused || (window.mttField && window.mttField.paused));
   const blinds =
     t.blinds.sb + '/' + t.blinds.bb + (t.blinds.ante ? ' · ante ' + t.blinds.ante : '');
   const addOns = window.mttField && window.mttField.addOnOpen ? ' · add-ons open' : '';
-  document.getElementById('feltBreakNote').textContent = paused
-    ? 'Paused by the host · back at ' + blinds
-    : 'play resumes at ' + blinds + addOns;
+  document.getElementById('feltBreakNote').textContent = held
+    ? 'Waiting for players to come back · your chips are safe'
+    : paused
+      ? 'Paused by the host · back at ' + blinds
+      : 'play resumes at ' + blinds + addOns;
 }
 
 function updateBlindClock() {
@@ -170,18 +179,26 @@ function updateBlindClock() {
     t.blinds.sb + '/' + t.blinds.bb + (t.blinds.ante ? ' · ante ' + t.blinds.ante : '');
   // The field summary is pushed every tick, so it knows a pause first.
   const paused = !!(t.paused || (window.mttField && window.mttField.paused));
-  document.getElementById('tbLevelLabel').textContent = paused
-    ? 'Paused · '
+  // Held for an empty room reads as its own thing. A table that says "paused"
+  // to the one person sitting at it is telling them to wait for a host who is
+  // not coming; this tells them what is actually being waited for.
+  const held = !!(window.mttField && window.mttField.awayHeld);
+  document.getElementById('tbLevelLabel').textContent = held
+    ? 'Holding · '
+    : paused
+      ? 'Paused · '
+      : t.onBreak
+        ? 'Break · '
+        : 'Level ' + levelNumber + ' · ';
+  document.getElementById('tbBlinds').textContent = held
+    ? 'waiting for players'
     : t.onBreak
-      ? 'Break · '
-      : 'Level ' + levelNumber + ' · ';
-  document.getElementById('tbBlinds').textContent = t.onBreak
-    ? 'back at ' + blindsText
-    : blindsText;
+      ? 'back at ' + blindsText
+      : blindsText;
   // Nothing follows the final level, so nothing to count down to.
   document.getElementById('tbNext').classList.toggle('hidden', !!t.finalLevel);
-  banner.classList.toggle('on-break', !!t.onBreak && !paused);
-  banner.classList.toggle('on-pause', paused);
+  banner.classList.toggle('on-break', !!t.onBreak && !paused && !held);
+  banner.classList.toggle('on-pause', paused || held);
   // How many are left in the tournament, which is not how many are left at this
   // table. gameState.players is this table only, so pairing its count with the
   // field's starting number read as a field count and was not one: two players
@@ -224,7 +241,7 @@ function updateBlindClock() {
   const fromField = summary && summary.isRunning && Number.isFinite(summary.nextLevelIn);
   _blindClockRemaining = fromField ? summary.nextLevelIn : t.timeUntilNextLevel;
   paintBlindClock();
-  if (paused) return;
+  if (paused || (summary && summary.awayHeld)) return;
   tournamentTimer = setInterval(() => {
     _blindClockRemaining = Math.max(0, _blindClockRemaining - 1);
     paintBlindClock();
@@ -308,7 +325,7 @@ function renderInfoHost() {
   const sig = show
     ? [
         isHost ? 'h' : 'e',
-        field.paused ? 'p' : 'r',
+        field.awayHeld ? 'w' : field.paused ? 'p' : 'r',
         field.level,
         field.onBreak ? 'b' : '',
         field.finalLevel ? 'f' : '',
@@ -353,9 +370,11 @@ function renderInfoHost() {
   controls.className = 'host-controls';
   if (isHost) {
     controls.appendChild(
-      button(field.paused ? 'Resume' : 'Pause', () =>
-        send(field.paused ? 'resumeTournament' : 'pauseTournament')
-      )
+      field.awayHeld
+        ? button('Waiting for players', () => {}, { disabled: true })
+        : button(field.paused ? 'Resume' : 'Pause', () =>
+            send(field.paused ? 'resumeTournament' : 'pauseTournament')
+          )
     );
     controls.appendChild(
       button('◀ Level', () => send('stepLevel', { delta: -1 }), {

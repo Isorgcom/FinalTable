@@ -36,10 +36,12 @@ test.beforeAll(async () => {
   process.env.SHOW_WINDOW_MS = '0';
   // Every test in this file creates a tournament against one in-process
   // server, and the default cap of eight is reached part way down the file.
-  // The short abandon grace also clears each finished test's table instead of
-  // leaving it dealing hands to nobody for the rest of the run.
+  // A finished test's table holds as soon as its pages close, so it deals
+  // nothing either way; the short write-off is only so the run does not carry
+  // fifty held games to the end of the file. A minute is the floor the server
+  // allows, and no single test here runs anywhere near that long.
   process.env.MAX_TOURNAMENTS = '50';
-  process.env.TOURNAMENT_ABANDON_GRACE_MS = '3000';
+  process.env.TOURNAMENT_ZOMBIE_HOLD_MS = '60000';
   // engine.js reads AUTO_TURN_DELAY_MS at load, and another spec in this worker may
   // already have loaded it. Drop every repo module so the env takes effect.
   for (const key of Object.keys(require.cache)) {
@@ -2035,6 +2037,57 @@ test('the banner reads the ante, a break and the final level, and the Info tab l
   await page.click('#tabInfo');
   await expect(page.locator('#panelInfoBody')).toContainText('Structure · Standard');
   await expect(page.locator('#panelInfoBody .structure-row')).toHaveCount(20);
+  expect(pageErrors).toEqual([]);
+});
+
+// A dropped connection used to start a clock on the whole tournament. It holds
+// now, and the felt has to say which of the two it is: "paused" tells the one
+// person left to wait for a host who may be the one who walked off.
+test('a table holding for an empty room says so, and not that the host paused it', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'HoldWatch');
+  await deal(page);
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 1');
+
+  // The field summary is pushed on every tick and would put the real flag back
+  // between the two lines below, so the tick is stopped first. What is being
+  // tested here is what the felt says, not how the field comes to say it; the
+  // server's half of this is pinned in the registry and director tests.
+  const entry = [...serverModule.registry.tournaments.values()].find((e) => e.status === 'running');
+  expect(entry).toBeTruthy();
+  clearInterval(entry.timer);
+  entry.timer = null;
+
+  // The hold stops the blind clock, so the field reports paused alongside it.
+  await page.evaluate(() => {
+    window.mttField = { ...(window.mttField || {}), paused: true, awayHeld: true };
+    updateBlindClock();
+  });
+  await expect(page.locator('#tbLevelLabel')).toContainText('Holding');
+  await expect(page.locator('#tbLevelLabel')).not.toContainText('Paused');
+  await expect(page.locator('#tbBlinds')).toHaveText('waiting for players');
+  await expect(page.locator('#tournamentBanner')).toHaveClass(/on-pause/);
+
+  // And the middle of the table, once the last hand has had its beat.
+  await page.evaluate(() => {
+    gameState.isRunning = false;
+    _breakHandEndedAt = Date.now() - 10000;
+    paintBreakPlate();
+  });
+  await expect(page.locator('#feltBreak')).toBeVisible();
+  await expect(page.locator('#feltBreakTitle')).toHaveText('Holding');
+  await expect(page.locator('#feltBreakNote')).toContainText('your chips are safe');
+
+  // Somebody back, and it is a table again.
+  await page.evaluate(() => {
+    window.mttField = { ...window.mttField, paused: false, awayHeld: false };
+    gameState.isRunning = true;
+    updateBlindClock();
+    paintBreakPlate();
+  });
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 1');
+  await expect(page.locator('#feltBreak')).toBeHidden();
   expect(pageErrors).toEqual([]);
 });
 

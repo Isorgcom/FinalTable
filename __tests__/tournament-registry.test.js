@@ -66,7 +66,7 @@ describe('tournament registry', () => {
       io,
       identity: makeIdentity(names),
       finishedTtlMs: 5000,
-      abandonGraceMs: 3000,
+      zombieHoldMs: 3000,
       hostTransferGraceMs: 2000,
       overdueAbandonMs: 20000,
       sweepMs: 1000,
@@ -230,19 +230,90 @@ describe('tournament registry', () => {
     expect(registry.tournaments.has(entry.id)).toBe(false);
   });
 
-  test('a running tournament with nobody connected is removed after the grace', () => {
+  test('an empty room holds the field, and only a hold nobody ends is written off', () => {
     const { entry, socket } = create({ startsAt: Date.now() + 60000 });
     const guest = makeSocket('sg');
     registry.join('g', { code: entry.code }, guest);
     registry.startNow(entry, 'h');
     registry.unbind(entry, 'h', socket);
     registry.unbind(entry, 'g', guest);
+    // Nobody left who could act, so the field holds rather than dealing on.
+    expect(entry.director.isHeldForAbsence()).toBe(true);
     jest.advanceTimersByTime(2000);
     expect(registry.tournaments.has(entry.id)).toBe(true);
     registry.bind(entry, 'g', makeSocket('sg2'));
+    // Somebody is back: the hold lifts at once rather than a sweep later.
+    expect(entry.director.isHeldForAbsence()).toBe(false);
     jest.advanceTimersByTime(3000);
     expect(registry.tournaments.has(entry.id)).toBe(true); // someone came back
     registry.unbind(entry, 'g', { id: 'sg2' });
+    jest.advanceTimersByTime(4000);
+    expect(registry.tournaments.has(entry.id)).toBe(false);
+  });
+
+  // The bug this replaced: a phone locking for two minutes ended the whole
+  // tournament, because the only human in a game against bots is the only
+  // registration, and a registration without a socket counted as nobody there.
+  test('a lone human stepping away holds their game and their chips', () => {
+    const { entry, socket } = create({ startsAt: Date.now() + 60000, bots: 5 });
+    registry.startNow(entry, 'h');
+    jest.advanceTimersByTime(1500);
+    const seat = entry.director.playerByUid('h');
+    expect(seat).toBeTruthy();
+    const chipsWhenTheyLeft = seat.player.chips;
+
+    registry.unbind(entry, 'h', socket);
+    expect(entry.director.isHeldForAbsence()).toBe(true);
+    // Long enough that the bots would have played several hands, had they been
+    // dealt any. Nothing moves: not the stack, not the blind clock.
+    jest.advanceTimersByTime(2500);
+    expect(registry.tournaments.has(entry.id)).toBe(true);
+    expect(entry.director.playerByUid('h').player.chips).toBe(chipsWhenTheyLeft);
+
+    registry.bind(entry, 'h', makeSocket('sh2', 'h'));
+    expect(entry.director.isHeldForAbsence()).toBe(false);
+    expect(entry.director.playerByUid('h').player.chips).toBe(chipsWhenTheyLeft);
+  });
+
+  // The hold is for people, not for tables. A field down to its demo seats has
+  // nobody's stack waiting on anything, so it plays itself out and finishes
+  // with standings rather than freezing in front of the person who just busted.
+  test('a field left to the bots plays on rather than holding', () => {
+    const { entry, socket } = create({ startsAt: Date.now() + 60000, bots: 5 });
+    registry.startNow(entry, 'h');
+    jest.advanceTimersByTime(1500);
+    expect(entry.director.playerByUid('h')).toBeTruthy();
+
+    // The only human gives up their seat and stays connected, watching. Asked
+    // for mid-hand, the seat goes when that hand ends.
+    expect(registry.forfeit(entry, 'h', socket).error).toBeUndefined();
+    jest.advanceTimersByTime(20000);
+    expect(entry.director.playerByUid('h')).toBeFalsy();
+    expect(entry.director.isHeldForAbsence()).toBe(false);
+    expect(entry.awayHeldSince).toBeNull();
+
+    // And dropping the watcher's socket does not hold it either.
+    registry.unbind(entry, 'h', socket);
+    jest.advanceTimersByTime(1500);
+    expect(entry.director.isHeldForAbsence()).toBe(false);
+  });
+
+  // Watching is not playing. Somebody on the rail has no chips in the middle
+  // and cannot act, so their open socket must not stand in for the people who
+  // have gone - otherwise a busted friend leaving a tab open keeps a dead game
+  // alive for ever.
+  test('the rail does not hold a game open', () => {
+    const { entry, socket } = create({ startsAt: Date.now() + 60000 });
+    const guest = makeSocket('sg');
+    registry.join('g', { code: entry.code }, guest);
+    registry.startNow(entry, 'h');
+    const railbird = makeSocket('st', 't');
+    expect(registry.watch('t', { rail: entry.rail }, railbird).error).toBeUndefined();
+
+    registry.unbind(entry, 'h', socket);
+    registry.unbind(entry, 'g', guest);
+    // The watcher is still connected and still counts for nothing.
+    expect(entry.director.isHeldForAbsence()).toBe(true);
     jest.advanceTimersByTime(4000);
     expect(registry.tournaments.has(entry.id)).toBe(false);
   });
@@ -477,20 +548,20 @@ describe('tournament registry', () => {
     second.stop();
   });
 
-  // The abandonment clock was only started by a disconnect, so a running field
-  // restored on boot - every seat socketless, nobody having disconnected -
-  // never started it, and dealt to nobody until the next restart, which seated
-  // it again. Seen on a dev box: four fields from a chat test, a day later,
-  // at the top of the ladder with everybody still in, because seats that fold
-  // every hand only ever trade blinds.
-  test('a restored field nobody comes back to is abandoned after the grace', () => {
+  // A running field restored on boot has every seat socketless, so it comes
+  // back held and deals nothing until somebody returns. Before the hold it
+  // dealt to empty seats until the next restart, which seated it again. Seen
+  // on a dev box: four fields from a chat test, a day later, at the top of the
+  // ladder with everybody still in, because seats that fold every hand only
+  // ever trade blinds and the ladder stops climbing at its top.
+  test('a restored field nobody comes back to is written off after the hold', () => {
     const store = makeStore();
     const boot = () =>
       createTournamentRegistry({
         io,
         identity: makeIdentity(names),
         sweepMs: 1000,
-        abandonGraceMs: 3000,
+        zombieHoldMs: 3000,
         store,
         tableOptions: { actionTimeoutMs: 0 },
         connectedSockets: () => live.values(),
@@ -512,10 +583,11 @@ describe('tournament registry', () => {
     expect(second.restore()).toBe(1);
     const back = second.tournaments.get(entry.id);
     expect(back.status).toBe('running');
-    // Still there inside the grace...
+    // Held rather than dealing, because there is nobody there to play it...
     jest.advanceTimersByTime(2500);
     expect(second.tournaments.has(entry.id)).toBe(true);
-    // ...and gone once it has passed with nobody back.
+    expect(back.director.isHeldForAbsence()).toBe(true);
+    // ...and written off once the hold has stood that long with nobody back.
     jest.advanceTimersByTime(1500);
     expect(second.tournaments.has(entry.id)).toBe(false);
     second.flush();
@@ -1643,7 +1715,7 @@ describe('the host controls in the registry', () => {
       io,
       identity: makeIdentity(names),
       sweepMs: 1000,
-      abandonGraceMs: 3000,
+      zombieHoldMs: 3000,
       overdueAbandonMs: 20000,
       hostTransferGraceMs: 2000,
       store: withStore,
@@ -1822,18 +1894,30 @@ describe('the host controls in the registry', () => {
     registry = makeRegistry(store); // for afterEach
   });
 
-  test('a paused game with nobody connected waits the long grace, not the short one', () => {
+  // The two holds must not eat each other. A host who stops the clock and then
+  // walks off with everybody else leaves a field held for both reasons, and
+  // the one that lifts when somebody comes back must give back only what it
+  // took: the room is no longer empty, and the host's pause is still on.
+  test('a host pause that empties out holds as well, and each lifts on its own', () => {
     const entry = running();
     expect(registry.pause(entry, 'h').entry).toBe(entry);
     registry.unbind(entry, 'h', live.get('sh'));
     registry.unbind(entry, 'g', live.get('sg'));
     registry.unbind(entry, 't', live.get('st'));
-    expect(entry.noHumansSince).not.toBeNull();
+    expect(entry.director.isHeldForAbsence()).toBe(true);
+    expect(entry.awayHeldSince).not.toBeNull();
+    jest.advanceTimersByTime(2000);
+    expect(registry.tournaments.has(entry.id)).toBe(true);
+
+    registry.bind(entry, 'h', makeSocket('sh9', 'h'));
+    expect(entry.director.isHeldForAbsence()).toBe(false);
+    expect(entry.awayHeldSince).toBeNull();
+    // Still paused, because that was the host's doing and nobody undid it.
+    expect(entry.director.isPaused()).toBe(true);
     jest.advanceTimersByTime(6000);
     expect(registry.tournaments.has(entry.id)).toBe(true);
     expect(registry.resume(entry, 'h').entry).toBe(entry);
-    jest.advanceTimersByTime(4000);
-    expect(registry.tournaments.has(entry.id)).toBe(false);
+    expect(entry.director.isPaused()).toBe(false);
   });
 
   test('a host move is made and reported, and refused when it would unbalance', () => {
@@ -1873,7 +1957,7 @@ describe('the rail', () => {
       io,
       identity: anyIdentity(),
       sweepMs: 1000,
-      abandonGraceMs: 3000,
+      zombieHoldMs: 3000,
       overdueAbandonMs: 20000,
       hostTransferGraceMs: 2000,
       pendingGraceMs: 4000,
@@ -2067,7 +2151,8 @@ describe('the rail', () => {
     registry.watch('w', { rail: entry.rail }, sw2);
     registry.unbind(entry, 'h', live.get('sh'));
     registry.unbind(entry, 'g', live.get('sg'));
-    expect(entry.noHumansSince).not.toBeNull();
+    expect(entry.director.isHeldForAbsence()).toBe(true);
+    expect(entry.awayHeldSince).not.toBeNull();
     jest.advanceTimersByTime(4500);
     expect(registry.tournaments.has(entry.id)).toBe(false);
     expect(sentTo('sw2', 'leftTournament')).toEqual([{ id: entry.id, reason: 'over' }]);
@@ -2171,7 +2256,7 @@ describe('re-entry and the add-on in the registry', () => {
       io,
       identity: makeIdentity(names),
       sweepMs: 1000,
-      abandonGraceMs: 3000,
+      zombieHoldMs: 3000,
       overdueAbandonMs: 20000,
       hostTransferGraceMs: 2000,
       store: withStore,
