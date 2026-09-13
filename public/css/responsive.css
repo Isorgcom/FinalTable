@@ -52,10 +52,9 @@
     margin-left: 4px;
     padding: 1px 3px;
   }
-  .community-cards .card,
-  .community-cards .card-back {
-    width: 55px;
-    height: 77px;
+  :root {
+    --board-card-w: 55px;
+    --board-card-h: 77px;
   }
 }
 @media (max-width: 768px) {
@@ -169,26 +168,13 @@
   .player-hole-cards {
     gap: 2px;
   }
-  .community-cards {
-    gap: 4px;
-  }
-  .community-cards .card {
-    width: 40px;
-    height: 56px;
-  }
-  .community-cards .card-rank {
-    font-size: 0.9rem;
-  }
-  .community-cards .card-suit {
-    font-size: 1rem;
-  }
-  .community-cards .card-corner,
-  .community-cards .card-corner-br {
-    font-size: 0.35rem;
-  }
-  .community-cards .card-back {
-    width: 40px;
-    height: 56px;
+  :root {
+    --board-card-w: 40px;
+    --board-card-h: 56px;
+    --board-rank: 0.9rem;
+    --board-suit: 1rem;
+    --board-corner: 0.35rem;
+    --board-gap: 4px;
   }
   .actions-panel {
     padding: 6px 5px;
@@ -325,6 +311,18 @@
     padding: 2px 4px;
     gap: 3px;
   }
+  /* Your own cards are the size of the board's, which is taller than the seat
+     had spare here: the plate below them gives the height back rather than the
+     cards going small again. Without it this chair reaches its neighbour by
+     about five pixels, which is the only place on any screen that it does. */
+  .player-seat.is-me .player-info {
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: -2px;
+  }
+  .player-seat.is-me .player-hole-cards {
+    margin-bottom: 2px;
+  }
   .seat-avatar {
     width: 18px;
     height: 18px;
@@ -357,18 +355,11 @@
   }
 }
 @media (min-width: 1600px) {
-  .community-cards .card,
-  .community-cards .card-back {
-    width: 70px;
-    height: 98px;
-  }
-  .community-cards .card-rank {
-    font-size: 1.8rem;
-    transform: translate(-50%, -65%);
-  }
-  .community-cards .card-suit {
-    font-size: 1.8rem;
-    transform: translate(-50%, 20%);
+  :root {
+    --board-card-w: 70px;
+    --board-card-h: 98px;
+    --board-rank: 1.8rem;
+    --board-suit: 1.8rem;
   }
 }
 /* Landscape phones: tight vertical space */
@@ -436,8 +427,8 @@
     transform: translate(-50%, -50%);
     --pot-gap: 6px;
   }
-  .community-cards {
-    gap: 3px;
+  :root {
+    --board-gap: 3px;
   }
   /* The pot lies down at this size: a column of pile-over-number is taller
      than the clearance between the board and the far seat's bet stack. */
@@ -447,20 +438,12 @@
     gap: 6px;
     --pot-chip: 11px;
   }
-  .community-cards .card,
-  .community-cards .card-back {
-    width: 34px;
-    height: 48px;
-  }
-  .community-cards .card-rank {
-    font-size: 0.78rem;
-  }
-  .community-cards .card-suit {
-    font-size: 0.86rem;
-  }
-  .community-cards .card-corner,
-  .community-cards .card-corner-br {
-    font-size: 0.3rem;
+  :root {
+    --board-card-w: 34px;
+    --board-card-h: 48px;
+    --board-rank: 0.78rem;
+    --board-suit: 0.86rem;
+    --board-corner: 0.3rem;
   }
   .pot-amount {
     font-size: 0.82rem;

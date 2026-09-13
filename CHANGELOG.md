@@ -13,6 +13,16 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Changed
+
+- Your own two cards are now the size of the cards in the middle of the table.
+  They were the smallest thing on the felt, which is a strange place to put the
+  hand you are actually reading. Everybody else's stay as they were: eight
+  seats of board-sized cards is what crowds a table. They match at every
+  window size, including where the board itself changes size, and at phone
+  widths the name plate under them gives up the room rather than the cards
+  going small again.
+
 ## 0.12.0 - 2026-09-13
 
 ### Added

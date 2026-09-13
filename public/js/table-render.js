@@ -676,6 +676,11 @@ function updateSeatDynamic(seat, player, ctx) {
   // only on your own seat. ctx carries the offer so every seat in a pass
   // agrees about it.
   seat.classList.toggle('can-show', player.id === myId && !!ctx.canShow);
+  // Your own seat, so its two cards can be the size of the ones in the middle
+  // of the table. Nobody else's are: the hand you read should not be the
+  // smallest thing on the felt, and eight seats of board-sized cards is what
+  // crowds one.
+  seat.classList.toggle('is-me', player.id === myId);
   // The seat that took the pot. At showdown the cards carry the story, but a
   // hand won by everyone folding reveals nothing, and that ending should not
   // be silent.

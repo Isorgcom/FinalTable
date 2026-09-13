@@ -346,9 +346,38 @@
   transform: translate(-50%, -60%);
   z-index: 10;
 }
+/* What a card in the middle of the table is. Named because two places have to
+   agree on it: the board itself, and the viewer's own two cards, which match it
+   so that the hand you are actually reading is not the smallest thing on the
+   felt. Every width that resizes the board resets these, and both readers
+   follow. Nobody else's hole cards are in this - eight seats of board-sized
+   cards is what crowds a table. */
+:root {
+  --board-card-w: 60px;
+  --board-card-h: 84px;
+  --board-rank: 1.4rem;
+  --board-suit: 1.4rem;
+  --board-corner: 0.6rem;
+  --board-gap: 8px;
+}
 .community-cards {
   display: flex;
-  gap: 8px;
+  gap: var(--board-gap);
+}
+.community-cards .card,
+.community-cards .card-back {
+  width: var(--board-card-w);
+  height: var(--board-card-h);
+}
+.community-cards .card-rank {
+  font-size: var(--board-rank);
+}
+.community-cards .card-suit {
+  font-size: var(--board-suit);
+}
+.community-cards .card-corner,
+.community-cards .card-corner-br {
+  font-size: var(--board-corner);
 }
 .pot-display {
   position: absolute;
@@ -1374,6 +1403,40 @@
 .player-hole-cards .card-back {
   width: 48px;
   height: 67px;
+}
+
+/* Your own two cards, the size of the board. One class deeper than the rules
+   above, so it wins at every width without a breakpoint of its own: the
+   variables do the travelling. The base .card is untouched, which is what
+   keeps the replay panel's cards - they carry .card too - out of all this. */
+.player-seat.is-me .player-hole-cards {
+  gap: var(--board-gap);
+}
+.player-seat.is-me .player-hole-cards .card,
+.player-seat.is-me .player-hole-cards .card-back {
+  width: var(--board-card-w);
+  height: var(--board-card-h);
+}
+.player-seat.is-me .player-hole-cards .card-rank {
+  font-size: var(--board-rank);
+}
+.player-seat.is-me .player-hole-cards .card-suit {
+  font-size: var(--board-suit);
+}
+.player-seat.is-me .player-hole-cards .card-corner,
+.player-seat.is-me .player-hole-cards .card-corner-br {
+  /* A board-sized card carries its corner indices, including at the widths
+     where a small hole card gives them up for want of room. */
+  display: block;
+  font-size: var(--board-corner);
+}
+.player-seat.is-me .player-hole-cards .card-corner {
+  top: 3px;
+  left: 4px;
+}
+.player-seat.is-me .player-hole-cards .card-corner-br {
+  bottom: 3px;
+  right: 4px;
 }
 
 /* D/SB/BB chips */
