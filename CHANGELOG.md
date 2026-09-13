@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.11.0 - 2026-09-13
+
 ### Added
 
 - Whoever made a tournament can end it while it runs, and goes on being able
@@ -47,11 +49,9 @@ Release on GitHub to go with it.
   under the clock, with No thanks and Take it on it. It is not a dialog and
   covers nothing: the clock above it is what says how long there is to decide,
   which the dialog used to hide. Saying no puts it away for that break, and the
-  Info tab and the lobby card still hold it. It was only
-  ever a block in the Info tab, and the side panel opens on Chat, so a whole
-  break could go by without a player knowing the offer had been on the table.
-  Saying no leaves it alone; the Info tab and the lobby card keep it for as
-  long as the break lasts.
+  Info tab and the lobby card still hold it. It was only ever a block in the
+  Info tab before, and the side panel opens on Chat, so a whole break could go
+  by without a player knowing the offer had been on the table at all.
 - Busting out, saying no to the re-entry offer and going back to the lobby no
   longer costs you the way back in. The game's card under **Your tournaments**
   carries a **Re-enter** button for as long as the window is open, and one
@@ -70,6 +70,12 @@ Release on GitHub to go with it.
   than one table; with one table left there is nobody to wait for, so the
   bubble is announced on the felt and in the Info tab without it. Nothing
   about the waiting itself changes while there is more than one table.
+- The banner over the felt no longer loses the end of a long line. It is held
+  to the lane between the two top chairs and its lines did not wrap, so a break
+  saying where play resumes, and the bubble badge, ran off the end: past the
+  badge's own background the text was dark on a dark felt, and "3 left, 2 paid"
+  simply stopped after "2 p". The lines fold now, and each number stays with
+  the word it belongs to.
 - The Watch button on a running game's lobby card no longer sits on top of the
   button beside it. Join late and Watch were drawn in the same place, so the
   way into a game with late registration open was covered by the way to the
