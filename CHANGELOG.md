@@ -13,13 +13,7 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
-### Changed
-
-- Fold is switched off while checking is free, instead of asking whether you
-  meant it. Folding when a check costs nothing throws the hand away for
-  nothing, so the button is simply dimmed until there is a bet to fold to. The
-  "Fold for nothing?" question that used to appear afterwards is gone: a dialog
-  on a clock was a worse interruption than the mistake it guarded against.
+## 0.12.0 - 2026-09-13
 
 ### Added
 
@@ -37,6 +31,14 @@ Release on GitHub to go with it.
   nobody contested; a fold shown after a showdown rides the pause that is
   already there. `SHOW_WINDOW_MS` sets the five seconds, and zero switches the
   whole thing off.
+
+### Changed
+
+- Fold is switched off while checking is free, instead of asking whether you
+  meant it. Folding when a check costs nothing throws the hand away for
+  nothing, so the button is simply dimmed until there is a bet to fold to. The
+  "Fold for nothing?" question that used to appear afterwards is gone: a dialog
+  on a clock was a worse interruption than the mistake it guarded against.
 
 ## 0.11.0 - 2026-09-13
 
