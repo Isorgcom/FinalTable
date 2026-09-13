@@ -34,6 +34,12 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- The add-on asks. When the break opens it, everyone still seated is offered
+  it there and then, the way a bust-out offers the way back in. It was only
+  ever a block in the Info tab, and the side panel opens on Chat, so a whole
+  break could go by without a player knowing the offer had been on the table.
+  Saying no leaves it alone; the Info tab and the lobby card keep it for as
+  long as the break lasts.
 - Busting out, saying no to the re-entry offer and going back to the lobby no
   longer costs you the way back in. The game's card under **Your tournaments**
   carries a **Re-enter** button for as long as the window is open, and one

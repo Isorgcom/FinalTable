@@ -31,9 +31,47 @@
     btn.classList.toggle('hidden', !show);
   }
 
+  // The add-on is an offer on a clock: it opens when the break starts and it
+  // is gone when the break ends, and there is nothing to prompt it later the
+  // way a bust-out prompts the way back in. A player with the Chat tab open -
+  // which is the tab the panel opens on - would watch the whole window go by
+  // without being told it was there. So it asks, once, and the Info tab and
+  // the lobby card keep it for anybody who says no and changes their mind.
+  let addOnAsked = false;
+  async function offerAddOn(state) {
+    const you = state && state.you;
+    const open = !!(
+      state &&
+      state.status === 'running' &&
+      !window.mttFinished &&
+      you &&
+      you.canAddOn
+    );
+    if (!open) {
+      // Taken, or the break is over: the next one that opens asks again.
+      addOnAsked = false;
+      return;
+    }
+    if (addOnAsked) return;
+    // Latched before the await, so the pushes that arrive while the dialog is
+    // up do not stack a second one behind it.
+    addOnAsked = true;
+    if (typeof window.showConfirmDialog !== 'function') return;
+    const cost = state.buyIn ? ` for another buy-in of ${state.buyIn.toLocaleString()}` : '';
+    const ok = await window.showConfirmDialog({
+      title: 'The add-on is open',
+      message:
+        `A starting stack more on top of what you have${cost}, once, ` + 'until the break ends.',
+      confirmLabel: 'Take it',
+      cancelLabel: 'No thanks',
+    });
+    if (ok && window.Lobby && typeof Lobby.takeAddOn === 'function') Lobby.takeAddOn();
+  }
+
   function render(state) {
     window.mttField = state || null;
     paintForfeit(state);
+    offerAddOn(state);
     if (window.SidePanel) SidePanel.refresh('info');
     // The felt's banner reads the same summary, and the bubble can turn on or
     // off on a push that carries no game state with it.

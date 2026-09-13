@@ -2085,6 +2085,41 @@ test('the rail link brings a watcher to the table, who can talk but not play', a
   await railContext.close();
 });
 
+test('the add-on asks when the break opens it, rather than waiting in a tab', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'AddOnee');
+  await deal(page);
+  // The panel opens on Chat, which is the whole point: nothing here touches
+  // the Info tab, and the offer still has to reach the player.
+  await expect(page.locator('#appDialogModal')).toBeHidden();
+
+  // The server deciding the add-on is open is what a break amounts to here;
+  // what the felt does with it is what this checks.
+  await page.evaluate(() => {
+    const field = window.mttField || {};
+    TournamentField.render({
+      ...field,
+      status: 'running',
+      buyIn: 100,
+      onBreak: true,
+      you: { ...(field.you || {}), canAddOn: true, canReenter: false },
+    });
+  });
+  await expect(page.locator('#appDialogTitle')).toContainText('add-on is open');
+  await expect(page.locator('#appDialogBody')).toContainText('100');
+
+  // Saying no leaves it alone rather than asking again on the next push.
+  await page.click('#btnAppDialogCancel');
+  await expect(page.locator('#appDialogModal')).toBeHidden();
+  await page.evaluate(() => {
+    const field = window.mttField || {};
+    TournamentField.render({ ...field, you: { ...field.you, canAddOn: true } });
+  });
+  await page.waitForTimeout(300);
+  await expect(page.locator('#appDialogModal')).toBeHidden();
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('the Info tab offers the way back in, and the add-on, when the server says so', async ({
   page,
 }) => {

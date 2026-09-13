@@ -451,8 +451,11 @@ otherwise when making it. With re-entry open through a level, a busted
 player can buy a fresh starting stack and sit down again, the way a late
 entrant does, as many times as it takes while the window is open; with the
 add-on on, everyone still seated during the first break can buy one
-starting stack more, once. Asked for while the table is still finishing a
-hand, the add-on lands when the hand does. Each costs a buy-in, and each
+starting stack more, once. The break asks each of them as it opens, so the
+offer does not have to be gone looking for; saying no leaves it where it is,
+in the Info tab and on the game's lobby card, for as long as the break lasts.
+Asked for while the table is still finishing a hand, the add-on lands when
+the hand does. Each costs a buy-in, and each
 goes into the prize pool. The host can remove a player who abuses it.
 
 **Tables balance and break** as players bust: no table is ever more than one
