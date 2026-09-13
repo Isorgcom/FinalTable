@@ -197,7 +197,10 @@ function updateBlindClock() {
       const left = summary.remaining;
       const paid = summary.paidPlaces;
       const how = summary.handForHand ? ' · hand for hand' : '';
-      bubble.textContent = `ON THE BUBBLE · ${left} left, ${paid} paid${how}`;
+      // The badge is wider than the lane the banner sits in, so it wraps. A
+      // hard space keeps each number with the word it belongs to, and the
+      // break falls between the phrases rather than through one.
+      bubble.textContent = `ON THE BUBBLE · ${left}\u00a0left, ${paid}\u00a0paid${how}`;
     }
   }
   if (banner2) banner2.classList.toggle('on-bubble', onBubble);

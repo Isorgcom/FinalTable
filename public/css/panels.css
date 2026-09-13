@@ -646,7 +646,13 @@
   z-index: 55;
   text-align: center;
   font-size: 0.7rem;
-  white-space: nowrap;
+  /* Lines wrap rather than run out of the box. The width here is the lane
+     between the two top chairs, and it is not negotiable, so the long lines -
+     a break saying where play resumes, the bubble badge - have to fold. They
+     used to spill instead: past the badge's own background the text was dark
+     on a dark felt, so the end of "3 left, 2 paid" simply was not there. */
+  white-space: normal;
+  overflow-wrap: break-word;
   color: var(--cream);
 }
 /* The bubble. Amber because it is a warning and not good news, and loud enough
@@ -686,6 +692,8 @@
 .tournament-banner .tb-bubble {
   margin-top: 4px;
   padding: 3px 10px;
+  /* Two lines of badge rather than one that loses its last word. */
+  line-height: 1.35;
   border-radius: 3px;
   background: rgba(201, 168, 76, 0.92);
   color: var(--bg-deep);
