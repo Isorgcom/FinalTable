@@ -13,6 +13,14 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Changed
+
+- Fold is switched off while checking is free, instead of asking whether you
+  meant it. Folding when a check costs nothing throws the hand away for
+  nothing, so the button is simply dimmed until there is a bet to fold to. The
+  "Fold for nothing?" question that used to appear afterwards is gone: a dialog
+  on a clock was a worse interruption than the mistake it guarded against.
+
 ### Added
 
 - Showing a hand nobody paid to see. When a hand ends, anybody whose cards

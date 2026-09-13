@@ -301,7 +301,9 @@ how the host asks.
 
 When it is your turn the action bar appears: **fold**, **check**, **call**,
 **raise** (a slider and a number box, with **3bb**, **4bb**, **5bb** and
-**Pot** presets), and **all in**. You have **25 seconds** to act. **+30s**
+**Pot** presets), and **all in**. **fold** is dimmed while checking is free,
+because giving the hand up when it costs nothing to stay is never what
+anybody means to do; it comes back the moment there is a bet to fold to. You have **25 seconds** to act. **+30s**
 adds thirty seconds once per hand.
 
 If your clock runs out the seat is not played for you: it folds to a bet,

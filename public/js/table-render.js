@@ -1294,6 +1294,13 @@ function updateActionsPanel() {
   // Show/hide check vs call
   document.getElementById('btnCheck').style.display = toCall === 0 ? '' : 'none';
   document.getElementById('btnCall').style.display = toCall > 0 ? '' : 'none';
+  // Folding when checking is free throws the hand away for nothing: no price
+  // to escape, no information to protect. The button is off rather than asking
+  // whether you meant it - a question on a clock is worse than the mistake,
+  // and there is nothing here that anybody means to do.
+  const foldBtn = document.getElementById('btnFold');
+  foldBtn.disabled = toCall === 0;
+  foldBtn.title = toCall === 0 ? 'Checking is free here' : '';
   if (toCall > 0) {
     const callCost = Math.min(toCall, me.chips);
     if (callCost >= me.chips) {

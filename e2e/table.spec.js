@@ -636,9 +636,7 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
   expect(pageErrors).toEqual([]);
 });
 
-test('folding when checking is free asks first, and folding to a bet does not', async ({
-  page,
-}) => {
+test('fold is switched off while checking is free, and nothing is asked', async ({ page }) => {
   test.setTimeout(120000);
   const pageErrors = await seatAtTournamentTable(page, 'FoldGuard');
   await deal(page);
@@ -672,14 +670,18 @@ test('folding when checking is free asks first, and folding to a bet does not', 
   }
   expect(await owed()).toBe(0);
 
-  // Folding here would give the hand up for nothing, so it is questioned.
-  await page.locator('#btnFold').click();
-  await expect(page.locator('#appDialogModal')).not.toHaveClass(/hidden/);
-  await expect(page.locator('#appDialogTitle')).toContainText(/fold/i);
+  // Folding here would give the hand up for nothing, so the button is off.
+  // It used to ask afterwards whether that was really meant; a question on a
+  // clock was the worse interruption.
+  const fold = page.locator('#btnFold');
+  await expect(fold).toBeDisabled();
+  await expect(fold).toHaveAttribute('title', 'Checking is free here');
 
-  // Backing out leaves the hand exactly as it was: still your turn, still in.
-  await page.locator('#btnAppDialogCancel').click();
-  await expect(page.locator('#appDialogModal')).toHaveClass(/hidden/);
+  // Pressing it anyway does nothing at all: no fold, and no dialog in its
+  // place. Forced, because a disabled button takes no ordinary click.
+  await fold.dispatchEvent('click');
+  await page.waitForTimeout(400);
+  await expect(page.locator('#appDialogModal')).toBeHidden();
   expect(
     await page.evaluate(() => {
       const me = gameState.players.find((p) => p.id === myId);
@@ -687,18 +689,8 @@ test('folding when checking is free asks first, and folding to a bet does not', 
     })
   ).toBe(false);
 
-  // Going through with it does fold.
-  await page.locator('#btnFold').click();
-  await expect(page.locator('#appDialogModal')).not.toHaveClass(/hidden/);
-  await page.locator('#btnAppDialogConfirm').click();
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const me = gameState.players.find((p) => p.id === myId);
-        return me ? me.folded : false;
-      })
-    )
-    .toBe(true);
+  // And checking is still there to be done, which is the whole argument.
+  await expect(page.locator('#btnCheck')).toBeVisible();
 
   expect(pageErrors).toEqual([]);
 });

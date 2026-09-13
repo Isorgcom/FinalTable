@@ -1819,6 +1819,15 @@
 .action-btn:active {
   opacity: 0.8;
 }
+/* Fold, while checking is free. Dimmed and inert rather than gone, so the bar
+   does not change shape under a hand that is reaching for it. */
+.action-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.action-btn:disabled:active {
+  opacity: 0.3;
+}
 /* A press has to say so. The action bar can vanish on the same frame the click
    lands - fold and check end your turn outright - so a button that gives
    nothing back leaves you unsure whether the table heard you at all. Fired on
