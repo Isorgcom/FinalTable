@@ -310,10 +310,36 @@ function init() {
   document.getElementById('btnFold').addEventListener('click', () => fold());
   document.getElementById('btnCheck').addEventListener('click', () => sendAction('check'));
   document.getElementById('btnCall').addEventListener('click', () => sendAction('call'));
+  // On a phone the bar has room for three decisions and no more, so raise is
+  // two taps: the first opens the sizing, the second sends it. Anywhere the
+  // sizing is already on screen it stays one tap, as it always was.
   document.getElementById('btnRaise').addEventListener('click', () => {
+    const panel = document.getElementById('actionsPanel');
+    if (panel.classList.contains('is-compact') && !panel.classList.contains('is-sizing')) {
+      panel.classList.add('is-sizing');
+      if (typeof updateActionsPanel === 'function') updateActionsPanel();
+      return;
+    }
     const amount = parseInt(document.getElementById('raiseInput').value) || 0;
     sendAction('raise', amount);
   });
+  document.getElementById('btnRaiseBack').addEventListener('click', () => {
+    const panel = document.getElementById('actionsPanel');
+    panel.classList.remove('is-sizing');
+    if (typeof updateActionsPanel === 'function') updateActionsPanel();
+  });
+  // Which shape the bar is in. A phone held upright has no room for the row
+  // the desktop lays out; landscape already had its own rules and keeps them.
+  const compact = window.matchMedia('(max-width: 768px) and (orientation: portrait)');
+  const paintCompact = () => {
+    const panel = document.getElementById('actionsPanel');
+    if (!panel) return;
+    panel.classList.toggle('is-compact', compact.matches);
+    if (!compact.matches) panel.classList.remove('is-sizing');
+    if (typeof updateActionsPanel === 'function') updateActionsPanel();
+  };
+  compact.addEventListener('change', paintCompact);
+  paintCompact();
   document.getElementById('btnAllIn').addEventListener('click', () => sendAction('allin'));
   document.getElementById('presetGroup').addEventListener('click', (e) => {
     const btn = e.target.closest('.preset-btn');

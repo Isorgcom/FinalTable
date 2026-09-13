@@ -1269,6 +1269,9 @@ function updateActionsPanel() {
   const panel = document.getElementById('actionsPanel');
   if (!gameState || !gameState.isMyTurn) {
     panel.classList.add('hidden');
+    // A raise opened and never sent belongs to the turn that opened it, not
+    // to whatever the next one asks.
+    panel.classList.remove('is-sizing');
     return;
   }
   panel.classList.remove('hidden');
@@ -1276,6 +1279,7 @@ function updateActionsPanel() {
   const me = gameState.players.find((p) => p.id === myId);
   if (!me || me.autoPlay) {
     panel.classList.add('hidden');
+    panel.classList.remove('is-sizing');
     return;
   }
 
@@ -1365,7 +1369,19 @@ function updateActionsPanel() {
       const npEl = document.getElementById('raiseNeedPay');
       if (npEl) npEl.textContent = `to ${raiseTo} · +${Math.max(0, raiseTo - me.bet)}`;
       renderRaisePresets(me, minRaise, maxRaiseTo);
+      // With the sizing open the raise button is the confirm, so it says what
+      // pressing it will cost. Closed, it is the way in and says only that.
+      const raiseBtn = document.getElementById('btnRaise');
+      if (raiseBtn) {
+        const sizing =
+          panel.classList.contains('is-compact') && panel.classList.contains('is-sizing');
+        raiseBtn.textContent = sizing ? `raise ${raiseTo}` : 'raise';
+      }
     }
+  }
+  // Nothing left to size: the way in should not be a door to an empty room.
+  if (document.getElementById('btnRaise').style.display === 'none') {
+    panel.classList.remove('is-sizing');
   }
 }
 

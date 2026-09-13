@@ -303,7 +303,15 @@ When it is your turn the action bar appears: **fold**, **check**, **call**,
 **raise** (a slider and a number box, with **3bb**, **4bb**, **5bb** and
 **Pot** presets), and **all in**. **fold** is dimmed while checking is free,
 because giving the hand up when it costs nothing to stay is never what
-anybody means to do; it comes back the moment there is a bet to fold to. You have **25 seconds** to act. **+30s**
+anybody means to do; it comes back the moment there is a bet to fold to.
+
+On a phone held upright there is room for three decisions and no more, so the
+bar is **fold**, **check** or **call**, and **raise**, each the width of a
+thumb. Raise is two taps there: the first opens the presets, the slider and the
+amount, and the second, which says what it will cost, sends it. **back** leaves
+the hand as it was. Everything else stays one tap.
+
+You have **25 seconds** to act. **+30s**
 adds thirty seconds once per hand.
 
 If your clock runs out the seat is not played for you: it folds to a bet,

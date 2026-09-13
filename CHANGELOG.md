@@ -15,6 +15,20 @@ Release on GitHub to go with it.
 
 ### Changed
 
+- The action bar on a phone held upright. It was four rows deep and a third of
+  the screen, with nothing on it big enough to hit reliably: the mobile layout
+  the stylesheet already had only applied in landscape, so portrait fell
+  through to the desktop button widths inside a 390px bar and wrapped three
+  times. It is one row now - **fold**, **check** or **call**, **raise** - each
+  a thumb wide and tall, with the raise presets, slider and amount a tap behind
+  the raise button and a confirm that says what it will cost. The slider gets
+  the width of the bar instead of the fifty-odd pixels left beside the number.
+  **+30s** moved up beside your stack, where it cannot push the buttons onto
+  another line. Nothing changes on a desktop or in landscape.
+- The bar no longer sits in the home indicator at the bottom of a phone screen.
+  The same goes for the sit-out banner and the row of early choices, which
+  share that slot.
+
 - Your own two cards are now the size of the cards in the middle of the table.
   They were the smallest thing on the felt, which is a strange place to put the
   hand you are actually reading. Everybody else's stay as they were: eight

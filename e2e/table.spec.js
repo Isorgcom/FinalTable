@@ -246,6 +246,56 @@ test('requesting time extends the clock once per hand', async ({ page }) => {
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
+  test('the action bar is one row of thumb-sized buttons, with raise a tap away', async ({
+    page,
+  }) => {
+    const pageErrors = await seatAtTournamentTable(page, 'ThumbTester');
+    await deal(page);
+    const panel = page.locator('#actionsPanel');
+    await expect(panel).not.toHaveClass(/hidden/, { timeout: 20000 });
+    await expect(panel).toHaveClass(/is-compact/);
+
+    // One row of decisions. Held upright there is room for three and no more,
+    // and the bar grows upward over the felt when it wraps - which is how it
+    // came to be four rows deep and a third of the screen.
+    const rows = await page.evaluate(() => {
+      const kids = [...document.querySelector('.action-row').children].filter(
+        (n) => n.offsetParent !== null
+      );
+      return new Set(kids.map((n) => Math.round(n.getBoundingClientRect().top))).size;
+    });
+    expect(rows).toBe(1);
+
+    // Every target a thumb can find. Nothing here reached 44px before.
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll('#actionsPanel button:not(.hidden)')]
+        .filter((el) => el.offsetParent !== null && el.getBoundingClientRect().height < 44)
+        .map((el) => el.id || el.className)
+    );
+    expect(small).toEqual([]);
+
+    // The sizing is behind the raise button rather than always underfoot.
+    await expect(page.locator('#raiseSlider')).toBeHidden();
+    await page.click('#btnRaise');
+    await expect(panel).toHaveClass(/is-sizing/);
+    await expect(page.locator('#raiseSlider')).toBeVisible();
+    // The confirm says what pressing it will cost.
+    await expect(page.locator('#btnRaise')).toHaveText(/^raise \d/);
+    // And the slider has most of the bar rather than the fifty-odd pixels that
+    // used to be left over beside the number, which was some eighty chips to a
+    // pixel of drag on a five thousand stack.
+    const track = await page.locator('#raiseSlider').boundingBox();
+    expect(track.width).toBeGreaterThan(240);
+
+    // Back leaves the hand exactly as it was.
+    await page.click('#btnRaiseBack');
+    await expect(panel).not.toHaveClass(/is-sizing/);
+    await expect(page.locator('#btnRaise')).toHaveText('raise');
+    await expect(page.locator('#btnFold')).toBeVisible();
+
+    expect(pageErrors).toEqual([]);
+  });
+
   test('the side panel is a drawer: toggle, Escape, scrim, and the stats button', async ({
     page,
   }) => {

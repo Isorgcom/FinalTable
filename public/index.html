@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
       content="Self-hosted multiplayer Texas Hold'em with 22 literary AI opponents and Monte Carlo engine"
@@ -731,6 +731,18 @@
               <button class="preset-btn" type="button" data-preset="5bb">5bb</button>
               <button class="preset-btn" type="button" data-preset="pot">Pot</button>
             </div>
+            <!-- Out of the row of decisions: on a phone it was the one control
+                 that tipped the buttons onto a fourth line, and it is a thing
+                 you do to the clock rather than to the hand. -->
+            <button
+              class="action-btn btn-time hidden"
+              id="btnRequestTime"
+              type="button"
+              aria-label="Request more time"
+              title="Add time to your clock"
+            >
+              +30s
+            </button>
           </div>
           <div class="action-row">
             <button class="action-btn btn-fold" id="btnFold" aria-label="Fold">fold</button>
@@ -755,17 +767,9 @@
               />
               <span class="raise-need-pay" id="raiseNeedPay"></span>
             </div>
+            <button class="action-btn btn-back" id="btnRaiseBack" type="button">back</button>
             <button class="action-btn btn-raise" id="btnRaise" aria-label="Raise">raise</button>
             <button class="action-btn btn-allin" id="btnAllIn" aria-label="All In">all in</button>
-            <button
-              class="action-btn btn-time hidden"
-              id="btnRequestTime"
-              type="button"
-              aria-label="Request more time"
-              title="Add time to your clock"
-            >
-              +30s
-            </button>
           </div>
         </div>
 

@@ -176,16 +176,19 @@
     --board-corner: 0.35rem;
     --board-gap: 4px;
   }
+  /* The three bars share this slot, and on a phone with a home indicator the
+     bottom of the screen is not where the screen ends. Without the inset they
+     sit in the indicator's band. */
   .actions-panel {
     padding: 6px 5px;
     gap: 4px;
-    bottom: 5px;
+    bottom: max(5px, env(safe-area-inset-bottom));
   }
   .seat-banner {
-    bottom: 5px;
+    bottom: max(5px, env(safe-area-inset-bottom));
   }
   .preaction-panel {
-    bottom: 5px;
+    bottom: max(5px, env(safe-area-inset-bottom));
     padding: 5px 8px;
     gap: 6px;
   }

@@ -1844,6 +1844,110 @@
   opacity: 0.35;
   cursor: default;
 }
+/* The clock button rides the readout line now. Anywhere but a phone it wears
+   the same pill as the presets beside it, so moving it there costs the bar no
+   height: a full-sized button would have made that line as tall as the row of
+   decisions under it, for a control nobody presses most hands. */
+.actions-panel:not(.is-compact) .action-presets .btn-time {
+  min-width: 54px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+/* Back out of raise sizing. Only ever on a phone, where the sizing controls
+   are behind the raise button rather than always on screen. */
+.btn-back {
+  color: var(--smoke);
+  border: 1px solid rgba(92, 61, 26, 0.5);
+}
+.btn-back:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.actions-panel:not(.is-compact) .btn-back,
+.actions-panel.is-compact:not(.is-sizing) .btn-back {
+  display: none;
+}
+
+/* ── The bar on a phone held upright ──────────────────────────────────────
+   The landscape rules further down already know how to be a phone: no
+   min-widths, one row, nothing wrapping. Portrait matched none of their media
+   query and fell through to the desktop widths inside a 390px box, which is
+   three forced wraps and a fourth line for the clock.
+   Here the row is three columns and nothing else, every target a thumb's
+   width, and the sizing a tap away rather than always underfoot. */
+.actions-panel.is-compact {
+  gap: 6px;
+}
+.actions-panel.is-compact .action-row {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.actions-panel.is-compact .action-btn {
+  /* An equal share of the bar rather than a fixed slot, so three fit where
+     two used to. */
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 8px;
+  font-size: 0.82rem;
+}
+.actions-panel.is-compact .preset-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 4px;
+  font-size: 0.72rem;
+}
+.actions-panel.is-compact .preset-group {
+  flex: 1 1 auto;
+  gap: 6px;
+}
+.actions-panel.is-compact .raise-input {
+  min-height: 44px;
+  width: 88px;
+  font-size: 0.95rem;
+}
+.actions-panel.is-compact .raise-slider {
+  /* The whole width of the bar instead of the fifty-odd pixels left over
+     beside the number, which was some eighty chips to a pixel of drag. */
+  flex: 1 1 auto;
+  max-width: none;
+  min-width: 0;
+  height: 44px;
+}
+.actions-panel.is-compact .raise-slider-group {
+  flex: 1 1 100%;
+  min-width: 0;
+  gap: 8px;
+}
+/* "to 40 · +40" is what the confirm button now says out loud, so on a phone it
+   is a second copy of the same number taking width the slider wants. */
+.actions-panel.is-compact .raise-need-pay {
+  display: none;
+}
+
+/* Deciding: fold, the free or paid answer, and raise. Nothing else. */
+.actions-panel.is-compact:not(.is-sizing) .preset-group,
+.actions-panel.is-compact:not(.is-sizing) .raise-slider-group,
+.actions-panel.is-compact:not(.is-sizing) .btn-allin {
+  display: none !important;
+}
+
+/* Sizing: the row of decisions gives way to the row of numbers. */
+.actions-panel.is-compact.is-sizing .action-row {
+  flex-wrap: wrap;
+}
+.actions-panel.is-compact.is-sizing .btn-fold,
+.actions-panel.is-compact.is-sizing .btn-check,
+.actions-panel.is-compact.is-sizing .btn-call,
+.actions-panel.is-compact.is-sizing .bar-stack,
+.actions-panel.is-compact.is-sizing .hand-strength {
+  display: none !important;
+}
+
 .btn-time {
   background: rgba(123, 202, 149, 0.1);
   border: 1px solid rgba(123, 202, 149, 0.35);
