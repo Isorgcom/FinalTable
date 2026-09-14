@@ -50,6 +50,12 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- The turn clock no longer counts down over a table that has not been dealt
+  yet. The server arms it the moment a hand starts, which on a full table is
+  about a second and a half before the cards have finished flying, so the ring
+  appeared round an empty seat and was already running by the time you could
+  see what you had. It waits for the last card to land now. The clock itself is
+  unchanged, so the ring you then see is the time you actually have.
 - **Sign out** now ends the session on the server rather than only clearing the
   browser. Until now the device stayed signed in here for another thirty days,
   which meant a device you had signed out of was still on your own list of

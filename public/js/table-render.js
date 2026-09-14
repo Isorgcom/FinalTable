@@ -165,6 +165,15 @@ const DEAL_LAND_S = Number((DEAL_DUR_S * 0.78).toFixed(3));
 const DEAL_LEAD_S = 0.12;
 const DEAL_STEP_S = 0.11; // between one card and the next
 const DEAL_STEP_TIGHT_S = 0.07; // a full table, where the queue is long enough to drag
+
+// When the last hole card of this deal comes to rest. The turn clock is armed
+// by the server the moment the hand starts, which is a second and a half
+// before the cards have finished flying on a full table, so the ring would
+// otherwise be running over an empty felt. It is not hidden to flatter the
+// number: the ring is drawn from the server's own expiry either way, so when
+// it does appear it is already part spent, which is the truth. What is hidden
+// is a countdown over a table that has not been dealt yet.
+let _dealSettledAt = 0;
 // A board card swaps faces at 48% of the 0.36s fold.
 const FLIP_TURN_S = 0.173;
 
@@ -913,6 +922,11 @@ function applyDealFlight(ordered) {
 
   const step = plan.length > 12 ? DEAL_STEP_TIGHT_S : DEAL_STEP_S;
   const heard = [];
+  // Cards that cannot fly appear at once, so there is nothing to wait for.
+  const flies = !!(origin && wrapRect) && plan.length > 0;
+  _dealSettledAt = flies
+    ? Date.now() + (DEAL_LEAD_S + (plan.length - 1) * step + DEAL_DUR_S) * 1000
+    : 0;
   plan.forEach((item, i) => {
     // Released before the early return below, so a card is revealed even when
     // nothing can animate. deal-pending is visibility:hidden; leaving one on
@@ -1652,7 +1666,10 @@ function updateTurnClocks(orderedPlayers) {
       // A cash table has no clock to draw.
       gameState.gameMode !== 'cash' &&
       gameState.isRunning &&
-      gameState.turnExpiresAt;
+      gameState.turnExpiresAt &&
+      // Not while the hand is still being dealt. The 250ms ticker in
+      // app-init.js brings it in as soon as the last card lands.
+      Date.now() >= _dealSettledAt;
     clock.classList.toggle('hidden', !shouldShow);
     if (!shouldShow) return;
 

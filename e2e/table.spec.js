@@ -1707,6 +1707,60 @@ test('the buttons answer a press, and the presets show which sizing is loaded', 
   expect(pageErrors).toEqual([]);
 });
 
+// The server arms the turn clock the moment the hand starts, which on a full
+// table is a second and a half before the cards have finished flying. The ring
+// used to count down over an empty felt.
+test('the turn clock waits for the cards to land before it is drawn', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+  await page.goto(baseUrl);
+  // Watching from before the table exists, because the thing being measured
+  // happens in the first two seconds of it.
+  await page.evaluate(() => {
+    window.__seen = { armedAt: null, ringAt: null, dealingWhenRingShown: null };
+    const tick = () => {
+      const gs = typeof gameState === 'undefined' ? null : gameState;
+      if (gs && gs.isRunning) {
+        if (window.__seen.armedAt === null && gs.turnExpiresAt) {
+          window.__seen.armedAt = performance.now();
+        }
+        const ring = document.querySelector('#playerSeats .hole-clock:not(.hidden)');
+        if (window.__seen.ringAt === null && ring) {
+          window.__seen.ringAt = performance.now();
+          window.__seen.dealingWhenRingShown = document.querySelectorAll(
+            '.player-hole-cards .card.dealing'
+          ).length;
+        }
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+
+  await page.fill('#playerName', 'Patience');
+  await page.locator('#playerName').blur();
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Patience table');
+  await page.check('#tBots');
+  await page.selectOption('#tBotCount', '5');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 15000 });
+  await expect(page.locator('#playerSeats .hole-clock:not(.hidden)')).toHaveCount(1, {
+    timeout: 15000,
+  });
+
+  const seen = await page.evaluate(() => window.__seen);
+  // The clock was armed first, as it always was, and the ring waited.
+  expect(seen.armedAt).not.toBeNull();
+  expect(seen.ringAt).not.toBeNull();
+  expect(seen.ringAt - seen.armedAt).toBeGreaterThan(700);
+  // And nothing was still in the air when it appeared.
+  expect(seen.dealingWhenRingShown).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
+
 test('the clock is an outline round the cards that escalates and warns once', async ({ page }) => {
   const pageErrors = await seatAtTournamentTable(page, 'Clock');
   await deal(page);
@@ -1715,6 +1769,10 @@ test('the clock is an outline round the cards that escalates and warns once', as
   // Everything in one turn of the event loop: the table is live, and a real
   // push replaces gameState wholesale and would undo the clock being posed.
   const seen = await page.evaluate(() => {
+    // The ring is held until the deal that just happened has finished flying.
+    // This test poses its own clock, so it poses a settled felt with it rather
+    // than waiting out an animation it is not measuring.
+    _dealSettledAt = 0;
     const clockFor = (id) =>
       document.querySelector(`#playerSeats .player-seat[data-player-id="${id}"] .hole-clock`);
     const shownCount = () =>
@@ -1861,6 +1919,9 @@ test('the clock measures the turn, not the gap between two clocks', async ({ pag
   // the ratio clamps at one and the outline sits full and still until real time
   // catches up - which is what "it does not start for eight seconds" is.
   const seen = await page.evaluate(() => {
+    // As above: a posed clock wants a settled felt, not the tail of the deal
+    // that happened a moment ago.
+    _dealSettledAt = 0;
     const me = gameState.players.findIndex((p) => p.id === myId);
     gameState.isRunning = true;
     gameState.gameMode = 'tournament';
