@@ -39,6 +39,38 @@ const TOUCH_FLUSH_MS = 60 * 1000;
 // name that has gone away must not come back off the disk years later.
 const PANEL_TABS = ['chat', 'log', 'info', 'stats', 'history'];
 
+// What a device is called on the sessions list. Coarse on purpose: enough for
+// somebody to recognise which of their own devices a row is, and no more. The
+// user agent itself is never stored - it is a fingerprint, it would sit in a
+// file for thirty days, and "Safari on iPhone" is the whole of what the screen
+// needs to say.
+const BROWSERS = [
+  [/\bEdgA?\//, 'Edge'],
+  [/\bOPR\/|\bOpera\b/, 'Opera'],
+  [/\bFirefox\/|\bFxiOS\//, 'Firefox'],
+  [/\bCriOS\//, 'Chrome'],
+  [/\bChrome\//, 'Chrome'],
+  [/\bSafari\//, 'Safari'],
+];
+const PLATFORMS = [
+  [/\biPhone\b/, 'iPhone'],
+  [/\biPad\b/, 'iPad'],
+  [/\bAndroid\b/, 'Android'],
+  [/\bMac OS X\b|\bMacintosh\b/, 'Mac'],
+  [/\bWindows\b/, 'Windows'],
+  [/\bCrOS\b/, 'ChromeOS'],
+  [/\bLinux\b/, 'Linux'],
+];
+
+function deviceLabel(userAgent) {
+  const ua = String(userAgent || '');
+  if (!ua) return 'A browser';
+  const browser = (BROWSERS.find(([re]) => re.test(ua)) || [])[1] || null;
+  const platform = (PLATFORMS.find(([re]) => re.test(ua)) || [])[1] || null;
+  if (browser && platform) return `${browser} on ${platform}`;
+  return browser || platform || 'A browser';
+}
+
 function createIdentityStore(options = {}) {
   const {
     saveDir = null,
@@ -65,8 +97,18 @@ function createIdentityStore(options = {}) {
   let writeQueued = false; // something changed while one was
   let tmpSeq = 0;
 
-  function attachToken(rec, token, at) {
-    rec.tokens.set(token, { createdAt: at, lastSeenAt: at });
+  function attachToken(rec, token, at, label = '') {
+    // An id of its own, because the sessions list has to name a device without
+    // the page ever holding the credential for it. A token is a bearer thing:
+    // one that leaked would sign somebody in, and a list of every device's
+    // token sitting in a browser is a much better prize than the one that
+    // browser already had.
+    rec.tokens.set(token, {
+      id: crypto.randomBytes(8).toString('hex'),
+      label: deviceLabel(label),
+      createdAt: at,
+      lastSeenAt: at,
+    });
     tokens.set(token, rec.uid);
   }
 
@@ -138,6 +180,10 @@ function createIdentityStore(options = {}) {
         for (const t of list) {
           if (!t || !t.token) continue;
           ident.tokens.set(t.token, {
+            // A file written before the sessions list gets an id on the way
+            // in, so an old device can still be named and signed out.
+            id: t.id || crypto.randomBytes(8).toString('hex'),
+            label: typeof t.label === 'string' && t.label ? t.label : 'A browser',
             createdAt: t.createdAt || ident.createdAt,
             lastSeenAt: t.lastSeenAt || ident.lastSeenAt,
           });
@@ -257,7 +303,7 @@ function createIdentityStore(options = {}) {
   // Returns the identity, or null when a new identity would have no name.
   // A token on a GameNight identity carries its name from GameNight, so the
   // one the browser sends is ignored; the avatar is still the player's own.
-  function identify({ token, name, avatar } = {}) {
+  function identify({ token, name, avatar, userAgent } = {}) {
     const safeName = sanitizeName(name);
     const safeAvatar = avatar ? sanitizeAvatar(avatar) : '';
     const at = now();
@@ -269,7 +315,7 @@ function createIdentityStore(options = {}) {
       token = mintToken();
       rec = newRecord({ uid: random.randomId('u_'), name: safeName, avatar: safeAvatar }, at);
       identities.set(rec.uid, rec);
-      attachToken(rec, token, at);
+      attachToken(rec, token, at, userAgent);
       isNew = true;
     } else {
       // Only a value that actually moves earns a prompt write. The ordinary
@@ -294,7 +340,7 @@ function createIdentityStore(options = {}) {
   // browser; this browser gets a device token of its own, and the ones
   // already out stay good. The name is refreshed every time, because it is
   // GameNight's and can change there.
-  function identifyFromGameNight({ sub, name, avatar } = {}) {
+  function identifyFromGameNight({ sub, name, avatar, userAgent } = {}) {
     if (sub === undefined || sub === null || String(sub) === '') return null;
     const safeName = sanitizeName(name);
     if (!safeName) return null;
@@ -316,7 +362,7 @@ function createIdentityStore(options = {}) {
       rec.lastSeenAt = at;
     }
     const token = mintToken();
-    attachToken(rec, token, at);
+    attachToken(rec, token, at, userAgent);
     scheduleFlush('material');
     return { ...publicView(token, rec), isNew };
   }
@@ -371,6 +417,57 @@ function createIdentityStore(options = {}) {
     return { uid: rec.uid, name: rec.name, avatar: rec.avatar, provider: rec.provider };
   }
 
+  // ── Sessions ─────────────────────────────────────────────────────────────
+  //
+  // The devices this identity is signed in on. A guest is one browser and will
+  // see one row; a Game Night account is the reason this exists. The token
+  // itself never leaves the server: a row is named by the id minted with it.
+  function sessions(uid, currentToken = null) {
+    const rec = uid ? identities.get(uid) : null;
+    if (!rec) return [];
+    return [...rec.tokens.entries()]
+      .map(([token, t]) => ({
+        id: t.id,
+        label: t.label || 'A browser',
+        createdAt: t.createdAt,
+        lastSeenAt: t.lastSeenAt,
+        // So the screen can say which row is the one reading it, and warn
+        // before somebody signs out the device in their hand.
+        current: !!currentToken && token === currentToken,
+      }))
+      .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+  }
+
+  // Signing a device out, named by its public id and only ever from its own
+  // identity: an id is not a secret, so the uid is what authorises this.
+  // Returns the token that was dropped, so the caller can find the socket
+  // holding it and tell it; null if there was no such row.
+  function endSession(uid, id) {
+    const rec = uid ? identities.get(uid) : null;
+    if (!rec || !id) return null;
+    for (const [token, t] of rec.tokens) {
+      if (t.id !== id) continue;
+      rec.tokens.delete(token);
+      tokens.delete(token);
+      // An identity with no devices left is nobody. Dropping it here rather
+      // than waiting for the idle sweep keeps the file honest, and matches
+      // what load() would do with it on the next boot anyway.
+      if (rec.tokens.size === 0) identities.delete(rec.uid);
+      scheduleFlush('material');
+      return token;
+    }
+    return null;
+  }
+
+  // Signing this browser out, which until now only cleared the browser and
+  // left the token good on the server for another thirty days.
+  function revokeToken(token) {
+    const rec = recordFor(token);
+    if (!rec) return false;
+    const row = rec.tokens.get(token);
+    return !!row && !!endSession(rec.uid, row.id);
+  }
+
   // Tokens expire one at a time; an identity goes when its last one does.
   // Returns how many identities were dropped.
   function expireIdle() {
@@ -401,6 +498,9 @@ function createIdentityStore(options = {}) {
     get,
     rename,
     setPrefs,
+    sessions,
+    endSession,
+    revokeToken,
     expireIdle,
     flush,
     get size() {

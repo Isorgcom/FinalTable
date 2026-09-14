@@ -37,18 +37,6 @@ export that is worth downloading probably wants at least the first of those
 fixed, and the redaction has to survive the trip: what lands in the file is
 what that player could already see, never the table's folded cards.
 
-### More control over your own games
-
-For a player, what is left is to see and end your own sessions - the devices
-a Game Night account is signed in on, which is the other half of the identity
-bridge below. Everything else here is done. The way out is Forfeit; calling
-the whole game off belongs to whoever made it as well as to whoever is holding
-the clock; and the host's own controls are pause, remove somebody, step the
-level or put a minute on it, move a player by hand, and mute. An operator (the
-server's password, not the game's host) can still end any game on the server
-from the table menu or the Operator page, which is for the games they do not
-host.
-
 ### Games other than Hold'em
 
 The largest of these by far. The engine deals two cards and makes the best five
@@ -87,6 +75,16 @@ properly means shipping a verifier as well. Worth revisiting if this is ever
 hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
+
+More control over your own games. The way out is Forfeit; calling the whole
+game off belongs to whoever made it as well as to whoever is holding the
+clock; the host's own controls are pause, remove somebody, step the level or
+put a minute on it, move a player by hand, and mute; and Your devices lists
+where a Game Night account is signed in and signs any of them out, which was
+the last piece and the other half of the identity bridge below. An operator
+(the server's password, not the game's host) can still end any game on the
+server from the table menu or the Operator page, which is for the games they
+do not host.
 
 Preferences that follow you. Mute, the chair you are shown in and the panel
 tab that opens are kept against the identity rather than the browser, so a

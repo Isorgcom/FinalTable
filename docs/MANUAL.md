@@ -50,7 +50,16 @@ If the server is paired with a GameNight site, there is a **Sign in with
 GameNight** button beside the name box. Signing in there seats you here under
 your GameNight username, the same player on every device you sign in from, so
 a phone and a laptop are one seat rather than two. **Sign out** is in the
-corner menu; it signs out this browser only.
+corner menu; it signs out this browser only, and ends that session here as
+well as clearing the browser.
+
+**Your devices**, also in the corner menu, lists where you are signed in: each
+one named as far as the browser will say, with when it was last here and a
+mark on the one you are reading. **Sign out** beside any row ends that
+session, wherever the device is. It goes back to the lobby as a stranger the
+moment it hears; a stack it left in a game stays exactly where it is, and
+whoever signs in there next can pick it up. Signing out the device in your
+hand asks first, since nothing on that screen can undo it.
 
 Three settings follow you rather than the browser: whether the table is
 silent, which chair you are shown in, and which side panel tab opens. They are

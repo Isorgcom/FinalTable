@@ -136,6 +136,50 @@ test('a signed token in the fragment signs the player in, and the device remembe
   await expect(page.locator('#playerName')).not.toHaveAttribute('readonly', '');
 });
 
+// The devices a GameNight account is signed in on, and signing one out from
+// another. Two browser contexts because two devices is two device tokens.
+test('your devices lists both, and one signs the other out', async ({ page, browser }) => {
+  await stash(page, 'state-abcdefghijklmnop');
+  await page.goto(`${baseUrl}/#gn_token=${signToken()}&state=state-abcdefghijklmnop`);
+  await expect(page.locator('#identityStatus')).toContainText('Signed in with GameNight as Bryce');
+
+  const otherContext = await browser.newContext();
+  const other = await otherContext.newPage();
+  await stash(other, 'state-qrstuvwxyz012345');
+  await other.goto(`${baseUrl}/#gn_token=${signToken()}&state=state-qrstuvwxyz012345`);
+  await expect(other.locator('#identityStatus')).toContainText('Signed in with GameNight as Bryce');
+  // The same player, two devices.
+  expect(await other.evaluate(() => window.__identity.uid)).toBe(
+    await page.evaluate(() => window.__identity.uid)
+  );
+
+  await openLobbyMenu(page);
+  await page.click('#btnSessions');
+  await expect(page.locator('#lobbySessions')).toBeVisible();
+  const rows = page.locator('#sessionsList .session-row');
+  await expect(rows).toHaveCount(2);
+  // One of them is the one being read, and it says so.
+  await expect(page.locator('#sessionsList .session-here')).toHaveCount(1);
+  await expect(page.locator('#sessionsList')).toContainText('Last here');
+  // A device is named, never carrying its token to the page.
+  const shown = await page.locator('#sessionsList').textContent();
+  const token = await page.evaluate(() => localStorage.getItem('finaltable_identity_token'));
+  expect(token).toBeTruthy();
+  expect(shown).not.toContain(token);
+
+  // Sign the other one out from this one. Its row goes, and it is told.
+  const notThisOne = rows.filter({ hasNot: page.locator('.session-here') }).first();
+  await notThisOne.locator('button').click();
+  await expect(rows).toHaveCount(1);
+  // The signed-out device lands back in the lobby as a stranger, and is told
+  // why rather than simply finding itself signed out.
+  await expect(other.locator('#btnGameNight')).toBeVisible({ timeout: 10000 });
+  await expect(other.locator('#playerName')).toHaveValue('');
+  await expect(other.locator('#appDialogBody')).toContainText('signed out from somewhere else');
+
+  await otherContext.close();
+});
+
 test('a token whose state does not match the one stashed is thrown away', async ({ page }) => {
   await stash(page, 'the-state-that-was-sent');
   await page.goto(`${baseUrl}/#gn_token=${signToken()}&state=some-other-state-xx`);

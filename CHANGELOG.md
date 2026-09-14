@@ -15,12 +15,24 @@ Release on GitHub to go with it.
 
 ### Added
 
+- **Your devices**, in the lobby's corner menu when you are signed in with a
+  Game Night account. It lists where you are signed in, names each one and says
+  when it was last here, marks the one you are reading, and signs any of them
+  out. Signing a device out takes it back to the lobby as a stranger; a stack
+  it left in a game stays where it is.
 - Mute, the chair you sit in and the panel tab you leave open now follow you
   between devices. They are kept against who you are rather than against the
   browser, so signing in with a Game Night account on the phone and then the
   iPad gets you the same table on both. A guest is still one browser, which is
   the most a guest can be, and nothing here is slower: the setting is applied
   at once and the server is told afterwards.
+
+### Fixed
+
+- **Sign out** now ends the session on the server rather than only clearing the
+  browser. Until now the device stayed signed in here for another thirty days,
+  which meant a device you had signed out of was still on your own list of
+  devices and its token still worked.
 
 ## 0.13.0 - 2026-09-13
 

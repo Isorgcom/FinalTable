@@ -292,6 +292,79 @@ describe('Tournament socket layer', () => {
     expect(answers).toBeLessThanOrEqual(12);
   });
 
+  // The devices an account is signed in on, and signing one out from another.
+  test('the sessions list names each device, and one signs another out', async () => {
+    const phone = await connectClient();
+    const me = await identify(phone, { name: 'Ann' });
+    const ipad = await connectClient();
+    await identify(ipad, { token: me.token, name: 'Ann' });
+
+    // Two sockets, one device: the token is what a device is, not the socket.
+    const listed = waitFor(phone, 'sessions');
+    phone.emit('listSessions');
+    const rows = await listed;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].current).toBe(true);
+    expect(rows[0].id).toMatch(/^[0-9a-f]{16}$/);
+    expect(JSON.stringify(rows)).not.toContain(me.token);
+
+    // A second device, which is a second token.
+    const laptop = await connectClient();
+    const other = await identify(laptop, { name: 'Ann' });
+    expect(other.token).not.toBe(me.token);
+    const both = waitFor(laptop, 'sessions');
+    laptop.emit('listSessions');
+    expect(await both).toHaveLength(1);
+  });
+
+  test('signing a device out reaches every tab it had open', async () => {
+    const first = await connectClient();
+    const me = await identify(first, { name: 'Bee' });
+    // The same device in two tabs: one token, two sockets.
+    const second = await connectClient();
+    await identify(second, { token: me.token, name: 'Bee' });
+
+    const other = await connectClient();
+    const theirs = await identify(other, { name: 'Cee' });
+
+    const listed = waitFor(other, 'sessions');
+    other.emit('listSessions');
+    const theirRows = await listed;
+
+    // Somebody else's id is not a way into this account: the list comes back
+    // unchanged, and their device is still signed in.
+    const refused = waitFor(first, 'sessions');
+    first.emit('endSession', { id: theirRows[0].id });
+    const mine = await refused;
+    expect(mine[0].current).toBe(true);
+    const theirsAgain = waitFor(other, 'sessions');
+    other.emit('listSessions');
+    expect(await theirsAgain).toHaveLength(1);
+
+    // Their own device, and both of its tabs are told.
+    const endedFirst = waitFor(first, 'sessionEnded');
+    const endedSecond = waitFor(second, 'sessionEnded');
+    first.emit('endSession', { id: mine[0].id });
+    expect(await endedFirst).toMatchObject({ mine: true });
+    expect(await endedSecond).toMatchObject({ mine: false });
+    // And the token is no good to anybody afterwards.
+    const stale = await connectClient();
+    const back = await identify(stale, { token: me.token, name: 'Bee' });
+    expect(back.uid).not.toBe(me.uid);
+    expect(theirs.uid).toBeTruthy();
+  });
+
+  test('signing out ends the session here rather than only in the browser', async () => {
+    const socket = await connectClient();
+    const me = await identify(socket, { name: 'Dee' });
+    socket.emit('signOut');
+    // The next socket presenting that token is a stranger with a new identity.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const after = await connectClient();
+    const fresh = await identify(after, { token: me.token, name: 'Dee' });
+    expect(fresh.uid).not.toBe(me.uid);
+  });
+
   test('a fresh socket with the same token rejoins the seat and the table follows', async () => {
     const first = await connectClient();
     const { created: joined, guest } = await createTournamentWithGuest(first);

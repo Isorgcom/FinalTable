@@ -303,4 +303,102 @@ describe('identity store', () => {
     const older = createIdentityStore({ saveDir: dir });
     expect(older.verify('tok_noprefs').prefs).toEqual({});
   });
+
+  // The devices an account is signed in on. A row is named by an id minted
+  // beside the token, never by the token: the page asking is holding one
+  // credential and has no business being handed the rest of them.
+  const UA_IPHONE =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
+  const UA_MAC =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+
+  test('sessions name each device without ever carrying its token', () => {
+    const store = createIdentityStore();
+    const phone = store.identifyFromGameNight({ sub: '7', name: 'Bryce', userAgent: UA_IPHONE });
+    const mac = store.identifyFromGameNight({ sub: '7', name: 'Bryce', userAgent: UA_MAC });
+    expect(mac.uid).toBe(phone.uid);
+
+    const rows = store.sessions(phone.uid, mac.token);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.label).sort()).toEqual(['Chrome on Mac', 'Safari on iPhone']);
+    expect(rows.filter((r) => r.current)).toHaveLength(1);
+    expect(rows.find((r) => r.current).label).toBe('Chrome on Mac');
+    // No token, anywhere, under any name.
+    const asText = JSON.stringify(rows);
+    expect(asText).not.toContain(phone.token);
+    expect(asText).not.toContain(mac.token);
+    for (const row of rows) expect(row.id).toMatch(/^[0-9a-f]{16}$/);
+
+    // Nobody else's devices, and nothing for an identity that is not there.
+    expect(store.sessions('u_nobody')).toEqual([]);
+  });
+
+  test('a device is signed out by its id, and only from its own identity', () => {
+    const store = createIdentityStore();
+    const phone = store.identifyFromGameNight({ sub: '8', name: 'Bryce', userAgent: UA_IPHONE });
+    const mac = store.identifyFromGameNight({ sub: '8', name: 'Bryce', userAgent: UA_MAC });
+    const stranger = store.identify({ name: 'Someone else' });
+
+    const phoneRow = store.sessions(phone.uid).find((r) => r.label === 'Safari on iPhone');
+    // The id is not a secret; the uid is what authorises the sign-out.
+    expect(store.endSession(stranger.uid, phoneRow.id)).toBeNull();
+    expect(store.verify(phone.token)).toMatchObject({ uid: phone.uid });
+
+    expect(store.endSession(phone.uid, phoneRow.id)).toBe(phone.token);
+    expect(store.verify(phone.token)).toBeNull();
+    expect(store.verify(mac.token)).toMatchObject({ uid: mac.uid });
+    expect(store.sessions(mac.uid)).toHaveLength(1);
+    // Gone is gone.
+    expect(store.endSession(mac.uid, phoneRow.id)).toBeNull();
+  });
+
+  test('signing out the last device leaves nobody behind', () => {
+    const store = createIdentityStore();
+    const me = store.identify({ name: 'Bryce', userAgent: UA_MAC });
+    expect(store.revokeToken(me.token)).toBe(true);
+    expect(store.verify(me.token)).toBeNull();
+    expect(store.get(me.uid)).toBeNull();
+    expect(store.revokeToken(me.token)).toBe(false);
+    expect(store.revokeToken('never-was-a-token')).toBe(false);
+  });
+
+  test('a device keeps its name and its id across a restart', () => {
+    const store = createIdentityStore({ saveDir: dir });
+    const me = store.identify({ name: 'Bryce', userAgent: UA_IPHONE });
+    const before = store.sessions(me.uid, me.token);
+    store.flush();
+
+    const reopened = createIdentityStore({ saveDir: dir });
+    const after = reopened.sessions(me.uid, me.token);
+    expect(after).toHaveLength(1);
+    expect(after[0].id).toBe(before[0].id);
+    expect(after[0].label).toBe('Safari on iPhone');
+    expect(after[0].current).toBe(true);
+    // And it can still be signed out by the id the file remembered.
+    expect(reopened.endSession(me.uid, after[0].id)).toBe(me.token);
+
+    // A file written before any of this names the device as best it can and
+    // gives it an id, rather than leaving a row nobody can sign out.
+    fs.writeFileSync(
+      path.join(dir, 'identities.json'),
+      JSON.stringify({
+        version: 2,
+        identities: [
+          {
+            uid: 'u_older',
+            name: 'Old',
+            avatar: '🧑',
+            createdAt: 1,
+            lastSeenAt: 1,
+            tokens: [{ token: 'tok_older', createdAt: 1, lastSeenAt: 1 }],
+          },
+        ],
+      })
+    );
+    const older = createIdentityStore({ saveDir: dir });
+    const row = older.sessions('u_older', 'tok_older')[0];
+    expect(row.label).toBe('A browser');
+    expect(row.id).toMatch(/^[0-9a-f]{16}$/);
+    expect(older.endSession('u_older', row.id)).toBe('tok_older');
+  });
 });

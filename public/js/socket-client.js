@@ -87,6 +87,14 @@ function ensureSocket() {
   socket.on('sessionReplaced', () => {
     if (window.Lobby) Lobby.onSessionReplaced();
   });
+  // The devices this account is signed in on, answered to the account itself.
+  socket.on('sessions', (list) => {
+    if (window.Lobby) Lobby.onSessions(list);
+  });
+  // This device has been signed out, from here or from another of them.
+  socket.on('sessionEnded', (data) => {
+    if (window.Lobby) Lobby.onSessionEnded(data);
+  });
 
   // Lobby and tournament lifecycle
   socket.on('tournamentList', (list) => {

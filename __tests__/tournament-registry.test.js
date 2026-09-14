@@ -287,7 +287,13 @@ describe('tournament registry', () => {
     // The only human gives up their seat and stays connected, watching. Asked
     // for mid-hand, the seat goes when that hand ends.
     expect(registry.forfeit(entry, 'h', socket).error).toBeUndefined();
-    jest.advanceTimersByTime(20000);
+    // Advanced in steps rather than one jump. The hand has to finish before
+    // the seat goes, and parts of that flow settle on promises that a single
+    // advanceTimersByTime does not drain: one long jump ran the clock past
+    // them and left the seat still there under load.
+    for (let i = 0; i < 40 && entry.director.playerByUid('h'); i++) {
+      jest.advanceTimersByTime(2000);
+    }
     expect(entry.director.playerByUid('h')).toBeFalsy();
     expect(entry.director.isHeldForAbsence()).toBe(false);
     expect(entry.awayHeldSince).toBeNull();

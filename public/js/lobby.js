@@ -20,6 +20,10 @@
 
   const TOKEN_KEY = 'finaltable_identity_token';
   const NAME_KEY = 'finaltable_player_name';
+  // A line to show after a reload this page asked for. Signing a device out
+  // reloads it, and a dialog raised the instant before that goes with it: the
+  // player would be signed out with nothing said about why.
+  const NOTICE_KEY = 'finaltable_pending_notice';
   const LAST_KEY = 'finaltable_last_tournament';
   const PROVIDER_KEY = 'finaltable_identity_provider';
   const SSO_STATE_KEY = 'finaltable_gn_state'; // sessionStorage: one round trip
@@ -195,6 +199,9 @@
     $('btnGameNight').classList.toggle('hidden', linked || !offered);
     $('ssoHint').classList.toggle('hidden', linked);
     $('btnGameNightSignOut').classList.toggle('hidden', !linked);
+    // A guest is one browser and would see a list of one. The list is here for
+    // an account whose devices are more than this one.
+    $('btnSessions').classList.toggle('hidden', !linked);
     $('playerName').readOnly = linked;
     $('playerName').classList.remove('input-invalid');
   }
@@ -666,10 +673,139 @@
 
   function signOutOfGameNight() {
     closeLobbyMenu();
+    // Told to the server first. Clearing the browser used to be the whole of
+    // signing out, which left the token good here for another thirty days and
+    // the device still on your own list of devices.
+    if (socket && socket.connected) socket.emit('signOut');
     store.set(TOKEN_KEY, null);
     store.set(NAME_KEY, null);
     store.set(PROVIDER_KEY, null);
     location.reload();
+  }
+
+  // ── Your devices ─────────────────────────────────────────────────────────
+  //
+  // Where this account is signed in, and the way to sign one of them out from
+  // another. The rows carry an id minted beside each device token, never the
+  // token: this page holds one credential and has no business holding the
+  // rest of them.
+
+  let sessionRows = null;
+
+  function openSessions() {
+    closeLobbyMenu();
+    sessionRows = null;
+    showView('sessions');
+    renderSessions();
+    askForSessions();
+  }
+
+  function askForSessions() {
+    if (socket && socket.connected) socket.emit('listSessions');
+  }
+
+  function onSessions(list) {
+    sessionRows = Array.isArray(list) ? list : [];
+    if (view === 'sessions') renderSessions();
+  }
+
+  // The device was signed out from somewhere else, or from here. Either way
+  // this browser is holding a token that no longer means anything, so it is
+  // dropped rather than left to fail on the next reconnect.
+  function onSessionEnded(data) {
+    // The same three keys signing out clears, because this is signing out:
+    // the name came from the account, and leaving it in the box would greet
+    // whoever picks the device up next as somebody they are not.
+    store.set(TOKEN_KEY, null);
+    store.set(NAME_KEY, null);
+    store.set(PROVIDER_KEY, null);
+    identity = null;
+    window.__identity = null;
+    const mine = !!(data && data.mine);
+    store.set(
+      NOTICE_KEY,
+      mine
+        ? 'Signed out on this device.'
+        : 'This device was signed out from somewhere else you are signed in.'
+    );
+    location.reload();
+  }
+
+  function sessionAge(ms) {
+    if (!ms) return 'never';
+    const secs = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (secs < 90) return 'just now';
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    return `${Math.round(hours / 24)} days ago`;
+  }
+
+  function renderSessions() {
+    const list = $('sessionsList');
+    const status = $('sessionsStatus');
+    if (!list) return;
+    list.textContent = '';
+    if (sessionRows === null) {
+      status.textContent = 'Looking…';
+      return;
+    }
+    status.textContent = '';
+    if (!sessionRows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'session-empty';
+      empty.textContent = 'Nowhere, which should not be possible from here.';
+      list.appendChild(empty);
+      return;
+    }
+    for (const row of sessionRows) {
+      const item = document.createElement('div');
+      item.className = 'session-row' + (row.current ? ' is-current' : '');
+
+      const what = document.createElement('div');
+      what.className = 'session-what';
+      const name = document.createElement('div');
+      name.className = 'session-name';
+      name.textContent = row.label || 'A browser';
+      what.appendChild(name);
+      if (row.current) {
+        const here = document.createElement('div');
+        here.className = 'session-here';
+        here.textContent = 'This device';
+        what.appendChild(here);
+      }
+      const when = document.createElement('div');
+      when.className = 'session-when';
+      when.textContent = `Last here ${sessionAge(row.lastSeenAt)}`;
+      what.appendChild(when);
+      item.appendChild(what);
+
+      const out = document.createElement('button');
+      out.type = 'button';
+      out.className = 'btn-secondary';
+      out.textContent = row.current ? 'Sign out here' : 'Sign out';
+      out.addEventListener('click', () => endSession(row));
+      item.appendChild(out);
+
+      list.appendChild(item);
+    }
+  }
+
+  async function endSession(row) {
+    if (!row || !row.id) return;
+    // Signing out the device in your hand is the one that cannot be undone
+    // from this screen, so it is asked about rather than done.
+    if (row.current && typeof window.showConfirmDialog === 'function') {
+      const ok = await window.showConfirmDialog({
+        title: 'Sign out this device?',
+        message: 'You go back to the lobby as a guest here. Your other devices stay signed in.',
+        confirmLabel: 'Sign out',
+        cancelLabel: 'Stay signed in',
+      });
+      if (!ok) return;
+    }
+    if (socket && socket.connected) socket.emit('endSession', { id: row.id });
   }
 
   const FAIL_TEXT = {
@@ -873,7 +1009,7 @@
 
   function showView(name) {
     view = name;
-    ['home', 'create', 'waiting', 'pending', 'operator'].forEach((v) => {
+    ['home', 'create', 'waiting', 'pending', 'operator', 'sessions'].forEach((v) => {
       const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
       if (node) node.classList.toggle('hidden', v !== name);
     });
@@ -2014,6 +2150,15 @@
     $('btnCopyRail').addEventListener('click', () => copyRail());
     $('btnGameNight').addEventListener('click', startGameNightLogin);
     $('btnGameNightSignOut').addEventListener('click', signOutOfGameNight);
+    $('btnSessions').addEventListener('click', openSessions);
+    // Whatever the page that reloaded this one had to say.
+    const waiting = store.get(NOTICE_KEY);
+    if (waiting) {
+      store.set(NOTICE_KEY, null);
+      notice(waiting);
+    }
+    $('btnSessionsRefresh').addEventListener('click', askForSessions);
+    $('btnSessionsBack').addEventListener('click', () => showView('home'));
     $('lobbyMenuToggle').addEventListener('click', toggleLobbyMenu);
     // Anywhere else closes it, the way the table's does.
     document.addEventListener('click', (e) => {
@@ -2095,6 +2240,8 @@
     onIdentified,
     onIdentifyFailed,
     onSessionReplaced,
+    onSessions,
+    onSessionEnded,
     onList,
     onJoined,
     onPending,

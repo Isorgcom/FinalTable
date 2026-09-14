@@ -58,6 +58,33 @@ function registerTournamentHandlers(deps) {
     };
   }
 
+  // The browser's own description of itself, used once to name a device on the
+  // sessions list and never stored as it arrives. Truncated because a header
+  // is whatever the client says it is.
+  function userAgentOf(socket) {
+    const headers = (socket && socket.handshake && socket.handshake.headers) || {};
+    return String(headers['user-agent'] || '').slice(0, 400);
+  }
+
+  // Every socket this identity has open on this server. Signing a device out
+  // has to reach the tab holding it, which may not be the one that pressed.
+  function socketsForToken(token) {
+    const found = [];
+    if (!token) return found;
+    // The registry takes an injectable version of this for its tests; here the
+    // real server is always the one asking.
+    const live =
+      typeof deps.connectedSockets === 'function'
+        ? deps.connectedSockets()
+        : io && io.sockets
+          ? io.sockets.sockets.values()
+          : [];
+    for (const s of live) {
+      if (s && s.data && s.data.token === token) found.push(s);
+    }
+    return found;
+  }
+
   function fail(socket, error) {
     socket.emit('error', { message: error });
   }
@@ -128,6 +155,7 @@ function registerTournamentHandlers(deps) {
           sub: result.claims.sub,
           name: result.claims.name,
           avatar: payload.avatar,
+          userAgent: userAgentOf(socket),
         });
         if (!ident)
           return socket.emit('identifyFailed', { provider: 'gamenight', reason: 'malformed' });
@@ -140,7 +168,11 @@ function registerTournamentHandlers(deps) {
       } else if (payload.provider === 'gamenight') {
         // No name on purpose: with no record for the token, identify() has
         // nothing to mint a guest from and answers null.
-        ident = identity.identify({ token: payload.token, avatar: payload.avatar });
+        ident = identity.identify({
+          token: payload.token,
+          avatar: payload.avatar,
+          userAgent: userAgentOf(socket),
+        });
         if (!ident || ident.provider !== 'gamenight') {
           return socket.emit('identifyFailed', { provider: 'gamenight', reason: 'signed_out' });
         }
@@ -149,10 +181,15 @@ function registerTournamentHandlers(deps) {
           token: payload.token,
           name: payload.name,
           avatar: payload.avatar,
+          userAgent: userAgentOf(socket),
         });
         if (!ident) return fail(socket, 'Enter a name first');
       }
       socket.data.uid = ident.uid;
+      // Kept so this socket can be found when the device it belongs to is
+      // signed out from somewhere else, and so the sessions list can say
+      // which row is the one asking.
+      socket.data.token = ident.token;
       const entry = registry.findByUid(ident.uid);
       let resume = null;
       let pending = null;
@@ -208,6 +245,45 @@ function registerTournamentHandlers(deps) {
       // next identifies, and so a value this server refused does not sit in
       // the client believing it was kept.
       if (prefs) socket.emit('preferences', prefs);
+    });
+
+    // The devices this identity is signed in on. Answered only to the identity
+    // itself, and never carrying a token: a row is named by an id minted
+    // alongside it, so a page that leaked could not sign anybody in anywhere.
+    socket.on('listSessions', () => {
+      if (!socket.data.uid) return;
+      socket.emit('sessions', identity.sessions(socket.data.uid, socket.data.token));
+    });
+
+    // Signing one out. The id authorises nothing on its own; the uid on this
+    // socket is what says whose devices these are.
+    socket.on('endSession', (payload = {}) => {
+      if (!socket.data.uid) return;
+      const id = typeof payload.id === 'string' ? payload.id : '';
+      const uid = socket.data.uid;
+      const dropped = identity.endSession(uid, id);
+      if (!dropped) return socket.emit('sessions', identity.sessions(uid, socket.data.token));
+      // Whoever was holding that token is told, wherever they are. Their own
+      // socket included, when somebody signs out the device in their hand.
+      for (const other of socketsForToken(dropped)) {
+        other.data.uid = null;
+        other.data.token = null;
+        other.emit('sessionEnded', { mine: other.id === socket.id });
+      }
+      if (dropped !== socket.data.token) {
+        socket.emit('sessions', identity.sessions(uid, socket.data.token));
+      }
+    });
+
+    // Signing this browser out. It used to clear the browser and leave the
+    // token good on the server for another thirty days, which meant a device
+    // you had signed out of was still on your own list of devices.
+    socket.on('signOut', () => {
+      const token = socket.data.token;
+      if (!token) return;
+      identity.revokeToken(token);
+      socket.data.uid = null;
+      socket.data.token = null;
     });
 
     socket.on('createTournament', (payload = {}) => {

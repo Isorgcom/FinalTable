@@ -90,6 +90,7 @@
         </button>
         <div class="menu-dropdown" id="lobbyMenuDropdown" role="menu">
           <button class="menu-item hidden" id="btnOperator" type="button">operator</button>
+          <button class="menu-item hidden" id="btnSessions" type="button">your devices</button>
           <button class="menu-item hidden" id="btnGameNightSignOut" type="button">sign out</button>
           <div class="menu-note" id="lobbyMenuVersion"></div>
         </div>
@@ -165,6 +166,24 @@
           </section>
           <div class="lobby-empty" id="lobbyEmpty">
             No tournaments yet. Create one and share the code.
+          </div>
+        </section>
+
+        <!-- The devices this account is signed in on. A guest is one browser and
+             sees one row; the list is here for a GameNight account, where the
+             phone and the iPad are the same player and signing one of them out
+             from the other is the only way to do it. -->
+        <section class="lobby-view lobby-card hidden" id="lobbySessions" aria-label="Your devices">
+          <div class="lobby-title">Your devices</div>
+          <p class="op-help">
+            Where you are signed in. Signing a device out takes it back to the lobby as a stranger;
+            anything it was holding in a game stays where it is.
+          </p>
+          <div class="op-status" id="sessionsStatus" aria-live="polite"></div>
+          <div class="session-list" id="sessionsList"></div>
+          <div class="lobby-actions">
+            <button class="btn-secondary" id="btnSessionsRefresh" type="button">Refresh</button>
+            <button class="btn-secondary" id="btnSessionsBack" type="button">Back</button>
           </div>
         </section>
 
