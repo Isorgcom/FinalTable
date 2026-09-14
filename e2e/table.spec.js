@@ -1650,7 +1650,7 @@ const BLACK = 'rgb(42, 42, 42)';
 const RED = 'rgb(181, 53, 53)';
 const DECK_COLOURS = {
   two: { spades: BLACK, clubs: BLACK, hearts: RED, diamonds: RED },
-  four: { spades: BLACK, clubs: 'rgb(28, 107, 67)', hearts: RED, diamonds: 'rgb(31, 95, 168)' },
+  four: { spades: BLACK, clubs: 'rgb(12, 122, 30)', hearts: RED, diamonds: 'rgb(11, 78, 168)' },
 };
 
 test('the back, the four-colour deck and the large face are chosen and then kept', async ({

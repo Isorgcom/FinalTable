@@ -88,11 +88,19 @@
   --hand-diamonds: #e2766c;
   --hand-clubs: var(--cream);
 }
+/* Deliberately far apart in brightness as well as in hue. The first pair here
+   were a slate blue and a forest green that measured almost the same
+   luminance, so at the size a rank is actually read they came out as one
+   dark colour twice; the green was half-way to teal as well. This blue is
+   deeper and this green is both lighter and a truer green - about eighty
+   degrees of hue between them and half again the brightness - and both still
+   clear of the card's own white by better than 4.5 to 1, which the corner
+   indices need because they are small. */
 [data-deck='four'] {
-  --suit-diamonds: #1f5fa8;
-  --suit-clubs: #1c6b43;
+  --suit-diamonds: #0b4ea8;
+  --suit-clubs: #0c7a1e;
   --hand-diamonds: #7fb2e8;
-  --hand-clubs: #82c9a1;
+  --hand-clubs: #63c96b;
 }
 
 /* The face: how much bigger the rank and the suit are drawn. */
