@@ -202,11 +202,17 @@ Not the game, and not the split below: what the person who hosts it needs.
 
 ### A real operator panel
 
-The Operator page today is settings and a list: the Game Night pairing, its
-own password, and every game the server holds with the one control it already
-had, which is ending one. That is enough to run a game night and not enough to
-run a server. This was on the "not on either path" list below as a full admin
-console; it is on the path now.
+One thing, two names: the page a player never sees is called **Operator**
+everywhere it is written for a person and **admin** everywhere it is written
+for a machine - `ADMIN_PASSWORD`, `adminLogin`, `adminCredential`. The admin
+panel and the Operator page are the same panel, and this is it.
+
+Today it is settings and a list: the Game Night pairing, its own password, and
+every game the server holds with the one control it already had, which is
+ending one. That is enough to run a game night and not enough to run a server.
+It was on the "not on either path" list below, as a full admin console that
+the Operator page should not grow into; that was a distinction without a
+difference, and it is on the path now.
 
 **A log is the first piece, and the reason this moved.** Asked what games this
 server had run, the only answer available was to reconstruct thirteen of them
@@ -358,9 +364,9 @@ scrolls away.
 
 ## Not on either path
 
-- A full admin console **was here**, on the grounds that the Operator page was
-  settings and a list and should not grow into a dashboard. That held until
-  somebody asked what games the server had run and the answer was to read
-  container logs. It moved to "A real operator panel" above; what stays ruled
-  out is the dashboard for its own sake, and the controls over a running game,
-  which live in the table menu behind the same password.
+- A full admin console **was here**, described as a thing the Operator page
+  should not grow into. They were never two things: the panel is called
+  Operator to a person and admin to the code, and ruling out one while keeping
+  the other was ruling out nothing. It moved to "A real operator panel" above.
+  What stays ruled out is a dashboard for its own sake, and the controls over
+  a running game, which live in the table menu behind the same password.
