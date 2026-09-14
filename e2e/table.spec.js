@@ -1572,6 +1572,63 @@ test('the table can be muted from the menu, and stays muted after a reload', asy
   expect(pageErrors).toEqual([]);
 });
 
+// The settings that belong to the person rather than the browser. Proved by
+// wiping the browser's copies and keeping only the identity token: whatever
+// comes back after that came back from the server.
+test('mute, your chair and the open tab come back from the server, not the browser', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Settled');
+  await deal(page);
+  await page.mouse.click(5, 5);
+
+  // The server answers every save with what it kept, so the test can wait on
+  // that rather than on a stopwatch: the client gathers changes on a short
+  // beat and this is the edge that says the beat has landed.
+  await page.evaluate(() => {
+    window.__prefsKept = null;
+    socket.on('preferences', (p) => {
+      window.__prefsKept = p;
+    });
+  });
+
+  // Three settings, each through the control a player would actually use.
+  await page.click('#tabStats');
+  await expect(page.locator('#panelStats')).toBeVisible();
+  await page.click('#menuToggle');
+  await page.click('#btnMute');
+  expect(await page.evaluate(() => SFX.isMuted())).toBe(true);
+  await page.evaluate(() => Store.set('finaltable_my_slot', '3'));
+
+  await expect
+    .poll(() => page.evaluate(() => window.__prefsKept))
+    .toEqual({ muted: true, seat: 3, panelTab: 'stats' });
+
+  // Everything the browser remembers about these, gone. The identity token
+  // stays, because this is about the same person, not a stranger.
+  await page.evaluate(() => {
+    for (const key of ['finaltable_muted', 'finaltable_my_slot', 'finaltable_side_panel_tab']) {
+      localStorage.removeItem(key);
+    }
+  });
+  expect(await page.evaluate(() => localStorage.getItem('finaltable_muted'))).toBeNull();
+
+  await page.reload();
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // All three are back, and they can only have come from the identity.
+  await expect.poll(() => page.evaluate(() => SFX.isMuted())).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('finaltable_my_slot')))
+    .toBe('3');
+  await expect(page.locator('#panelStats')).toBeVisible();
+  // And the menu offers the right half of the toggle rather than a stale label.
+  await page.click('#menuToggle');
+  await expect(page.locator('#btnMute')).toHaveText('unmute sound');
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('learning who you are after the seats are built still puts you in your chair', async ({
   page,
 }) => {

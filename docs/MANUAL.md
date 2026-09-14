@@ -52,6 +52,14 @@ your GameNight username, the same player on every device you sign in from, so
 a phone and a laptop are one seat rather than two. **Sign out** is in the
 corner menu; it signs out this browser only.
 
+Three settings follow you rather than the browser: whether the table is
+silent, which chair you are shown in, and which side panel tab opens. They are
+kept against who you are, so a GameNight account that picks a chair on the
+phone finds the same chair on the iPad. A guest identity is one browser, so
+for a guest they are remembered on that browser and nowhere else, which is as
+far as a guest goes. Changing one takes effect at once either way; the server
+is told afterwards, so nothing at the table waits on it.
+
 ### The corner menu
 
 The button in the top-right corner of the lobby opens a small menu: **operator**

@@ -13,6 +13,15 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- Mute, the chair you sit in and the panel tab you leave open now follow you
+  between devices. They are kept against who you are rather than against the
+  browser, so signing in with a Game Night account on the phone and then the
+  iPad gets you the same table on both. A guest is still one browser, which is
+  the most a guest can be, and nothing here is slower: the setting is applied
+  at once and the server is told afterwards.
+
 ## 0.13.0 - 2026-09-13
 
 ### Fixed

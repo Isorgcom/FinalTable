@@ -242,6 +242,56 @@ describe('Tournament socket layer', () => {
     expect(again.isNew).toBe(false);
   });
 
+  // The point of keeping these on the server: the same person on a second
+  // device gets the settings they chose, not the ones that browser last saw.
+  test('a preference saved on one device is there on the next', async () => {
+    const phone = await connectClient();
+    const me = await identify(phone, { name: 'Ann', avatar: '🐸' });
+    expect(me.prefs).toEqual({});
+
+    const kept = waitFor(phone, 'preferences');
+    phone.emit('savePreferences', { muted: true, seat: 4, panelTab: 'stats' });
+    expect(await kept).toEqual({ muted: true, seat: 4, panelTab: 'stats' });
+
+    // A different socket, the same token: the iPad.
+    const ipad = await connectClient();
+    const there = await identify(ipad, { token: me.token, name: 'Ann' });
+    expect(there.uid).toBe(me.uid);
+    expect(there.prefs).toEqual({ muted: true, seat: 4, panelTab: 'stats' });
+
+    // One setting at a time, and the rest stay where they were.
+    const moved = waitFor(ipad, 'preferences');
+    ipad.emit('savePreferences', { seat: 0 });
+    expect(await moved).toEqual({ muted: true, seat: 0, panelTab: 'stats' });
+  });
+
+  test('a preference is refused without an identity, and anything unknown is dropped', async () => {
+    const anon = await connectClient();
+    // Nothing comes back, because nothing was stored against anybody.
+    anon.emit('savePreferences', { muted: true });
+    const me = await identify(anon, { name: 'Bee' });
+
+    const kept = waitFor(anon, 'preferences');
+    anon.emit('savePreferences', { muted: true, colour: 'green', seat: 99 });
+    expect(await kept).toEqual({ muted: true });
+    expect(me.prefs).toEqual({});
+  });
+
+  // A client asking the server to write a file that holds every identity it
+  // has ever seen, in a loop.
+  test('a socket hammering preferences is cut off, and recovers', async () => {
+    const spammer = await connectClient();
+    await identify(spammer, { name: 'Cee' });
+    let answers = 0;
+    spammer.on('preferences', () => {
+      answers++;
+    });
+    for (let i = 0; i < 40; i++) spammer.emit('savePreferences', { seat: i % 8 });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(answers).toBeGreaterThan(0);
+    expect(answers).toBeLessThanOrEqual(12);
+  });
+
   test('a fresh socket with the same token rejoins the seat and the table follows', async () => {
     const first = await connectClient();
     const { created: joined, guest } = await createTournamentWithGuest(first);

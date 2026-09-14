@@ -41,6 +41,11 @@
   let view = 'home';
 
   const $ = (id) => document.getElementById(id);
+  // The lobby's own copy, and browser-only on purpose. What it keeps is this
+  // device's business - the token that proves who you are, the sign-in state,
+  // the last game you were in - none of which should travel to another device.
+  // A setting that ought to follow the player goes through window.Store in
+  // app-state.js, which tells the server as well.
   const store = {
     get(key) {
       try {

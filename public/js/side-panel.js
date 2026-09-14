@@ -11,7 +11,13 @@
 (function () {
   'use strict';
 
-  const TAB_KEY = 'finaltable_side_panel_tab';
+  // app-state.js owns the name, because which tab you open is one of the
+  // settings that follows the player rather than the browser, and Store has to
+  // know it is one of those. The literal here is the fallback for a page that
+  // somehow loaded this file without that one.
+  const TAB_KEY = window.SIDE_PANEL_TAB_KEY || 'finaltable_side_panel_tab';
+  // Also known to the server, which will not store a tab name it cannot see
+  // the point of. Changing this list means changing PANEL_TABS there.
   const NAMES = ['chat', 'log', 'info', 'stats', 'history'];
   const renderers = {};
   let current = 'chat';
@@ -58,11 +64,7 @@
       const body = document.getElementById(name === 'chat' ? 'panelChatBody' : 'panelLogBody');
       if (body) body.scrollTop = body.scrollHeight;
     }
-    try {
-      localStorage.setItem(TAB_KEY, name);
-    } catch (_err) {
-      /* private mode */
-    }
+    if (window.Store) Store.set(TAB_KEY, name);
     if (opts && opts.focus) {
       const tab = tabFor(name);
       if (tab) tab.focus();
@@ -186,12 +188,7 @@
     };
     if (docked.addEventListener) docked.addEventListener('change', onModeChange);
     else if (docked.addListener) docked.addListener(onModeChange);
-    let saved = null;
-    try {
-      saved = localStorage.getItem(TAB_KEY);
-    } catch (_err) {
-      /* private mode */
-    }
+    const saved = window.Store ? Store.get(TAB_KEY) : null;
     select(NAMES.includes(saved) ? saved : 'chat');
     syncToggle();
   }

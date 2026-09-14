@@ -218,4 +218,89 @@ describe('identity store', () => {
     const legacy = createIdentityStore({ saveDir: dir });
     expect(legacy.verify('oldtok')).toMatchObject({ uid: 'u_old', name: 'Old', provider: 'guest' });
   });
+
+  // Preferences belong to the person, so they hang off the identity and not
+  // off the browser. A closed set with a validator each, because this is the
+  // one place a client can ask the server to write something it keeps.
+  test('preferences are kept against the identity, and only the ones named', () => {
+    const store = createIdentityStore();
+    const me = store.identify({ name: 'Bryce' });
+    expect(me.prefs).toEqual({});
+
+    expect(store.setPrefs(me.uid, { muted: true, seat: 3, panelTab: 'stats' })).toEqual({
+      muted: true,
+      seat: 3,
+      panelTab: 'stats',
+    });
+    // A patch, so one setting moves and the others stay.
+    expect(store.setPrefs(me.uid, { seat: 0 })).toEqual({
+      muted: true,
+      seat: 0,
+      panelTab: 'stats',
+    });
+    // And the owner is handed them back when they identify again.
+    expect(store.identify({ token: me.token }).prefs).toEqual({
+      muted: true,
+      seat: 0,
+      panelTab: 'stats',
+    });
+
+    // Anything not named is dropped, and so is a named one of the wrong shape.
+    expect(store.setPrefs(me.uid, { colour: 'green', muted: 'yes', seat: 99 })).toBeNull();
+    expect(store.setPrefs(me.uid, { seat: 7, nonsense: { big: 'x'.repeat(5000) } })).toEqual({
+      muted: true,
+      seat: 7,
+      panelTab: 'stats',
+    });
+    // A tab the panel does not have is not worth storing for years.
+    expect(store.setPrefs(me.uid, { panelTab: 'sound' })).toBeNull();
+    // Clearing the chair is a value, not an absence.
+    expect(store.setPrefs(me.uid, { seat: null }).seat).toBeNull();
+    // Nobody there to have a preference.
+    expect(store.setPrefs('u_nobody', { muted: true })).toBeNull();
+    expect(store.setPrefs(me.uid, {})).toBeNull();
+  });
+
+  // A preference nobody else should see. get() feeds every roster on the
+  // server, and it carries the name and the avatar on purpose.
+  test('preferences go to their owner, not into the roster', () => {
+    const store = createIdentityStore();
+    const me = store.identify({ name: 'Bryce' });
+    store.setPrefs(me.uid, { muted: true, seat: 2 });
+    expect(store.get(me.uid).prefs).toBeUndefined();
+    expect(store.verify(me.token).prefs).toEqual({ muted: true, seat: 2 });
+  });
+
+  test('preferences survive a restart, and an old file simply has none', () => {
+    const store = createIdentityStore({ saveDir: dir });
+    const me = store.identify({ name: 'Bryce' });
+    store.setPrefs(me.uid, { muted: true, seat: 5, panelTab: 'history' });
+    store.flush();
+
+    const reopened = createIdentityStore({ saveDir: dir });
+    expect(reopened.verify(me.token).prefs).toEqual({
+      muted: true,
+      seat: 5,
+      panelTab: 'history',
+    });
+
+    fs.writeFileSync(
+      path.join(dir, 'identities.json'),
+      JSON.stringify({
+        version: 2,
+        identities: [
+          {
+            uid: 'u_noprefs',
+            name: 'Old',
+            avatar: '🧑',
+            createdAt: 1,
+            lastSeenAt: 1,
+            tokens: [{ token: 'tok_noprefs', createdAt: 1, lastSeenAt: 1 }],
+          },
+        ],
+      })
+    );
+    const older = createIdentityStore({ saveDir: dir });
+    expect(older.verify('tok_noprefs').prefs).toEqual({});
+  });
 });

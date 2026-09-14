@@ -267,6 +267,10 @@ function init() {
       btn.setAttribute('aria-pressed', SFX.isMuted() ? 'true' : 'false');
     };
     label();
+    // Mute can also change without anyone pressing this, when the setting
+    // arrives from the identity on another device. The label has to follow it
+    // or the menu offers to mute a table that is already silent.
+    window.syncMuteLabel = label;
     btn.addEventListener('click', () => {
       SFX.setMuted(!SFX.isMuted());
       label();

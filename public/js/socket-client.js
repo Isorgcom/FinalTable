@@ -68,8 +68,18 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onServerInfo(info);
   });
   socket.on('identified', (ident) => {
+    // Before the lobby, so a table resumed by this same event is already
+    // rendering with the settings this person chose rather than with whatever
+    // this browser happened to have.
+    if (window.adoptPreferences) adoptPreferences(ident && ident.prefs);
     if (window.Admin) Admin.onIdentified(ident);
     if (window.Lobby) Lobby.onIdentified(ident);
+  });
+  // The server's answer to a save: what it kept, which is not always what was
+  // asked for. Adopting it means a value this server would not store does not
+  // sit in the browser looking as though it had been.
+  socket.on('preferences', (prefs) => {
+    if (window.adoptPreferences) adoptPreferences(prefs);
   });
   socket.on('identifyFailed', (data) => {
     if (window.Lobby) Lobby.onIdentifyFailed(data);

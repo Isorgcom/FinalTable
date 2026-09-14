@@ -20,20 +20,6 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
-### Accounts, and preferences that follow you
-
-A guest is still a device token in the browser plus a record in
-`identities.json` with a thirty-day expiry, tied to one browser. A Game Night
-account is not: it is one identity here with a device token per browser, so
-the phone and the iPad are the same player. That half is done (Identity
-bridge, below).
-
-What remains is the other half. Preferences - mute, which chair you sit in,
-which panel tab - are `localStorage` only, so they still do not follow you.
-They want a server-side place to live, keyed by the identity, so the same
-person gets the same table on any device. For a Game Night player the key
-exists now; for a guest it is the device, which is the best there is.
-
 ### Taking the hand history with you
 
 The server already records every hand in full, and a player is already sent
@@ -101,6 +87,13 @@ properly means shipping a verifier as well. Worth revisiting if this is ever
 hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
+
+Preferences that follow you. Mute, the chair you are shown in and the panel
+tab that opens are kept against the identity rather than the browser, so a
+Game Night account gets the same table on the phone and the iPad. A closed set
+with a validator each, because it is a client writing into a file the server
+keeps; the browser is still written first, so nothing at the table waits on
+the network, and a guest is one browser, which is as far as a guest goes.
 
 Showing a hand nobody paid to see. Nothing is shown by default and nobody is
 ever made to - but when a hand ends, anybody whose cards stayed down may turn

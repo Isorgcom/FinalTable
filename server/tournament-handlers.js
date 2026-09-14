@@ -17,6 +17,12 @@ const { createTournamentRegistry } = require('./tournament-registry');
 const ADMIN_MAX_ATTEMPTS = 5;
 const ADMIN_FAIL_DELAY_MS = 400;
 
+// How often one socket may store a preference. Generous against a person
+// pressing things and mean against a loop, because every save can put the
+// whole identities file on the disk.
+const PREF_SAVE_LIMIT = 12;
+const PREF_SAVE_WINDOW_MS = 10 * 1000;
+
 function registerTournamentHandlers(deps) {
   const { io, identity } = deps;
   const registry = createTournamentRegistry(deps);
@@ -175,6 +181,33 @@ function registerTournamentHandlers(deps) {
       // The list this socket got on connect was built before it had a uid, so
       // none of its cards knew they were this player's. Send it again.
       socket.emit('tournamentList', registry.listFor(ident.uid));
+    });
+
+    // A preference the player just changed, to be kept against their identity
+    // rather than their browser. The client writes it locally first and sends
+    // this after, so the table never waits on the round trip; nothing here is
+    // answered unless the record actually moved.
+    //
+    // Rate limited because this is a client asking the server to write a file
+    // that holds every identity it has ever seen. A person changing a tab or
+    // a chair does it a handful of times a minute; the cap is far above that
+    // and far below what would matter.
+    socket.on('savePreferences', (payload = {}) => {
+      if (!socket.data.uid) return;
+      const at = Date.now();
+      const seen = socket.data.prefSaves || [];
+      const recent = seen.filter((t) => at - t < PREF_SAVE_WINDOW_MS);
+      if (recent.length >= PREF_SAVE_LIMIT) {
+        socket.data.prefSaves = recent;
+        return;
+      }
+      recent.push(at);
+      socket.data.prefSaves = recent;
+      const prefs = identity.setPrefs(socket.data.uid, payload);
+      // Sent back so a second device sees what this one settled on when it
+      // next identifies, and so a value this server refused does not sit in
+      // the client believing it was kept.
+      if (prefs) socket.emit('preferences', prefs);
     });
 
     socket.on('createTournament', (payload = {}) => {

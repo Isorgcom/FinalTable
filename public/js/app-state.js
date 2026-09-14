@@ -36,14 +36,132 @@ window.Store = {
     } catch (_err) {
       /* a preference that cannot be saved is not worth an error */
     }
+    // Some of these belong to the person rather than the browser. The local
+    // write above still happens first and the table reads it immediately, so
+    // nothing waits on the network; this only tells the server afterwards.
+    if (SYNCED_PREFS[key]) pushPreference(key, value);
   },
 };
 
-// Which chair the viewer has asked to be shown in, per device.
+// Which chair the viewer has asked to be shown in.
 const VIEWER_SLOT_KEY = 'finaltable_my_slot';
 
-// Whether the table is silent, per device.
+// Whether the table is silent.
 const MUTED_KEY = 'finaltable_muted';
+
+// Which side panel tab opens. side-panel.js owns the panel; the key lives here
+// because Store has to know it is one of the ones that travels.
+const SIDE_PANEL_TAB_KEY = 'finaltable_side_panel_tab';
+window.SIDE_PANEL_TAB_KEY = SIDE_PANEL_TAB_KEY;
+
+// ── Preferences that follow the player ───────────────────────────────────
+//
+// Three settings belong to a person, not to the browser they happen to be
+// using: whether the table is silent, which chair they sit in, and which panel
+// tab opens. They are still written to localStorage first, because that is
+// what makes them instant and what a guest has; the server copy is what makes
+// the iPad agree with the phone, for anyone signed in with a Game Night
+// account, whose devices are one identity.
+//
+// Each entry maps the storage key to the name the server knows it by, and the
+// pair of functions that carry a value across the wire: the store holds
+// strings, the server holds the real types.
+const SYNCED_PREFS = {
+  [MUTED_KEY]: {
+    name: 'muted',
+    toServer: (raw) => raw === '1',
+    toStore: (value) => (value ? '1' : null),
+  },
+  [VIEWER_SLOT_KEY]: {
+    name: 'seat',
+    toServer: (raw) => (raw === null ? null : Number(raw)),
+    toStore: (value) => (value === null ? null : String(value)),
+  },
+  [SIDE_PANEL_TAB_KEY]: {
+    name: 'panelTab',
+    toServer: (raw) => raw,
+    toStore: (value) => value,
+  },
+};
+
+// Changes are gathered and sent together on the next beat. Pressing a tab
+// three times while making up your mind is one save, not three, and the beat
+// is short enough that closing the tab straight after still catches it.
+const PREF_PUSH_MS = 300;
+let _prefPending = null;
+let _prefTimer = null;
+
+let _adoptingPrefs = false;
+
+function pushPreference(key, raw) {
+  const spec = SYNCED_PREFS[key];
+  // Adopting writes through the same setters the player's own presses do, and
+  // sending those straight back would be a round trip to agree with itself.
+  if (!spec || _adoptingPrefs) return;
+  if (!_prefPending) _prefPending = {};
+  _prefPending[spec.name] = spec.toServer(raw === undefined ? null : raw);
+  if (_prefTimer) return;
+  _prefTimer = setTimeout(() => {
+    _prefTimer = null;
+    const patch = _prefPending;
+    _prefPending = null;
+    // No socket yet, or nothing connected: the local write stands, and the
+    // next change after identifying carries this one with it. `socket` is the
+    // module-level binding below, not a window property, so it is named
+    // directly - reaching for window.socket finds nothing.
+    if (patch && socket && socket.connected) socket.emit('savePreferences', patch);
+  }, PREF_PUSH_MS);
+}
+
+// What the server has for this identity, on identifying. It wins: opening the
+// iPad is asking for the settings this person chose, not the ones this browser
+// last happened to see. A key the server has never been told about is left
+// alone, so a new device keeps its own until it changes something.
+//
+// Written straight to localStorage rather than through Store.set, because
+// adopting is not a change to push back.
+function adoptPreferences(prefs) {
+  if (!prefs || typeof prefs !== 'object') return;
+  _adoptingPrefs = true;
+  try {
+    applyPreferences(prefs);
+  } finally {
+    _adoptingPrefs = false;
+  }
+}
+
+function applyPreferences(prefs) {
+  for (const [key, spec] of Object.entries(SYNCED_PREFS)) {
+    if (!Object.prototype.hasOwnProperty.call(prefs, spec.name)) continue;
+    const stored = spec.toStore(prefs[spec.name]);
+    try {
+      if (stored === null || stored === undefined) localStorage.removeItem(key);
+      else localStorage.setItem(key, stored);
+    } catch (_err) {
+      /* private mode: the settings stay as this browser has them */
+    }
+  }
+  // Two of the three are read once and held. Writing the store is not enough
+  // for those; they have to be told, or the mute stays off until a reload and
+  // the panel opens on whatever it opened on.
+  // SFX and the two bindings below are declared later in this file with const
+  // and let, which puts them in the script's scope rather than on window. They
+  // are named directly for that reason: a window.SFX guard is always false and
+  // would skip this silently, which is exactly how it failed the first time.
+  if (Object.prototype.hasOwnProperty.call(prefs, 'muted')) {
+    SFX.muted = !!prefs.muted;
+    if (window.syncMuteLabel) syncMuteLabel();
+  }
+  if (window.SidePanel && typeof prefs.panelTab === 'string') {
+    SidePanel.select(prefs.panelTab);
+  }
+  // The seat is read from the store on every render, so the next one has it.
+  // Only worth forcing if there is a table up to redraw.
+  if (typeof renderPlayersIncremental === 'function' && gameState) {
+    renderPlayersIncremental();
+  }
+}
+window.adoptPreferences = adoptPreferences;
 
 // ── Where the seats go ───────────────────────────────────────────────────
 //

@@ -34,6 +34,11 @@ const FILE_VERSION = 2;
 const FLUSH_DEBOUNCE_MS = 250;
 const TOUCH_FLUSH_MS = 60 * 1000;
 
+// The side panel's tabs, as the client names them. Kept here because a stored
+// preference is only useful if it is one the panel will actually open, and a
+// name that has gone away must not come back off the disk years later.
+const PANEL_TABS = ['chat', 'log', 'info', 'stats', 'history'];
+
 function createIdentityStore(options = {}) {
   const {
     saveDir = null,
@@ -69,6 +74,35 @@ function createIdentityStore(options = {}) {
     return crypto.randomBytes(24).toString('base64url');
   }
 
+  // The preferences that belong to the person rather than to the browser they
+  // happen to be using. A closed set with a validator each, because this is a
+  // client writing into a file the server keeps for ever: anything not named
+  // here is dropped, and so is any value of the wrong shape. Adding one means
+  // adding it here, which is the point.
+  //
+  // A guest is one browser, so for them this is only a slower localStorage.
+  // The gain is a GameNight identity, where the phone and the iPad are the
+  // same uid and therefore now the same table.
+  const PREF_KEYS = {
+    // Which chair the viewer is shown in, as a display slot. Eight chairs.
+    seat: (v) => (v === null ? null : Number.isInteger(v) && v >= 0 && v <= 7 ? v : undefined),
+    // Whether the table is silent.
+    muted: (v) => (typeof v === 'boolean' ? v : undefined),
+    // Which side panel tab opens. The names the client's panel knows.
+    panelTab: (v) => (PANEL_TABS.includes(v) ? v : undefined),
+  };
+
+  function sanitizePrefs(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [key, check] of Object.entries(PREF_KEYS)) {
+      if (!Object.prototype.hasOwnProperty.call(raw, key)) continue;
+      const value = check(raw[key]);
+      if (value !== undefined) out[key] = value;
+    }
+    return out;
+  }
+
   function newRecord(fields, at) {
     return {
       uid: fields.uid,
@@ -78,6 +112,7 @@ function createIdentityStore(options = {}) {
       gnUserId: fields.gnUserId ? String(fields.gnUserId) : null,
       createdAt: fields.createdAt || at,
       lastSeenAt: fields.lastSeenAt || at,
+      prefs: sanitizePrefs(fields.prefs),
       tokens: new Map(),
     };
   }
@@ -126,6 +161,7 @@ function createIdentityStore(options = {}) {
       gnUserId: rec.gnUserId,
       createdAt: rec.createdAt,
       lastSeenAt: rec.lastSeenAt,
+      prefs: rec.prefs,
       tokens: [...rec.tokens.entries()].map(([token, t]) => ({ token, ...t })),
     }));
     return JSON.stringify({ version: FILE_VERSION, identities: list });
@@ -197,7 +233,14 @@ function createIdentityStore(options = {}) {
   }
 
   function publicView(token, rec) {
-    return { uid: rec.uid, token, name: rec.name, avatar: rec.avatar, provider: rec.provider };
+    return {
+      uid: rec.uid,
+      token,
+      name: rec.name,
+      avatar: rec.avatar,
+      provider: rec.provider,
+      prefs: { ...rec.prefs },
+    };
   }
 
   function recordFor(token) {
@@ -278,6 +321,29 @@ function createIdentityStore(options = {}) {
     return { ...publicView(token, rec), isNew };
   }
 
+  // A patch, not a replacement: the client sends the one preference that just
+  // changed and the rest stay as they are. Returns what the record now holds,
+  // so the caller can send it back rather than guess; null if the identity is
+  // gone or the patch said nothing this server understands, which is the same
+  // answer as far as the caller is concerned.
+  function setPrefs(uid, patch) {
+    const rec = uid ? identities.get(uid) : null;
+    if (!rec) return null;
+    const clean = sanitizePrefs(patch);
+    const keys = Object.keys(clean);
+    if (keys.length === 0) return null;
+    let changed = false;
+    for (const key of keys) {
+      if (rec.prefs[key] === clean[key]) continue;
+      rec.prefs[key] = clean[key];
+      changed = true;
+    }
+    // Material rather than a touch: somebody pressed something, and losing it
+    // to a hard kill would be the bug this exists to fix.
+    if (changed) scheduleFlush('material');
+    return { ...rec.prefs };
+  }
+
   function verify(token) {
     const rec = recordFor(token);
     if (!rec) return null;
@@ -334,6 +400,7 @@ function createIdentityStore(options = {}) {
     verify,
     get,
     rename,
+    setPrefs,
     expireIdle,
     flush,
     get size() {
