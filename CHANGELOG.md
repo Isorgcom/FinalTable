@@ -13,8 +13,19 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- A **Log** page on the Admin page, empty for now. It will hold what the server
+  has done - games that finished, sign-ins, restarts, and anything that logged
+  a warning - and until then it says so, because the server writes its log to
+  its own output and keeps no copy.
+
 ### Changed
 
+- The Admin page is four pages behind a strip of tabs rather than one long
+  scroll: **Games**, **Sign-in**, **Password** and **Log**. It opens on Games,
+  the arrow keys walk the tabs, and **Back to the lobby** sits below all of
+  them. Nothing any of it does has changed.
 - The **Operator** page is now the **Admin** page, and every word for it says
   admin. It was Operator wherever a person read it and admin wherever the code
   wrote it, including `ADMIN_PASSWORD`, which meant the password and the page

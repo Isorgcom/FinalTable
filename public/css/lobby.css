@@ -535,6 +535,35 @@
 }
 
 /* ── Admin ── */
+/* The Admin page's tab strip. The buttons are the side panel's .side-tab,
+   shared rather than forked: .seg below already copied that look once, and a
+   third copy would be the second wrong way to do it. Only the strip is new,
+   because .side-panel-tabs carries a panel-tinted background that would sit
+   badly on a lobby card. The touch floor matches the action bar's. */
+.admin-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(92, 61, 26, 0.35);
+  /* The fifth page scrolls the strip rather than squeezing the other four
+     thinner. Four fit a 390px screen with room to spare; the overflow is the
+     valve for what comes after, not for what is here. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.admin-tabs::-webkit-scrollbar {
+  display: none;
+}
+.admin-tabs .side-tab {
+  /* The one place this parts company with the side panel, which divides its
+     five tabs evenly because it will only ever have five. */
+  flex: 0 0 auto;
+  padding-left: 14px;
+  padding-right: 14px;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
 .admin-section {
   margin-top: 6px;
 }

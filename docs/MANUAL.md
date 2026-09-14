@@ -608,7 +608,12 @@ asks again.
 
 ### The Admin page
 
-**Games on this server** comes first: every game the server holds, listed or
+Four pages behind one strip of tabs: **Games**, **Sign-in**, **Password** and
+**Log**. One shows at a time, it opens on Games, and **Back to the lobby** is
+below all of them. The arrow keys walk the tabs.
+
+**Games on this server** is the page it opens on: every game the server holds,
+listed or
 not, running first, then registering, then finished. Each card shows the
 status, how the game is listed (public, private or invite-only), the **join
 code**, the host, how many registered players are connected, the entrants,
@@ -622,18 +627,23 @@ dropping off.
 This is the one place an unlisted game and its code are shown to somebody
 who is not in it. Hand codes out with care.
 
-**Sign in with GameNight** pairs the server with a GameNight site so players
+**Sign-in** pairs the server with a GameNight site so players
 can sign in with their account there. Register the server on GameNight first
 (Site Settings › Connected Apps), then enter the GameNight address and the
 slug here; the signing key is fetched, nothing is pasted. **Refresh key** if
 GameNight regenerates its key; **Unpair** takes the button away. The full
 procedure is in [DEPLOYMENT.md](./DEPLOYMENT.md#pairing-with-gamenight).
 
-**Admin password** changes the password. The current one is asked for
+**Password** changes the admin password. The current one is asked for
 again, and the change signs out every other admin session. The first
 password comes from the server's environment (`ADMIN_PASSWORD`); after a
 change the new one wins, and a forgotten one is reset as described in
 [DEPLOYMENT.md](./DEPLOYMENT.md#the-admin-password).
+
+**Log** is there and empty. It will hold what this server has done - games
+that finished, sign-ins, restarts, and anything that logged a warning - and
+says so, because today the server writes its log to its own output and keeps
+no copy of it.
 
 ### From the table
 

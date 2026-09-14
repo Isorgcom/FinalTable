@@ -293,7 +293,73 @@
   let adminPending = false; // opening the page once the unlock answers
   let pairing = null;
   let adminGames = null; // every game on the server, once asked for
-  let _drawnOpSig = null;
+  let _drawnGamesSig = null;
+
+  // ── The Admin page's tabs ───────────────────────────────────────────────
+  //
+  // One page at a time, so a fourth and fifth thing can join without making
+  // the page a longer scroll. Adding one is an entry here, a button in the
+  // strip and a section beside the others; nothing else has to know.
+  //
+  // Its own small controller rather than SidePanel's: that module is bound to
+  // #sidePanel throughout, half of it is drawer and rail plumbing that only
+  // means something over a felt, and its tab list is mirrored on the server
+  // as a synced *player* preference. An admin's tab is neither. The look is
+  // shared - the buttons are .side-tab - which is where the duplication would
+  // actually have cost something.
+  const ADMIN_PAGES = [
+    { name: 'games', cap: 'Games', onShow: () => askForAdminGames() },
+    { name: 'gamenight', cap: 'GameNight', onShow: null },
+    { name: 'password', cap: 'Password', onShow: () => setPwStatus('') },
+    { name: 'log', cap: 'Log', onShow: null },
+  ];
+  // Session only, and back to Games every time the page opens. Deliberately
+  // not window.Store: that is the player-preference store, which now travels
+  // to the server, and this is not a player's setting.
+  let adminTab = 'games';
+
+  function adminTabButtons() {
+    return document.querySelectorAll('#lobbyAdmin .admin-tabs .side-tab');
+  }
+
+  function selectAdminTab(name) {
+    const page = ADMIN_PAGES.find((x) => x.name === name);
+    if (!page) return;
+    adminTab = name;
+    adminTabButtons().forEach((tab) => {
+      const on = tab.dataset.adminTab === name;
+      tab.classList.toggle('active', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      // Roving tabindex: one stop for the whole strip, arrows move within it.
+      tab.tabIndex = on ? 0 : -1;
+    });
+    for (const p of ADMIN_PAGES) {
+      const node = $('adminPage' + p.cap);
+      if (node) node.classList.toggle('hidden', p.name !== name);
+    }
+    if (page.onShow) page.onShow();
+  }
+
+  // The same roving handler the side panel uses, and the same choice with it:
+  // an arrow selects rather than only moving focus, so the page follows.
+  function onAdminTabKey(e) {
+    const list = [...adminTabButtons()];
+    const idx = list.indexOf(document.activeElement);
+    if (idx < 0 || !list.length) return;
+    let next = -1;
+    if (e.key === 'ArrowRight') next = (idx + 1) % list.length;
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + list.length) % list.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = list.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    selectAdminTab(list[next].dataset.adminTab);
+    list[next].focus();
+  }
+
+  function askForAdminGames() {
+    if (socket && socket.connected) socket.emit('adminListTournaments');
+  }
 
   async function openAdmin() {
     closeLobbyMenu();
@@ -301,10 +367,11 @@
       setPwStatus('');
       showView('admin');
       renderAdminGames();
-      if (socket) {
-        socket.emit('adminGetGameNight');
-        socket.emit('adminListTournaments');
-      }
+      // Back to the first page each time, and selecting it asks for the list.
+      selectAdminTab('games');
+      // Asked for whatever tab is showing: the pairing decides whether the
+      // sign-in button exists at all, which is not only this page's business.
+      if (socket) socket.emit('adminGetGameNight');
       return;
     }
     if (typeof window.showTextPromptDialog !== 'function' || !socket) return;
@@ -330,7 +397,7 @@
     if (st && st.ok) openAdmin();
   }
 
-  function setOpStatus(text, kind) {
+  function setPairingStatus(text, kind) {
     const el = $('adminGnStatus');
     el.textContent = text || '';
     el.classList.toggle('ok', kind === 'ok');
@@ -346,7 +413,7 @@
     }
   }
 
-  function renderAdmin() {
+  function renderPairing() {
     const p = pairing;
     const detail = $('adminGnDetail');
     detail.textContent = '';
@@ -440,14 +507,14 @@
       end.type = 'button';
       end.className = 'btn-danger';
       end.textContent = 'End game';
-      end.addEventListener('click', () => opEndGame(t));
+      end.addEventListener('click', () => endGameAsAdmin(t));
       actions.appendChild(end);
       card.appendChild(actions);
     }
     return card;
   }
 
-  async function opEndGame(t) {
+  async function endGameAsAdmin(t) {
     let ok = true;
     if (typeof window.showConfirmDialog === 'function') {
       ok = await window.showConfirmDialog({
@@ -483,8 +550,8 @@
         t.lateRegOpen,
       ])
     );
-    if (sig === _drawnOpSig) return;
-    _drawnOpSig = sig;
+    if (sig === _drawnGamesSig) return;
+    _drawnGamesSig = sig;
     holder.textContent = '';
     const n = adminGames.length;
     status.textContent = n ? `${n} game${n === 1 ? '' : 's'}` : '';
@@ -502,19 +569,19 @@
     if (!data) return;
     pairing = data;
     if (data.ok === false) {
-      setOpStatus(data.error || 'That did not work.', 'err');
+      setPairingStatus(data.error || 'That did not work.', 'err');
     } else if (data.ok === true) {
-      setOpStatus(
+      setPairingStatus(
         data.paired ? `Paired with ${data.issuer}. The sign-in button is live.` : 'Unpaired.',
         'ok'
       );
     } else {
-      setOpStatus(
+      setPairingStatus(
         data.paired ? `Paired with ${data.issuer}.` : 'Not paired. Players sign in as guests only.'
       );
     }
-    renderAdmin();
-    setOpBusy(false);
+    renderPairing();
+    setPairingBusy(false);
   }
 
   function setPwStatus(text, kind) {
@@ -524,7 +591,7 @@
     el.classList.toggle('err', kind === 'err');
   }
 
-  function opSetPassword() {
+  function setAdminPassword() {
     if (!socket) return;
     const current = $('adminPwCurrent').value;
     const next = $('adminPwNext').value;
@@ -554,32 +621,32 @@
     setPwStatus((data && data.error) || 'That did not work.', 'err');
   }
 
-  function setOpBusy(busy) {
+  function setPairingBusy(busy) {
     ['btnAdminPair', 'btnAdminRefresh', 'btnAdminUnpair'].forEach((id) => ($(id).disabled = busy));
   }
 
-  function opPair() {
+  function pairGameNight() {
     if (!socket) return;
     const url = $('adminGnUrl').value.trim();
     const audience = $('adminGnAudience').value.trim() || 'finaltable';
     if (!/^https?:\/\/[^/\s?#]+/i.test(url)) {
-      setOpStatus('Enter the GameNight address as http(s)://host', 'err');
+      setPairingStatus('Enter the GameNight address as http(s)://host', 'err');
       $('adminGnUrl').focus();
       return;
     }
-    setOpBusy(true);
-    setOpStatus('Asking GameNight for its signing key…');
+    setPairingBusy(true);
+    setPairingStatus('Asking GameNight for its signing key…');
     socket.emit('adminPairGameNight', { url, audience });
   }
 
-  function opRefresh() {
+  function refreshGameNightKey() {
     if (!socket) return;
-    setOpBusy(true);
-    setOpStatus('Fetching the current key…');
+    setPairingBusy(true);
+    setPairingStatus('Fetching the current key…');
     socket.emit('adminRefreshGameNight');
   }
 
-  async function opUnpair() {
+  async function unpairGameNight() {
     if (!socket) return;
     let ok = true;
     if (typeof window.showConfirmDialog === 'function') {
@@ -592,7 +659,7 @@
       });
     }
     if (!ok) return;
-    setOpBusy(true);
+    setPairingBusy(true);
     socket.emit('adminUnpairGameNight');
   }
 
@@ -848,7 +915,9 @@
     renderList();
     // The registry pushes the list on every create, join, start, finish and
     // cancel, so the admin's view follows it without a broadcast of its own.
-    if (view === 'admin' && socket && socket.connected) socket.emit('adminListTournaments');
+    // Only while the Games page is the one showing: there is no point asking
+    // for a list to redraw behind a tab nobody is looking at.
+    if (view === 'admin' && adminTab === 'games') askForAdminGames();
     if (pendingLastCheck) {
       const id = pendingLastCheck;
       pendingLastCheck = null;
@@ -2167,24 +2236,27 @@
       closeLobbyMenu();
     });
     $('btnLobbyAdmin').addEventListener('click', openAdmin);
-    $('btnAdminPair').addEventListener('click', opPair);
-    $('btnAdminRefresh').addEventListener('click', opRefresh);
-    $('btnAdminUnpair').addEventListener('click', opUnpair);
+    $('btnAdminPair').addEventListener('click', pairGameNight);
+    $('btnAdminRefresh').addEventListener('click', refreshGameNightKey);
+    $('btnAdminUnpair').addEventListener('click', unpairGameNight);
     $('btnAdminBack').addEventListener('click', () => showView('home'));
-    $('btnAdminGamesRefresh').addEventListener('click', () => {
-      if (socket && socket.connected) socket.emit('adminListTournaments');
-    });
-    $('btnAdminSetPassword').addEventListener('click', opSetPassword);
+    $('btnAdminGamesRefresh').addEventListener('click', askForAdminGames);
+    adminTabButtons().forEach((tab) =>
+      tab.addEventListener('click', () => selectAdminTab(tab.dataset.adminTab))
+    );
+    const adminStrip = document.querySelector('#lobbyAdmin .admin-tabs');
+    if (adminStrip) adminStrip.addEventListener('keydown', onAdminTabKey);
+    $('btnAdminSetPassword').addEventListener('click', setAdminPassword);
     $('adminPwConfirm').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        opSetPassword();
+        setAdminPassword();
       }
     });
     $('adminGnUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        opPair();
+        pairGameNight();
       }
     });
 

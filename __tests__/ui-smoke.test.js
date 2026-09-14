@@ -62,6 +62,10 @@ describe('UI smoke', () => {
     expect(html).toContain('id="identityCard"');
     expect(html).toContain('id="sectionRegistering"');
     expect(html).toContain('id="btnCreateTournament"');
+    // The Admin page is four tab panels behind one strip. A page that lost its
+    // strip would still render, just as one long scroll again.
+    expect(html).toContain('role="tablist" aria-label="Admin"');
+    expect(html).toContain('id="adminPageLog"');
     expect(html).toContain('Create a tournament');
     expect(html).toMatch(/\/js\/lobby\.js\?v=[a-f0-9]{10}/);
     expect(html).toMatch(/\/js\/socket-client\.js\?v=[a-f0-9]{10}/);

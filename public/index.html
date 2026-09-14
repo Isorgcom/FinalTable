@@ -190,7 +190,65 @@
         <!-- Admin: server settings, behind the admin password -->
         <section class="lobby-view lobby-card hidden" id="lobbyAdmin" aria-label="Admin">
           <div class="lobby-title">Admin</div>
-          <div class="admin-section">
+          <!-- One page at a time. The tab look is the side panel's, shared rather than
+               forked a third time; the strip around it is all that is new here. A page is
+               one entry in ADMIN_PAGES, one button here, and one section below. -->
+          <div class="admin-tabs" role="tablist" aria-label="Admin">
+            <button
+              class="side-tab active"
+              id="tabAdminGames"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="adminPageGames"
+              data-admin-tab="games"
+            >
+              Games
+            </button>
+            <button
+              class="side-tab"
+              id="tabAdminGameNight"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="adminPageGameNight"
+              tabindex="-1"
+              data-admin-tab="gamenight"
+            >
+              Sign-in
+            </button>
+            <button
+              class="side-tab"
+              id="tabAdminPassword"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="adminPagePassword"
+              tabindex="-1"
+              data-admin-tab="password"
+            >
+              Password
+            </button>
+            <button
+              class="side-tab"
+              id="tabAdminLog"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="adminPageLog"
+              tabindex="-1"
+              data-admin-tab="log"
+            >
+              Log
+            </button>
+          </div>
+          <section
+            class="admin-page"
+            id="adminPageGames"
+            role="tabpanel"
+            tabindex="0"
+            aria-labelledby="tabAdminGames"
+          >
             <div class="admin-heading">Games on this server</div>
             <p class="admin-help">
               Every game the server holds, listed or not. The code is the way in; hand it out with
@@ -201,8 +259,14 @@
             <div class="lobby-actions">
               <button class="btn-secondary" id="btnAdminGamesRefresh" type="button">Refresh</button>
             </div>
-          </div>
-          <div class="admin-section admin-divider">
+          </section>
+          <section
+            class="admin-page hidden"
+            id="adminPageGameNight"
+            role="tabpanel"
+            tabindex="0"
+            aria-labelledby="tabAdminGameNight"
+          >
             <div class="admin-heading">Sign in with GameNight</div>
             <p class="admin-help">
               Pair this server with a GameNight site and the lobby offers a "Sign in with GameNight"
@@ -239,9 +303,14 @@
               </button>
               <button class="btn-secondary hidden" id="btnAdminUnpair" type="button">Unpair</button>
             </div>
-          </div>
-
-          <div class="admin-section admin-divider">
+          </section>
+          <section
+            class="admin-page hidden"
+            id="adminPagePassword"
+            role="tabpanel"
+            tabindex="0"
+            aria-labelledby="tabAdminPassword"
+          >
             <div class="admin-heading">Admin password</div>
             <p class="admin-help">
               The password for this page and for ending a tournament from the table menu. Changing
@@ -282,8 +351,21 @@
                 Change password
               </button>
             </div>
-          </div>
-
+          </section>
+          <section
+            class="admin-page hidden"
+            id="adminPageLog"
+            role="tabpanel"
+            tabindex="0"
+            aria-labelledby="tabAdminLog"
+          >
+            <div class="admin-heading">Log</div>
+            <p class="admin-help">
+              Nothing is kept yet. The server writes what it does to its output and retains none of
+              it, so there is nothing here to show until it does. Games that finished, sign-ins,
+              restarts and anything that logged a warning are what this will hold.
+            </p>
+          </section>
           <div class="lobby-actions admin-divider">
             <button class="btn-secondary" id="btnAdminBack" type="button">Back to the lobby</button>
           </div>

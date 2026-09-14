@@ -259,6 +259,50 @@ test('the admin sees every game, listed or not, and can end one', async ({ brows
 // The Admin page: unlock with the admin password, see the pairing the
 // environment seeded, unpair, then pair again against a GameNight stood up
 // here, and watch the sign-in button follow.
+// The page is four pages behind one strip now, so that a fifth can join
+// without making it a longer scroll. This is the shape, not the contents.
+test('the Admin page is tabs, opening on Games, with one page showing', async ({ page }) => {
+  await page.goto(baseUrl);
+  await openLobbyMenu(page);
+  await page.click('#btnLobbyAdmin');
+  await page.fill('#appDialogInput', ADMIN_PASSWORD);
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#lobbyAdmin')).toBeVisible();
+
+  const tabs = page.locator('#lobbyAdmin .admin-tabs .side-tab');
+  await expect(tabs).toHaveCount(4);
+  // It opens on Games, and exactly one page is showing.
+  await expect(page.locator('#adminPageGames')).toBeVisible();
+  for (const id of ['#adminPageGameNight', '#adminPagePassword', '#adminPageLog']) {
+    await expect(page.locator(id)).toBeHidden();
+  }
+  await expect(page.locator('#tabAdminGames')).toHaveAttribute('aria-selected', 'true');
+
+  // Picking one swaps which page is up and moves the selection with it.
+  await page.click('#tabAdminPassword');
+  await expect(page.locator('#adminPagePassword')).toBeVisible();
+  await expect(page.locator('#adminPageGames')).toBeHidden();
+  await expect(page.locator('#tabAdminPassword')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#tabAdminGames')).toHaveAttribute('aria-selected', 'false');
+
+  // The arrows walk the strip, and Home goes back to the first.
+  await page.locator('#tabAdminPassword').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#adminPageLog')).toBeVisible();
+  await expect(page.locator('#adminPageLog')).toContainText('Nothing is kept yet');
+  await page.keyboard.press('Home');
+  await expect(page.locator('#adminPageGames')).toBeVisible();
+  await expect(page.locator('#tabAdminGames')).toHaveAttribute('aria-selected', 'true');
+
+  // Leaving and coming back opens on Games again, whatever was last picked.
+  await page.click('#tabAdminLog');
+  await page.click('#btnAdminBack');
+  await expect(page.locator('#lobbyHome')).toBeVisible();
+  await openLobbyMenu(page);
+  await page.click('#btnLobbyAdmin');
+  await expect(page.locator('#adminPageGames')).toBeVisible();
+});
+
 test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
   const fakeGn = await new Promise((resolve) => {
     const s = http.createServer((req, res) => {
@@ -293,6 +337,8 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
     await page.fill('#appDialogInput', ADMIN_PASSWORD);
     await page.click('#btnAppDialogConfirm');
     await expect(page.locator('#lobbyAdmin')).toBeVisible();
+    // The page opens on Games; the pairing lives on its own tab now.
+    await page.click('#tabAdminGameNight');
     await expect(page.locator('#adminGnStatus')).toContainText(`Paired with ${ISSUER}`);
     await expect(page.locator('#adminGnDetail')).toContainText('from the environment');
 
@@ -313,11 +359,13 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
     await openLobbyMenu(page);
     await page.click('#btnLobbyAdmin');
     await expect(page.locator('#lobbyAdmin')).toBeVisible();
+    await page.click('#tabAdminGameNight');
     await page.fill('#adminGnUrl', 'http://127.0.0.1:1');
     await page.click('#btnAdminPair');
     await expect(page.locator('#adminGnStatus')).toContainText('Could not reach');
 
-    // The admin password, changed from the same page.
+    // The admin password, changed from the same page, one tab along.
+    await page.click('#tabAdminPassword');
     await page.fill('#adminPwNext', 'a-longer-password');
     await page.fill('#adminPwConfirm', 'a-longer-password');
     await page.click('#btnAdminSetPassword');
