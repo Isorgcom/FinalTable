@@ -631,7 +631,9 @@
                at the table, sitting out, and a watcher simply stops watching.
                The door is drawn rather than fetched - this client has no
                image assets, and a drawn one takes the bar's own colour and
-               its gold hover for nothing. -->
+               its gold hover for nothing. The arrow points back the way you
+               came rather than out, because the lobby is where it goes and
+               the stack is not going anywhere. -->
           <button
             class="top-btn top-btn-lobby"
             id="btnToLobby"
@@ -649,9 +651,9 @@
               stroke-linecap="round"
               stroke-linejoin="round"
             >
-              <path d="M7.5 2.5h-5v11h5" />
-              <path d="M7.5 8h6.7" />
-              <path d="m11 4.8 3.2 3.2-3.2 3.2" />
+              <path d="M8.5 2.5h5v11h-5" />
+              <path d="M8.5 8H1.8" />
+              <path d="m5 4.8-3.2 3.2L5 11.2" />
             </svg>
             lobby
           </button>
