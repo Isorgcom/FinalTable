@@ -13,6 +13,14 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Fixed
+
+- On the large card face the suit under the rank no longer runs into the corner
+  index, and the rank no longer sits on the suit. The suit and the indices keep
+  the size they have on an ordinary card - there is no room on a card for all
+  four to grow at once - and the rank, which is the thing a large index is for,
+  is the one that gets bigger.
+
 ## 0.16.0 - 2026-09-14
 
 ### Added

@@ -21,11 +21,9 @@
   }
   .player-hole-cards .card-rank {
     --rank-size: 0.85rem;
-    transform: translate(-50%, -65%);
   }
   .player-hole-cards .card-suit {
     --suit-size: 0.95rem;
-    transform: translate(-50%, 20%);
   }
   .player-hole-cards .card-back {
     width: 42px;
@@ -151,11 +149,9 @@
   }
   .player-hole-cards .card-rank {
     --rank-size: 0.6rem;
-    transform: translate(-50%, -65%);
   }
   .player-hole-cards .card-suit {
     --suit-size: 0.65rem;
-    transform: translate(-50%, 20%);
   }
   .player-hole-cards .card-corner,
   .player-hole-cards .card-corner-br {

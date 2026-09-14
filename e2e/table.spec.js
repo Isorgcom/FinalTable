@@ -1816,6 +1816,125 @@ const DECK_COLOURS = {
   four: { spades: BLACK, clubs: 'rgb(12, 122, 30)', hearts: RED, diamonds: 'rgb(11, 78, 168)' },
 };
 
+// The large face grew the rank, the suit under it and both corner indices by
+// one number, and on a 84px card there is not room for all four: the heart
+// ended up sitting on the index below it, which is how it was reported. The
+// fix is that only the rank grows, and it is lifted as it does. This measures
+// the ink rather than the boxes, because the boxes overlap at both settings
+// and always have - the rank's box and the suit's box share about 3px - and it
+// is whether the glyphs inside them meet that decides how the card looks.
+//
+// The glyphs measured are 10 and a heart whatever is actually dealt: the
+// widest rank and the fullest-inked suit, which is the pair that has to fit.
+test('the large face leaves the suit and the indices room', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Roomy');
+  await deal(page);
+  await page.mouse.click(5, 5);
+
+  const gaps = () =>
+    page.evaluate(() => {
+      const ctx = document.createElement('canvas').getContext('2d');
+      // Where a glyph's ink actually falls, from the element's own box and the
+      // font it is drawn in.
+      const ink = (el, text) => {
+        const cs = getComputedStyle(el);
+        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        const m = ctx.measureText(text);
+        const box = el.getBoundingClientRect();
+        const fontPx = parseFloat(cs.fontSize);
+        const lineH = cs.lineHeight === 'normal' ? fontPx * 1.2 : parseFloat(cs.lineHeight);
+        const half = (lineH - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)) / 2;
+        const baseline = box.top + half + m.fontBoundingBoxAscent;
+        const originX = box.left + (box.width - m.width) / 2;
+        return {
+          left: originX - m.actualBoundingBoxLeft,
+          right: originX + m.actualBoundingBoxRight,
+          top: baseline - m.actualBoundingBoxAscent,
+          bottom: baseline + m.actualBoundingBoxDescent,
+        };
+      };
+      const card = document.querySelector('#playerSeats .player-seat.is-me .card');
+      if (!card) return null;
+      const rank = ink(card.querySelector('.card-rank'), '10');
+      const suit = ink(card.querySelector('.card-suit'), '\u2665');
+      // The corner indices hold whatever was dealt, so their boxes are as wide
+      // as that card's rank happens to be - an A is narrow and a 10 is not.
+      // Measured against the edge they are anchored to and the width a 10
+      // would take, so this asks the same question whatever turns up.
+      const widest = (el) => {
+        const cs = getComputedStyle(el);
+        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        return ctx.measureText('10').width;
+      };
+      const tlEl = card.querySelector('.card-corner');
+      const brEl = card.querySelector('.card-corner-br');
+      const tl = { right: tlEl.getBoundingClientRect().left + widest(tlEl) };
+      const br = { left: brEl.getBoundingClientRect().right - widest(brEl) };
+      const round = (n) => Math.round(n * 10) / 10;
+      return {
+        // The heart, against the index in the corner below it.
+        suitToIndex: round(br.left - suit.right),
+        // The rank, against the heart beneath it.
+        rankToSuit: round(suit.top - rank.bottom),
+        // And the rank against the index above it, which is what stops the
+        // rank simply being made bigger and bigger.
+        indexToRank: round(rank.left - tl.right),
+        suitPx: parseFloat(getComputedStyle(card.querySelector('.card-suit')).fontSize),
+      };
+    });
+
+  // A card still in flight carries the deal's transform, and measuring one
+  // mid-flight reads a box that is not where the card comes to rest.
+  const settled = async () => {
+    await expect(page.locator('#playerSeats .card.dealing')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator('#playerSeats .card.deal-pending')).toHaveCount(0, {
+      timeout: 10000,
+    });
+  };
+
+  const setFace = async (face) => {
+    await page.evaluate((f) => CardLook.set('cardFace', f), face);
+    await expect(page.locator('body')).toHaveAttribute('data-face', face);
+    await settled();
+    return gaps();
+  };
+
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 720 });
+    await page.waitForTimeout(250);
+    await settled();
+
+    const standard = await setFace('standard');
+    const large = await setFace('large');
+    expect(standard).not.toBeNull();
+
+    for (const [face, m] of [
+      ['standard', standard],
+      ['large', large],
+    ]) {
+      const where = `${face} at ${width}px`;
+      expect(`${where} suit/index ${m.suitToIndex > 0 ? 'clear' : 'tight'}`).toBe(
+        `${where} suit/index clear`
+      );
+      expect(`${where} rank/suit ${m.rankToSuit > 0 ? 'clear' : 'tight'}`).toBe(
+        `${where} rank/suit clear`
+      );
+      expect(`${where} index/rank ${m.indexToRank > 0 ? 'clear' : 'tight'}`).toBe(
+        `${where} index/rank clear`
+      );
+    }
+
+    // The pip is the one that does not grow - that is where the room comes
+    // from, and it is the whole of the fix.
+    expect(large.suitPx).toBe(standard.suitPx);
+    // And the rank, which does grow, ends up further from the suit than it
+    // ever was at the ordinary size rather than nearer to it.
+    expect(large.rankToSuit).toBeGreaterThan(standard.rankToSuit);
+  }
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('the back, the four-colour deck and the large face are chosen and then kept', async ({
   page,
 }) => {
@@ -1901,7 +2020,7 @@ test('the back, the four-colour deck and the large face are chosen and then kept
   const after = await look();
   expect(after.chosen).toEqual({ back: 'blue', deck: 'four', face: 'large' });
   expect(after.backGround).not.toBe(before.backGround);
-  expect(after.rankPx).toBeCloseTo(before.rankPx * 1.3, 1);
+  expect(after.rankPx).toBeCloseTo(before.rankPx * 1.2, 1);
   await drawnAs('four');
 
   // And the dialog says which one is chosen, for a screen reader as well as

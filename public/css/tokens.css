@@ -103,13 +103,35 @@
   --hand-clubs: #63c96b;
 }
 
-/* The face: how much bigger the rank and the suit are drawn. */
+/* The face, and only the rank moves.
+   A card is 84px tall at its biggest here, and the rank, the suit under it and
+   the two corner indices are each about 22px of that already. Multiplying all
+   four by one number is how the heart ended up sitting on the index below it:
+   measured on the felt, the suit's box clears the corner's by a single pixel
+   at the ordinary size, so there is nothing there to give away. The corners
+   therefore keep their size, the suit keeps its size, and the rank - the thing
+   a large index is actually for - is the one that grows. It is lifted as it
+   grows, because it grows about its own middle and would otherwise come down
+   onto the suit; --rank-lift multiplies the offset that holds it above the
+   card's centre.
+
+   The numbers are measured rather than chosen. A two-digit rank is the widest
+   thing on the card, and on a 55px board card the span between the two corner
+   indices is about 27px, so past 1.2 the 10 starts touching the index at the
+   top left however far up it is lifted. What the measuring bought: the heart
+   clears the bottom index by 5px, the rank clears the heart by 4px - four
+   times the clearance the ordinary face has - and the 10 clears the top index
+   by 1.5px, against 4px ordinarily. */
 :root,
 [data-face='standard'] {
-  --face-scale: 1;
+  --rank-scale: 1;
+  --rank-lift: 1;
+  --index-scale: 1;
 }
 [data-face='large'] {
-  --face-scale: 1.3;
+  --rank-scale: 1.2;
+  --rank-lift: 1.22;
+  --index-scale: 0.85;
 }
 
 @media (min-width: 1024px) {

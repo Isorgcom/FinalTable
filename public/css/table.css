@@ -526,13 +526,15 @@
    card - the board, a seat, your own board-sized pair, the replay - sets the
    three sizes below as variables rather than as font-size, so that the
    player's face setting multiplies them in one place each instead of at every
-   breakpoint that ever resizes a card. The fallbacks are the board's. */
+   breakpoint that ever resizes a card. The fallbacks are the board's.
+   The suit is deliberately not multiplied by anything: see the face scales in
+   tokens.css for why it is the one that stays put. */
 .card-rank {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -65%);
-  font-size: calc(var(--rank-size, 1.4rem) * var(--face-scale));
+  transform: translate(-50%, calc(-65% * var(--rank-lift, 1)));
+  font-size: calc(var(--rank-size, 1.4rem) * var(--rank-scale));
   font-weight: 600;
   line-height: 1;
 }
@@ -541,14 +543,14 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, 20%);
-  font-size: calc(var(--suit-size, 1.4rem) * var(--face-scale));
+  font-size: var(--suit-size, 1.4rem);
   line-height: 1;
 }
 .card-corner {
   position: absolute;
   top: 3px;
   left: 4px;
-  font-size: calc(var(--corner-size, 0.6rem) * var(--face-scale));
+  font-size: calc(var(--corner-size, 0.6rem) * var(--index-scale, 1));
   font-weight: 600;
   line-height: 1.15;
   text-align: center;
@@ -557,7 +559,7 @@
   position: absolute;
   bottom: 3px;
   right: 4px;
-  font-size: calc(var(--corner-size, 0.6rem) * var(--face-scale));
+  font-size: calc(var(--corner-size, 0.6rem) * var(--index-scale, 1));
   font-weight: 600;
   line-height: 1.15;
   text-align: center;
@@ -1462,11 +1464,9 @@
 }
 .player-hole-cards .card-rank {
   --rank-size: 1rem;
-  transform: translate(-50%, -65%);
 }
 .player-hole-cards .card-suit {
   --suit-size: 1.1rem;
-  transform: translate(-50%, 20%);
 }
 .player-hole-cards .card-corner {
   --corner-size: 0.45rem;
