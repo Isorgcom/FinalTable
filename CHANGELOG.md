@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.16.0 - 2026-09-14
+
 ### Added
 
 - When a pot is pushed, the amount floats up over the chair that won it as the

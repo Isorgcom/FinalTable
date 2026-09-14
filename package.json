@@ -1,6 +1,6 @@
 {
   "name": "finaltable",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Self-hosted multi-table tournament poker server.",
   "main": "server.js",
   "scripts": {
