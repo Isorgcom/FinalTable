@@ -625,7 +625,38 @@
       <div class="table-backdrop" id="tableBackdrop"></div>
 
       <div class="top-bar">
-        <div class="top-bar-title">FinalTable <span class="mode-badge" id="modeBadge"></span></div>
+        <div class="top-bar-title">
+          <!-- The way out, where the eye goes first. It does exactly what
+               leave in the menu does, which is still there: the stack stays
+               at the table, sitting out, and a watcher simply stops watching.
+               The door is drawn rather than fetched - this client has no
+               image assets, and a drawn one takes the bar's own colour and
+               its gold hover for nothing. -->
+          <button
+            class="top-btn top-btn-lobby"
+            id="btnToLobby"
+            type="button"
+            title="Back to the lobby - your stack stays at the table"
+          >
+            <svg
+              class="icon-exit"
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              focusable="false"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M7.5 2.5h-5v11h5" />
+              <path d="M7.5 8h6.7" />
+              <path d="m11 4.8 3.2 3.2-3.2 3.2" />
+            </svg>
+            lobby
+          </button>
+          FinalTable <span class="mode-badge" id="modeBadge"></span>
+        </div>
         <div class="top-bar-info" id="topInfo">Waiting...</div>
         <div class="top-bar-btns">
           <button class="top-btn" id="btnLeaderboard" title="Leaderboard">stats</button>

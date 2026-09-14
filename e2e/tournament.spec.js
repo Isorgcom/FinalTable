@@ -161,6 +161,55 @@ test('the host can leave the table and rejoin it, back in control', async ({ bro
   await guestContext.close();
 });
 
+// The other way out, and the one that takes no hunting: a door in the corner
+// of the top bar, beside the game's name. It is the same journey as the menu
+// item above - same dialog, same notice, same card offering Rejoin - which is
+// the point of it rather than a weakness of the test.
+test('the door in the corner of the table goes back to the lobby', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Cornered');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Cornered');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Out The Side');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code}`);
+  await guest.fill('#playerName', 'Seated');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  // There without opening anything, and named for a screen reader as well as
+  // drawn. The menu stays shut throughout.
+  const door = page.locator('#btnToLobby');
+  await expect(door).toBeVisible();
+  await expect(door).toHaveText('lobby');
+  await expect(page.locator('#menuDropdown')).not.toHaveClass(/open/);
+
+  await door.click();
+  await expect(page.locator('#appDialogBody')).toContainText('stack stays at the table');
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#appDialogBody')).toContainText('You left the table');
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#lobbyHome')).toBeVisible();
+
+  const card = page.locator('#listYours .t-card').first();
+  await expect(card.locator('.t-card-go')).toHaveText('Rejoin');
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
 test('a player forfeits from the menu and hands the game over', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));

@@ -15,6 +15,10 @@ Release on GitHub to go with it.
 
 ### Added
 
+- A door in the top-left corner of the table, beside the game's name, that
+  takes you back to the lobby. It does exactly what **leave** in the menu does,
+  which is still there: your stack stays at the table sitting out, and you can
+  rejoin by code. A watcher on the rail simply stops watching.
 - **cards** in the table menu: choose the back the cards are dealt with (green,
   red, blue or ivory), the classic two-colour deck or a four-colour one where
   the diamond is blue and the club is green, and a large index on the card face

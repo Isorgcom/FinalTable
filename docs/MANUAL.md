@@ -254,10 +254,11 @@ table. Up to fifty people can wait at once.
 
 ### The screen
 
-The **top bar** has the game's name and a line of status, then buttons:
-**stats**, **replay**, **sit out**, **panel** (shows or hides the side
-panel), and the **menu** (hand rankings, **cards**, sound on or off, the
-admin's controls when unlocked, **leave**, and **forfeit**).
+The **top bar** has a door in the left corner - **lobby**, the way out - then
+the game's name and a line of status, then buttons: **stats**, **replay**,
+**sit out**, **panel** (shows or hides the side panel), and the **menu** (hand
+rankings, **cards**, sound on or off, the admin's controls when unlocked,
+**leave**, and **forfeit**).
 
 The **banner** over the felt shows the level, the blinds and the ante when
 there is one, the time until the next level and how many players are left. On
@@ -436,9 +437,11 @@ the browser: set it on the laptop and the phone is dealt the same deck.
 
 ### Leaving and coming back
 
-**leave** in the table menu takes you back to the lobby. Your stack stays in
-the game, sitting out and blinding down, and the game stays under **Your
-tournaments** with a **Rejoin** button that puts you back in control of it.
+The door in the table's top-left corner takes you back to the lobby, and
+**leave** in the table menu is the same thing said another way. Your stack
+stays in the game, sitting out and blinding down, and the game stays under
+**Your tournaments** with a **Rejoin** button that puts you back in control of
+it.
 
 **forfeit**, under it in the same menu, is the other way out: the one for
 somebody who is not coming back. Your chips leave play there and then, you

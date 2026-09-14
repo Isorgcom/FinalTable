@@ -355,11 +355,17 @@ function init() {
   });
   document.getElementById('menuToggle').addEventListener('click', toggleMenu);
   // Leaving is the lobby's business: unregister before the start, leave the
-  // stack sitting out once running.
-  document.getElementById('btnExit').addEventListener('click', () => {
+  // stack sitting out once running. Two ways in and one function - the door in
+  // the corner of the bar is the quick way, the menu item is the one people
+  // already know and it sits next to forfeit, which is the comparison that
+  // makes forfeit legible. Wired together so they cannot drift apart.
+  const backToLobby = () => {
     closeMenu();
     if (window.Lobby) Lobby.leave();
-  });
+  };
+  for (const id of ['btnToLobby', 'btnExit']) {
+    document.getElementById(id).addEventListener('click', backToLobby);
+  }
   // The other way out, for somebody who is not coming back: the seat goes
   // instead of staying to blind down. Asked for once, because nothing undoes it.
   document.getElementById('btnForfeit').addEventListener('click', () => {
