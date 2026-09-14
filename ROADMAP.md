@@ -20,24 +20,6 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
-### Trust, but verify
-
-The first reply to the announcement was "Rigged!", and that is the right
-question to ask a server that deals. Today the answer is by inspection: the
-shuffle is Fisher-Yates over `crypto.randomInt`, a player's state carries
-nobody's hole cards but their own until they are turned up, and the tests
-walk the run-out rules ([SECURITY.md](./SECURITY.md) has the details). That
-is a claim a reader has to verify by reading code.
-
-What would let a player verify a hand without reading anything: commit to
-the deck at the deal - publish a hash of the shuffled order plus a per-hand
-secret - and reveal both at the end of the hand, so anyone with the hand
-history can check that the cards that came out were the cards that were
-committed to. With an exportable hand history that becomes something a
-suspicious player can do at home. It does not prove the shuffle was fair, only
-that the deck was not changed after the deal, which is the part that can be
-proven.
-
 ### Accounts, and preferences that follow you
 
 A guest is still a device token in the browser plus a record in
@@ -51,6 +33,23 @@ which panel tab - are `localStorage` only, so they still do not follow you.
 They want a server-side place to live, keyed by the identity, so the same
 person gets the same table on any device. For a Game Night player the key
 exists now; for a guest it is the device, which is the best there is.
+
+### Taking the hand history with you
+
+The server already records every hand in full, and a player is already sent
+the part of it they are entitled to see. What is missing is a way to keep it.
+A download of your own history - the hands as the replay panel has them, your
+own holding plus whatever was genuinely turned face up - is worth having for
+its own sake: to look at a spot again after the game, to settle an argument at
+the table, to paste a hand into a thread.
+
+Three things about the recorder shape it. It keeps the last twenty hands and
+sends ten, so the window is short. It lives in memory and is not in the
+tournament snapshot, so a restart loses it. And it belongs to a table, so a
+player moved when the field balances leaves the old table's hands behind. An
+export that is worth downloading probably wants at least the first of those
+fixed, and the redaction has to survive the trip: what lands in the file is
+what that player could already see, never the table's folded cards.
 
 ### More control over your own games
 
@@ -72,6 +71,34 @@ the must-use-two rule; stud changes the whole street structure; draw needs a
 discard phase that has no equivalent anywhere in the code. Worth doing as one
 deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
+
+### Trust, but verify
+
+Moved down deliberately, not abandoned. The first reply to the announcement
+was "Rigged!", and that is the right question to ask a server that deals.
+Today the answer is by inspection: the shuffle is Fisher-Yates over
+`crypto.randomInt`, a player's state carries nobody's hole cards but their own
+until they are turned up, and the tests walk the run-out rules
+([SECURITY.md](./SECURITY.md) has the details). For open source that is a
+stronger position than it sounds, because the reader can check the shuffle
+itself rather than only the delivery.
+
+What would let a player verify a hand without reading anything: commit to the
+deck at the deal - publish a hash of the shuffled order plus a per-hand secret
+
+- and reveal both afterwards, so anyone with the hand history can check that
+  the cards that came out were the cards that were committed to.
+
+Why it is not next. It proves only that the deck was not changed after the
+deal, and on a server somebody hosts for their own game the shuffle is the
+part that would be rigged, so it answers a narrower question than the one
+being asked. The reveal has a cost of its own: the shuffled order is every
+folded player's cards, so revealing it per hand hands back exactly what the
+history redaction exists to withhold, and revealing it at the end instead
+means the history has to survive the tournament, which today it does not. And
+a published hash nobody can conveniently check is theatre, so doing it
+properly means shipping a verifier as well. Worth revisiting if this is ever
+hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
 
