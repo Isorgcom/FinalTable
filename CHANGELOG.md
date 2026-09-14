@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.15.0 - 2026-09-14
+
 ### Added
 
 - A **Log** page on the Admin page, empty for now. It will hold what the server
@@ -32,6 +34,15 @@ Release on GitHub to go with it.
   it unlocked went by different names. Nothing about what it does has changed,
   and no setting has changed name.
 
+### Fixed
+
+- The turn clock no longer counts down over a table that has not been dealt
+  yet. The server arms it the moment a hand starts, which on a full table is
+  about a second and a half before the cards have finished flying, so the ring
+  appeared round an empty seat and was already running by the time you could
+  see what you had. It waits for the last card to land now. The clock itself is
+  unchanged, so the ring you then see is the time you actually have.
+
 ## 0.14.0 - 2026-09-14
 
 ### Added
@@ -50,12 +61,6 @@ Release on GitHub to go with it.
 
 ### Fixed
 
-- The turn clock no longer counts down over a table that has not been dealt
-  yet. The server arms it the moment a hand starts, which on a full table is
-  about a second and a half before the cards have finished flying, so the ring
-  appeared round an empty seat and was already running by the time you could
-  see what you had. It waits for the last card to land now. The clock itself is
-  unchanged, so the ring you then see is the time you actually have.
 - **Sign out** now ends the session on the server rather than only clearing the
   browser. Until now the device stayed signed in here for another thirty days,
   which meant a device you had signed out of was still on your own list of
