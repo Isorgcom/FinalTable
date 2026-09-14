@@ -37,37 +37,6 @@ export that is worth downloading probably wants at least the first of those
 fixed, and the redaction has to survive the trip: what lands in the file is
 what that player could already see, never the table's folded cards.
 
-### A record of the games that were played
-
-Nothing survives a game ending. The tournament is dropped ten minutes after
-the last hand, the hand history lives in the engine's memory, and the only
-trace left is whatever the container's log happens to still hold - which a
-recreate erases. Asked for the games this server has run, the honest answer
-today is to reconstruct them from log lines, and that is not a record.
-
-What it wants to be is small: one row per finished game, written once, when it
-finishes. The standings are already computed for the result screen, so the
-row is who played, where they came, what they won, when it started and how
-long it ran, the structure and the buy-in. Appended to a file beside the
-others in the save directory rather than held in memory, because the whole
-point is outliving the process.
-
-What it would give a player is a list of their own games in the lobby, which
-is the thing anyone asks for after a good one. What it gives whoever runs the
-server is an answer to "what has this thing actually done", which right now
-nobody has.
-
-Three things to decide rather than discover. How long a row is kept, since a
-file that only grows is a file that eventually matters. What it names, given
-a guest identity expires after thirty days and a uid in an old row may point
-at nobody - the name as it was, probably, rather than a link to an identity
-that has gone. And whether a game cancelled or written off gets a row at all,
-or only one that reached a winner.
-
-It shares the persistence work with the hand history above, and the two are
-worth thinking about together: that one is a player's own hands in one game,
-this one is every game's result for everybody.
-
 ### Games other than Hold'em
 
 The largest of these by far. The engine deals two cards and makes the best five
@@ -227,6 +196,55 @@ is where those live. Deployment by pulling this repository rather than
 shipping an image. The join code no longer served in the public list. The
 action bubble that used to outlive its street. See the CHANGELOG.
 
+## Running the server
+
+Not the game, and not the split below: what the person who hosts it needs.
+
+### A real operator panel
+
+The Operator page today is settings and a list: the Game Night pairing, its
+own password, and every game the server holds with the one control it already
+had, which is ending one. That is enough to run a game night and not enough to
+run a server. This was on the "not on either path" list below as a full admin
+console; it is on the path now.
+
+**A log is the first piece, and the reason this moved.** Asked what games this
+server had run, the only answer available was to reconstruct thirteen of them
+from container log lines, which a container recreate would have erased. The
+same log also held nine startup crashes nobody had seen, from a permission
+error reading the environment file, and the only reason anyone knows is that
+somebody went looking for something else. An operator should not need a shell
+on the box to learn either of those.
+
+So: what the server has done, readable in the browser and behind the password
+that is already there. Games that finished, with who played, where they came,
+what they won, when it started and how long it ran, from standings the result
+screen already computes. Sign-ins. Restarts, and anything that logged a
+warning or an error, which is the half that would have shown the crash loop.
+
+**What stands in the way.** The server writes structured JSON to stdout and
+keeps none of it. A panel needs what it shows to be retained somewhere - a
+bounded buffer in memory for the recent stuff, a file for the part that must
+outlive the process - and that is most of the work. A finished tournament is
+dropped ten minutes after the last hand, so the game rows have to be written
+as it ends rather than read back afterwards.
+
+**What must never be in it.** A hole card, a device token, a password, or a
+join code for a game the operator is not in. An operator runs the server; that
+is not the same as being allowed to see everybody's cards, and a log that a
+browser can read is a log that leaks if anything else does.
+
+Three things to decide rather than discover. How long a row is kept, since a
+file that only grows is a file that eventually matters. What a game row names,
+given a guest identity expires after thirty days and a uid in an old row may
+point at nobody - the name as it was, probably. And whether a game that was
+cancelled or written off gets a row at all, or only one that reached a winner.
+
+Beyond the log, what an operator actually lacks is smaller than a dashboard
+and worth naming before building one: seeing the games without opening each
+table, and ending or unsticking one from the same place. The controls over a
+running game stay in the table menu where they are, behind the same password.
+
 ## Architecture
 
 Decided: **two services, two containers.**
@@ -340,8 +358,9 @@ scrolls away.
 
 ## Not on either path
 
-- A full admin console. There is an Operator page now, but it holds the
-  server's settings - the Game Night pairing and its own password - and a
-  list of every game the server holds, with the one control the operator
-  already had: ending one. The controls over a running game stay in the table
-  menu, behind the same password, and are not growing into a dashboard.
+- A full admin console **was here**, on the grounds that the Operator page was
+  settings and a list and should not grow into a dashboard. That held until
+  somebody asked what games the server had run and the answer was to read
+  container logs. It moved to "A real operator panel" above; what stays ruled
+  out is the dashboard for its own sake, and the controls over a running game,
+  which live in the table menu behind the same password.
