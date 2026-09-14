@@ -37,6 +37,37 @@ export that is worth downloading probably wants at least the first of those
 fixed, and the redaction has to survive the trip: what lands in the file is
 what that player could already see, never the table's folded cards.
 
+### A record of the games that were played
+
+Nothing survives a game ending. The tournament is dropped ten minutes after
+the last hand, the hand history lives in the engine's memory, and the only
+trace left is whatever the container's log happens to still hold - which a
+recreate erases. Asked for the games this server has run, the honest answer
+today is to reconstruct them from log lines, and that is not a record.
+
+What it wants to be is small: one row per finished game, written once, when it
+finishes. The standings are already computed for the result screen, so the
+row is who played, where they came, what they won, when it started and how
+long it ran, the structure and the buy-in. Appended to a file beside the
+others in the save directory rather than held in memory, because the whole
+point is outliving the process.
+
+What it would give a player is a list of their own games in the lobby, which
+is the thing anyone asks for after a good one. What it gives whoever runs the
+server is an answer to "what has this thing actually done", which right now
+nobody has.
+
+Three things to decide rather than discover. How long a row is kept, since a
+file that only grows is a file that eventually matters. What it names, given
+a guest identity expires after thirty days and a uid in an old row may point
+at nobody - the name as it was, probably, rather than a link to an identity
+that has gone. And whether a game cancelled or written off gets a row at all,
+or only one that reached a winner.
+
+It shares the persistence work with the hand history above, and the two are
+worth thinking about together: that one is a player's own hands in one game,
+this one is every game's result for everybody.
+
 ### Games other than Hold'em
 
 The largest of these by far. The engine deals two cards and makes the best five
