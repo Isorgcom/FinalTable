@@ -652,6 +652,9 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
               holeLit: document.querySelectorAll('#playerSeats .card.is-winning').length,
               dimmed: document.querySelectorAll('.card.is-dimmed').length,
               seatsLit: document.querySelectorAll('#playerSeats .player-seat.hand-winner').length,
+              // How many hands won it, which is what says whether five lit
+              // cards is the right number.
+              winners: ((gameState && gameState.lastRoundWinnerIds) || []).length,
             }
           : null,
         btn: ['btnCheck', 'btnCall'].find((id) => {
@@ -677,11 +680,20 @@ test('at showdown the five winning cards light up and the rest dim', async ({ pa
   }
   expect(marks, `never reached a showdown; last saw ${JSON.stringify(last)}`).not.toBeNull();
 
-  // Five is the invariant. It catches the union being built wrong, and it
-  // catches the board key not including the winners, which would leave the
-  // community cards unmarked while the hole cards looked fine.
-  expect(marks.winning).toBe(5);
-  expect(marks.boardLit + marks.holeLit).toBe(5);
+  // Five is the invariant while one hand wins, and only then. What is lit is
+  // the union of the winning hands, so a split whose fifth card is a hole card
+  // of the same rank in different suits lights six - see the engine test "a
+  // split on the same kicker in different suits lights both". Asserting a flat
+  // five here made this test fail about one run in ten for years.
+  if (marks.winners === 1) {
+    expect(marks.winning).toBe(5);
+  } else {
+    expect(marks.winning).toBeGreaterThanOrEqual(5);
+  }
+  // The part that holds however many won: every lit card is on the board or in
+  // somebody's hand, which is what catches the union being built wrong or the
+  // board key missing the winners.
+  expect(marks.boardLit + marks.holeLit).toBe(marks.winning);
   expect(marks.boardLit).toBeGreaterThan(0);
   expect(marks.dimmed).toBeGreaterThan(0);
   expect(marks.seatsLit).toBeGreaterThan(0);

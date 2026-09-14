@@ -2671,6 +2671,43 @@ describe('showdown winning cards', () => {
     expect(new Set(game.showdownWinningCards).size).toBe(5);
   });
 
+  // The case that made an end-to-end test flaky: it asserted five lit cards as
+  // an invariant, which only holds while one hand wins. Two hands of equal
+  // value need not be the same five cards.
+  test('a split on the same kicker in different suits lights both', () => {
+    const game = table();
+    const a = game.addPlayer({ id: 'p1', name: 'A' });
+    const b = game.addPlayer({ id: 'p2', name: 'B' });
+    game.startRound();
+    // Two pair on the board, and a queen each. The fifth card is a hole card
+    // for both of them, of the same rank and a different suit: equal hands,
+    // six cards between them.
+    game.communityCards = [
+      Card('spades', 14),
+      Card('hearts', 14),
+      Card('spades', 13),
+      Card('hearts', 13),
+      Card('clubs', 5),
+    ];
+    a.holeCards = [Card('spades', 12), Card('clubs', 2)];
+    b.holeCards = [Card('hearts', 12), Card('diamonds', 3)];
+    a.totalBet = 100;
+    b.totalBet = 100;
+    game.pot = 200;
+
+    game.showdown();
+
+    expect(game.lastRoundWinnerIds.sort()).toEqual(['p1', 'p2']);
+    const won = new Set(game.showdownWinningCards);
+    expect(won.size).toBe(6);
+    expect(won.has(key(Card('spades', 12)))).toBe(true);
+    expect(won.has(key(Card('hearts', 12)))).toBe(true);
+    // The five that played for each of them, and nothing that did not.
+    expect(won.has(key(Card('clubs', 5)))).toBe(false);
+    expect(won.has(key(Card('clubs', 2)))).toBe(false);
+    expect(won.has(key(Card('diamonds', 3)))).toBe(false);
+  });
+
   test('a hand won by everyone folding reports no winning cards', () => {
     const game = table();
     const hero = game.addPlayer({ id: 'p1', name: 'Hero' });
