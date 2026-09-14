@@ -17,7 +17,7 @@ const repoRoot = path.join(__dirname, '..');
 
 const ISSUER = 'http://gamenight.test:8080';
 const AUDIENCE = 'finaltable';
-const OPERATOR_PASSWORD = 'operator-secret';
+const ADMIN_PASSWORD = 'admin-secret';
 const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 
 let seq = 0;
@@ -52,7 +52,7 @@ test.beforeAll(async () => {
   process.env.GAMENIGHT_URL = ISSUER;
   process.env.GAMENIGHT_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' });
   process.env.GAMENIGHT_AUDIENCE = AUDIENCE;
-  process.env.ADMIN_PASSWORD = OPERATOR_PASSWORD;
+  process.env.ADMIN_PASSWORD = ADMIN_PASSWORD;
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(repoRoot) && !key.includes(`${path.sep}node_modules${path.sep}`)) {
       delete require.cache[key];
@@ -73,7 +73,7 @@ test.afterAll(async () => {
   process.env = originalEnv;
 });
 
-// The lobby's menu holds the operator link and the GameNight sign-out.
+// The lobby's menu holds the admin link and the GameNight sign-out.
 async function openLobbyMenu(page) {
   await page.click('#lobbyMenuToggle');
   await expect(page.locator('#lobbyMenuDropdown')).toHaveClass(/open/);
@@ -213,10 +213,10 @@ test('a join link survives the round trip', async ({ page, browser }) => {
   await hostContext.close();
 });
 
-// The Operator page lists every game the server holds, listed or not, with
+// The Admin page lists every game the server holds, listed or not, with
 // its code, and can end one from there. Runs before the pairing test below,
-// which changes the operator password for the rest of this file.
-test('the operator sees every game, listed or not, and can end one', async ({ browser, page }) => {
+// which changes the admin password for the rest of this file.
+test('the admin sees every game, listed or not, and can end one', async ({ browser, page }) => {
   const hostContext = await browser.newContext();
   const host = await hostContext.newPage();
   await host.goto(baseUrl);
@@ -232,18 +232,18 @@ test('the operator sees every game, listed or not, and can end one', async ({ br
 
   await page.goto(baseUrl);
   await openLobbyMenu(page);
-  await page.click('#btnOperator');
-  await page.fill('#appDialogInput', OPERATOR_PASSWORD);
+  await page.click('#btnLobbyAdmin');
+  await page.fill('#appDialogInput', ADMIN_PASSWORD);
   await page.click('#btnAppDialogConfirm');
-  await expect(page.locator('#lobbyOperator')).toBeVisible();
-  const card = page.locator('#opGamesList .t-card', { hasText: 'Back Room' });
+  await expect(page.locator('#lobbyAdmin')).toBeVisible();
+  const card = page.locator('#adminGamesList .t-card', { hasText: 'Back Room' });
   await expect(card).toBeVisible();
-  await expect(card.locator('.op-code')).toHaveText(code);
+  await expect(card.locator('.admin-code')).toHaveText(code);
   await expect(card.locator('.t-card-vis')).toHaveText('private');
   await expect(card.locator('.t-card-meta')).toContainText('1/1 connected');
   // Earlier tests leave games of their own on this server, so the count is
   // only ever "some".
-  await expect(page.locator('#opGamesStatus')).toContainText('game');
+  await expect(page.locator('#adminGamesStatus')).toContainText('game');
   // And still nowhere a player could see it.
   const pub = await (await fetch(`${baseUrl}/api/tournaments`)).json();
   expect(pub.find((t) => t.name === 'Back Room')).toBeUndefined();
@@ -251,15 +251,15 @@ test('the operator sees every game, listed or not, and can end one', async ({ br
   await card.locator('button', { hasText: 'End game' }).click();
   await page.click('#btnAppDialogConfirm');
   await expect(host.locator('#lobbyHome')).toBeVisible();
-  await expect(host.locator('#appDialogBody')).toContainText('cancelled by the operator');
-  await expect(page.locator('#opGamesList .t-card', { hasText: 'Back Room' })).toHaveCount(0);
+  await expect(host.locator('#appDialogBody')).toContainText('cancelled by the admin');
+  await expect(page.locator('#adminGamesList .t-card', { hasText: 'Back Room' })).toHaveCount(0);
   await hostContext.close();
 });
 
-// The Operator page: unlock with the admin password, see the pairing the
+// The Admin page: unlock with the admin password, see the pairing the
 // environment seeded, unpair, then pair again against a GameNight stood up
 // here, and watch the sign-in button follow.
-test('the operator unpairs and re-pairs from the lobby', async ({ page }) => {
+test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
   const fakeGn = await new Promise((resolve) => {
     const s = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -286,66 +286,66 @@ test('the operator unpairs and re-pairs from the lobby', async ({ page }) => {
     await page.goto(baseUrl);
     await expect(page.locator('#btnGameNight')).toBeVisible();
     await openLobbyMenu(page);
-    await expect(page.locator('#btnOperator')).toBeVisible();
-    await page.click('#btnOperator');
+    await expect(page.locator('#btnLobbyAdmin')).toBeVisible();
+    await page.click('#btnLobbyAdmin');
     // Picking something closes the menu behind it.
     await expect(page.locator('#lobbyMenuDropdown')).not.toHaveClass(/open/);
-    await page.fill('#appDialogInput', OPERATOR_PASSWORD);
+    await page.fill('#appDialogInput', ADMIN_PASSWORD);
     await page.click('#btnAppDialogConfirm');
-    await expect(page.locator('#lobbyOperator')).toBeVisible();
-    await expect(page.locator('#opGnStatus')).toContainText(`Paired with ${ISSUER}`);
-    await expect(page.locator('#opGnDetail')).toContainText('from the environment');
+    await expect(page.locator('#lobbyAdmin')).toBeVisible();
+    await expect(page.locator('#adminGnStatus')).toContainText(`Paired with ${ISSUER}`);
+    await expect(page.locator('#adminGnDetail')).toContainText('from the environment');
 
-    await page.click('#btnOpUnpair');
+    await page.click('#btnAdminUnpair');
     await page.click('#btnAppDialogConfirm');
-    await expect(page.locator('#opGnStatus')).toContainText('Unpaired');
-    await expect(page.locator('#btnOpUnpair')).toBeHidden();
+    await expect(page.locator('#adminGnStatus')).toContainText('Unpaired');
+    await expect(page.locator('#btnAdminUnpair')).toBeHidden();
 
-    await page.fill('#opGnUrl', fakeGn.url);
-    await page.fill('#opGnAudience', AUDIENCE);
-    await page.click('#btnOpPair');
-    await expect(page.locator('#opGnStatus')).toContainText(`Paired with ${fakeGn.url}`);
-    await expect(page.locator('#opGnDetail')).toContainText('kid-from-page');
+    await page.fill('#adminGnUrl', fakeGn.url);
+    await page.fill('#adminGnAudience', AUDIENCE);
+    await page.click('#btnAdminPair');
+    await expect(page.locator('#adminGnStatus')).toContainText(`Paired with ${fakeGn.url}`);
+    await expect(page.locator('#adminGnDetail')).toContainText('kid-from-page');
 
-    await page.click('#btnOpBack');
+    await page.click('#btnAdminBack');
     await expect(page.locator('#btnGameNight')).toBeVisible();
     // A bad address is an error line, not a broken page.
     await openLobbyMenu(page);
-    await page.click('#btnOperator');
-    await expect(page.locator('#lobbyOperator')).toBeVisible();
-    await page.fill('#opGnUrl', 'http://127.0.0.1:1');
-    await page.click('#btnOpPair');
-    await expect(page.locator('#opGnStatus')).toContainText('Could not reach');
+    await page.click('#btnLobbyAdmin');
+    await expect(page.locator('#lobbyAdmin')).toBeVisible();
+    await page.fill('#adminGnUrl', 'http://127.0.0.1:1');
+    await page.click('#btnAdminPair');
+    await expect(page.locator('#adminGnStatus')).toContainText('Could not reach');
 
-    // The operator password, changed from the same page.
-    await page.fill('#opPwNext', 'a-longer-password');
-    await page.fill('#opPwConfirm', 'a-longer-password');
-    await page.click('#btnOpSetPassword');
-    await expect(page.locator('#opPwStatus')).toContainText('Enter the current password');
+    // The admin password, changed from the same page.
+    await page.fill('#adminPwNext', 'a-longer-password');
+    await page.fill('#adminPwConfirm', 'a-longer-password');
+    await page.click('#btnAdminSetPassword');
+    await expect(page.locator('#adminPwStatus')).toContainText('Enter the current password');
 
-    await page.fill('#opPwCurrent', OPERATOR_PASSWORD);
-    await page.fill('#opPwConfirm', 'mistyped-the-second-time');
-    await page.click('#btnOpSetPassword');
-    await expect(page.locator('#opPwStatus')).toContainText('do not match');
+    await page.fill('#adminPwCurrent', ADMIN_PASSWORD);
+    await page.fill('#adminPwConfirm', 'mistyped-the-second-time');
+    await page.click('#btnAdminSetPassword');
+    await expect(page.locator('#adminPwStatus')).toContainText('do not match');
 
-    await page.fill('#opPwConfirm', 'a-longer-password');
-    await page.click('#btnOpSetPassword');
-    await expect(page.locator('#opPwStatus')).toContainText('Password changed');
-    await expect(page.locator('#opPwCurrent')).toHaveValue('');
+    await page.fill('#adminPwConfirm', 'a-longer-password');
+    await page.click('#btnAdminSetPassword');
+    await expect(page.locator('#adminPwStatus')).toContainText('Password changed');
+    await expect(page.locator('#adminPwCurrent')).toHaveValue('');
 
     // The new one is what unlocks now. Reload for a fresh socket and prove it.
     await page.reload();
     await openLobbyMenu(page);
-    await page.click('#btnOperator');
-    await page.fill('#appDialogInput', OPERATOR_PASSWORD);
+    await page.click('#btnLobbyAdmin');
+    await page.fill('#appDialogInput', ADMIN_PASSWORD);
     await page.click('#btnAppDialogConfirm');
     await expect(page.locator('#appDialogBody')).toContainText('Wrong password');
     await page.click('#btnAppDialogConfirm');
     await openLobbyMenu(page);
-    await page.click('#btnOperator');
+    await page.click('#btnLobbyAdmin');
     await page.fill('#appDialogInput', 'a-longer-password');
     await page.click('#btnAppDialogConfirm');
-    await expect(page.locator('#lobbyOperator')).toBeVisible();
+    await expect(page.locator('#lobbyAdmin')).toBeVisible();
   } finally {
     await new Promise((r) => fakeGn.s.close(r));
   }
@@ -360,7 +360,7 @@ test('the menu shows the version, and only the version when nothing is configure
     `FinalTable v${require('../package.json').version}`
   );
   // This server has both an admin password and a pairing, so both items are here.
-  await expect(page.locator('#btnOperator')).toBeVisible();
+  await expect(page.locator('#btnLobbyAdmin')).toBeVisible();
 
   // A click anywhere else closes it. A raw mouse click, because "anywhere
   // else" is a point on the page rather than any particular element.

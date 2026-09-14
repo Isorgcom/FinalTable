@@ -210,7 +210,7 @@
     serverInfo = info || null;
     window.__serverInfo = serverInfo;
     renderIdentityRow();
-    $('btnOperator').classList.toggle('hidden', !(serverInfo && serverInfo.adminAvailable));
+    $('btnLobbyAdmin').classList.toggle('hidden', !(serverInfo && serverInfo.adminAvailable));
     const version = serverInfo && serverInfo.version;
     $('lobbyMenuVersion').textContent = version ? `FinalTable v${version}` : 'FinalTable';
     if (window.Reactions) Reactions.configure(serverInfo ? serverInfo.reactions : null);
@@ -284,23 +284,23 @@
     returnToLobby('You opened FinalTable somewhere else; this tab was signed out of the table.');
   }
 
-  // ── Operator page ────────────────────────────────────────────────────────
+  // ── Admin page ────────────────────────────────────────────────────────
   //
-  // Server settings an operator changes from the browser, behind the same
+  // Server settings an admin changes from the browser, behind the same
   // password as the table's admin controls. The page holds no privilege: the
   // unlock is per socket and every request is checked on the server.
 
-  let operatorPending = false; // opening the page once the unlock answers
+  let adminPending = false; // opening the page once the unlock answers
   let pairing = null;
-  let operatorGames = null; // every game on the server, once asked for
+  let adminGames = null; // every game on the server, once asked for
   let _drawnOpSig = null;
 
-  async function openOperator() {
+  async function openAdmin() {
     closeLobbyMenu();
     if (window.Admin && Admin.isAuthed()) {
       setPwStatus('');
-      showView('operator');
-      renderOperatorGames();
+      showView('admin');
+      renderAdminGames();
       if (socket) {
         socket.emit('adminGetGameNight');
         socket.emit('adminListTournaments');
@@ -309,7 +309,7 @@
     }
     if (typeof window.showTextPromptDialog !== 'function' || !socket) return;
     const password = await window.showTextPromptDialog({
-      title: 'Operator login',
+      title: 'Admin login',
       message: 'Password for the admin controls.',
       hint: 'Sent over this connection as typed; the server is plain HTTP on your network.',
       confirmLabel: 'Unlock',
@@ -318,20 +318,20 @@
       masked: true,
     });
     if (!password) return;
-    operatorPending = true;
-    window.__operatorPending = true;
+    adminPending = true;
+    window.__adminPending = true;
     socket.emit('adminLogin', { password });
   }
 
   function onAdminStatus(st) {
-    if (!operatorPending) return;
-    operatorPending = false;
-    window.__operatorPending = false;
-    if (st && st.ok) openOperator();
+    if (!adminPending) return;
+    adminPending = false;
+    window.__adminPending = false;
+    if (st && st.ok) openAdmin();
   }
 
   function setOpStatus(text, kind) {
-    const el = $('opGnStatus');
+    const el = $('adminGnStatus');
     el.textContent = text || '';
     el.classList.toggle('ok', kind === 'ok');
     el.classList.toggle('err', kind === 'err');
@@ -346,9 +346,9 @@
     }
   }
 
-  function renderOperator() {
+  function renderAdmin() {
     const p = pairing;
-    const detail = $('opGnDetail');
+    const detail = $('adminGnDetail');
     detail.textContent = '';
     if (p && p.paired) {
       const lines = [
@@ -367,25 +367,25 @@
         row.textContent = line;
         detail.appendChild(row);
       });
-      if (!$('opGnUrl').value) $('opGnUrl').value = p.url || p.issuer;
-      $('opGnAudience').value = p.audience || 'finaltable';
-      $('btnOpPair').textContent = 'Pair again';
+      if (!$('adminGnUrl').value) $('adminGnUrl').value = p.url || p.issuer;
+      $('adminGnAudience').value = p.audience || 'finaltable';
+      $('btnAdminPair').textContent = 'Pair again';
     } else {
-      $('btnOpPair').textContent = 'Pair';
+      $('btnAdminPair').textContent = 'Pair';
     }
     detail.classList.toggle('hidden', !(p && p.paired));
-    $('btnOpRefresh').classList.toggle('hidden', !(p && p.paired));
-    $('btnOpUnpair').classList.toggle('hidden', !(p && p.paired));
+    $('btnAdminRefresh').classList.toggle('hidden', !(p && p.paired));
+    $('btnAdminUnpair').classList.toggle('hidden', !(p && p.paired));
   }
 
-  // ── The operator's list of games ─────────────────────────────────────────
+  // ── The admin's list of games ─────────────────────────────────────────
 
   function onAdminTournaments(data) {
-    operatorGames = data && Array.isArray(data.list) ? data.list : [];
-    renderOperatorGames();
+    adminGames = data && Array.isArray(data.list) ? data.list : [];
+    renderAdminGames();
   }
 
-  function operatorCard(t) {
+  function adminCard(t) {
     const card = document.createElement('div');
     card.className = `t-card t-card-${t.status}`;
     card.dataset.id = t.id;
@@ -399,14 +399,14 @@
     tag.className = `room-status-tag room-status-tag-${t.status}`;
     tag.textContent = t.status;
     // Every card says how it is listed, public included: that is what the
-    // operator is here to see.
+    // admin is here to see.
     const vis = document.createElement('span');
     vis.className = 't-card-vis';
     vis.textContent = t.visibility === 'invite' ? 'invite-only' : t.visibility || 'private';
     head.append(name, tag, vis);
 
     const code = document.createElement('div');
-    code.className = 'op-code';
+    code.className = 'admin-code';
     code.textContent = t.code || '';
 
     const status = document.createElement('div');
@@ -423,7 +423,7 @@
       `${total} entrant${total === 1 ? '' : 's'}`,
       t.status === 'running' ? `${t.tables} table${t.tables === 1 ? '' : 's'}` : null,
       t.pending ? `${t.pending} at the door` : null,
-      // A game holding for an empty room is the one an operator might want to
+      // A game holding for an empty room is the one an admin might want to
       // end by hand rather than wait out, so the card says since when.
       t.held ? `holding since ${fmtWhen(t.heldSince)}` : null,
       `${t.tableSize}-max`,
@@ -435,7 +435,7 @@
     card.append(head, code, status, meta);
     if (t.status !== 'finished') {
       const actions = document.createElement('div');
-      actions.className = 'op-card-actions';
+      actions.className = 'admin-card-actions';
       const end = document.createElement('button');
       end.type = 'button';
       end.className = 'btn-danger';
@@ -463,15 +463,15 @@
 
   // Rebuilt under a signature, as the lobby list is, so a refresh that
   // changes nothing leaves the button under the cursor alone.
-  function renderOperatorGames() {
-    const holder = $('opGamesList');
-    const status = $('opGamesStatus');
-    if (operatorGames === null) {
+  function renderAdminGames() {
+    const holder = $('adminGamesList');
+    const status = $('adminGamesStatus');
+    if (adminGames === null) {
       status.textContent = 'Loading…';
       return;
     }
     const sig = JSON.stringify(
-      operatorGames.map((t) => [
+      adminGames.map((t) => [
         t.id,
         t.status,
         t.connected,
@@ -486,16 +486,16 @@
     if (sig === _drawnOpSig) return;
     _drawnOpSig = sig;
     holder.textContent = '';
-    const n = operatorGames.length;
+    const n = adminGames.length;
     status.textContent = n ? `${n} game${n === 1 ? '' : 's'}` : '';
     if (!n) {
       const empty = document.createElement('div');
-      empty.className = 'op-games-empty';
+      empty.className = 'admin-games-empty';
       empty.textContent = 'No games right now.';
       holder.appendChild(empty);
       return;
     }
-    operatorGames.forEach((t) => holder.appendChild(operatorCard(t)));
+    adminGames.forEach((t) => holder.appendChild(adminCard(t)));
   }
 
   function onAdminGameNight(data) {
@@ -513,12 +513,12 @@
         data.paired ? `Paired with ${data.issuer}.` : 'Not paired. Players sign in as guests only.'
       );
     }
-    renderOperator();
+    renderAdmin();
     setOpBusy(false);
   }
 
   function setPwStatus(text, kind) {
-    const el = $('opPwStatus');
+    const el = $('adminPwStatus');
     el.textContent = text || '';
     el.classList.toggle('ok', kind === 'ok');
     el.classList.toggle('err', kind === 'err');
@@ -526,45 +526,45 @@
 
   function opSetPassword() {
     if (!socket) return;
-    const current = $('opPwCurrent').value;
-    const next = $('opPwNext').value;
-    const confirm = $('opPwConfirm').value;
+    const current = $('adminPwCurrent').value;
+    const next = $('adminPwNext').value;
+    const confirm = $('adminPwConfirm').value;
     if (!current) {
       setPwStatus('Enter the current password.', 'err');
-      $('opPwCurrent').focus();
+      $('adminPwCurrent').focus();
       return;
     }
     if (next !== confirm) {
       setPwStatus('The two new passwords do not match.', 'err');
-      $('opPwConfirm').focus();
+      $('adminPwConfirm').focus();
       return;
     }
-    $('btnOpSetPassword').disabled = true;
+    $('btnAdminSetPassword').disabled = true;
     setPwStatus('Changing…');
     socket.emit('adminSetPassword', { current, next });
   }
 
   function onAdminPasswordResult(data) {
-    $('btnOpSetPassword').disabled = false;
+    $('btnAdminSetPassword').disabled = false;
     if (data && data.ok) {
-      ['opPwCurrent', 'opPwNext', 'opPwConfirm'].forEach((id) => ($(id).value = ''));
-      setPwStatus('Password changed. Any other operator session has been signed out.', 'ok');
+      ['adminPwCurrent', 'adminPwNext', 'adminPwConfirm'].forEach((id) => ($(id).value = ''));
+      setPwStatus('Password changed. Any other admin session has been signed out.', 'ok');
       return;
     }
     setPwStatus((data && data.error) || 'That did not work.', 'err');
   }
 
   function setOpBusy(busy) {
-    ['btnOpPair', 'btnOpRefresh', 'btnOpUnpair'].forEach((id) => ($(id).disabled = busy));
+    ['btnAdminPair', 'btnAdminRefresh', 'btnAdminUnpair'].forEach((id) => ($(id).disabled = busy));
   }
 
   function opPair() {
     if (!socket) return;
-    const url = $('opGnUrl').value.trim();
-    const audience = $('opGnAudience').value.trim() || 'finaltable';
+    const url = $('adminGnUrl').value.trim();
+    const audience = $('adminGnAudience').value.trim() || 'finaltable';
     if (!/^https?:\/\/[^/\s?#]+/i.test(url)) {
       setOpStatus('Enter the GameNight address as http(s)://host', 'err');
-      $('opGnUrl').focus();
+      $('adminGnUrl').focus();
       return;
     }
     setOpBusy(true);
@@ -847,8 +847,8 @@
     list = Array.isArray(items) ? items : [];
     renderList();
     // The registry pushes the list on every create, join, start, finish and
-    // cancel, so the operator's view follows it without a broadcast of its own.
-    if (view === 'operator' && socket && socket.connected) socket.emit('adminListTournaments');
+    // cancel, so the admin's view follows it without a broadcast of its own.
+    if (view === 'admin' && socket && socket.connected) socket.emit('adminListTournaments');
     if (pendingLastCheck) {
       const id = pendingLastCheck;
       pendingLastCheck = null;
@@ -1009,7 +1009,7 @@
 
   function showView(name) {
     view = name;
-    ['home', 'create', 'waiting', 'pending', 'operator', 'sessions'].forEach((v) => {
+    ['home', 'create', 'waiting', 'pending', 'admin', 'sessions'].forEach((v) => {
       const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
       if (node) node.classList.toggle('hidden', v !== name);
     });
@@ -2166,22 +2166,22 @@
       if ($('lobbyMenuShell').contains(e.target)) return;
       closeLobbyMenu();
     });
-    $('btnOperator').addEventListener('click', openOperator);
-    $('btnOpPair').addEventListener('click', opPair);
-    $('btnOpRefresh').addEventListener('click', opRefresh);
-    $('btnOpUnpair').addEventListener('click', opUnpair);
-    $('btnOpBack').addEventListener('click', () => showView('home'));
-    $('btnOpGamesRefresh').addEventListener('click', () => {
+    $('btnLobbyAdmin').addEventListener('click', openAdmin);
+    $('btnAdminPair').addEventListener('click', opPair);
+    $('btnAdminRefresh').addEventListener('click', opRefresh);
+    $('btnAdminUnpair').addEventListener('click', opUnpair);
+    $('btnAdminBack').addEventListener('click', () => showView('home'));
+    $('btnAdminGamesRefresh').addEventListener('click', () => {
       if (socket && socket.connected) socket.emit('adminListTournaments');
     });
-    $('btnOpSetPassword').addEventListener('click', opSetPassword);
-    $('opPwConfirm').addEventListener('keydown', (e) => {
+    $('btnAdminSetPassword').addEventListener('click', opSetPassword);
+    $('adminPwConfirm').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         opSetPassword();
       }
     });
-    $('opGnUrl').addEventListener('keydown', (e) => {
+    $('adminGnUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         opPair();

@@ -1,4 +1,4 @@
-// __tests__/sso-admin.test.js - pairing with GameNight from the Operator page,
+// __tests__/sso-admin.test.js - pairing with GameNight from the Admin page,
 // over the socket: gated on the admin unlock, announced to every socket, and
 // kept across a restart.
 const crypto = require('crypto');
@@ -10,7 +10,7 @@ const { io: Client } = require('socket.io-client');
 
 jest.setTimeout(20000);
 
-const PASSWORD = 'operator-secret';
+const PASSWORD = 'admin-secret';
 const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PEM = publicKey.export({ type: 'spki', format: 'pem' }).trim();
 
@@ -39,7 +39,7 @@ function tokenFor(iss, sub = '42') {
   return `${input}.${sig.toString('base64url')}`;
 }
 
-describe('pairing with GameNight from the Operator page', () => {
+describe('pairing with GameNight from the Admin page', () => {
   const originalEnv = { ...process.env };
   const sockets = [];
   let baseUrl, serverModule, tempDir, gn;
@@ -126,7 +126,7 @@ describe('pairing with GameNight from the Operator page', () => {
     expect(serverModule.sso.get()).toBeNull();
   });
 
-  test('an operator pairs, every socket hears it, a token then works, and it persists', async () => {
+  test('an admin pairs, every socket hears it, a token then works, and it persists', async () => {
     const { s: bystander, info: bystanderInfo } = await connect();
     expect((await bystanderInfo).gamenight).toBeNull();
     const heard = new Promise((r) => bystander.once('serverInfo', r));
@@ -168,7 +168,7 @@ describe('pairing with GameNight from the Operator page', () => {
     });
   });
 
-  test('the operator password can be changed, and the change outlives a restart', async () => {
+  test('the admin password can be changed, and the change outlives a restart', async () => {
     const { s } = await connect();
     await unlock(s);
 
@@ -185,7 +185,7 @@ describe('pairing with GameNight from the Operator page', () => {
     }
     expect(serverModule.adminCredential.verify(PASSWORD)).toBe(true);
 
-    // A second operator session, which the change should sign out.
+    // A second admin session, which the change should sign out.
     const { s: other } = await connect();
     expect((await unlock(other)).ok).toBe(true);
     const signedOut = new Promise((r) => other.once('adminStatus', r));

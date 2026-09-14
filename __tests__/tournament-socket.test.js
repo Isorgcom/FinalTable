@@ -866,9 +866,9 @@ describe('Tournament socket layer', () => {
     expect(Array.isArray(seen.recentHands)).toBe(true);
   });
 
-  // ── Operator controls ──────────────────────────────────────────────────────
+  // ── Admin controls ──────────────────────────────────────────────────────
 
-  test('a tournament can be cancelled by an operator once it is running', async () => {
+  test('a tournament can be cancelled by an admin once it is running', async () => {
     const host = await connectClient();
     const { created, guest } = await createTournamentWithGuest(host);
     await startAndDeal(host, guest);
@@ -885,7 +885,7 @@ describe('Tournament socket layer', () => {
     expect(await until(() => !serverModule.tournaments.has(created.id))).toBe(true);
   });
 
-  test('the operator list holds every game with its code, and nobody else gets it', async () => {
+  test('the admin list holds every game with its code, and nobody else gets it', async () => {
     const hostA = await connectClient();
     const quiet = await createTournament(hostA, { name: 'Quiet' });
     const hostB = await connectClient();

@@ -1,6 +1,6 @@
-// settings-store.js - operator settings that survive a restart.
+// settings-store.js - admin settings that survive a restart.
 //
-// What the operator sets from the browser rather than from the environment:
+// What the admin sets from the browser rather than from the environment:
 // today, the GameNight pairing. One small JSON file beside the saves, whole
 // file written atomically on every change, the same shape as the other
 // stores. An environment variable is read once as the seed for a setting the
@@ -23,7 +23,7 @@ function createSettingsStore({ saveDir = null } = {}) {
         ? data.settings
         : {};
     } catch (_err) {
-      return {}; // a corrupt file starts empty; the operator sets things again
+      return {}; // a corrupt file starts empty; the admin sets things again
     }
   }
 

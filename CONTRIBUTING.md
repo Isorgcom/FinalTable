@@ -36,7 +36,7 @@ All checks must pass before submitting a PR.
 
 ## The Changelog
 
-Anything a player or an operator would notice goes in
+Anything a player or an admin would notice goes in
 [CHANGELOG.md](./CHANGELOG.md) under `## Unreleased`, in the same commit as the
 change. Write it from the outside - what is different at the table or in the
 lobby, not which module moved. Refactors, renames, test-only work and
@@ -52,7 +52,7 @@ server is deployed to over SSH, not by pulling a registry tag.
 
 1. One feature or fix per PR
 2. Add tests for new game logic
-3. A CHANGELOG.md entry for anything a player or an operator would notice
+3. A CHANGELOG.md entry for anything a player or an admin would notice
 4. Preserve self-hosted deployment assumptions: do not force HTTPS in a way that breaks NAS/LAN HTTP setups
 5. Code comments in English
 6. Run `npm test`, `npm run lint`, `npm run format:check` and `npx playwright test` before submitting

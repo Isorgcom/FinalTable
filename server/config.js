@@ -12,7 +12,7 @@ function boolFromEnv(name, fallback = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
 }
 
-// The operator's password for the admin controls, straight from the
+// The admin's password for the admin controls, straight from the
 // environment and never written anywhere else. Empty or unset disables the
 // admin surface completely rather than falling back to a default, because a
 // default password on a self-hosted box is worse than no password at all.
@@ -23,8 +23,8 @@ function adminPasswordFromEnv() {
 
 // The GameNight sign-in bridge, as the environment describes it. A player
 // logged in to GameNight can be seated here on a token GameNight signs; this
-// server needs only the public key to check it. The operator normally pairs
-// from the lobby's Operator page (server/gamenight-pairing.js), and these
+// server needs only the public key to check it. The admin normally pairs
+// from the lobby's Admin page (server/gamenight-pairing.js), and these
 // variables seed that the first time a box boots without a saved pairing.
 // Both unset means no seed. One set without the other, or a key that does
 // not parse, is a mistake worth stopping the boot for: the alternative is a

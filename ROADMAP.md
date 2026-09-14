@@ -81,9 +81,9 @@ game off belongs to whoever made it as well as to whoever is holding the
 clock; the host's own controls are pause, remove somebody, step the level or
 put a minute on it, move a player by hand, and mute; and Your devices lists
 where a Game Night account is signed in and signs any of them out, which was
-the last piece and the other half of the identity bridge below. An operator
+the last piece and the other half of the identity bridge below. An admin
 (the server's password, not the game's host) can still end any game on the
-server from the table menu or the Operator page, which is for the games they
+server from the table menu or the Admin page, which is for the games they
 do not host.
 
 Preferences that follow you. Mute, the chair you are shown in and the panel
@@ -168,10 +168,10 @@ control, below.
 The host at every table: a strip in the host's Chat tab reads and answers
 any table, All announces to every table at once and over the felt, and the
 host hears every room live. Asked for on the forum, below. And a user manual,
-[docs/MANUAL.md](./docs/MANUAL.md), for players, hosts and operators, which
+[docs/MANUAL.md](./docs/MANUAL.md), for players, hosts and admins, which
 opens with what each release added and where to read about it.
 
-The Operator page lists every game the server holds, listed or not, with its
+The Admin page lists every game the server holds, listed or not, with its
 code, who is connected, who is waiting at the door, and End game on each: the
 view that table visibility took away from the lobby list, given back to the
 one person entitled to it. And a page that outlives a deploy reloads itself:
@@ -190,7 +190,7 @@ a host mute. Reactions followed it: a fixed strip of six, thrown from the
 pre-action panel, floating over the chair and kept nowhere, past the same mute
 and off with one switch.
 
-Signing in with a Game Night account, and the Operator page that pairs a
+Signing in with a Game Night account, and the Admin page that pairs a
 server with one and changes its own password. The lobby's corner menu, which
 is where those live. Deployment by pulling this repository rather than
 shipping an image. The join code no longer served in the public list. The
@@ -200,18 +200,18 @@ action bubble that used to outlive its street. See the CHANGELOG.
 
 Not the game, and not the split below: what the person who hosts it needs.
 
-### A real operator panel
+### A real admin panel
 
-One thing, two names: the page a player never sees is called **Operator**
+One thing, two names: the page a player never sees is called **Admin**
 everywhere it is written for a person and **admin** everywhere it is written
 for a machine - `ADMIN_PASSWORD`, `adminLogin`, `adminCredential`. The admin
-panel and the Operator page are the same panel, and this is it.
+panel and the Admin page are the same panel, and this is it.
 
 Today it is settings and a list: the Game Night pairing, its own password, and
 every game the server holds with the one control it already had, which is
 ending one. That is enough to run a game night and not enough to run a server.
 It was on the "not on either path" list below, as a full admin console that
-the Operator page should not grow into; that was a distinction without a
+the Admin page should not grow into; that was a distinction without a
 difference, and it is on the path now.
 
 **A log is the first piece, and the reason this moved.** Asked what games this
@@ -219,7 +219,7 @@ server had run, the only answer available was to reconstruct thirteen of them
 from container log lines, which a container recreate would have erased. The
 same log also held nine startup crashes nobody had seen, from a permission
 error reading the environment file, and the only reason anyone knows is that
-somebody went looking for something else. An operator should not need a shell
+somebody went looking for something else. An admin should not need a shell
 on the box to learn either of those.
 
 So: what the server has done, readable in the browser and behind the password
@@ -236,7 +236,7 @@ dropped ten minutes after the last hand, so the game rows have to be written
 as it ends rather than read back afterwards.
 
 **What must never be in it.** A hole card, a device token, a password, or a
-join code for a game the operator is not in. An operator runs the server; that
+join code for a game the admin is not in. An admin runs the server; that
 is not the same as being allowed to see everybody's cards, and a log that a
 browser can read is a log that leaks if anything else does.
 
@@ -246,7 +246,7 @@ given a guest identity expires after thirty days and a uid in an old row may
 point at nobody - the name as it was, probably. And whether a game that was
 cancelled or written off gets a row at all, or only one that reached a winner.
 
-Beyond the log, what an operator actually lacks is smaller than a dashboard
+Beyond the log, what an admin actually lacks is smaller than a dashboard
 and worth naming before building one: seeing the games without opening each
 table, and ending or unsticking one from the same place. The controls over a
 running game stay in the table menu where they are, behind the same password.
@@ -364,9 +364,9 @@ scrolls away.
 
 ## Not on either path
 
-- A full admin console **was here**, described as a thing the Operator page
+- A full admin console **was here**, described as a thing the Admin page
   should not grow into. They were never two things: the panel is called
-  Operator to a person and admin to the code, and ruling out one while keeping
-  the other was ruling out nothing. It moved to "A real operator panel" above.
+  Admin to a person and admin to the code, and ruling out one while keeping
+  the other was ruling out nothing. It moved to "A real admin panel" above.
   What stays ruled out is a dashboard for its own sake, and the controls over
   a running game, which live in the table menu behind the same password.

@@ -134,25 +134,25 @@ const tournamentStore = createTournamentStore({
 
 // Chat, in its own file per tournament so it never rides along with the
 // registration writes. Absent when chat is switched off, which is what stops
-// an operator who disabled it from finding files still appearing.
+// an admin who disabled it from finding files still appearing.
 const chatStore = config.chatEnabled
   ? createChatStore({ saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data') })
   : null;
 
-// Operator settings, set from the lobby and kept beside the saves.
+// Admin settings, set from the lobby and kept beside the saves.
 const settingsStore = createSettingsStore({
   saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
 });
 
-// The operator password: the environment's until somebody changes it from the
-// Operator page, after which the stored one wins.
+// The admin password: the environment's until somebody changes it from the
+// Admin page, after which the stored one wins.
 const adminCredential = createAdminCredential({
   settingsStore,
   envPassword: config.adminPassword,
   log: structuredLog,
 });
 
-// The GameNight sign-in bridge. Paired from the Operator page, or seeded from
+// The GameNight sign-in bridge. Paired from the Admin page, or seeded from
 // the environment on a first boot; unpaired, the lobby never offers the button.
 const sso = createSsoRuntime({ settingsStore, envConfig: config.gamenight, log: structuredLog });
 sso.init();

@@ -1,4 +1,4 @@
-// __tests__/admin-credential.test.js - the operator password: where it comes
+// __tests__/admin-credential.test.js - the admin password: where it comes
 // from, what it takes to change it, and what is on disk afterwards.
 const fs = require('fs');
 const os = require('os');
@@ -6,7 +6,7 @@ const path = require('path');
 const { createAdminCredential, MIN_LENGTH } = require('../server/admin-credential');
 const { createSettingsStore } = require('../server/settings-store');
 
-describe('operator password', () => {
+describe('admin password', () => {
   let dir;
   let store;
   beforeEach(() => {
@@ -19,14 +19,14 @@ describe('operator password', () => {
 
   const saved = () => JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
 
-  test('no password anywhere means no operator surface', () => {
+  test('no password anywhere means no admin surface', () => {
     const cred = createAdminCredential({ settingsStore: store });
     expect(cred.isEnabled()).toBe(false);
     expect(cred.verify('')).toBe(false);
     expect(cred.verify('anything')).toBe(false);
     expect(cred.status()).toMatchObject({ enabled: false, source: null });
     // With no way in, there is no way to set one either.
-    expect(cred.change('', 'a-good-password')).toMatch(/no operator password/i);
+    expect(cred.change('', 'a-good-password')).toMatch(/no admin password/i);
   });
 
   test('an empty or whitespace environment password is not a password', () => {

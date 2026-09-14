@@ -217,7 +217,7 @@ test('a player forfeits from the menu and hands the game over', async ({ browser
   await guestContext.close();
 });
 
-test('the host ends a running tournament from the Info tab, without the operator password', async ({
+test('the host ends a running tournament from the Info tab, without the admin password', async ({
   browser,
   page,
 }) => {
@@ -245,7 +245,7 @@ test('the host ends a running tournament from the Info tab, without the operator
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
 
-  // The operator's cancel in the menu stays locked: this socket has no
+  // The admin's cancel in the menu stays locked: this socket has no
   // password, and the host should not need one to stop their own game.
   await page.click('#menuToggle');
   await expect(page.locator('#btnAdminCancel')).toBeHidden();

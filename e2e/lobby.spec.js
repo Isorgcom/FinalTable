@@ -237,7 +237,10 @@ test('the lobby menu holds only the version when nothing else is configured', as
   await page.click('#lobbyMenuToggle');
   await expect(page.locator('#lobbyMenuDropdown')).toHaveClass(/open/);
   await expect(page.locator('#lobbyMenuVersion')).toContainText('FinalTable v');
-  await expect(page.locator('#btnOperator')).toBeHidden();
+  // The lobby menu's own button. #btnAdmin is the table menu's, which is
+  // hidden on the lobby screen whatever the server is configured with, so
+  // asserting on that one would pass without testing anything.
+  await expect(page.locator('#btnLobbyAdmin')).toBeHidden();
   await expect(page.locator('#btnGameNightSignOut')).toBeHidden();
   await expect(page.locator('#btnGameNight')).toBeHidden();
 });

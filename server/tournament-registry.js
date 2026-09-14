@@ -286,7 +286,7 @@ function createTournamentRegistry(deps = {}) {
   }
 
   // How many of this game's people have a socket on it right now. A readout for
-  // the Operator page and nothing else: what decides whether a game holds is
+  // the Admin page and nothing else: what decides whether a game holds is
   // the narrower question below, not whether anybody happens to be looking.
   function connectedHumans(entry) {
     return [...entry.registrations.values()].filter((r) => r.socketId).length;
@@ -541,23 +541,23 @@ function createTournamentRegistry(deps = {}) {
     return [...tournaments.values()].filter(isPublic).map(summarize);
   }
 
-  // What the Operator page shows: every game the server holds, listed or not,
+  // What the Admin page shows: every game the server holds, listed or not,
   // with its code. Only ever answered to a socket that has unlocked the
-  // operator controls (tournament-handlers.js); nothing here reaches a player.
-  const OPERATOR_ORDER = { running: 0, registering: 1, finished: 2 };
-  function operatorRank(entry) {
-    return entry.status in OPERATOR_ORDER ? OPERATOR_ORDER[entry.status] : 3;
+  // admin controls (tournament-handlers.js); nothing here reaches a player.
+  const ADMIN_ORDER = { running: 0, registering: 1, finished: 2 };
+  function adminRank(entry) {
+    return entry.status in ADMIN_ORDER ? ADMIN_ORDER[entry.status] : 3;
   }
-  function operatorList() {
+  function adminList() {
     return [...tournaments.values()]
-      .sort((a, b) => operatorRank(a) - operatorRank(b) || a.createdAt - b.createdAt)
+      .sort((a, b) => adminRank(a) - adminRank(b) || a.createdAt - b.createdAt)
       .map((entry) => ({
         ...summarize(entry),
         code: entry.code,
         connected: connectedHumans(entry),
         // Held for an empty room, and since when: between them these say which
         // games are waiting for somebody and which have been written off but
-        // not yet swept. The operator's Cancel is the broom that does not wait.
+        // not yet swept. The admin's Cancel is the broom that does not wait.
         held: entry.status === 'running' && entry.director.isHeldForAbsence(),
         heldSince: entry.awayHeldSince || null,
         pending: entry.pending.size,
@@ -1851,10 +1851,10 @@ function createTournamentRegistry(deps = {}) {
   }
 
   // Cancel without the host check. The host of a running tournament may be a
-  // seat that has long since busted or dropped, so an operator needs a way in
+  // seat that has long since busted or dropped, so an admin needs a way in
   // that does not depend on who happens to hold that role. Authorisation is the
   // caller's business and is done at the socket, not here.
-  function forceCancel(entry, reason = 'cancelled by the operator') {
+  function forceCancel(entry, reason = 'cancelled by the admin') {
     if (!entry || entry.status === 'finished') return { error: 'Already finished' };
     cancelEntry(entry, reason);
     return { entry };
@@ -2433,7 +2433,7 @@ function createTournamentRegistry(deps = {}) {
     stateFor,
     listFor,
     publicList,
-    operatorList,
+    adminList,
     findByUid,
     findPendingByUid,
     byCode,

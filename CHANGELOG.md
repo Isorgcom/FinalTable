@@ -1,7 +1,7 @@
 # Changelog
 
 What changed in FinalTable, newest first. This is the player's and the
-operator's view: what behaves differently, not how it was built. For lineage
+admin's view: what behaves differently, not how it was built. For lineage
 and what the fork removed from upstream see [FORK.md](./FORK.md); for the
 reasoning behind any one change, the git history says more than a line here
 can.
@@ -12,6 +12,14 @@ Entries are grouped as Added, Changed, Fixed and Removed, roughly following
 Release on GitHub to go with it.
 
 ## Unreleased
+
+### Changed
+
+- The **Operator** page is now the **Admin** page, and every word for it says
+  admin. It was Operator wherever a person read it and admin wherever the code
+  wrote it, including `ADMIN_PASSWORD`, which meant the password and the page
+  it unlocked went by different names. Nothing about what it does has changed,
+  and no setting has changed name.
 
 ## 0.14.0 - 2026-09-14
 

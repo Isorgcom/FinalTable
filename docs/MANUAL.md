@@ -1,7 +1,7 @@
 # FinalTable user manual
 
 FinalTable is a poker tournament server you reach with a browser. Somebody
-runs it (the **operator**), somebody creates a game and looks after it (the
+runs it (the **admin**), somebody creates a game and looks after it (the
 **host**), and everybody else sits down and plays. This manual is written for
 all three, in that order of how often they are the same person. Nothing needs
 installing on a phone or a laptop: open the address, type a name, play.
@@ -24,10 +24,10 @@ version, with where to read more:
 | 0.8.0   | The host's controls at the table: pause, a level back or forward, a minute on the clock, move a player, remove a player. The bot box takes a count. Tables that should merge now do.                                                                                                                        | [The host at the table](#the-host-at-the-table), [Creating a tournament](#creating-a-tournament)                                                      |
 | 0.7.0   | A blind structure to choose or edit when a game is made: Turbo, Standard or Deep, with antes and breaks, and the ladder in the waiting room and the Info tab.                                                                                                                                               | [Creating a tournament](#creating-a-tournament), [How a tournament runs](#how-a-tournament-runs)                                                      |
 | 0.6.0   | The host reads and talks at every table: a strip in the Chat tab picks a table, and All announces to every table at once and over the felt.                                                                                                                                                                 | [The side panel](#the-side-panel), [Chat, reactions and mute](#chat-reactions-and-mute)                                                               |
-| 0.5.0   | The Operator page lists every game on the server, listed or not, and can end one. A page left open across an update reloads itself.                                                                                                                                                                         | [For the operator](#for-the-operator), [Updates](#updates)                                                                                            |
+| 0.5.0   | The Admin page lists every game on the server, listed or not, and can end one. A page left open across an update reloads itself.                                                                                                                                                                            | [For the admin](#for-the-admin), [Updates](#updates)                                                                                                  |
 | 0.4.0   | A game is **private by default**. Public lists it for anyone; invite-only puts a door on the link that the host works.                                                                                                                                                                                      | [Who can join](#who-can-join), [The door](#the-door)                                                                                                  |
 | 0.3.0   | Reactions: six emoji thrown at the table without typing.                                                                                                                                                                                                                                                    | [Reactions](#reactions)                                                                                                                               |
-| 0.2.0   | Sign in with GameNight, the Operator page, the corner menu, and a join code that is no longer served to anyone who asks.                                                                                                                                                                                    | [Who you are](#who-you-are), [For the operator](#for-the-operator)                                                                                    |
+| 0.2.0   | Sign in with GameNight, the Admin page, the corner menu, and a join code that is no longer served to anyone who asks.                                                                                                                                                                                       | [Who you are](#who-you-are), [For the admin](#for-the-admin)                                                                                          |
 
 Older: table chat and a host mute, hand-for-hand at the bubble, late
 registration, rejoin after a dropped connection, and a field that survives a
@@ -71,8 +71,8 @@ is told afterwards, so nothing at the table waits on it.
 
 ### The corner menu
 
-The button in the top-right corner of the lobby opens a small menu: **operator**
-(only when the server has an operator password), **sign out** (only when
+The button in the top-right corner of the lobby opens a small menu: **admin**
+(only when the server has an admin password), **sign out** (only when
 signed in with GameNight), and the version of FinalTable this server is
 running.
 
@@ -256,7 +256,7 @@ table. Up to fifty people can wait at once.
 
 The **top bar** has the game's name and a line of status, then buttons:
 **stats**, **replay**, **sit out**, **panel** (shows or hides the side
-panel), and the **menu** (hand rankings, sound on or off, the operator's
+panel), and the **menu** (hand rankings, sound on or off, the admin's
 controls when unlocked, **leave**, and **forfeit**).
 
 The **banner** over the felt shows the level, the blinds and the ante when
@@ -301,8 +301,8 @@ nobody else has:
 - **End tournament**, set apart at the foot of the block. The game stops
   where it is, with no winner and no payouts, and everyone still in it is
   sent back to the lobby with a note saying the host called it off. It asks
-  first and cannot be undone. The operator's own way to end a game is still
-  in the table menu, behind the server's password, for games the operator
+  first and cannot be undone. The admin's own way to end a game is still
+  in the table menu, behind the server's password, for games the admin
   does not host.
 
 The host is whoever is running the clock, and that is not always the person
@@ -588,7 +588,7 @@ table's chat; their lines carry a **rail** badge, so a seat can tell who is
 playing from who is only talking. The host's mute covers them. Reactions are
 for seats only: they float over a chair, and a watcher has none.
 
-An operator can switch chat or reactions off for the whole server; then the
+An admin can switch chat or reactions off for the whole server; then the
 box or the strip simply does not exist.
 
 ## Updates
@@ -599,14 +599,14 @@ _FinalTable was updated_ across the top and reloads once you leave the table;
 tap the notice to reload sooner. Nothing is lost either way: a reload rejoins
 your seat.
 
-## For the operator
+## For the admin
 
-The operator is whoever knows the server's operator password. It unlocks the
-**operator** item in the lobby's corner menu and the **admin** item in the
+The admin is whoever knows the server's admin password. It unlocks the
+**admin** item in the lobby's corner menu and the **admin** item in the
 table menu. The unlock lasts as long as the browser's connection; a reload
 asks again.
 
-### The Operator page
+### The Admin page
 
 **Games on this server** comes first: every game the server holds, listed or
 not, running first, then registering, then finished. Each card shows the
@@ -615,7 +615,7 @@ code**, the host, how many registered players are connected, the entrants,
 the tables while running, how many are waiting at the door of an invite-only
 game, and when it was created or started. **End game** ends one, after a
 confirmation; everyone in it is sent to the lobby with a note saying the
-operator ended it. The list follows the server on its own as games come and
+admin ended it. The list follows the server on its own as games come and
 go; **Refresh** pulls the counts that change without that, such as a player
 dropping off.
 
@@ -629,17 +629,17 @@ slug here; the signing key is fetched, nothing is pasted. **Refresh key** if
 GameNight regenerates its key; **Unpair** takes the button away. The full
 procedure is in [DEPLOYMENT.md](./DEPLOYMENT.md#pairing-with-gamenight).
 
-**Operator password** changes the password. The current one is asked for
-again, and the change signs out every other operator session. The first
+**Admin password** changes the password. The current one is asked for
+again, and the change signs out every other admin session. The first
 password comes from the server's environment (`ADMIN_PASSWORD`); after a
 change the new one wins, and a forgotten one is reset as described in
-[DEPLOYMENT.md](./DEPLOYMENT.md#the-operator-password).
+[DEPLOYMENT.md](./DEPLOYMENT.md#the-admin-password).
 
 ### From the table
 
 The table menu's **admin** item takes the same password and then offers
 **cancel tournament** for the game at that table. It is the same thing as End
-game on the Operator page, reached without leaving the felt.
+game on the Admin page, reached without leaving the felt.
 
 ### Server settings
 
@@ -648,7 +648,7 @@ restart:
 
 | Setting                      | Default  | What it does                                                      |
 | ---------------------------- | -------- | ----------------------------------------------------------------- |
-| `ADMIN_PASSWORD`             | none     | The first operator password. None means no operator surface.      |
+| `ADMIN_PASSWORD`             | none     | The first admin password. None means no admin surface.            |
 | `MAX_TOURNAMENTS`            | 8        | How many games the server holds at once.                          |
 | `CHAT_ENABLED`               | true     | Chat exists at all.                                               |
 | `REACTIONS_ENABLED`          | true     | The reaction strip exists at all.                                 |
@@ -667,7 +667,7 @@ after taking a pot nobody contested. The deck is shuffled with the
 operating system's random source. Unlisted games are not on any list or in
 the public API, and a game's id without its code gets "Tournament not found".
 A watcher on the rail gets the same blanked view as any other seat, is never
-sent the join code, and cannot sit down by the rail link. The operator, who
+sent the join code, and cannot sit down by the rail link. The admin, who
 runs the machine, can see every game and its code, and that is the extent of
 it. The details, with the code paths and the tests
 behind them, are in [SECURITY.md](../SECURITY.md).

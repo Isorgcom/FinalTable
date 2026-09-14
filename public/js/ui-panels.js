@@ -457,7 +457,7 @@ function renderInfoHost() {
   if (isHost) block.appendChild(list);
 
   // Ending the whole thing. The host could do this from the waiting room until
-  // the cards came out, and after that only somebody holding the operator's
+  // the cards came out, and after that only somebody holding the admin's
   // password could - which left a host with a game they could not stop. It
   // sits last, under a line, and asks first.
   const end = document.createElement('div');

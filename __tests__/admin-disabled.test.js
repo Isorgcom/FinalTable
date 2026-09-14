@@ -1,4 +1,4 @@
-// Booted with no ADMIN_PASSWORD: the operator surface must not exist at all,
+// Booted with no ADMIN_PASSWORD: the admin surface must not exist at all,
 // rather than existing with a default or an empty password that matches ''.
 const fs = require('fs');
 const os = require('os');

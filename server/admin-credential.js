@@ -1,9 +1,9 @@
-// admin-credential.js - the operator password, and changing it.
+// admin-credential.js - the admin password, and changing it.
 //
 // Two places it can come from. `ADMIN_PASSWORD` in the environment is how a
-// server gets its first one, because a box with no password has no operator
-// surface at all and therefore no way in to set one. Once an operator changes
-// it from the Operator page the new one is kept here, hashed, and wins from
+// server gets its first one, because a box with no password has no admin
+// surface at all and therefore no way in to set one. Once an admin changes
+// it from the Admin page the new one is kept here, hashed, and wins from
 // then on: a password somebody typed into a browser should not be undone by a
 // stale line in a compose file.
 //
@@ -79,9 +79,9 @@ function createAdminCredential({ settingsStore = null, envPassword = '', log = (
     return saved ? matchesRecord(password, saved) : sameString(password, fromEnv);
   }
 
-  // Returns null on success, or a sentence to show the operator.
+  // Returns null on success, or a sentence to show the admin.
   function change(current, next) {
-    if (!isEnabled()) return 'There is no operator password on this server.';
+    if (!isEnabled()) return 'There is no admin password on this server.';
     if (!verify(current)) return 'That is not the current password.';
     const problem = passwordProblem(next);
     if (problem) return problem;
@@ -91,7 +91,7 @@ function createAdminCredential({ settingsStore = null, envPassword = '', log = (
     log({
       level: 'info',
       event: 'admin_password_changed',
-      message: 'Operator password changed',
+      message: 'Admin password changed',
       data: { storedTo: settingsStore ? settingsStore.file : null },
     });
     return null;

@@ -26,13 +26,13 @@ const PREF_SAVE_WINDOW_MS = 10 * 1000;
 function registerTournamentHandlers(deps) {
   const { io, identity } = deps;
   const registry = createTournamentRegistry(deps);
-  // The operator password: the environment's, or one an operator has since set
-  // from the Operator page. No password at all means the admin surface does
+  // The admin password: the environment's, or one an admin has since set
+  // from the Admin page. No password at all means the admin surface does
   // not exist, rather than existing with a default. It is never sent to a
   // client, logged, or put in state. See server/admin-credential.js.
   const adminCredential = deps.adminCredential || { isEnabled: () => false, verify: () => false };
   const adminEnabled = adminCredential.isEnabled();
-  // The GameNight sign-in bridge. Read live on every use: the operator can
+  // The GameNight sign-in bridge. Read live on every use: the admin can
   // pair, refresh or unpair while the server runs. Unpaired, a GameNight
   // token is simply not a way in.
   const sso = deps.sso || { get: () => null, status: () => ({ paired: false }) };
@@ -116,7 +116,7 @@ function registerTournamentHandlers(deps) {
       if (waiting) registry.bindPending(waiting, socket.data.pendingUid, socket, { resumed: true });
     }
     // What this server offers, before the client has said who it is: whether
-    // there is an operator surface, and whether a GameNight sign-in exists and
+    // there is an admin surface, and whether a GameNight sign-in exists and
     // where it goes. Never the password, never the key.
     socket.emit('serverInfo', serverInfo());
     socket.emit('tournamentList', registry.listFor(socket.data.uid));
@@ -614,7 +614,7 @@ function registerTournamentHandlers(deps) {
       socket.emit('gameState', table.getStateForPlayer(player.id, { includeHistory: false }));
     });
 
-    // ── Operator controls ────────────────────────────────────────────────
+    // ── Admin controls ────────────────────────────────────────────────
     //
     // Caution worth stating: this server is meant to be reachable over plain
     // HTTP on a LAN, so the password crosses the wire in the clear. It is a
@@ -643,10 +643,10 @@ function registerTournamentHandlers(deps) {
       }, ADMIN_FAIL_DELAY_MS);
     });
 
-    // Change the operator password. Behind the unlock, and the current password
+    // Change the admin password. Behind the unlock, and the current password
     // is asked for again: the unlock lives as long as the socket, and a tab
     // left open is not proof that the person at it knows the password. A
-    // change signs out every other operator session, because whoever is being
+    // change signs out every other admin session, because whoever is being
     // locked out is the reason to change it.
     socket.on('adminSetPassword', (payload = {}) => {
       if (!adminEnabled || !socket.data.isAdmin) return;
@@ -672,19 +672,19 @@ function registerTournamentHandlers(deps) {
       const entry =
         (payload.id && registry.tournaments.get(payload.id)) || entryFor(socket) || null;
       if (!entry) return fail(socket, 'No tournament to cancel');
-      const result = registry.forceCancel(entry, 'cancelled by the operator');
+      const result = registry.forceCancel(entry, 'cancelled by the admin');
       if (result.error) return fail(socket, result.error);
     });
 
-    // Every game on the server, listed or not, with its code: the Operator
+    // Every game on the server, listed or not, with its code: the Admin
     // page's list. Answered only to a socket that has unlocked the controls,
     // like the pairing below; anyone else gets silence.
     socket.on('adminListTournaments', () => {
       if (!adminEnabled || !socket.data.isAdmin) return;
-      socket.emit('adminTournaments', { list: registry.operatorList() });
+      socket.emit('adminTournaments', { list: registry.adminList() });
     });
 
-    // The GameNight pairing, from the Operator page. All four answer on
+    // The GameNight pairing, from the Admin page. All four answer on
     // adminGameNight, and a change is announced to every socket as a fresh
     // serverInfo so the button appears or goes without a reload. Nobody who
     // has not unlocked the admin controls gets an answer at all.

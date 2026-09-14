@@ -13,7 +13,7 @@ function stripQuotes(value) {
 
 // A file that is there but cannot be read is not a reason to refuse to start.
 // It happens for a good reason: a deployment that bind-mounts the working tree
-// into the container exposes the operator's .env to a process running as
+// into the container exposes the admin's .env to a process running as
 // somebody else, and that file is deliberately kept at mode 600. Everything in
 // it reached the process through the environment already, which is what the
 // compose file is for, so skipping it costs nothing and crash-looping over it

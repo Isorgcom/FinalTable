@@ -72,11 +72,11 @@ The clone is the deployment. `docker-compose.prod.yml` is committed and carries
 this host's specifics: the bind mount, the proxy network, `TRUST_PROXY`, and
 memory sized for a box that has other tenants.
 
-### The operator password
+### The admin password
 
 `ADMIN_PASSWORD` in the host's `.env` is how a server gets its first one: with
-no password there is no operator surface, and so no way in to set one. After
-that it is changed from the **operator** page, reached from the menu in the
+no password there is no admin surface, and so no way in to set one. After
+that it is changed from the **admin** page, reached from the menu in the
 lobby's top corner, and the new one is
 kept as a scrypt hash in `data/settings.json` and wins over the environment
 from then on - a password somebody typed into a browser should not be undone
@@ -104,7 +104,7 @@ browser:
    reach it. The URL must match exactly, scheme, host and port: it is the only
    place GameNight will ever send a token.
 2. In this server's lobby, open the menu in the top corner and pick
-   **operator** (it needs `ADMIN_PASSWORD` set), then enter the GameNight
+   **admin** (it needs `ADMIN_PASSWORD` set), then enter the GameNight
    address and the slug.
    The signing key is fetched from GameNight, checked, and saved to
    `data/settings.json`; the button appears for everyone at once.
@@ -114,7 +114,7 @@ browser:
 Only the public key travels, and only this way round. GameNight signs each
 sign-in with a private key it never shares, so this server can check a token
 on its own and a leak here lets nobody forge one. The key id shown on the
-Operator page matches the one on GameNight's Connected Apps page.
+Admin page matches the one on GameNight's Connected Apps page.
 
 When both run on the same host, the address to enter can be the internal one -
 `http://gamenight`, the container's name on the proxy network - rather than the
@@ -126,7 +126,7 @@ own public address.
 The three environment variables (`GAMENIGHT_URL`, `GAMENIGHT_AUDIENCE`,
 `GAMENIGHT_PUBLIC_KEY`, see `.env.example`) still work for a headless setup:
 they seed the pairing the first time a server boots with nothing saved, and
-after that the saved pairing wins, so a change made on the Operator page is
+after that the saved pairing wins, so a change made on the Admin page is
 not undone by a restart.
 
 ### Sizing it

@@ -2044,7 +2044,7 @@ describe('the rail', () => {
     // The people in the game see the rail.
     expect(registry.stateFor(entry, 'h').watchers).toBe(1);
     expect(registry.stateFor(entry, 'h').rail).toBe(entry.rail);
-    expect(registry.operatorList().find((c) => c.id === entry.id).watchers).toBe(1);
+    expect(registry.adminList().find((c) => c.id === entry.id).watchers).toBe(1);
     // A public game may be watched from its card.
     const open = registry.create(
       'v',

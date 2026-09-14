@@ -1,6 +1,6 @@
 // __tests__/gamenight-pairing.test.js - pairing with a GameNight at runtime:
 // the fetch of its signing key, the settings file, and the precedence between
-// what the operator saved and what the environment says.
+// what the admin saved and what the environment says.
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
@@ -48,7 +48,7 @@ function jsonHandler(body, status = 200) {
   };
 }
 
-describe('normalising what the operator typed', () => {
+describe('normalising what the admin typed', () => {
   test('urls', () => {
     expect(normalizeUrl(' https://gamenight.example/ ')).toBe('https://gamenight.example');
     expect(normalizeUrl('http://192.168.51.35:8080//')).toBe('http://192.168.51.35:8080');
@@ -162,7 +162,7 @@ describe('the runtime: saved pairing, environment seed, live changes', () => {
     expect(first.init().config.issuer).toBe('https://env.example');
     expect(store.get('gamenight')).toMatchObject({ source: 'env', issuer: 'https://env.example' });
 
-    // The operator changes it in the GUI...
+    // The admin changes it in the GUI...
     store.set('gamenight', {
       ...pairingFromEnv(envConfig()),
       issuer: 'https://gui.example',

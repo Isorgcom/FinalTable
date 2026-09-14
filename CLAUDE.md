@@ -6,7 +6,7 @@ A change is not finished until all of these are true:
 
 1. `npm run lint`, `npm run format:check`, `npm test` and `npx playwright test`
    pass.
-2. Anything a player or an operator would notice has a line in
+2. Anything a player or an admin would notice has a line in
    [CHANGELOG.md](./CHANGELOG.md) under `## Unreleased`, written in the same
    commit as the change itself.
 3. Any document that now states the old behaviour is corrected: README.md for

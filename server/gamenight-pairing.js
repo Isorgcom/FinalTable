@@ -1,13 +1,13 @@
 // gamenight-pairing.js - pairing this server with a GameNight, at runtime.
 //
 // A pairing is what the verifier needs (issuer, audience, public key) plus
-// where it came from. The operator sets it from the lobby by giving the
+// where it came from. The admin sets it from the lobby by giving the
 // GameNight URL: this module fetches GameNight's public signing key from its
 // /api/v1/sso endpoint, checks it is the kind of key expected, and keeps the
 // result in settings.json. The environment variables still work and seed the
 // file on first boot; after that the file wins.
 //
-// This is the one outbound HTTP call the server makes, and only an operator
+// This is the one outbound HTTP call the server makes, and only an admin
 // who has unlocked the admin controls can cause it.
 
 const crypto = require('crypto');
@@ -170,7 +170,7 @@ function createSsoRuntime({ settingsStore, envConfig = null, log = () => {} } = 
     return null;
   }
 
-  // What an operator sees. Never the key itself; the id is enough to compare
+  // What an admin sees. Never the key itself; the id is enough to compare
   // against the GameNight page.
   function status() {
     const p = current ? current.pairing : null;

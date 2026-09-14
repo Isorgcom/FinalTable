@@ -27,7 +27,7 @@ services:
       # have room. Raise this and mem_limit together — the heap has to fit
       # inside the limit with the rest of the process beside it.
       - NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_MB:-384}
-      # Unset by default: no admin password means no operator controls.
+      # Unset by default: no admin password means no admin controls.
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       # Sign in with GameNight, all three from .env (see .env.example). Unset
       # means the button does not exist.

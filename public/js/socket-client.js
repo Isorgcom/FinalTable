@@ -50,11 +50,11 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onAdminStatus(st);
   });
   // The GameNight pairing, answered only to a socket that has unlocked the
-  // operator controls.
+  // admin controls.
   socket.on('adminGameNight', (data) => {
     if (window.Lobby) Lobby.onAdminGameNight(data);
   });
-  // Every game on the server, for the Operator page; the same unlock.
+  // Every game on the server, for the Admin page; the same unlock.
   socket.on('adminTournaments', (data) => {
     if (window.Lobby) Lobby.onAdminTournaments(data);
   });
@@ -62,7 +62,7 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onAdminPasswordResult(data);
   });
 
-  // What the server offers, sent before identify: whether an operator surface
+  // What the server offers, sent before identify: whether an admin surface
   // exists and whether a GameNight sign-in does. Nothing about this socket.
   socket.on('serverInfo', (info) => {
     if (window.Lobby) Lobby.onServerInfo(info);

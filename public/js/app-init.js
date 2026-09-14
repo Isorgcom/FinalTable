@@ -392,7 +392,7 @@ function init() {
     renderReplayList();
     document.getElementById('replayPanel').classList.remove('hidden');
   });
-  // ── Operator controls ──────────────────────────────────────────────────
+  // ── Admin controls ──────────────────────────────────────────────────
   //
   // Hidden unless the server says it has an admin password configured, and the
   // cancel item stays hidden until this socket has actually authenticated. The
@@ -420,11 +420,11 @@ function init() {
         authed = !!st.ok;
         paint();
         if (st.ok) {
-          // The lobby's Operator page unlocks the same way and then opens
+          // The lobby's Admin page unlocks the same way and then opens
           // itself; a notice on top of that would be one dialog too many.
-          if (window.__operatorPending) return;
+          if (window.__adminPending) return;
           window.showNoticeDialog &&
-            window.showNoticeDialog({ title: 'Admin', message: 'Operator controls unlocked.' });
+            window.showNoticeDialog({ title: 'Admin', message: 'Admin controls unlocked.' });
           return;
         }
         if (st.lockedOut) {
@@ -453,7 +453,7 @@ function init() {
     closeMenu();
     if (!window.showTextPromptDialog) return;
     const password = await window.showTextPromptDialog({
-      title: 'Operator login',
+      title: 'Admin login',
       message: 'Password for the admin controls.',
       hint: 'Sent over this connection as typed; the server is plain HTTP on your network.',
       confirmLabel: 'Unlock',

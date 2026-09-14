@@ -89,7 +89,7 @@
           &#8801;
         </button>
         <div class="menu-dropdown" id="lobbyMenuDropdown" role="menu">
-          <button class="menu-item hidden" id="btnOperator" type="button">operator</button>
+          <button class="menu-item hidden" id="btnLobbyAdmin" type="button">admin</button>
           <button class="menu-item hidden" id="btnSessions" type="button">your devices</button>
           <button class="menu-item hidden" id="btnGameNightSignOut" type="button">sign out</button>
           <div class="menu-note" id="lobbyMenuVersion"></div>
@@ -175,11 +175,11 @@
              from the other is the only way to do it. -->
         <section class="lobby-view lobby-card hidden" id="lobbySessions" aria-label="Your devices">
           <div class="lobby-title">Your devices</div>
-          <p class="op-help">
+          <p class="admin-help">
             Where you are signed in. Signing a device out takes it back to the lobby as a stranger;
             anything it was holding in a game stays where it is.
           </p>
-          <div class="op-status" id="sessionsStatus" aria-live="polite"></div>
+          <div class="admin-status" id="sessionsStatus" aria-live="polite"></div>
           <div class="session-list" id="sessionsList"></div>
           <div class="lobby-actions">
             <button class="btn-secondary" id="btnSessionsRefresh" type="button">Refresh</button>
@@ -187,98 +187,105 @@
           </div>
         </section>
 
-        <!-- Operator: server settings, behind the admin password -->
-        <section class="lobby-view lobby-card hidden" id="lobbyOperator" aria-label="Operator">
-          <div class="lobby-title">Operator</div>
-          <div class="op-section">
-            <div class="op-heading">Games on this server</div>
-            <p class="op-help">
+        <!-- Admin: server settings, behind the admin password -->
+        <section class="lobby-view lobby-card hidden" id="lobbyAdmin" aria-label="Admin">
+          <div class="lobby-title">Admin</div>
+          <div class="admin-section">
+            <div class="admin-heading">Games on this server</div>
+            <p class="admin-help">
               Every game the server holds, listed or not. The code is the way in; hand it out with
               care.
             </p>
-            <div class="op-status" id="opGamesStatus" aria-live="polite"></div>
-            <div class="op-games" id="opGamesList"></div>
+            <div class="admin-status" id="adminGamesStatus" aria-live="polite"></div>
+            <div class="admin-games" id="adminGamesList"></div>
             <div class="lobby-actions">
-              <button class="btn-secondary" id="btnOpGamesRefresh" type="button">Refresh</button>
+              <button class="btn-secondary" id="btnAdminGamesRefresh" type="button">Refresh</button>
             </div>
           </div>
-          <div class="op-section op-divider">
-            <div class="op-heading">Sign in with GameNight</div>
-            <p class="op-help">
+          <div class="admin-section admin-divider">
+            <div class="admin-heading">Sign in with GameNight</div>
+            <p class="admin-help">
               Pair this server with a GameNight site and the lobby offers a "Sign in with GameNight"
               button. Register this server there first, under Site Settings &rsaquo; Connected Apps,
               with the address players use to reach this page. Then enter the GameNight address
               here: the signing key is fetched from it, nothing to paste.
             </p>
-            <div class="op-status" id="opGnStatus" aria-live="polite"></div>
-            <div class="op-detail hidden" id="opGnDetail"></div>
+            <div class="admin-status" id="adminGnStatus" aria-live="polite"></div>
+            <div class="admin-detail hidden" id="adminGnDetail"></div>
             <div class="form-group">
-              <label for="opGnUrl">GameNight address</label>
+              <label for="adminGnUrl">GameNight address</label>
               <input
                 type="url"
-                id="opGnUrl"
+                id="adminGnUrl"
                 placeholder="https://gamenight.example"
                 autocomplete="off"
                 spellcheck="false"
               />
             </div>
             <div class="form-group">
-              <label for="opGnAudience">App slug (as registered on GameNight)</label>
+              <label for="adminGnAudience">App slug (as registered on GameNight)</label>
               <input
                 type="text"
-                id="opGnAudience"
+                id="adminGnAudience"
                 value="finaltable"
                 maxlength="32"
                 autocomplete="off"
               />
             </div>
             <div class="lobby-actions">
-              <button class="btn-enter" id="btnOpPair" type="button">Pair</button>
-              <button class="btn-secondary hidden" id="btnOpRefresh" type="button">
+              <button class="btn-enter" id="btnAdminPair" type="button">Pair</button>
+              <button class="btn-secondary hidden" id="btnAdminRefresh" type="button">
                 Refresh key
               </button>
-              <button class="btn-secondary hidden" id="btnOpUnpair" type="button">Unpair</button>
+              <button class="btn-secondary hidden" id="btnAdminUnpair" type="button">Unpair</button>
             </div>
           </div>
 
-          <div class="op-section op-divider">
-            <div class="op-heading">Operator password</div>
-            <p class="op-help">
+          <div class="admin-section admin-divider">
+            <div class="admin-heading">Admin password</div>
+            <p class="admin-help">
               The password for this page and for ending a tournament from the table menu. Changing
-              it signs out any other operator session.
+              it signs out any other admin session.
             </p>
-            <div class="op-status" id="opPwStatus" aria-live="polite"></div>
+            <div class="admin-status" id="adminPwStatus" aria-live="polite"></div>
             <div class="form-group">
-              <label for="opPwCurrent">Current password</label>
+              <label for="adminPwCurrent">Current password</label>
               <input
                 type="password"
-                id="opPwCurrent"
+                id="adminPwCurrent"
                 autocomplete="current-password"
                 maxlength="128"
               />
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label for="opPwNext">New password</label>
-                <input type="password" id="opPwNext" autocomplete="new-password" maxlength="128" />
-              </div>
-              <div class="form-group">
-                <label for="opPwConfirm">New password again</label>
+                <label for="adminPwNext">New password</label>
                 <input
                   type="password"
-                  id="opPwConfirm"
+                  id="adminPwNext"
+                  autocomplete="new-password"
+                  maxlength="128"
+                />
+              </div>
+              <div class="form-group">
+                <label for="adminPwConfirm">New password again</label>
+                <input
+                  type="password"
+                  id="adminPwConfirm"
                   autocomplete="new-password"
                   maxlength="128"
                 />
               </div>
             </div>
             <div class="lobby-actions">
-              <button class="btn-enter" id="btnOpSetPassword" type="button">Change password</button>
+              <button class="btn-enter" id="btnAdminSetPassword" type="button">
+                Change password
+              </button>
             </div>
           </div>
 
-          <div class="lobby-actions op-divider">
-            <button class="btn-secondary" id="btnOpBack" type="button">Back to the lobby</button>
+          <div class="lobby-actions admin-divider">
+            <button class="btn-secondary" id="btnAdminBack" type="button">Back to the lobby</button>
           </div>
         </section>
 
@@ -515,7 +522,7 @@
             <div class="wr-title" id="pdName"></div>
           </div>
           <div class="pd-status" id="pdStatus" aria-live="polite"></div>
-          <p class="op-help">
+          <p class="admin-help">
             This game is invite-only. The host can see you asking and will let you in, or not. You
             can leave the door at any time.
           </p>
