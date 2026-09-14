@@ -257,25 +257,43 @@ function init() {
     }
   }
 
-  // The menu item says what pressing it will do, not what the state is: "sound
-  // off" on a silent table reads as a label rather than a button.
+  // Two controls, one switch: the speaker in the felt's corner and the item in
+  // the menu. The menu item says what pressing it will do rather than what the
+  // state is - "sound off" on a silent table reads as a label rather than a
+  // button - and the speaker says the state instead, because a drawing can.
   function wireMuteToggle() {
     const btn = document.getElementById('btnMute');
-    if (!btn) return;
+    const felt = document.getElementById('btnFeltMute');
+    if (!btn && !felt) return;
+    // One painter for both. window.syncMuteLabel below is a slot rather than a
+    // list, so a second control cannot register alongside the first; it does
+    // not need to, because this closure already knows about both.
     const label = () => {
-      btn.textContent = SFX.isMuted() ? 'unmute sound' : 'mute sound';
-      btn.setAttribute('aria-pressed', SFX.isMuted() ? 'true' : 'false');
+      const muted = SFX.isMuted();
+      if (btn) {
+        btn.textContent = muted ? 'unmute sound' : 'mute sound';
+        btn.setAttribute('aria-pressed', muted ? 'true' : 'false');
+      }
+      if (felt) {
+        felt.setAttribute('aria-pressed', muted ? 'true' : 'false');
+        const says = muted ? 'Unmute the table' : 'Mute the table';
+        felt.setAttribute('aria-label', says);
+        felt.setAttribute('title', says);
+      }
     };
     label();
-    // Mute can also change without anyone pressing this, when the setting
-    // arrives from the identity on another device. The label has to follow it
-    // or the menu offers to mute a table that is already silent.
+    // Mute can also change without anyone pressing either of them, when the
+    // setting arrives from the identity on another device. Both have to follow
+    // it, or the menu offers to mute a table that is already silent and the
+    // speaker is drawn with waves it is not making.
     window.syncMuteLabel = label;
-    btn.addEventListener('click', () => {
+    const toggle = () => {
       SFX.setMuted(!SFX.isMuted());
       label();
       closeMenu();
-    });
+    };
+    if (btn) btn.addEventListener('click', toggle);
+    if (felt) felt.addEventListener('click', toggle);
   }
 
   function closeMenu() {

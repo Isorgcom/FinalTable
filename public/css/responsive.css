@@ -208,10 +208,23 @@
     padding: 6px 10px;
     font-size: 0.7rem;
   }
+  /* The bar is three rows at this width - name, status, buttons - so the
+     speaker starts below all of it, and the dealer's line moves down to leave
+     it the room. Measured rather than reasoned: the bar comes out at 73px on
+     a 390px screen with a hand in play. */
+  .felt-mute {
+    top: 80px;
+    width: 30px;
+    height: 30px;
+  }
+  .felt-mute .icon-sound {
+    width: 17px;
+    height: 17px;
+  }
   .dealer-ticker {
     width: min(48vw, 190px);
     right: 3px;
-    top: 116px;
+    top: 120px;
     font-size: 0.64rem;
     line-height: 1.28;
   }
@@ -536,9 +549,21 @@
        top-left chair, which is how it used to sit on top of it. */
     max-width: min(24vw, 200px);
   }
+  /* Everything is short here: a 28px bar, and the dealer's line was sitting at
+     62px with nothing between. The speaker takes that gap and the line moves
+     under it. */
+  .felt-mute {
+    top: 32px;
+    width: 28px;
+    height: 28px;
+  }
+  .felt-mute .icon-sound {
+    width: 16px;
+    height: 16px;
+  }
   .dealer-ticker {
     width: min(28vw, 150px);
-    top: 62px;
+    top: 70px;
     right: 4px;
     font-size: 0.58rem;
     line-height: 1.22;

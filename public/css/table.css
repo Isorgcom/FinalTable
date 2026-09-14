@@ -1661,6 +1661,60 @@
 .reaction-row.hidden {
   display: none;
 }
+/* Sound off and on, in the felt's top-right corner. It lives in the stage,
+   which is the game screen minus the docked panel, so right: 10px puts it
+   left of the panel on a desktop and at the screen's edge on a phone with no
+   media query of its own. Sits under the top bar (50) and above everything
+   the felt owns, the dealer ticker below it included (40). */
+.felt-mute {
+  position: absolute;
+  top: 52px;
+  right: 10px;
+  z-index: 41;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 168, 76, 0.22);
+  background: rgba(13, 31, 18, 0.55);
+  color: var(--smoke);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.felt-mute:hover {
+  background: rgba(201, 168, 76, 0.16);
+  border-color: rgba(201, 168, 76, 0.5);
+  color: var(--gold);
+}
+.felt-mute:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.felt-mute .icon-sound {
+  width: 19px;
+  height: 19px;
+}
+/* The drawing is the state, and aria-pressed is where the state already
+   lives - the menu item has maintained it since sound could be turned off.
+   One attribute doing both jobs rather than a second thing to keep in step. */
+.felt-mute[aria-pressed='true'] .sound-waves,
+.felt-mute[aria-pressed='false'] .sound-cross {
+  display: none;
+}
+.felt-mute[aria-pressed='true'] {
+  color: #c98a8a;
+  border-color: rgba(201, 138, 138, 0.4);
+}
+.felt-mute[aria-pressed='true']:hover {
+  color: var(--gold);
+}
+
 .reaction-btn {
   width: 34px;
   height: 34px;

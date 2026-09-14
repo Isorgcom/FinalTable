@@ -915,6 +915,45 @@
           </div>
         </div>
 
+        <!-- Sound off and on, in the corner opposite the door. Inside the
+             stage rather than the top bar, which is what puts it left of the
+             docked panel and at the screen's edge on a phone without a media
+             query of its own: the stage is already the screen minus the
+             panel. The shape says which state it is in - waves or a cross -
+             so there is no word, and no label that has to read backwards the
+             way the menu item's does. mute sound in the menu is the same
+             switch said another way. -->
+        <button
+          class="felt-mute"
+          id="btnFeltMute"
+          type="button"
+          aria-pressed="false"
+          aria-label="Mute the table"
+          title="Mute the table"
+        >
+          <svg
+            class="icon-sound"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M7.5 2.6 4.2 5.6H1.8v4.8h2.4l3.3 3z" />
+            <g class="sound-waves">
+              <path d="M10.2 5.9a3 3 0 0 1 0 4.2" />
+              <path d="M12.3 3.8a6 6 0 0 1 0 8.4" />
+            </g>
+            <g class="sound-cross">
+              <path d="m10.4 6.2 4 3.6" />
+              <path d="m14.4 6.2-4 3.6" />
+            </g>
+          </svg>
+        </button>
+
         <!-- The last dealer line, for when the side panel is out of view
            (hidden rail, or a closed drawer on a phone) -->
         <div class="dealer-ticker" id="logLast" aria-live="polite">Waiting...</div>

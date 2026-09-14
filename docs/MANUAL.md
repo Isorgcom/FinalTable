@@ -260,6 +260,11 @@ the game's name and a line of status, then buttons: **stats**, **replay**,
 rankings, **cards**, sound on or off, the admin's controls when unlocked,
 **leave**, and **forfeit**).
 
+In the opposite corner of the felt there is a **speaker**: press it to turn the
+sound off and on. It is drawn with waves while there is sound and crossed out
+when there is not, so it says which it is rather than what pressing it will do.
+**mute sound** in the menu is the same switch.
+
 The **banner** over the felt shows the level, the blinds and the ante when
 there is one, the time until the next level and how many players are left. On
 a break it reads Break and the blinds play resumes at; paused, it reads

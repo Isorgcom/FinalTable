@@ -1584,6 +1584,87 @@ test('the table can be muted from the menu, and stays muted after a reload', asy
   expect(pageErrors).toEqual([]);
 });
 
+// The same switch, in the corner of the felt, where it can be reached without
+// opening anything. The drawing is the state: waves while there is sound, a
+// cross when there is not.
+test('the speaker in the corner mutes the table, and the menu agrees', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Speaker');
+  await deal(page);
+  await page.mouse.click(5, 5);
+
+  const speaker = page.locator('#btnFeltMute');
+  const drawn = () =>
+    page.evaluate(() => ({
+      pressed: document.getElementById('btnFeltMute').getAttribute('aria-pressed'),
+      waves: getComputedStyle(document.querySelector('#btnFeltMute .sound-waves')).display,
+      cross: getComputedStyle(document.querySelector('#btnFeltMute .sound-cross')).display,
+    }));
+
+  // There without opening a thing, and drawn with its waves.
+  await expect(speaker).toBeVisible();
+  expect(await drawn()).toEqual({ pressed: 'false', waves: 'inline', cross: 'none' });
+  await expect(speaker).toHaveAttribute('aria-label', 'Mute the table');
+
+  await speaker.click();
+  expect(await page.evaluate(() => SFX.isMuted())).toBe(true);
+  expect(await drawn()).toEqual({ pressed: 'true', waves: 'none', cross: 'inline' });
+  await expect(speaker).toHaveAttribute('aria-label', 'Unmute the table');
+
+  // And the menu item followed it. The hook that repaints a control when the
+  // setting moves is one slot, not a list, so two controls have to be painted
+  // by one function or exactly this drifts apart.
+  await page.click('#menuToggle');
+  await expect(page.locator('#btnMute')).toHaveText('unmute sound');
+  await page.mouse.click(5, 5);
+
+  await speaker.click();
+  expect(await page.evaluate(() => SFX.isMuted())).toBe(false);
+  expect(await drawn()).toEqual({ pressed: 'false', waves: 'inline', cross: 'none' });
+  await page.click('#menuToggle');
+  await expect(page.locator('#btnMute')).toHaveText('mute sound');
+  await page.mouse.click(5, 5);
+
+  // It shares the felt's top-right corner with the dealer's last line, which
+  // only shows when the panel is out of the way. Those are the two cases where
+  // both are on screen at once, and they must not sit on top of each other.
+  const clear = async () => {
+    const boxes = await page.evaluate(() => {
+      const r = (sel) => {
+        const el = document.querySelector(sel);
+        if (!el || getComputedStyle(el).display === 'none') return null;
+        const b = el.getBoundingClientRect();
+        return { top: b.top, right: b.right, bottom: b.bottom, left: b.left };
+      };
+      return { speaker: r('#btnFeltMute'), ticker: r('#logLast'), bar: r('.top-bar') };
+    });
+    expect(boxes.speaker).not.toBeNull();
+    for (const other of ['ticker', 'bar']) {
+      if (!boxes[other]) continue;
+      const a = boxes.speaker;
+      const b = boxes[other];
+      const overlaps = a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      expect(`${other}: ${overlaps ? 'overlaps' : 'clear'}`).toBe(`${other}: clear`);
+    }
+  };
+
+  await page.click('#btnPanelToggle');
+  await expect
+    .poll(() => page.evaluate(() => document.body.classList.contains('rail-hidden')))
+    .toBe(true);
+  await clear();
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.waitForTimeout(200);
+  await clear();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+  await clear();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(200);
+  await clear();
+
+  expect(pageErrors).toEqual([]);
+});
+
 // The settings that belong to the person rather than the browser. Proved by
 // wiping the browser's copies and keeping only the identity token: whatever
 // comes back after that came back from the server.
