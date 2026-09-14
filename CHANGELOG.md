@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.14.0 - 2026-09-14
+
 ### Added
 
 - **Your devices**, in the lobby's corner menu when you are signed in with a
