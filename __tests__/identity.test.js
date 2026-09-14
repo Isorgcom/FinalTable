@@ -261,6 +261,25 @@ describe('identity store', () => {
     expect(store.setPrefs(me.uid, {})).toBeNull();
   });
 
+  // How the cards look is three more of the same thing, and the reason they
+  // are a closed vocabulary rather than free text is that a value coming back
+  // off the disk in a year has to be one the client can still draw.
+  test('the card settings are kept, and only the ones the client can draw', () => {
+    const store = createIdentityStore();
+    const me = store.identify({ name: 'Bryce' });
+    const chosen = { cardBack: 'ivory', deck: 'four', cardFace: 'large' };
+
+    expect(store.setPrefs(me.uid, chosen)).toEqual(chosen);
+    expect(store.identify({ token: me.token }).prefs).toEqual(chosen);
+
+    // A back nobody ever drew, a deck of no colours at all, and a face that
+    // is not one of the two. None of them move what was already settled.
+    expect(store.setPrefs(me.uid, { cardBack: 'tartan' })).toBeNull();
+    expect(store.setPrefs(me.uid, { deck: 'three' })).toBeNull();
+    expect(store.setPrefs(me.uid, { cardFace: 'huge' })).toBeNull();
+    expect(store.verify(me.token).prefs).toEqual(chosen);
+  });
+
   // A preference nobody else should see. get() feeds every roster on the
   // server, and it carries the name and the avatar on purpose.
   test('preferences go to their owner, not into the roster', () => {

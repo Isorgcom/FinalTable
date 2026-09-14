@@ -515,6 +515,12 @@ function init() {
     closeMenu();
     document.getElementById('hintModal').classList.remove('hidden');
   });
+  document.getElementById('btnCards').addEventListener('click', () => {
+    closeMenu();
+    // card-look.js owns the dialog, the way side-panel.js owns its tabs: what
+    // is chosen in there lands on <body> and on the server, not here.
+    if (window.CardLook) CardLook.open();
+  });
   document.getElementById('btnCloseHintModal').addEventListener('click', () => {
     document.getElementById('hintModal').classList.add('hidden');
   });
@@ -704,6 +710,19 @@ function init() {
     }
   });
 
+  // Every modal that Escape closes and that closes on a click outside it. One
+  // list, because the two used to be written out separately and adding a
+  // dialog to one of them and not the other is the obvious way to get it
+  // half wired.
+  const MODALS = [
+    'lbPanel',
+    'replayPanel',
+    'hintModal',
+    'cardsModal',
+    'resultModal',
+    'appDialogModal',
+  ];
+
   // Close modals with Escape
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
@@ -715,15 +734,14 @@ function init() {
       Lobby.closeLobbyMenu();
       return;
     }
-    const modals = ['lbPanel', 'replayPanel', 'hintModal', 'resultModal', 'appDialogModal'];
-    for (const id of modals) {
+    for (const id of MODALS) {
       if (closeOverlayById(id)) return;
     }
     // Nothing modal was open: a phone's panel drawer is next in line.
     if (window.SidePanel) SidePanel.close();
   });
 
-  ['lbPanel', 'replayPanel', 'hintModal', 'resultModal', 'appDialogModal'].forEach((id) => {
+  MODALS.forEach((id) => {
     const overlay = document.getElementById(id);
     if (!overlay) return;
     overlay.addEventListener('click', (e) => {

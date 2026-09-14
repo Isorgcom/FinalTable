@@ -370,14 +370,14 @@
   height: var(--board-card-h);
 }
 .community-cards .card-rank {
-  font-size: var(--board-rank);
+  --rank-size: var(--board-rank);
 }
 .community-cards .card-suit {
-  font-size: var(--board-suit);
+  --suit-size: var(--board-suit);
 }
 .community-cards .card-corner,
 .community-cards .card-corner-br {
-  font-size: var(--board-corner);
+  --corner-size: var(--board-corner);
 }
 .pot-display {
   position: absolute;
@@ -522,12 +522,17 @@
     linear-gradient(180deg, rgba(0, 0, 0, 0) 62%, rgba(82, 58, 22, 0.08) 100%);
   pointer-events: none;
 }
+/* The rank, the suit and the two corner indices. Every context that draws a
+   card - the board, a seat, your own board-sized pair, the replay - sets the
+   three sizes below as variables rather than as font-size, so that the
+   player's face setting multiplies them in one place each instead of at every
+   breakpoint that ever resizes a card. The fallbacks are the board's. */
 .card-rank {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -65%);
-  font-size: 1.4rem;
+  font-size: calc(var(--rank-size, 1.4rem) * var(--face-scale));
   font-weight: 600;
   line-height: 1;
 }
@@ -536,14 +541,14 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, 20%);
-  font-size: 1.4rem;
+  font-size: calc(var(--suit-size, 1.4rem) * var(--face-scale));
   line-height: 1;
 }
 .card-corner {
   position: absolute;
   top: 3px;
   left: 4px;
-  font-size: 0.6rem;
+  font-size: calc(var(--corner-size, 0.6rem) * var(--face-scale));
   font-weight: 600;
   line-height: 1.15;
   text-align: center;
@@ -552,7 +557,7 @@
   position: absolute;
   bottom: 3px;
   right: 4px;
-  font-size: 0.6rem;
+  font-size: calc(var(--corner-size, 0.6rem) * var(--face-scale));
   font-weight: 600;
   line-height: 1.15;
   text-align: center;
@@ -571,14 +576,33 @@
   color: #2a2a2a;
 }
 
-/* Card back */
+/* The two suits a four-colour deck moves, after the pair above and therefore
+   winning over them. Which colour each one is comes from the deck the viewer
+   chose - tokens.css holds both sets - so this says only which suits are the
+   ones in question. The spade and the heart never are, and the red and black
+   rules above still draw them. */
+.card.suit-diamonds .card-rank,
+.card.suit-diamonds .card-suit,
+.card.suit-diamonds .card-corner,
+.card.suit-diamonds .card-corner-br {
+  color: var(--suit-diamonds);
+}
+.card.suit-clubs .card-rank,
+.card.suit-clubs .card-suit,
+.card.suit-clubs .card-corner,
+.card.suit-clubs .card-corner-br {
+  color: var(--suit-clubs);
+}
+
+/* Card back. The colours are the four the player picks between, so every one
+   of them is a variable from tokens.css and this is drawn once. */
 .card-back {
   width: 60px;
   height: 84px;
   border-radius: 6px;
   background:
-    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.08), transparent 22%),
-    linear-gradient(180deg, #3a6d4c 0%, #244b34 100%);
+    radial-gradient(circle at 30% 24%, var(--back-sheen), transparent 22%),
+    linear-gradient(180deg, var(--back-top) 0%, var(--back-bottom) 100%);
   border: 1px solid rgba(38, 24, 8, 0.18);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -599,22 +623,22 @@
       45deg,
       transparent,
       transparent 5px,
-      rgba(201, 168, 76, 0.12) 5px,
-      rgba(201, 168, 76, 0.12) 5.5px
+      var(--back-ink) 5px,
+      var(--back-ink) 5.5px
     ),
     repeating-linear-gradient(
       -45deg,
       transparent,
       transparent 5px,
-      rgba(201, 168, 76, 0.12) 5px,
-      rgba(201, 168, 76, 0.12) 5.5px
+      var(--back-ink) 5px,
+      var(--back-ink) 5.5px
     );
 }
 .card-back::after {
   content: '';
   position: absolute;
   inset: 4px;
-  border: 1px solid rgba(201, 168, 76, 0.15);
+  border: 1px solid var(--back-frame);
   border-radius: 3px;
   pointer-events: none;
 }
@@ -721,6 +745,10 @@
   animation: boardFlip var(--flip-dur, 0.36s) ease-in-out both;
   animation-delay: var(--deal-delay, 0s);
 }
+/* The cover the board card wears through the first half of its flip. Same
+   ground as a real back, and from the same variables: a red deck whose flop
+   flashed green for a fifth of a second would be the tell that this is two
+   drawings of one thing. */
 .card-flipback {
   position: absolute;
   inset: 0;
@@ -728,8 +756,8 @@
   border-radius: 6px;
   pointer-events: none;
   background:
-    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.08), transparent 22%),
-    linear-gradient(180deg, #3a6d4c 0%, #244b34 100%);
+    radial-gradient(circle at 30% 24%, var(--back-sheen), transparent 22%),
+    linear-gradient(180deg, var(--back-top) 0%, var(--back-bottom) 100%);
   border: 1px solid rgba(38, 24, 8, 0.18);
   animation: boardFlipFace var(--flip-dur, 0.36s) step-end both;
   animation-delay: var(--deal-delay, 0s);
@@ -1383,20 +1411,20 @@
   height: 100%;
 }
 .player-hole-cards .card-rank {
-  font-size: 1rem;
+  --rank-size: 1rem;
   transform: translate(-50%, -65%);
 }
 .player-hole-cards .card-suit {
-  font-size: 1.1rem;
+  --suit-size: 1.1rem;
   transform: translate(-50%, 20%);
 }
 .player-hole-cards .card-corner {
-  font-size: 0.45rem;
+  --corner-size: 0.45rem;
   top: 2px;
   left: 3px;
 }
 .player-hole-cards .card-corner-br {
-  font-size: 0.45rem;
+  --corner-size: 0.45rem;
   bottom: 2px;
   right: 3px;
 }
@@ -1418,17 +1446,17 @@
   height: var(--board-card-h);
 }
 .player-seat.is-me .player-hole-cards .card-rank {
-  font-size: var(--board-rank);
+  --rank-size: var(--board-rank);
 }
 .player-seat.is-me .player-hole-cards .card-suit {
-  font-size: var(--board-suit);
+  --suit-size: var(--board-suit);
 }
 .player-seat.is-me .player-hole-cards .card-corner,
 .player-seat.is-me .player-hole-cards .card-corner-br {
   /* A board-sized card carries its corner indices, including at the widths
      where a small hole card gives them up for want of room. */
   display: block;
-  font-size: var(--board-corner);
+  --corner-size: var(--board-corner);
 }
 .player-seat.is-me .player-hole-cards .card-corner {
   top: 3px;
@@ -1810,6 +1838,13 @@
 }
 .hand-card.black {
   color: var(--cream);
+}
+/* And the same two suits again, from whichever deck the viewer chose. */
+.hand-card.suit-diamonds {
+  color: var(--hand-diamonds);
+}
+.hand-card.suit-clubs {
+  color: var(--hand-clubs);
 }
 .seat-caption.is-hand {
   color: var(--gold);

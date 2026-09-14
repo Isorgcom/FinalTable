@@ -1258,7 +1258,10 @@ function createCardElement(card, animClass) {
   const el = document.createElement('div');
   const color = SUIT_COLORS[card.suit];
   const ariaName = `${RANK_NAMES[card.rank] || card.rank} of ${SUIT_NAMES[card.suit] || card.suit}`;
-  el.className = `card ${color}` + (animClass ? ' ' + animClass : '');
+  // Both the colour of the classic deck and the suit itself. The four-colour
+  // deck is a stylesheet away, and it needs to know a diamond from a heart;
+  // red and black stay because they are still what most people are reading.
+  el.className = `card ${color} suit-${card.suit}` + (animClass ? ' ' + animClass : '');
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', ariaName);
 
@@ -1603,7 +1606,7 @@ function updateHandStrength() {
   for (const card of hand.cards || []) {
     const span = createTextElement(
       'span',
-      'hand-card ' + (SUIT_COLORS[card.suit] || 'black'),
+      `hand-card ${SUIT_COLORS[card.suit] || 'black'} suit-${card.suit}`,
       `${card.rank}${SUIT_SYMBOLS[card.suit] || ''}`
     );
     span.setAttribute(

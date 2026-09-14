@@ -86,9 +86,11 @@ the last piece and the other half of the identity bridge below. An admin
 server from the table menu or the Admin page, which is for the games they
 do not host.
 
-Preferences that follow you. Mute, the chair you are shown in and the panel
-tab that opens are kept against the identity rather than the browser, so a
-Game Night account gets the same table on the phone and the iPad. A closed set
+Preferences that follow you. Mute, the chair you are shown in, the panel tab
+that opens and how the cards look - the back they are dealt with, two colours
+or four, and whether the face carries a large index - are kept against the
+identity rather than the browser, so a Game Night account gets the same table
+on the phone and the iPad. A closed set
 with a validator each, because it is a client writing into a file the server
 keeps; the browser is still written first, so nothing at the table waits on
 the network, and a guest is one browser, which is as far as a guest goes.

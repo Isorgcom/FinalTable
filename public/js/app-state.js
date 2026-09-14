@@ -54,14 +54,24 @@ const MUTED_KEY = 'finaltable_muted';
 const SIDE_PANEL_TAB_KEY = 'finaltable_side_panel_tab';
 window.SIDE_PANEL_TAB_KEY = SIDE_PANEL_TAB_KEY;
 
+// How the cards look: the back, two colours or four, and whether the face
+// carries a large index. card-look.js owns what they mean; the names live here
+// with the other keys that travel, for the same reason the tab's does.
+const CARD_LOOK_KEYS = {
+  cardBack: 'finaltable_card_back',
+  deck: 'finaltable_deck',
+  cardFace: 'finaltable_card_face',
+};
+window.CARD_LOOK_KEYS = CARD_LOOK_KEYS;
+
 // ── Preferences that follow the player ───────────────────────────────────
 //
-// Three settings belong to a person, not to the browser they happen to be
-// using: whether the table is silent, which chair they sit in, and which panel
-// tab opens. They are still written to localStorage first, because that is
-// what makes them instant and what a guest has; the server copy is what makes
-// the iPad agree with the phone, for anyone signed in with a Game Night
-// account, whose devices are one identity.
+// Some settings belong to a person, not to the browser they happen to be
+// using: whether the table is silent, which chair they sit in, which panel tab
+// opens, and how the cards are drawn. They are still written to localStorage
+// first, because that is what makes them instant and what a guest has; the
+// server copy is what makes the iPad agree with the phone, for anyone signed
+// in with a Game Night account, whose devices are one identity.
 //
 // Each entry maps the storage key to the name the server knows it by, and the
 // pair of functions that carry a value across the wire: the store holds
@@ -79,6 +89,23 @@ const SYNCED_PREFS = {
   },
   [SIDE_PANEL_TAB_KEY]: {
     name: 'panelTab',
+    toServer: (raw) => raw,
+    toStore: (value) => value,
+  },
+  // The three card settings are names on both sides of the wire, so they
+  // travel as they are.
+  [CARD_LOOK_KEYS.cardBack]: {
+    name: 'cardBack',
+    toServer: (raw) => raw,
+    toStore: (value) => value,
+  },
+  [CARD_LOOK_KEYS.deck]: {
+    name: 'deck',
+    toServer: (raw) => raw,
+    toStore: (value) => value,
+  },
+  [CARD_LOOK_KEYS.cardFace]: {
+    name: 'cardFace',
     toServer: (raw) => raw,
     toStore: (value) => value,
   },
@@ -155,6 +182,10 @@ function applyPreferences(prefs) {
   if (window.SidePanel && typeof prefs.panelTab === 'string') {
     SidePanel.select(prefs.panelTab);
   }
+  // The cards are drawn from attributes on <body>, which the store alone does
+  // not move. Cheap enough to re-read all three rather than work out which of
+  // them this payload actually carried.
+  if (window.CardLook) CardLook.apply();
   // The seat is read from the store on every render, so the next one has it.
   // Only worth forcing if there is a table up to redraw.
   if (typeof renderPlayersIncremental === 'function' && gameState) {

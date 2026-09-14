@@ -1056,9 +1056,9 @@ function createReplayCardElement(card) {
     return back;
   }
   const suitSym = SUIT_SYMBOLS[card.suit];
-  const color = card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black';
+  const color = SUIT_COLORS[card.suit] || 'black';
   const cardEl = document.createElement('div');
-  cardEl.className = `card replay-card ${color}`;
+  cardEl.className = `card replay-card ${color} suit-${card.suit}`;
   const front = document.createElement('div');
   front.className = 'card-front';
   front.append(

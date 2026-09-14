@@ -649,6 +649,7 @@
             </button>
             <div class="menu-dropdown" id="menuDropdown" role="menu">
               <button class="menu-item" id="btnHint">hands</button>
+              <button class="menu-item" id="btnCards">cards</button>
               <button class="menu-item" id="btnMute">mute sound</button>
               <button class="menu-item hidden" id="btnAdmin">admin</button>
               <button class="menu-item menu-item-danger hidden" id="btnAdminCancel">
@@ -1134,6 +1135,186 @@
       </div>
     </div>
 
+    <!-- CARDS MODAL. Three settings about how the cards are read, and every
+         one of them is the viewer's own: the felt behind this dialog changes
+         under it, and nobody else's does. Each option carries the same
+         data- attribute the body does, which is what draws a red back inside
+         a green table without a second copy of the palette. -->
+    <div
+      class="result-modal hidden"
+      id="cardsModal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Cards"
+    >
+      <div class="result-content cards-content">
+        <div class="result-title">Cards</div>
+        <div class="cards-note">Yours alone. Nobody else at the table sees any of this.</div>
+
+        <div class="cards-group">
+          <div class="cards-label" id="cardsBackLabel">The back</div>
+          <div class="cards-options" role="radiogroup" aria-labelledby="cardsBackLabel">
+            <button
+              class="cards-option"
+              type="button"
+              role="radio"
+              data-look="cardBack"
+              data-value="green"
+              data-back="green"
+              aria-checked="true"
+              tabindex="0"
+            >
+              <span class="card-back cards-swatch"></span>
+              <span class="cards-name">green</span>
+            </button>
+            <button
+              class="cards-option"
+              type="button"
+              role="radio"
+              data-look="cardBack"
+              data-value="red"
+              data-back="red"
+              aria-checked="false"
+              tabindex="-1"
+            >
+              <span class="card-back cards-swatch"></span>
+              <span class="cards-name">red</span>
+            </button>
+            <button
+              class="cards-option"
+              type="button"
+              role="radio"
+              data-look="cardBack"
+              data-value="blue"
+              data-back="blue"
+              aria-checked="false"
+              tabindex="-1"
+            >
+              <span class="card-back cards-swatch"></span>
+              <span class="cards-name">blue</span>
+            </button>
+            <button
+              class="cards-option"
+              type="button"
+              role="radio"
+              data-look="cardBack"
+              data-value="ivory"
+              data-back="ivory"
+              aria-checked="false"
+              tabindex="-1"
+            >
+              <span class="card-back cards-swatch"></span>
+              <span class="cards-name">ivory</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="cards-group">
+          <div class="cards-label" id="cardsDeckLabel">The suits</div>
+          <div class="cards-options" role="radiogroup" aria-labelledby="cardsDeckLabel">
+            <button
+              class="cards-option"
+              type="button"
+              role="radio"
+              data-look="deck"
+              data-value="two"
+              data-deck="two"
+              aria-checked="true"
+              tabindex="0"
+            >
+              <span class="cards-deck" aria-hidden="true">
+                <span class="card black suit-spades cards-pip">
+                  <span class="card-front"><span class="card-suit">♠</span></span>
+                </span>
+                <span class="card red suit-hearts cards-pip">
+                  <span class="card-front"><span class="card-suit">♥</span></span>
+                </span>
+                <span class="card red suit-diamonds cards-pip">
+                  <span class="card-front"><span class="card-suit">♦</span></span>
+                </span>
+                <span class="card black suit-clubs cards-pip">
+                  <span class="card-front"><span class="card-suit">♣</span></span>
+                </span>
+              </span>
+              <span class="cards-name">two colours</span>
+            </button>
+            <button
+              class="cards-option"
+              type="button"
+              role="radio"
+              data-look="deck"
+              data-value="four"
+              data-deck="four"
+              aria-checked="false"
+              tabindex="-1"
+            >
+              <span class="cards-deck" aria-hidden="true">
+                <span class="card black suit-spades cards-pip">
+                  <span class="card-front"><span class="card-suit">♠</span></span>
+                </span>
+                <span class="card red suit-hearts cards-pip">
+                  <span class="card-front"><span class="card-suit">♥</span></span>
+                </span>
+                <span class="card red suit-diamonds cards-pip">
+                  <span class="card-front"><span class="card-suit">♦</span></span>
+                </span>
+                <span class="card black suit-clubs cards-pip">
+                  <span class="card-front"><span class="card-suit">♣</span></span>
+                </span>
+              </span>
+              <span class="cards-name">four colours</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="cards-group">
+          <div class="cards-label" id="cardsFaceLabel">The face</div>
+          <div class="cards-options" role="radiogroup" aria-labelledby="cardsFaceLabel">
+            <button
+              class="cards-option"
+              type="button"
+              role="radio"
+              data-look="cardFace"
+              data-value="standard"
+              data-face="standard"
+              aria-checked="true"
+              tabindex="0"
+            >
+              <span class="card black suit-spades cards-mini" aria-hidden="true">
+                <span class="card-front">
+                  <span class="card-corner">A<br />♠</span>
+                  <span class="card-rank">A</span>
+                  <span class="card-suit">♠</span>
+                </span>
+              </span>
+              <span class="cards-name">standard</span>
+            </button>
+            <button
+              class="cards-option"
+              type="button"
+              role="radio"
+              data-look="cardFace"
+              data-value="large"
+              data-face="large"
+              aria-checked="false"
+              tabindex="-1"
+            >
+              <span class="card black suit-spades cards-mini" aria-hidden="true">
+                <span class="card-front">
+                  <span class="card-corner">A<br />♠</span>
+                  <span class="card-rank">A</span>
+                  <span class="card-suit">♠</span>
+                </span>
+              </span>
+              <span class="cards-name">large index</span>
+            </button>
+          </div>
+        </div>
+
+        <button class="btn-start-game hint-close-btn" id="btnCloseCards">Done</button>
+      </div>
+    </div>
+
     <!-- RESULT MODAL -->
     <div
       class="result-modal hidden"
@@ -1180,6 +1361,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script defer src="/js/app-state.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/side-panel.js?v=__ASSET_VERSION__"></script>
+    <script defer src="/js/card-look.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/app-init.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/socket-client.js?v=__ASSET_VERSION__"></script>
     <script defer src="/js/table-render.js?v=__ASSET_VERSION__"></script>

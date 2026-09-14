@@ -13,6 +13,14 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **cards** in the table menu: choose the back the cards are dealt with (green,
+  red, blue or ivory), the classic two-colour deck or a four-colour one where
+  the diamond is blue and the club is green, and a large index on the card face
+  for anyone reading a phone at arm's length. Nobody else's table changes, and
+  the choice follows you to your other devices.
+
 ## 0.15.0 - 2026-09-14
 
 ### Added

@@ -318,6 +318,115 @@
   font-size: 0.8rem;
   padding: 8px 30px;
 }
+
+/* The cards dialog. Three radio groups, and every option shows the thing it
+   would do rather than describing it: every swatch, pip and sample in here is
+   a real card drawn by the rules that draw the felt. Each option carries the
+   data- attribute its choice would put on <body>, and because those settings
+   are carried by variables (tokens.css) rather than by rules reaching down
+   from the body, that is the whole of how an option draws itself. */
+.cards-content {
+  width: min(92vw, 430px);
+  min-width: 0;
+  padding: 22px 20px;
+  text-align: left;
+}
+.cards-note {
+  color: var(--smoke);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+.cards-group {
+  margin-bottom: 18px;
+}
+.cards-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  margin-bottom: 8px;
+}
+.cards-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cards-option {
+  flex: 1 1 0;
+  min-width: 62px;
+  /* The touch floor, as everywhere else that is pressed on a phone. */
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 6px;
+  background: rgba(92, 61, 26, 0.18);
+  border: 1px solid rgba(92, 61, 26, 0.45);
+  border-radius: 6px;
+  color: var(--smoke);
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  text-align: center;
+  cursor: pointer;
+}
+.cards-option:hover {
+  border-color: rgba(201, 168, 76, 0.5);
+}
+.cards-option[aria-checked='true'] {
+  border-color: var(--gold);
+  background: var(--gold-glow);
+  color: var(--cream);
+}
+.cards-option:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+/* Both samples are real cards, so both need telling that they are not on a
+   felt: block, small, and no lift under the pointer. */
+.cards-swatch,
+.cards-mini {
+  display: block;
+  width: 36px;
+  height: 50px;
+  flex: none;
+}
+.cards-mini {
+  --rank-size: 0.78rem;
+  --suit-size: 0.84rem;
+  --corner-size: 0.36rem;
+}
+.cards-mini .card-front {
+  display: block;
+}
+.cards-option .card:hover {
+  transform: none;
+  box-shadow: none;
+}
+/* The deck preview: four real card faces, because what a four-colour deck
+   changes is the cards and not the readout under them. Small enough that the
+   rank would be a smudge, so each one carries its suit alone. */
+.cards-deck {
+  display: flex;
+  gap: 3px;
+}
+.cards-pip {
+  display: block;
+  width: 24px;
+  height: 34px;
+  flex: none;
+  --suit-size: 0.72rem;
+}
+.cards-pip .card-front {
+  display: block;
+}
+/* The pips say which suits move, so the face setting must not also resize
+   them: two things changing at once in one preview is neither of them. */
+.cards-pip .card-suit {
+  font-size: var(--suit-size);
+}
 .result-separator {
   margin: 10px 0;
   border-color: rgba(255, 255, 255, 0.05);
@@ -567,10 +676,10 @@
   height: 56px;
 }
 .replay-card .card-rank {
-  font-size: 0.9rem;
+  --rank-size: 0.9rem;
 }
 .replay-card .card-suit {
-  font-size: 1rem;
+  --suit-size: 1rem;
 }
 .replay-hand-list {
   max-height: 350px;

@@ -20,6 +20,7 @@ const ASSET_VERSION_FILES = [
   'public/js/chat.js',
   'public/js/reactions.js',
   'public/js/side-panel.js',
+  'public/js/card-look.js',
   'public/js/tournament-field.js',
   'public/js/app.js',
   'public/audio/chips.mp3',

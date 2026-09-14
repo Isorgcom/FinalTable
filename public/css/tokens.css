@@ -35,6 +35,75 @@
   --bet-rx: 34;
   --bet-ry: 36;
 }
+
+/* ── How the cards look, as the player chose it ──────────────────────────
+   Three settings, each an attribute card-look.js writes on <body>, and each
+   carried by variables rather than by rules that reach down from the body.
+   Variables inherit, so the nearest ancestor carrying the attribute wins -
+   which is what lets the cards dialog draw an option the way it would look
+   inside a table that is currently set to something else. A rule shaped
+   [data-deck='four'] .card { … } could not do that: an option showing the
+   classic deck, nested inside a four-colour table, would still match it.
+
+   Every value is spelled out under its own name, including the ones this
+   table has always dealt, for the same reason: green is a deck somebody can
+   choose and not merely the absence of the other three. :root carries them
+   as well, so a page whose script never ran still has cards. */
+
+/* The back. */
+:root,
+[data-back='green'] {
+  --back-top: #3a6d4c;
+  --back-bottom: #244b34;
+  --back-ink: rgba(201, 168, 76, 0.12);
+  --back-frame: rgba(201, 168, 76, 0.15);
+  --back-sheen: rgba(255, 255, 255, 0.08);
+}
+[data-back='red'] {
+  --back-top: #8a3a3a;
+  --back-bottom: #521f1f;
+}
+[data-back='blue'] {
+  --back-top: #39598a;
+  --back-bottom: #1e3154;
+}
+/* Not a hue swap like the other two: ink that reads on a light ground has to
+   be dark, and the sheen has to be stronger to be a sheen at all. */
+[data-back='ivory'] {
+  --back-top: #efe8d8;
+  --back-bottom: #d9cdb2;
+  --back-ink: rgba(92, 61, 26, 0.18);
+  --back-frame: rgba(92, 61, 26, 0.25);
+  --back-sheen: rgba(255, 255, 255, 0.4);
+}
+
+/* The suits. Only the diamond and the club have a name here, because they are
+   the only two a four-colour deck moves; the spade stays black and the heart
+   stays red in both. The second pair of each is the hand readout's, which
+   sits on a dark panel and has always needed its own lighter colours. */
+:root,
+[data-deck='two'] {
+  --suit-diamonds: #b53535;
+  --suit-clubs: #2a2a2a;
+  --hand-diamonds: #e2766c;
+  --hand-clubs: var(--cream);
+}
+[data-deck='four'] {
+  --suit-diamonds: #1f5fa8;
+  --suit-clubs: #1c6b43;
+  --hand-diamonds: #7fb2e8;
+  --hand-clubs: #82c9a1;
+}
+
+/* The face: how much bigger the rank and the suit are drawn. */
+:root,
+[data-face='standard'] {
+  --face-scale: 1;
+}
+[data-face='large'] {
+  --face-scale: 1.3;
+}
+
 @media (min-width: 1024px) {
   :root {
     --panel-w: 320px;

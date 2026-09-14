@@ -39,6 +39,15 @@ const TOUCH_FLUSH_MS = 60 * 1000;
 // name that has gone away must not come back off the disk years later.
 const PANEL_TABS = ['chat', 'log', 'info', 'stats', 'history'];
 
+// How the cards look to the person who chose it, and to nobody else: the back
+// they are dealt with, whether the deck is the classic two colours or four,
+// and whether the face carries a large index. Here for the same reason as the
+// tabs above - a value off the disk has to be one the client can still draw,
+// and these lists are mirrored in public/js/card-look.js.
+const CARD_BACKS = ['green', 'red', 'blue', 'ivory'];
+const DECKS = ['two', 'four'];
+const CARD_FACES = ['standard', 'large'];
+
 // What a device is called on the sessions list. Coarse on purpose: enough for
 // somebody to recognise which of their own devices a row is, and no more. The
 // user agent itself is never stored - it is a fingerprint, it would sit in a
@@ -132,6 +141,12 @@ function createIdentityStore(options = {}) {
     muted: (v) => (typeof v === 'boolean' ? v : undefined),
     // Which side panel tab opens. The names the client's panel knows.
     panelTab: (v) => (PANEL_TABS.includes(v) ? v : undefined),
+    // The back of the cards.
+    cardBack: (v) => (CARD_BACKS.includes(v) ? v : undefined),
+    // Two colours or four.
+    deck: (v) => (DECKS.includes(v) ? v : undefined),
+    // Whether the rank on the face is the large one.
+    cardFace: (v) => (CARD_FACES.includes(v) ? v : undefined),
   };
 
   function sanitizePrefs(raw) {

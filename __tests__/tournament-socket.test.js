@@ -249,20 +249,22 @@ describe('Tournament socket layer', () => {
     const me = await identify(phone, { name: 'Ann', avatar: '🐸' });
     expect(me.prefs).toEqual({});
 
+    const chosen = { muted: true, seat: 4, panelTab: 'stats', cardBack: 'blue' };
     const kept = waitFor(phone, 'preferences');
-    phone.emit('savePreferences', { muted: true, seat: 4, panelTab: 'stats' });
-    expect(await kept).toEqual({ muted: true, seat: 4, panelTab: 'stats' });
+    phone.emit('savePreferences', chosen);
+    expect(await kept).toEqual(chosen);
 
-    // A different socket, the same token: the iPad.
+    // A different socket, the same token: the iPad. It is dealt the blue deck
+    // without anybody choosing it twice.
     const ipad = await connectClient();
     const there = await identify(ipad, { token: me.token, name: 'Ann' });
     expect(there.uid).toBe(me.uid);
-    expect(there.prefs).toEqual({ muted: true, seat: 4, panelTab: 'stats' });
+    expect(there.prefs).toEqual(chosen);
 
     // One setting at a time, and the rest stay where they were.
     const moved = waitFor(ipad, 'preferences');
     ipad.emit('savePreferences', { seat: 0 });
-    expect(await moved).toEqual({ muted: true, seat: 0, panelTab: 'stats' });
+    expect(await moved).toEqual({ ...chosen, seat: 0 });
   });
 
   test('a preference is refused without an identity, and anything unknown is dropped', async () => {

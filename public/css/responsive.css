@@ -20,11 +20,11 @@
     height: 59px;
   }
   .player-hole-cards .card-rank {
-    font-size: 0.85rem;
+    --rank-size: 0.85rem;
     transform: translate(-50%, -65%);
   }
   .player-hole-cards .card-suit {
-    font-size: 0.95rem;
+    --suit-size: 0.95rem;
     transform: translate(-50%, 20%);
   }
   .player-hole-cards .card-back {
@@ -150,11 +150,11 @@
     height: 42px;
   }
   .player-hole-cards .card-rank {
-    font-size: 0.6rem;
+    --rank-size: 0.6rem;
     transform: translate(-50%, -65%);
   }
   .player-hole-cards .card-suit {
-    font-size: 0.65rem;
+    --suit-size: 0.65rem;
     transform: translate(-50%, 20%);
   }
   .player-hole-cards .card-corner,
@@ -485,10 +485,10 @@
     height: 36px;
   }
   .player-hole-cards .card-rank {
-    font-size: 0.5rem;
+    --rank-size: 0.5rem;
   }
   .player-hole-cards .card-suit {
-    font-size: 0.54rem;
+    --suit-size: 0.54rem;
   }
   .player-action-badge {
     top: -16px;

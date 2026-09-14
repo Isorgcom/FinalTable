@@ -1641,6 +1641,137 @@ test('mute, your chair and the open tab come back from the server, not the brows
   expect(pageErrors).toEqual([]);
 });
 
+// How the cards look is the viewer's own reading of the same cards, so it is
+// three more settings that belong to the person rather than to the browser.
+// The colours are the ones the stylesheets name: #b53535 and #2a2a2a for the
+// classic deck, and #1f5fa8 and #1c6b43 for the two suits a four-colour deck
+// moves - the diamond and the club, never the heart or the spade.
+const BLACK = 'rgb(42, 42, 42)';
+const RED = 'rgb(181, 53, 53)';
+const DECK_COLOURS = {
+  two: { spades: BLACK, clubs: BLACK, hearts: RED, diamonds: RED },
+  four: { spades: BLACK, clubs: 'rgb(28, 107, 67)', hearts: RED, diamonds: 'rgb(31, 95, 168)' },
+};
+
+test('the back, the four-colour deck and the large face are chosen and then kept', async ({
+  page,
+}) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Picky');
+  await deal(page);
+  await page.mouse.click(5, 5);
+
+  await page.evaluate(() => {
+    window.__prefsKept = null;
+    socket.on('preferences', (p) => {
+      window.__prefsKept = p;
+    });
+  });
+
+  // What the felt is drawing: the attributes the stylesheets read, the back of
+  // a card that is face down, and the size of a rank that is face up.
+  const look = () =>
+    page.evaluate(() => {
+      const back = document.querySelector('#playerSeats .card-back');
+      const rank = document.querySelector('#gameScreen .card .card-rank');
+      return {
+        chosen: { ...document.body.dataset },
+        backGround: back ? getComputedStyle(back).backgroundImage : null,
+        rankPx: rank ? parseFloat(getComputedStyle(rank).fontSize) : null,
+      };
+    });
+
+  // Every card face up on the felt, and the colour its rank is actually being
+  // drawn in. Which suits are dealt is the deck's business, so this asserts
+  // all of them against the table rather than waiting for a particular one.
+  const felt = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll('#gameScreen .card')).flatMap((card) => {
+        const rank = card.querySelector('.card-rank');
+        const suit = Array.from(card.classList).find((name) => name.startsWith('suit-'));
+        return rank && suit ? [{ suit: suit.slice(5), colour: getComputedStyle(rank).color }] : [];
+      })
+    );
+
+  const drawnAs = async (deck) => {
+    const cards = await felt();
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) expect(card.colour).toBe(DECK_COLOURS[deck][card.suit]);
+  };
+
+  const before = await look();
+  expect(before.chosen).toEqual({ back: 'green', deck: 'two', face: 'standard' });
+  expect(before.rankPx).toBeGreaterThan(0);
+  await drawnAs('two');
+
+  await page.click('#menuToggle');
+  await page.click('#btnCards');
+  await expect(page.locator('#cardsModal')).toBeVisible();
+
+  // The dialog shows both decks at once, which is the one place all four suits
+  // are on screen together: this is where the club going green and the diamond
+  // going blue is pinned down, whatever the felt happens to have dealt.
+  //
+  // It is also the case that is easy to get wrong. Each option has to be drawn
+  // the way it would look, inside a table currently set to the other one, in
+  // both directions - so this is asserted again after the choice is made.
+  const previewsAreThemselves = async () => {
+    for (const deck of ['two', 'four']) {
+      for (const [suit, colour] of Object.entries(DECK_COLOURS[deck])) {
+        const pip = page.locator(`#cardsModal [data-deck="${deck}"] .card.suit-${suit} .card-suit`);
+        await expect(pip).toHaveCSS('color', colour);
+      }
+    }
+    // And the same of the backs: the green swatch stays green in a blue table.
+    const swatch = (value) =>
+      page
+        .locator(`#cardsModal [data-back="${value}"] .cards-swatch`)
+        .evaluate((el) => getComputedStyle(el).backgroundImage);
+    expect(await swatch('green')).not.toBe(await swatch('blue'));
+  };
+  await previewsAreThemselves();
+
+  await page.click('#cardsModal [data-look="cardBack"][data-value="blue"]');
+  await page.click('#cardsModal [data-look="deck"][data-value="four"]');
+  await page.click('#cardsModal [data-look="cardFace"][data-value="large"]');
+
+  // The felt changed under the dialog, with no Save and no reload.
+  const after = await look();
+  expect(after.chosen).toEqual({ back: 'blue', deck: 'four', face: 'large' });
+  expect(after.backGround).not.toBe(before.backGround);
+  expect(after.rankPx).toBeCloseTo(before.rankPx * 1.3, 1);
+  await drawnAs('four');
+
+  // And the dialog says which one is chosen, for a screen reader as well as
+  // for an eye.
+  const option = (value) =>
+    page.locator(`#cardsModal [data-look="cardBack"][data-value="${value}"]`);
+  await expect(option('blue')).toHaveAttribute('aria-checked', 'true');
+  await expect(option('green')).toHaveAttribute('aria-checked', 'false');
+  await previewsAreThemselves();
+
+  await page.click('#btnCloseCards');
+  await expect(page.locator('#cardsModal')).toBeHidden();
+
+  await expect
+    .poll(() => page.evaluate(() => window.__prefsKept))
+    .toMatchObject({ cardBack: 'blue', deck: 'four', cardFace: 'large' });
+
+  // Everything this browser remembers about the cards, gone. The identity
+  // token stays: whatever comes back came back from the server.
+  await page.evaluate(() => {
+    for (const key of ['finaltable_card_back', 'finaltable_deck', 'finaltable_card_face']) {
+      localStorage.removeItem(key);
+    }
+  });
+  await page.reload();
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect
+    .poll(() => page.evaluate(() => ({ ...document.body.dataset })))
+    .toMatchObject({ back: 'blue', deck: 'four', face: 'large' });
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('learning who you are after the seats are built still puts you in your chair', async ({
   page,
 }) => {

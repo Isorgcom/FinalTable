@@ -256,8 +256,8 @@ table. Up to fifty people can wait at once.
 
 The **top bar** has the game's name and a line of status, then buttons:
 **stats**, **replay**, **sit out**, **panel** (shows or hides the side
-panel), and the **menu** (hand rankings, sound on or off, the admin's
-controls when unlocked, **leave**, and **forfeit**).
+panel), and the **menu** (hand rankings, **cards**, sound on or off, the
+admin's controls when unlocked, **leave**, and **forfeit**).
 
 The **banner** over the felt shows the level, the blinds and the ante when
 there is one, the time until the next level and how many players are left. On
@@ -416,6 +416,23 @@ button opens and closes it). Five tabs:
   by action. Only cards that were shown at the table appear, and a card
   somebody kept down shows as a back beside the one they turned over; nobody's
   hidden hole cards are ever in a history but their own.
+
+### How the cards look
+
+**cards** in the table menu holds three settings, and all three are about how
+you read the cards rather than about the game:
+
+- **The back** they are dealt with: green, red, blue or ivory.
+- **The suits**: the classic two colours, or four, where the diamond is blue
+  and the club is green. The spade stays black and the heart stays red. It is
+  what stops a club being taken for a spade at a glance.
+- **The face**: standard, or a large index, which makes the rank and the suit
+  bigger on every card. Worth it on a phone.
+
+Nobody else sees any of it. Two people at the same table can be looking at
+different backs and neither can tell, because the cards are the same cards and
+this is only the reading of them. The choice follows your account rather than
+the browser: set it on the laptop and the phone is dealt the same deck.
 
 ### Leaving and coming back
 
