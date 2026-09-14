@@ -345,6 +345,15 @@ If your clock runs out the seat is not played for you: it folds to a bet,
 checks when that is free, and stays sitting out until you sit back in. The
 blinds still post while you sit out.
 
+### When a pot is pushed
+
+The chips fly from the middle of the table to the chair that won them, and the
+amount floats up over that chair as they arrive - **+3240** - then fades. It
+is the figure that was sitting on the pot a moment earlier, so you can follow
+one number across the felt. A split pot floats each player their own share
+rather than the whole pot, and a pot won by everybody folding shows it the same
+as one won at showdown.
+
 ### Showing a hand
 
 When a hand ends, anybody whose cards stayed down may turn them over for the

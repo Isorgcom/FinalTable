@@ -849,6 +849,56 @@
    shown and hidden by a timer in table-render.js; this is only the motion, so
    under prefers-reduced-motion (responsive.css collapses every animation) it
    simply appears in place and then goes, which is the right thing. */
+/* The pot, floating up over the chair that took it, and fading as it goes.
+   Same arrangement as the reaction below: a timer in table-render.js shows and
+   hides it, this is only the motion. It starts higher than the reaction does,
+   so a reaction thrown at the moment a pot is pushed does not land on the
+   number. */
+.seat-payout {
+  position: absolute;
+  bottom: calc(100% + 26px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 62;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+  white-space: nowrap;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.8),
+    0 0 14px rgba(201, 168, 76, 0.35);
+}
+.seat-payout.hidden {
+  display: none;
+}
+.seat-payout.is-live {
+  animation: payoutFloat 2.2s ease-out both;
+}
+@keyframes payoutFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.7);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.18);
+  }
+  24% {
+    transform: translate(-50%, -3px) scale(1);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -26px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -52px) scale(1);
+  }
+}
+
 .seat-reaction {
   position: absolute;
   bottom: calc(100% + 4px);

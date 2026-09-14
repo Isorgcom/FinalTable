@@ -399,6 +399,79 @@ test('the street bets sweep into the pot when the board turns over', async ({ pa
   expect(pageErrors).toEqual([]);
 });
 
+// The pot follows the chips to the chair that took it. The felt already pushes
+// the chips across; this is the figure that was sitting in the middle a second
+// earlier arriving with them.
+test('the pot floats up over the chair that took it', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Payout');
+  await deal(page);
+  await page.mouse.click(5, 5);
+  // Both seats sitting out, so hands resolve as fast as the engine can deal
+  // them rather than at the pace of a 25-second clock running down. A pot is
+  // still pushed to somebody every hand, which is all this is watching for.
+  await page.click('#btnAutoPlay');
+  await expect(page.locator('#seatBanner')).toBeVisible({ timeout: 10000 });
+
+  // Every payout the server announces, kept as it arrives. The number floats a
+  // beat after the push that carried it - it waits for the chips to cross the
+  // felt - and by then the next hand has cleared the state that named the
+  // winner. So what is on screen cannot be checked against the state at the
+  // moment it is on screen; it has to be checked against what was sent.
+  await page.evaluate(() => {
+    window.__paid = [];
+    socket.on('gameState', (state) => {
+      const paid = (state && state.lastRoundPayouts) || [];
+      for (const entry of paid) window.__paid.push(entry.playerId + ':' + entry.amount);
+    });
+  });
+
+  // The opponent sits out and folds, so pots are pushed steadily. Poll until a
+  // number on screen matches a payout this spy actually saw: a float already
+  // in flight when the spy was installed answers "unmatched" and the next hand
+  // comes round, rather than failing for having been early.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const node = document.querySelector('#playerSeats .seat-payout.is-live');
+          if (!node) return 'nothing floating';
+          const seat = node.closest('.player-seat');
+          const key = (seat && seat.dataset.playerId) + ':' + node.textContent.replace('+', '');
+          window.__payoutNode = node;
+          window.__shown = node.textContent;
+          return window.__paid.includes(key) ? 'matched' : 'unmatched ' + key;
+        }),
+      { timeout: 60000, intervals: [150] }
+    )
+    .toBe('matched');
+
+  const shown = await page.evaluate(() => ({
+    text: window.__shown,
+    floaters: document.querySelectorAll('#playerSeats .seat-payout').length,
+    seated: document.querySelectorAll('#playerSeats .player-seat[data-player-id]').length,
+  }));
+
+  // Plain digits, the way every other number on the felt is written.
+  expect(shown.text).toMatch(/^\+\d+$/);
+  // One per occupied chair and no more: the element is part of the seat rather
+  // than something appended each time a pot is won, which is what stops a long
+  // session accumulating ghosts.
+  expect(shown.floaters).toBe(shown.seated);
+
+  // And it goes. Either the animation ends or the seats are rebuilt under it
+  // by the next hand, and both of those count as gone.
+  await page.waitForFunction(
+    () => {
+      const node = window.__payoutNode;
+      return !!node && (!node.isConnected || !node.classList.contains('is-live'));
+    },
+    null,
+    { timeout: 10000 }
+  );
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('the hole cards are dealt from the button, one at a time, twice round', async ({ page }) => {
   const pageErrors = await seatAtTournamentTable(page, 'DealTester');
   await deal(page);

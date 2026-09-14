@@ -15,6 +15,8 @@ Release on GitHub to go with it.
 
 ### Added
 
+- When a pot is pushed, the amount floats up over the chair that won it as the
+  chips arrive, and fades. A split pot floats each winner their own share.
 - Two controls in the top corners of the felt, neither of them needing a word.
   A **door** on the left takes you back to the lobby, exactly as **leave** in
   the menu does: your stack stays at the table sitting out and you can rejoin

@@ -772,6 +772,71 @@ describe('Advanced Pot Distribution', () => {
         reason: 'unmatched all-in chips',
       },
     ]);
+    // And the figure the felt floats over a chair comes from the same
+    // distinction: p1 has 500 chips back in front of them and won nothing, so
+    // nothing should float over their seat.
+    expect(game.lastRoundPayouts).toEqual([{ playerId: 'p2', amount: 1000 }]);
+  });
+
+  // What each winner took, for the number that floats up over their chair. It
+  // has to be that seat's share and not the pot, or a split reads as two
+  // players each winning the whole thing.
+  test('lastRoundPayouts carries each winner their own share', () => {
+    const p1 = game.addPlayer({ id: 'p1', name: 'One' });
+    const p2 = game.addPlayer({ id: 'p2', name: 'Two' });
+    game.startRound();
+
+    p1.totalBet = 600;
+    p1.chips = 0;
+    p2.totalBet = 600;
+    p2.chips = 0;
+    game.pot = 1200;
+
+    game.communityCards = [
+      Card('hearts', 14),
+      Card('spades', 14),
+      Card('diamonds', 13),
+      Card('clubs', 13),
+      Card('hearts', 5),
+    ];
+    // Two pair on the board and a queen each: the same hand, so the same money.
+    p1.holeCards = [Card('spades', 12), Card('clubs', 2)];
+    p2.holeCards = [Card('hearts', 12), Card('diamonds', 3)];
+
+    game.showdown();
+
+    expect(game.lastRoundWinnerIds.sort()).toEqual(['p1', 'p2']);
+    const paid = [...game.lastRoundPayouts].sort((a, b) => a.playerId.localeCompare(b.playerId));
+    expect(paid).toEqual([
+      { playerId: 'p1', amount: 600 },
+      { playerId: 'p2', amount: 600 },
+    ]);
+    expect(paid.reduce((sum, entry) => sum + entry.amount, 0)).toBe(1200);
+  });
+
+  // The other way a pot is settled: nobody to beat, so no hand is evaluated.
+  test('lastRoundPayouts carries a pot won by everybody folding', () => {
+    const p1 = game.addPlayer({ id: 'p1', name: 'One' });
+    game.addPlayer({ id: 'p2', name: 'Two' });
+    game.startRound();
+    game.pot = 340;
+
+    game.awardPot([p1]);
+
+    expect(game.lastRoundWinnerIds).toEqual(['p1']);
+    expect(game.lastRoundPayouts).toEqual([{ playerId: 'p1', amount: 340 }]);
+  });
+
+  test("a new hand clears the last one's payouts", () => {
+    const p1 = game.addPlayer({ id: 'p1', name: 'One' });
+    game.addPlayer({ id: 'p2', name: 'Two' });
+    game.startRound();
+    game.pot = 200;
+    game.awardPot([p1]);
+    expect(game.lastRoundPayouts).toHaveLength(1);
+
+    game.startRound();
+    expect(game.lastRoundPayouts).toEqual([]);
   });
 
   test('cash tables enter game-over state when only one player has chips left', () => {

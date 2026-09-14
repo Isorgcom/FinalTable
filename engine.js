@@ -76,6 +76,11 @@ class PokerGame {
 
     // Winner tracking (authoritative, sent to client)
     this.lastRoundWinnerIds = [];
+    // What each of them took, as { playerId, amount }. Pushed at the same two
+    // places the ids are, so the two agree by construction rather than by
+    // being kept in step: the felt floats the figure over the chair, and a
+    // number over a chair that did not win would be the worst kind of wrong.
+    this.lastRoundPayouts = [];
     this.lastRoundRefunds = [];
     // The five cards that made the winning hand at the last showdown, as
     // `${rank}${suit}` keys. Empty for a hand won by everyone folding: there
@@ -474,6 +479,7 @@ class PokerGame {
     this.handStartPlayerCount = 0;
     this.handStartStacks = {};
     this.lastRoundWinnerIds = [];
+    this.lastRoundPayouts = [];
     this.lastRoundRefunds = [];
     this.showdownWinningCards = [];
     this.cardsExposed = false;
@@ -1327,6 +1333,7 @@ class PokerGame {
           // This player won a pot slice where they beat at least one other player
           r.player.wins++;
           this.lastRoundWinnerIds.push(r.player.id);
+          this.lastRoundPayouts.push({ playerId: r.player.id, amount: r._awarded });
           // The five that made the hand, so the felt can show why it won.
           // evaluateHand already picked them out of the seven; nothing else
           // has ever read them. Taking the union across contested winners is
@@ -1523,6 +1530,7 @@ class PokerGame {
       winner.chips += share;
       winner.wins++;
       this.lastRoundWinnerIds.push(winner.id);
+      this.lastRoundPayouts.push({ playerId: winner.id, amount: share });
       this.emitMessage(`🏆 ${this.getPublicName(winner)} wins ${share}!`, {
         kind: 'win',
         handNum: this.roundCount,
@@ -1996,6 +2004,7 @@ class PokerGame {
       mySitOutNextHand: !!(viewer && viewer.sitOutNextHand),
       isRunning: this.isRunning,
       lastRoundWinnerIds: this.lastRoundWinnerIds,
+      lastRoundPayouts: this.lastRoundPayouts,
       showdownWinningCards: this.showdownWinningCards,
       lastRoundRefunds: this.lastRoundRefunds,
       // War report & leaderboard

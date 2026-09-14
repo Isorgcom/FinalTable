@@ -279,9 +279,15 @@ function animateChipMovement(prevBets, prevWinnerKey, sweeps) {
   const winnerKey = winners.join(',');
   if (winnerKey && winnerKey !== prevWinnerKey) {
     const wait = sweeps && sweeps.length ? SWEEP_DUR_MS : 0;
+    const payouts = Array.isArray(gameState.lastRoundPayouts) ? gameState.lastRoundPayouts : [];
     winners.forEach((id) => {
       const seat = seatElementForPlayer(id);
       if (seat) flyChips(potTarget(), seat, CHIP_FLY_MAX, 'chip-win', { delayMs: wait });
+      // And what it was worth, landing as the chips do rather than ahead of
+      // them. A hand from a server that does not send the figure simply gets
+      // the chips, as it did before.
+      const paid = payouts.find((entry) => entry && entry.playerId === id);
+      if (paid) showSeatPayout(id, paid.amount, wait + CHIP_FLY_MS);
     });
   }
 }
@@ -1134,6 +1140,15 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   reaction.setAttribute('aria-hidden', 'true');
   seat.appendChild(reaction);
 
+  // And where the pot floats up from, when this chair takes one. Part of the
+  // skeleton for the same reason the two above are: the seats are rebuilt on
+  // a state push, and anything appended to one at the moment of a win would
+  // be swept away by the very push that carried the win.
+  const payout = document.createElement('div');
+  payout.className = 'seat-payout hidden';
+  payout.setAttribute('aria-hidden', 'true');
+  seat.appendChild(payout);
+
   seat.appendChild(info);
   return seat;
 }
@@ -1222,6 +1237,52 @@ function showSeatReaction(uid, emoji) {
       node.textContent = '';
     }, SEAT_REACTION_MS)
   );
+}
+
+// The pot, floating up over the chair that took it. Same shape as the reaction
+// above - a hidden child of the seat, a class for the motion, a timer to put it
+// away - with two differences. It is found by player id rather than by uid,
+// because the winners the state names are player ids and that is the lookup
+// the chips two lines above already use. And it can be asked to wait: the
+// chips take CHIP_FLY_MS to cross the felt, and a number that beats them there
+// is announcing money that has not arrived.
+const SEAT_PAYOUT_MS = 2200;
+const seatPayoutTimers = new Map();
+function showSeatPayout(playerId, amount, delayMs) {
+  if (!playerId || !Number.isFinite(amount) || amount <= 0) return;
+  const previous = seatPayoutTimers.get(playerId);
+  if (previous) {
+    clearTimeout(previous.show);
+    clearTimeout(previous.hide);
+  }
+  const show = setTimeout(
+    function () {
+      const seat = seatElementForPlayer(playerId);
+      const node = seat ? seat.querySelector('.seat-payout') : null;
+      if (!node) {
+        seatPayoutTimers.delete(playerId);
+        return;
+      }
+      // Raw digits, not grouped. The panels write 1,234 but the felt does not:
+      // the stack on the plate directly below this reads 4970, and a comma
+      // floating over a number without one would look like a different kind
+      // of figure rather than the same one arriving.
+      node.textContent = '+' + Math.round(amount);
+      node.classList.remove('is-live');
+      void node.offsetWidth;
+      node.classList.remove('hidden');
+      node.classList.add('is-live');
+      const hide = setTimeout(function () {
+        seatPayoutTimers.delete(playerId);
+        node.classList.remove('is-live');
+        node.classList.add('hidden');
+        node.textContent = '';
+      }, SEAT_PAYOUT_MS);
+      seatPayoutTimers.set(playerId, { show: null, hide });
+    },
+    Math.max(0, delayMs || 0)
+  );
+  seatPayoutTimers.set(playerId, { show, hide: null });
 }
 
 function getOrderedPlayersForView() {
