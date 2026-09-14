@@ -625,40 +625,7 @@
       <div class="table-backdrop" id="tableBackdrop"></div>
 
       <div class="top-bar">
-        <div class="top-bar-title">
-          <!-- The way out, where the eye goes first. It does exactly what
-               leave in the menu does, which is still there: the stack stays
-               at the table, sitting out, and a watcher simply stops watching.
-               The door is drawn rather than fetched - this client has no
-               image assets, and a drawn one takes the bar's own colour and
-               its gold hover for nothing. The arrow points back the way you
-               came rather than out, because the lobby is where it goes and
-               the stack is not going anywhere. -->
-          <button
-            class="top-btn top-btn-lobby"
-            id="btnToLobby"
-            type="button"
-            title="Back to the lobby - your stack stays at the table"
-          >
-            <svg
-              class="icon-exit"
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-              focusable="false"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M8.5 2.5h5v11h-5" />
-              <path d="M8.5 8H1.8" />
-              <path d="m5 4.8-3.2 3.2L5 11.2" />
-            </svg>
-            lobby
-          </button>
-          FinalTable <span class="mode-badge" id="modeBadge"></span>
-        </div>
+        <div class="top-bar-title">FinalTable <span class="mode-badge" id="modeBadge"></span></div>
         <div class="top-bar-info" id="topInfo">Waiting...</div>
         <div class="top-bar-btns">
           <button class="top-btn" id="btnLeaderboard" title="Leaderboard">stats</button>
@@ -915,16 +882,43 @@
           </div>
         </div>
 
-        <!-- Sound off and on, in the corner opposite the door. Inside the
-             stage rather than the top bar, which is what puts it left of the
-             docked panel and at the screen's edge on a phone without a media
-             query of its own: the stage is already the screen minus the
-             panel. The shape says which state it is in - waves or a cross -
-             so there is no word, and no label that has to read backwards the
-             way the menu item's does. mute sound in the menu is the same
-             switch said another way. -->
+        <!-- The two felt controls, one in each top corner: the way out, and
+             sound off and on. Both live in the stage rather than in the top
+             bar, which is what keeps them inside the felt - left of the
+             docked panel on a desktop, at the screen's edges on a phone -
+             without a media query of their own, because the stage is already
+             the screen minus the panel.
+
+             Neither carries a word. The door's arrow points back the way you
+             came, and the speaker draws waves or a cross, so each says what
+             it is rather than needing telling. leave and mute sound are both
+             still in the menu, saying the same two things in words. -->
         <button
-          class="felt-mute"
+          class="felt-btn felt-exit"
+          id="btnToLobby"
+          type="button"
+          aria-label="Back to the lobby"
+          title="Back to the lobby - your stack stays at the table"
+        >
+          <svg
+            class="icon-exit"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M8.5 2.5h5v11h-5" />
+            <path d="M8.5 8H1.8" />
+            <path d="m5 4.8-3.2 3.2L5 11.2" />
+          </svg>
+        </button>
+
+        <button
+          class="felt-btn felt-mute"
           id="btnFeltMute"
           type="button"
           aria-pressed="false"

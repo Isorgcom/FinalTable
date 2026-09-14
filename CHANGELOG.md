@@ -15,14 +15,14 @@ Release on GitHub to go with it.
 
 ### Added
 
-- A speaker in the top-right corner of the table that turns the sound off and
-  on, drawn with waves while there is sound and crossed out when there is not.
-  It sits beside the felt rather than over the side panel, and moves with it.
-  **mute sound** in the menu is the same switch.
-- A door in the top-left corner of the table, beside the game's name, that
-  takes you back to the lobby. It does exactly what **leave** in the menu does,
-  which is still there: your stack stays at the table sitting out, and you can
-  rejoin by code. A watcher on the rail simply stops watching.
+- Two controls in the top corners of the felt, neither of them needing a word.
+  A **door** on the left takes you back to the lobby, exactly as **leave** in
+  the menu does: your stack stays at the table sitting out and you can rejoin
+  by code, and a watcher on the rail simply stops watching. A **speaker** on
+  the right turns the sound off and on, drawn with waves while there is sound
+  and crossed out when there is not; **mute sound** in the menu is the same
+  switch. Both sit inside the felt rather than over the side panel, and move
+  with it.
 - **cards** in the table menu: choose the back the cards are dealt with (green,
   red, blue or ivory), the classic two-colour deck or a four-colour one where
   the diamond is blue and the club is green, and a large index on the card face

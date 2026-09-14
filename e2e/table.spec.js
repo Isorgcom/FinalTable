@@ -1624,9 +1624,10 @@ test('the speaker in the corner mutes the table, and the menu agrees', async ({ 
   await expect(page.locator('#btnMute')).toHaveText('mute sound');
   await page.mouse.click(5, 5);
 
-  // It shares the felt's top-right corner with the dealer's last line, which
-  // only shows when the panel is out of the way. Those are the two cases where
-  // both are on screen at once, and they must not sit on top of each other.
+  // The two felt controls sit in the top corners, and the corners are not
+  // empty: the top bar is above both of them, and the dealer's last line shares
+  // the right one whenever the panel is out of the way. Nothing else in the
+  // suite looks at either corner, so this does, at the widths that move them.
   const clear = async () => {
     const boxes = await page.evaluate(() => {
       const r = (sel) => {
@@ -1635,15 +1636,23 @@ test('the speaker in the corner mutes the table, and the menu agrees', async ({ 
         const b = el.getBoundingClientRect();
         return { top: b.top, right: b.right, bottom: b.bottom, left: b.left };
       };
-      return { speaker: r('#btnFeltMute'), ticker: r('#logLast'), bar: r('.top-bar') };
+      return {
+        speaker: r('#btnFeltMute'),
+        door: r('#btnToLobby'),
+        ticker: r('#logLast'),
+        bar: r('.top-bar'),
+        banner: r('#tournamentBanner'),
+      };
     });
-    expect(boxes.speaker).not.toBeNull();
-    for (const other of ['ticker', 'bar']) {
-      if (!boxes[other]) continue;
-      const a = boxes.speaker;
-      const b = boxes[other];
-      const overlaps = a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-      expect(`${other}: ${overlaps ? 'overlaps' : 'clear'}`).toBe(`${other}: clear`);
+    const hits = (a, b) =>
+      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    for (const mine of ['speaker', 'door']) {
+      expect(boxes[mine]).not.toBeNull();
+      for (const other of ['ticker', 'bar', 'banner', 'speaker', 'door']) {
+        if (other === mine || !boxes[other]) continue;
+        const verdict = hits(boxes[mine], boxes[other]) ? 'overlaps' : 'clear';
+        expect(`${mine} vs ${other}: ${verdict}`).toBe(`${mine} vs ${other}: clear`);
+      }
     }
   };
 

@@ -63,27 +63,6 @@
   color: var(--gold);
   border-bottom-color: var(--gold);
 }
-/* The way out, in the corner of the bar. It rides inside .top-bar-title
-   rather than beside it: below 768px the bar is a two-column grid with the
-   status line forced onto a second row, and a fourth child would have to be
-   found a place in it at every width. Nested, the bar still has three.
-   .top-btn does the rest - the title's gold Cormorant and its wide tracking
-   would otherwise be inherited, and that rule overrides all of it. */
-.top-btn-lobby {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  vertical-align: middle;
-  margin-right: 8px;
-  padding-left: 0;
-}
-/* Sized in em, so the door follows the button's font down through every
-   breakpoint instead of needing a rule at each one. */
-.top-btn-lobby .icon-exit {
-  width: 1.15em;
-  height: 1.15em;
-  flex: none;
-}
 .top-btn.autoplay-active {
   color: #9bd8ae;
   border-bottom-color: rgba(114, 173, 149, 0.65);

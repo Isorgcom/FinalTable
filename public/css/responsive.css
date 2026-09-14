@@ -212,12 +212,12 @@
      speaker starts below all of it, and the dealer's line moves down to leave
      it the room. Measured rather than reasoned: the bar comes out at 73px on
      a 390px screen with a hand in play. */
-  .felt-mute {
+  .felt-btn {
     top: 80px;
     width: 30px;
     height: 30px;
   }
-  .felt-mute .icon-sound {
+  .felt-btn svg {
     width: 17px;
     height: 17px;
   }
@@ -552,12 +552,12 @@
   /* Everything is short here: a 28px bar, and the dealer's line was sitting at
      62px with nothing between. The speaker takes that gap and the line moves
      under it. */
-  .felt-mute {
+  .felt-btn {
     top: 32px;
     width: 28px;
     height: 28px;
   }
-  .felt-mute .icon-sound {
+  .felt-btn svg {
     width: 16px;
     height: 16px;
   }

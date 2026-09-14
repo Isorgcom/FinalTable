@@ -254,16 +254,17 @@ table. Up to fifty people can wait at once.
 
 ### The screen
 
-The **top bar** has a door in the left corner - **lobby**, the way out - then
-the game's name and a line of status, then buttons: **stats**, **replay**,
-**sit out**, **panel** (shows or hides the side panel), and the **menu** (hand
-rankings, **cards**, sound on or off, the admin's controls when unlocked,
-**leave**, and **forfeit**).
+The **top bar** has the game's name and a line of status, then buttons:
+**stats**, **replay**, **sit out**, **panel** (shows or hides the side panel),
+and the **menu** (hand rankings, **cards**, sound on or off, the admin's
+controls when unlocked, **leave**, and **forfeit**).
 
-In the opposite corner of the felt there is a **speaker**: press it to turn the
-sound off and on. It is drawn with waves while there is sound and crossed out
-when there is not, so it says which it is rather than what pressing it will do.
-**mute sound** in the menu is the same switch.
+The felt's two top corners hold the controls you reach for without thinking,
+and neither carries a word. On the left, a **door**: it takes you back to the
+lobby, the same as **leave** in the menu. On the right, a **speaker**: press it
+to turn the sound off and on. The speaker is drawn with waves while there is
+sound and crossed out when there is not, so it says which it is rather than
+what pressing it will do; **mute sound** in the menu is the same switch.
 
 The **banner** over the felt shows the level, the blinds and the ante when
 there is one, the time until the next level and how many players are left. On

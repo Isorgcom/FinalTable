@@ -190,11 +190,13 @@ test('the door in the corner of the table goes back to the lobby', async ({ brow
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
 
-  // There without opening anything, and named for a screen reader as well as
-  // drawn. The menu stays shut throughout.
+  // There without opening anything. No word on it - the arrow pointing back the
+  // way you came is the whole of it - so the name it answers to is the one a
+  // screen reader is given. The menu stays shut throughout.
   const door = page.locator('#btnToLobby');
   await expect(door).toBeVisible();
-  await expect(door).toHaveText('lobby');
+  await expect(door).toHaveText('');
+  await expect(door).toHaveAttribute('aria-label', 'Back to the lobby');
   await expect(page.locator('#menuDropdown')).not.toHaveClass(/open/);
 
   await door.click();
