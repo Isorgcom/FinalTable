@@ -1453,11 +1453,39 @@ async function seatCollisions(page) {
       Math.min(a.right, b.right) - Math.max(a.x, b.x) > 1 &&
       Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y) > 1;
     const stage = r(document.querySelector('.table-stage'));
-    const plates = [...document.querySelectorAll('#playerSeats .player-seat')].map((el) => ({
+    const seats = [...document.querySelectorAll('#playerSeats .player-seat')];
+    const plates = seats.map((el) => ({
       slot: el.dataset.slot,
       box: r(el.querySelector('.player-info')),
     }));
-    const out = { offStage: [], plateOnPlate: [], overActionBar: [], overBanner: [] };
+    // A bet and its own seat are drawn on the same bearing from the middle of
+    // the felt and separated only by the difference in ring radius, so on a
+    // narrow screen a bet can land inside the chair that made it - and the
+    // seats paint above the bet layer, so it simply disappears.
+    const bets = seats
+      .map((el) => {
+        const bet = document.querySelector(
+          `#feltBets .felt-bet[data-player-id="${el.dataset.playerId}"]`
+        );
+        const cards = el.querySelector('.player-hole-cards');
+        return bet ? { slot: el.dataset.slot, box: r(bet), cards: cards ? r(cards) : null } : null;
+      })
+      .filter(Boolean);
+    const out = {
+      offStage: [],
+      plateOnPlate: [],
+      overActionBar: [],
+      overBanner: [],
+      betUnderCards: [],
+      betUnderPlate: [],
+    };
+    for (const bet of bets) {
+      if (bet.cards && bet.cards.width > 0 && hit(bet.box, bet.cards)) {
+        out.betUnderCards.push(`slot ${bet.slot}`);
+      }
+      const plate = plates.find((p) => p.slot === bet.slot);
+      if (plate && hit(bet.box, plate.box)) out.betUnderPlate.push(`slot ${bet.slot}`);
+    }
     for (const p of plates) {
       if (
         p.box.x < stage.x - 1 ||
@@ -1504,6 +1532,8 @@ for (const vp of SEAT_VIEWPORTS) {
         plateOnPlate: [],
         overActionBar: [],
         overBanner: [],
+        betUnderCards: [],
+        betUnderPlate: [],
       });
       expect(pageErrors).toEqual([]);
     });

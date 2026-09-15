@@ -13,6 +13,16 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Fixed
+
+- The chips a player has bet no longer hide behind their own cards. They were
+  drawn at one size for every screen and on a bearing that put them inside the
+  chair that made them once the felt got small; they are smaller now and sit
+  clear of the chairs, their cards, the board and the pot at every size that
+  has room for them. On a phone, and on a laptop narrow enough that the side
+  panel leaves the felt phone-sized, they come off the cloth altogether - the
+  amount is on every plate as **in 20**, where nothing can cover it.
+
 ## 0.16.1 - 2026-09-15
 
 ### Fixed

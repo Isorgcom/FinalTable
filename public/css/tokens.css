@@ -19,19 +19,19 @@
   --table-fit-height: 87.5vh;
   /* Side panel. --rail-w is how much of the game screen the docked panel
      takes from the felt: the panel width when docked, 0 when it is hidden
-     or riding as a drawer over the table. --bet-scale shrinks the felt-bet
-     offsets on small screens. */
+     or riding as a drawer over the table. */
   --panel-w: min(86vw, 340px);
   --rail-w: 0px;
   --topbar-h: 44px;
-  --bet-scale: 1;
   /* Seat ring radii in % of the felt, read by getSeatPositions(). */
   --seat-rx: 53;
   --seat-ry: 52;
-  /* Felt-bet ring radii, likewise. The vertical radius is deliberately close
-     to the seat ring: a bet belongs in front of the player who made it, and
-     the pot now sits above the board, so a bet ring much nearer the middle
-     runs into it on a short felt. */
+  /* Felt-bet ring radii, likewise. A bet and its chair are drawn on the same
+     bearing from the middle, so the only thing holding a bet off the chair
+     that made it is the difference between these and the seat radii above -
+     19 and 16 here, which is 79px and 74px of a desktop felt and was 9px and
+     31px of a phone's before responsive.css came in with it. The narrow sizes
+     set their own pair; below them the bet comes off the cloth entirely. */
   --bet-rx: 34;
   --bet-ry: 36;
 }
