@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.16.1 - 2026-09-15
+
 ### Fixed
 
 - On the large card face the suit under the rank no longer runs into the corner
