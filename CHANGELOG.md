@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.16.4 - 2026-09-15
+
 ### Fixed
 
 - Leaving a table no longer tells you a second time. The dialog on the way out
