@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.16.2 - 2026-09-15
+
 ### Fixed
 
 - The chips a player has bet no longer hide behind their own cards. They were
