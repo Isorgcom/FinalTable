@@ -14,10 +14,11 @@ const { createSettingsStore } = require('./server/settings-store');
 const { createAdminCredential } = require('./server/admin-credential');
 const { createSsoRuntime } = require('./server/gamenight-pairing');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
-const { createStructuredLogger } = require('./server/logger');
+const { createStructuredLogger, onEntry } = require('./server/logger');
+const { createAdminLog } = require('./server/admin-log');
 const { PRESETS: BLIND_PRESETS } = require('./blind-structures');
 
-loadLocalEnv(__dirname);
+const envSkipped = loadLocalEnv(__dirname);
 const config = loadConfig();
 const structuredLog = createStructuredLogger('server', config.logLevel);
 const SERVER_TEXT_LOGS = process.env.SERVER_TEXT_LOGS === '1';
@@ -120,6 +121,42 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// What the server has done, for the Admin page's Log. Made early and loaded at
+// once, so a crash between here and listening still has somewhere to land.
+const adminLog = createAdminLog({
+  saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+  maxRows: config.adminLogMaxRows,
+  maxAgeMs: config.adminLogMaxAgeMs,
+});
+adminLog.load();
+
+// Every warning and error, wherever it is raised and whoever raises it. A sink
+// rather than a call at each site: there are five today and there will be more,
+// and none of them should have to know this page exists. Info is deliberately
+// not kept - it is most of the volume, and the engine's lines carry cards.
+onEntry((entry) => {
+  if (entry.level !== 'warn' && entry.level !== 'error') return;
+  adminLog.recordServer({
+    level: entry.level,
+    event: entry.event,
+    message: entry.message,
+    // One named field, never the payload: `data` is spread flat into the entry
+    // and holds whatever its caller passed.
+    detail: entry.error || entry.reason || entry.detail || null,
+  });
+});
+
+// The one line that would have named the crash loop, which could not use the
+// logger because it happens before there is one.
+for (const skip of envSkipped || []) {
+  structuredLog({
+    level: 'warn',
+    event: 'env_file_skipped',
+    message: 'Could not read an environment file; carrying on without it',
+    data: { detail: `${skip.file}: ${skip.reason}` },
+  });
+}
+
 // Who a player is: name + avatar behind a device token, persisted beside the
 // saves. See server/identity.js for the interface a login backend would fill.
 const identity = createIdentityStore({
@@ -166,6 +203,7 @@ const tournamentLayer = registerTournamentHandlers({
   assetVersion,
   sso,
   log: structuredLog,
+  adminLog,
   store: tournamentStore,
   sanitizeName,
   normalizeNameKey,
@@ -195,6 +233,11 @@ const restoredTournaments = tournamentLayer.registry.restore();
 // test harness (which requires this module many times) never stacks handlers.
 function flushStores() {
   try {
+    adminLog.flush();
+  } catch (_err) {
+    /* nothing better to do on the way out */
+  }
+  try {
     identity.flush();
   } catch (_err) {
     /* nothing better to do on the way out */
@@ -223,7 +266,25 @@ function startServer(options = {}) {
   const host = options.host || config.host;
   const unrefServer = options.unrefServer === true;
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    // once, not on: startServer can be called again in a test, and a listener
+    // per call would answer for a failure that is not its own.
+    server.once('error', (err) => {
+      // Nothing listens for this today, so EADDRINUSE on a box that is already
+      // running is exactly the kind of crash loop this page exists to show.
+      structuredLog({
+        level: 'error',
+        event: 'server_start_failed',
+        message: 'The server could not start',
+        data: { error: err.message },
+      });
+      try {
+        adminLog.flush();
+      } catch (_err) {
+        /* the row is already in memory; the disk is best effort here */
+      }
+      reject(err);
+    });
     server.listen(port, host, () => {
       if (restoredTournaments) {
         console.log(
@@ -253,6 +314,14 @@ function startServer(options = {}) {
           assetVersion,
           gamenightSso: sso.get() ? sso.get().config.issuer : null,
         },
+      });
+      // A restart is the one info-level line the Log keeps, because "when did
+      // this box last come up" is half of "why did it come up nine times".
+      adminLog.recordServer({
+        level: 'info',
+        event: 'server_started',
+        message: 'Server started',
+        detail: `version ${require('./package.json').version} on ${host}:${actualPort}`,
       });
 
       resolve({ app, server, io, config });

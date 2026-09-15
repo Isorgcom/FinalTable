@@ -13,6 +13,16 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- The Admin page's **Log** holds what the server has done, rather than saying it
+  holds nothing. Games and how each one ended - a winner, cancelled, or written
+  off after everybody left - with who finished where; sign-ins; restarts; and
+  anything that logged a warning or an error, which is the half that shows a
+  server that has been crash-looping. It survives a restart, and old entries
+  drop off by age and by count so the file cannot grow without end. No hole
+  card, device token, password or join code is ever written to it.
+
 ## 0.16.4 - 2026-09-15
 
 ### Fixed

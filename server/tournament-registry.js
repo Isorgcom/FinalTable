@@ -98,6 +98,9 @@ function createTournamentRegistry(deps = {}) {
   const {
     io,
     identity,
+    // What the server has done, for the Admin page. A no-op when there is none,
+    // the same way the logger dep is elsewhere.
+    adminLog = null,
     sanitizeName = (v, max = 16) =>
       String(v || '')
         .trim()
@@ -1183,6 +1186,9 @@ function createTournamentRegistry(deps = {}) {
       onFinished: (result) => {
         entry.status = 'finished';
         entry.finishedAt = now();
+        // Now rather than at remove(): a finished game sits listed for its TTL,
+        // and the Log should have it while it is still on the Games page.
+        logGame(entry, 'finished');
         if (entry.timer) {
           timers.clearInterval(entry.timer);
           entry.timer = null;
@@ -2109,7 +2115,41 @@ function createTournamentRegistry(deps = {}) {
     remove(entry, reason);
   }
 
-  function remove(entry) {
+  // What a game leaves behind. Written here because here is the only place
+  // every ending passes through - a winner, a host cancelling, an admin
+  // cancelling, a hold nobody came back to, a room that emptied - and because
+  // ten minutes later the entry is gone and there is nothing left to read.
+  //
+  // Names rather than uids: the standings carry no uid, and a guest identity is
+  // deleted thirty days on, so the name as it was is the only name there is.
+  function logGame(entry, ended) {
+    if (!adminLog || !entry || entry.logged) return;
+    entry.logged = true;
+    const d = entry.director;
+    const results = d && d.finished ? d.finished.results : null;
+    let places;
+    try {
+      places = d && d.finished ? d.finalResults() : null;
+    } catch (_err) {
+      places = null;
+    }
+    adminLog.recordGame({
+      id: entry.id,
+      name: entry.name,
+      ended,
+      startedAt: entry.startedAt || null,
+      finishedAt: entry.finishedAt || now(),
+      entrants: d ? d.entrants.length : 0,
+      humans: entry.registrations.size,
+      level: results ? results.finalLevel : null,
+      hands: results ? results.totalHands : null,
+      winner: d && d.finished ? d.finished.winner : null,
+      places,
+    });
+  }
+
+  function remove(entry, reason) {
+    logGame(entry, entry.status === 'finished' ? 'finished' : reason || 'ended');
     // Every way a tournament goes comes through here, so this is where
     // whoever was still waiting to be let in is told there is nothing to
     // wait for.

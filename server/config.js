@@ -108,6 +108,12 @@ function loadConfig() {
     // waits, so this is hours: it exists to stop games nobody returns to from
     // sitting in the server's slots for ever, not to police stepping away.
     tournamentZombieHoldMs: intFromEnv('TOURNAMENT_ZOMBIE_HOLD_MS', 21600000, 100, 604800000),
+    // The admin Log: how much of what the server has done is kept. Two bounds
+    // rather than one - the age is what an admin thinks in, the count is what
+    // stops a busy fortnight from mattering - and this is the only collection
+    // here that is bounded and also written to disk.
+    adminLogMaxRows: intFromEnv('ADMIN_LOG_MAX_ROWS', 2000, 10, 100000),
+    adminLogMaxAgeMs: intFromEnv('ADMIN_LOG_MAX_AGE_MS', 7776000000, 60000, 31536000000),
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),

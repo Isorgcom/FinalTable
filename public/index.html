@@ -361,10 +361,17 @@
           >
             <div class="admin-heading">Log</div>
             <p class="admin-help">
-              Nothing is kept yet. The server writes what it does to its output and retains none of
-              it, so there is nothing here to show until it does. Games that finished, sign-ins,
-              restarts and anything that logged a warning are what this will hold.
+              What this server has done: games and how they ended, sign-ins, restarts, and anything
+              that logged a warning or an error. Kept across restarts, and older entries drop off.
             </p>
+            <div class="admin-status" id="adminLogStatus" aria-live="polite"></div>
+            <div class="admin-log" id="adminLogList"></div>
+            <div class="lobby-actions">
+              <button class="btn-secondary" id="btnAdminLogRefresh" type="button">Refresh</button>
+              <button class="btn-secondary hidden" id="btnAdminLogMore" type="button">
+                Show older
+              </button>
+            </div>
           </section>
           <div class="lobby-actions admin-divider">
             <button class="btn-secondary" id="btnAdminBack" type="button">Back to the lobby</button>

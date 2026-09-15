@@ -14,6 +14,10 @@ const { createTournamentRegistry } = require('./tournament-registry');
 // How many wrong passwords a single socket may offer before it stops being
 // asked. Low, because there is nothing to guess at but one string, and a
 // self-hosted box has no other brake on a client hammering an event.
+// How often one socket may ask for a page of the log. Generous for a person
+// reading and paging, mean against anything else.
+const ADMIN_LOG_LIMIT = 30;
+const ADMIN_LOG_WINDOW_MS = 10 * 1000;
 const ADMIN_MAX_ATTEMPTS = 5;
 const ADMIN_FAIL_DELAY_MS = 400;
 
@@ -37,6 +41,9 @@ function registerTournamentHandlers(deps) {
   // token is simply not a way in.
   const sso = deps.sso || { get: () => null, status: () => ({ paired: false }) };
   const log = typeof deps.log === 'function' ? deps.log : () => {};
+  // What the server has done, for the Admin page's Log. Absent in tests that
+  // do not ask for it, so every call is guarded the way the logger dep is.
+  const adminLog = deps.adminLog || null;
 
   const version = typeof deps.version === 'string' ? deps.version : '';
   // The build of index.html and its scripts this server hands out. A page
@@ -210,6 +217,16 @@ function registerTournamentHandlers(deps) {
             resume = { id: railing.id, name: railing.name, status: railing.status, watching: true };
           }
         }
+      }
+      // Every way in, not only GameNight's: a guest identifying and a device
+      // token coming back logged nothing at all before. Never the token.
+      if (adminLog) {
+        adminLog.recordSignIn({
+          uid: ident.uid,
+          name: ident.name,
+          provider: ident.provider,
+          isNew: ident.isNew,
+        });
       }
       // Whether the admin surface exists at all, so a client can decide
       // whether to offer it. Never the password, and never whether this socket
@@ -674,6 +691,30 @@ function registerTournamentHandlers(deps) {
       if (!entry) return fail(socket, 'No tournament to cancel');
       const result = registry.forceCancel(entry, 'cancelled by the admin');
       if (result.error) return fail(socket, result.error);
+    });
+
+    // What the server has done. The same unlock as everything else here, and a
+    // rate limit as well: this one reads a file of its own and an admin paging
+    // through it is a handful of asks, not a loop.
+    socket.on('adminLog', (payload = {}) => {
+      if (!adminEnabled || !socket.data.isAdmin) return;
+      if (!adminLog) return socket.emit('adminLogRows', { rows: [], more: false });
+      const at = Date.now();
+      const recent = (socket.data.adminLogAsks || []).filter((t) => at - t < ADMIN_LOG_WINDOW_MS);
+      if (recent.length >= ADMIN_LOG_LIMIT) {
+        socket.data.adminLogAsks = recent;
+        return;
+      }
+      recent.push(at);
+      socket.data.adminLogAsks = recent;
+      const before = Number(payload.before);
+      socket.emit(
+        'adminLogRows',
+        adminLog.list({
+          limit: payload.limit,
+          before: Number.isFinite(before) ? before : null,
+        })
+      );
     });
 
     // Every game on the server, listed or not, with its code: the Admin

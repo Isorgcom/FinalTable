@@ -18,6 +18,10 @@ function stripQuotes(value) {
 // it reached the process through the environment already, which is what the
 // compose file is for, so skipping it costs nothing and crash-looping over it
 // costs the server.
+// What could not be read on the way in, for whoever asks after the logger is
+// up. Module level because loadLocalEnv is called once, at require time.
+const skipped = [];
+
 function applyEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return false;
   let contents;
@@ -25,6 +29,11 @@ function applyEnvFile(filePath) {
     contents = fs.readFileSync(filePath, 'utf8');
   } catch (err) {
     console.warn(`Skipping ${filePath}: ${err.code || err.message}`);
+    // Handed back so the caller can put it in the admin log once there is a
+    // logger to put it in. This runs two lines before one exists, and this
+    // one line is the whole reason the log exists: it is what a crash loop
+    // over an unreadable .env looked like, and nobody saw it.
+    skipped.push({ file: filePath, reason: err.code || err.message });
     return false;
   }
   const lines = contents.split(/\r?\n/);
@@ -44,8 +53,14 @@ function loadLocalEnv(baseDir) {
   const root = baseDir || process.cwd();
   applyEnvFile(path.join(root, '.env'));
   applyEnvFile(path.join(root, '.env.local'));
+  return skippedFiles();
+}
+
+function skippedFiles() {
+  return skipped.slice();
 }
 
 module.exports = {
   loadLocalEnv,
+  skippedFiles,
 };

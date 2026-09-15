@@ -675,10 +675,22 @@ password comes from the server's environment (`ADMIN_PASSWORD`); after a
 change the new one wins, and a forgotten one is reset as described in
 [DEPLOYMENT.md](./DEPLOYMENT.md#the-admin-password).
 
-**Log** is there and empty. It will hold what this server has done - games
-that finished, sign-ins, restarts, and anything that logged a warning - and
-says so, because today the server writes its log to its own output and keeps
-no copy of it.
+**Log** is what this server has done, newest first. A row for every game and
+how it ended - a winner, cancelled by the host or the admin, or written off
+after everybody walked away - with the entrants, the level it reached and who
+finished where. A row for every sign-in. A row for every restart, which is what
+answers "has this thing been coming up over and over". And a row for anything
+that logged a warning or an error, which is the half that says why.
+
+It is kept in a file beside the other saves, so it survives a restart, and
+entries drop off both by age and by count so the file cannot grow without end
+(`ADMIN_LOG_MAX_AGE_MS` and `ADMIN_LOG_MAX_ROWS`). **Show older** pages back
+through it.
+
+What is never written to it: a hole card, a device token, a password, or a
+join code. An admin runs the server, which is not the same as being allowed to
+see everybody's cards, and a log a browser can read is a log that leaks if
+anything else does.
 
 ### From the table
 

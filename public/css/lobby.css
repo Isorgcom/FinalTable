@@ -676,6 +676,62 @@
   color: var(--gold);
   margin: 4px 0;
 }
+/* The Log: one line per thing the server did, newest first. A list rather than
+   cards - a row is a tag, a sentence and a time, and the reading is down the
+   left edge. */
+.admin-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 340px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.admin-log-row {
+  display: grid;
+  grid-template-columns: 54px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(92, 61, 26, 0.14);
+  font-size: 0.76rem;
+  color: var(--cream);
+}
+.admin-log-row:last-child {
+  border-bottom: none;
+}
+.admin-log-what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.admin-log-when {
+  color: var(--smoke);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+.admin-log-tag {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+  padding: 1px 0;
+  border-radius: 3px;
+  background: rgba(92, 61, 26, 0.3);
+  color: var(--smoke);
+}
+.admin-log-tag-game {
+  background: rgba(201, 168, 76, 0.18);
+  color: var(--gold);
+}
+.admin-log-tag-warn {
+  background: rgba(193, 122, 90, 0.22);
+  color: #c17a5a;
+}
+.admin-log-tag-error {
+  background: rgba(139, 58, 58, 0.3);
+  color: #e29a9a;
+}
+
 .admin-card-actions {
   display: flex;
   gap: 8px;

@@ -58,6 +58,10 @@ function ensureSocket() {
   socket.on('adminTournaments', (data) => {
     if (window.Lobby) Lobby.onAdminTournaments(data);
   });
+  // What the server has done, for the Log page. Same unlock as the rest.
+  socket.on('adminLogRows', (data) => {
+    if (window.Lobby) Lobby.onAdminLogRows(data);
+  });
   socket.on('adminPasswordResult', (data) => {
     if (window.Lobby) Lobby.onAdminPasswordResult(data);
   });

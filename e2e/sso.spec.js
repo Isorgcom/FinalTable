@@ -289,7 +289,10 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
   await page.locator('#tabAdminPassword').focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#adminPageLog')).toBeVisible();
-  await expect(page.locator('#adminPageLog')).toContainText('Nothing is kept yet');
+  // The page asks as it opens, and this server has at least started once.
+  await expect(page.locator('#adminLogList .admin-log-row').first()).toBeVisible({
+    timeout: 5000,
+  });
   await page.keyboard.press('Home');
   await expect(page.locator('#adminPageGames')).toBeVisible();
   await expect(page.locator('#tabAdminGames')).toHaveAttribute('aria-selected', 'true');
@@ -301,6 +304,40 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
   await expect(page.locator('#adminPageGames')).toBeVisible();
+});
+
+// What the server has done, which used to be answerable only with a shell on
+// the box and a container that had not been recreated.
+test('the Log holds what the server has done, behind the same password', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'LogReader');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as LogReader');
+
+  await openLobbyMenu(page);
+  await page.click('#btnLobbyAdmin');
+  await page.fill('#appDialogInput', ADMIN_PASSWORD);
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#lobbyAdmin')).toBeVisible();
+
+  await page.click('#tabAdminLog');
+  await expect(page.locator('#adminPageLog')).toBeVisible();
+
+  // A restart is always there - the server did start - and signing in a moment
+  // ago put a row of its own in.
+  const rows = page.locator('#adminLogList .admin-log-row');
+  await expect(rows.first()).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('#adminLogList')).toContainText('Server started');
+  await expect(page.locator('#adminLogList')).toContainText('LogReader signed in');
+  await expect(page.locator('#adminLogStatus')).toContainText('entr');
+
+  // Nothing a browser must not have, on the page itself.
+  const shown = await page.locator('#adminLogList').textContent();
+  expect(shown).not.toContain(ADMIN_PASSWORD);
+
+  expect(errors).toEqual([]);
 });
 
 test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {

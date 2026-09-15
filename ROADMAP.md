@@ -76,6 +76,20 @@ hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
 
+The Log. What the server has done, behind the password that was already there:
+a row for every game and how it ended - a winner, cancelled, or written off
+after everybody left - with the entrants, the level and who finished where; a
+row for every sign-in; a row for every restart; and a row for anything that
+logged a warning or an error, which is the half that shows a crash loop. Kept
+in a file beside the other saves and bounded by age and by count, because a
+file that only grows is a file that eventually matters. Two things fell out of
+building it: a warning is captured by a sink inside the logger itself, so every
+one that exists or is ever added is kept without a line at the place that
+raises it, and the one warning that named the original crash loop - an
+unreadable environment file - now reaches the log despite happening before
+there is a logger to write it. What is never in it: a hole card, a device
+token, a password, or a join code.
+
 More control over your own games. The way out is Forfeit; calling the whole
 game off belongs to whoever made it as well as to whoever is holding the
 clock; the host's own controls are pause, remove somebody, step the level or
@@ -216,39 +230,8 @@ It was on the "not on either path" list below, as a full admin console that
 the Admin page should not grow into; that was a distinction without a
 difference, and it is on the path now.
 
-**A log is the first piece, and the reason this moved.** Asked what games this
-server had run, the only answer available was to reconstruct thirteen of them
-from container log lines, which a container recreate would have erased. The
-same log also held nine startup crashes nobody had seen, from a permission
-error reading the environment file, and the only reason anyone knows is that
-somebody went looking for something else. An admin should not need a shell
-on the box to learn either of those.
-
-So: what the server has done, readable in the browser and behind the password
-that is already there. Games that finished, with who played, where they came,
-what they won, when it started and how long it ran, from standings the result
-screen already computes. Sign-ins. Restarts, and anything that logged a
-warning or an error, which is the half that would have shown the crash loop.
-
-**What stands in the way.** The server writes structured JSON to stdout and
-keeps none of it. A panel needs what it shows to be retained somewhere - a
-bounded buffer in memory for the recent stuff, a file for the part that must
-outlive the process - and that is most of the work. A finished tournament is
-dropped ten minutes after the last hand, so the game rows have to be written
-as it ends rather than read back afterwards.
-
-**What must never be in it.** A hole card, a device token, a password, or a
-join code for a game the admin is not in. An admin runs the server; that
-is not the same as being allowed to see everybody's cards, and a log that a
-browser can read is a log that leaks if anything else does.
-
-Three things to decide rather than discover. How long a row is kept, since a
-file that only grows is a file that eventually matters. What a game row names,
-given a guest identity expires after thirty days and a uid in an old row may
-point at nobody - the name as it was, probably. And whether a game that was
-cancelled or written off gets a row at all, or only one that reached a winner.
-
-Beyond the log, what an admin actually lacks is smaller than a dashboard
+**The log was the first piece, and it is done** - see Done below. What an
+admin actually lacks is smaller than a dashboard
 and worth naming before building one: seeing the games without opening each
 table, and ending or unsticking one from the same place. The controls over a
 running game stay in the table menu where they are, behind the same password.

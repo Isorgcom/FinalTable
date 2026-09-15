@@ -293,6 +293,9 @@
   let adminPending = false; // opening the page once the unlock answers
   let pairing = null;
   let adminGames = null; // every game on the server, once asked for
+  let adminLogRows = null; // what the server has done, a page at a time
+  let adminLogMore = false;
+  let _drawnLogSig = null;
   let _drawnGamesSig = null;
 
   // ── The Admin page's tabs ───────────────────────────────────────────────
@@ -311,7 +314,7 @@
     { name: 'games', cap: 'Games', onShow: () => askForAdminGames() },
     { name: 'gamenight', cap: 'GameNight', onShow: null },
     { name: 'password', cap: 'Password', onShow: () => setPwStatus('') },
-    { name: 'log', cap: 'Log', onShow: null },
+    { name: 'log', cap: 'Log', onShow: () => askForAdminLog({ fresh: true }) },
   ];
   // Session only, and back to Games every time the page opens. Deliberately
   // not window.Store: that is the player-preference store, which now travels
@@ -359,6 +362,97 @@
 
   function askForAdminGames() {
     if (socket && socket.connected) socket.emit('adminListTournaments');
+  }
+
+  // The Log, a page at a time. `fresh` starts again from the newest, which is
+  // what opening the tab means; otherwise it asks for what is older than the
+  // oldest row already shown.
+  function askForAdminLog({ fresh = false } = {}) {
+    if (!socket || !socket.connected) return;
+    if (fresh) {
+      adminLogRows = null;
+      adminLogMore = false;
+      _drawnLogSig = null;
+      renderAdminLog();
+    }
+    const oldest =
+      !fresh && adminLogRows && adminLogRows.length
+        ? adminLogRows[adminLogRows.length - 1].id
+        : null;
+    socket.emit('adminLog', oldest ? { before: oldest } : {});
+  }
+
+  function onAdminLogRows(data) {
+    const page = data && Array.isArray(data.rows) ? data.rows : [];
+    adminLogRows = adminLogRows ? adminLogRows.concat(page) : page;
+    adminLogMore = !!(data && data.more);
+    renderAdminLog();
+  }
+
+  // What one row says, in the words the server used. A game is the only one
+  // with anything to lay out; the rest are a line each.
+  function adminLogRow(row) {
+    const el = document.createElement('div');
+    el.className = `admin-log-row admin-log-${row.kind}`;
+
+    const when = document.createElement('span');
+    when.className = 'admin-log-when';
+    when.textContent = fmtWhen(row.at);
+
+    const what = document.createElement('span');
+    what.className = 'admin-log-what';
+    if (row.kind === 'game') {
+      const bits = [
+        row.name || 'A game',
+        row.ended === 'finished' && row.winner ? `won by ${row.winner}` : row.ended,
+        row.entrants ? `${row.entrants} entrant${row.entrants === 1 ? '' : 's'}` : null,
+        row.level ? `to level ${row.level}` : null,
+      ].filter(Boolean);
+      what.textContent = bits.join(' · ');
+    } else if (row.kind === 'signin') {
+      what.textContent = `${row.name || 'Somebody'} signed in${
+        row.provider && row.provider !== 'guest' ? ` with ${row.provider}` : ''
+      }${row.isNew ? ', new here' : ''}`;
+    } else {
+      what.textContent = [row.message, row.detail].filter(Boolean).join(' — ');
+    }
+
+    const tag = document.createElement('span');
+    tag.className = `admin-log-tag admin-log-tag-${row.level === 'error' || row.level === 'warn' ? row.level : row.kind}`;
+    tag.textContent = row.kind === 'server' ? row.level || 'info' : row.kind;
+
+    el.append(tag, what, when);
+    return el;
+  }
+
+  // Rebuilt under a signature, as the games list is: a refresh that changes
+  // nothing leaves the page where the reader left it.
+  function renderAdminLog() {
+    const holder = $('adminLogList');
+    const status = $('adminLogStatus');
+    const more = $('btnAdminLogMore');
+    if (!holder || !status) return;
+    if (adminLogRows === null) {
+      status.textContent = 'Loading…';
+      holder.textContent = '';
+      if (more) more.classList.add('hidden');
+      return;
+    }
+    const sig = adminLogRows.map((r) => r.id).join(',') + ':' + adminLogMore;
+    if (sig === _drawnLogSig) return;
+    _drawnLogSig = sig;
+    holder.textContent = '';
+    const n = adminLogRows.length;
+    status.textContent = n ? `${n} entr${n === 1 ? 'y' : 'ies'}` : '';
+    if (!n) {
+      const empty = document.createElement('div');
+      empty.className = 'admin-games-empty';
+      empty.textContent = 'Nothing yet. This fills as the server runs.';
+      holder.appendChild(empty);
+    } else {
+      adminLogRows.forEach((row) => holder.appendChild(adminLogRow(row)));
+    }
+    if (more) more.classList.toggle('hidden', !adminLogMore);
   }
 
   async function openAdmin() {
@@ -2240,6 +2334,8 @@
     $('btnAdminUnpair').addEventListener('click', unpairGameNight);
     $('btnAdminBack').addEventListener('click', () => showView('home'));
     $('btnAdminGamesRefresh').addEventListener('click', askForAdminGames);
+    $('btnAdminLogRefresh').addEventListener('click', () => askForAdminLog({ fresh: true }));
+    $('btnAdminLogMore').addEventListener('click', () => askForAdminLog());
     adminTabButtons().forEach((tab) =>
       tab.addEventListener('click', () => selectAdminTab(tab.dataset.adminTab))
     );
@@ -2307,6 +2403,7 @@
     onAdminStatus,
     onAdminGameNight,
     onAdminTournaments,
+    onAdminLogRows,
     onAdminPasswordResult,
     onIdentified,
     onIdentifyFailed,
