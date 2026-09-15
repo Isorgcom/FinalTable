@@ -812,45 +812,51 @@ function appendPlayerIdentity(info, text, player) {
   // Its own element, not a bare text node: an anonymous flex item cannot take
   // text-overflow, so a name beside two badges was being cut mid-letter.
   name.appendChild(createTextElement('span', 'player-name-text', player.name));
-  if (player.uid && player.uid === gameState.hostId) {
-    const hostBadge = createTextElement('span', 'player-host-badge', 'host');
-    hostBadge.title = 'Tournament host';
-    name.appendChild(hostBadge);
-  }
-  // A badge that repeats the status line directly under it is not worth the
-  // width. The plate is one line now, and a name beside three badges does not
-  // fit one - it used to wrap to three lines instead, standing the plate up
-  // tall enough to land on its neighbour. seatStatus() already says "Sitting
-  // out" for a spectator and "Disconnected" for a seat that has dropped, and
-  // both of those are sat out by definition.
+
+  // One badge, and one only. The plate is 152px and holds a name beside a
+  // single badge; a second one used to be cut through a letter, because
+  // text-overflow does not ellipsise an inline-flex badge, it just clips it -
+  // a host sitting out read "B... HO SITTIN". So the line is a priority, and
+  // the rule is that the moment beats the person: whatever is true of this
+  // seat right now takes the space, and "host" yields when there is something
+  // else to say. Nothing is lost - the Info tab, the roster and the seat menu
+  // all name the host.
+  //
+  // The two conditions that defer to the status line underneath are kept as
+  // they were: seatStatus() already says "Sitting out" for a spectator and
+  // "Disconnected" for a seat that has dropped.
   const statusSpeaksForIt = !!player.isSpectator || player.isConnected === false;
-  if (player.autoPlay && !statusSpeaksForIt) {
-    const autoBadge = createTextElement('span', 'player-auto-badge', 'sitting out');
-    autoBadge.title = 'Sitting out: checks when free, folds to a bet';
-    name.appendChild(autoBadge);
-  }
-  if (player.isSpectator) {
-    const spectatorBadge = createTextElement('span', 'player-spectator-badge', 'watch');
-    spectatorBadge.title = 'Spectating this hand';
-    name.appendChild(spectatorBadge);
-  }
-  // Only when the status line is busy saying something else: on its own, a
-  // dropped seat already reads "Disconnected" underneath.
-  if (player.isConnected === false && player.isSpectator) {
-    const offlineBadge = createTextElement('span', 'player-offline-badge', 'offline');
-    offlineBadge.title = 'Disconnected';
-    name.appendChild(offlineBadge);
-  }
-  if (
-    player.isReady &&
-    gameState &&
-    !gameState.isRunning &&
-    gameState.roundCount === 0 &&
-    gameState.gameMode !== 'practice'
-  ) {
-    const readyBadge = createTextElement('span', 'player-ready-badge', 'ready');
-    readyBadge.title = 'Ready to start';
-    name.appendChild(readyBadge);
+  const badges = [
+    [
+      player.isConnected === false && player.isSpectator,
+      'player-offline-badge',
+      'offline',
+      'Disconnected',
+    ],
+    [player.isSpectator, 'player-spectator-badge', 'watch', 'Spectating this hand'],
+    [
+      player.autoPlay && !statusSpeaksForIt,
+      'player-auto-badge',
+      'sitting out',
+      'Sitting out: checks when free, folds to a bet',
+    ],
+    [player.uid && player.uid === gameState.hostId, 'player-host-badge', 'host', 'Tournament host'],
+    [
+      player.isReady &&
+        gameState &&
+        !gameState.isRunning &&
+        gameState.roundCount === 0 &&
+        gameState.gameMode !== 'practice',
+      'player-ready-badge',
+      'ready',
+      'Ready to start',
+    ],
+  ];
+  const worth = badges.find(([when]) => !!when);
+  if (worth) {
+    const badge = createTextElement('span', worth[1], worth[2]);
+    badge.title = worth[3];
+    name.appendChild(badge);
   }
   text.appendChild(name);
 

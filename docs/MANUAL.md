@@ -660,11 +660,20 @@ not, running first, then registering, then finished. Each card shows the
 status, how the game is listed (public, private or invite-only), the **join
 code**, the host, how many registered players are connected, the entrants,
 the tables while running, how many are waiting at the door of an invite-only
-game, and when it was created or started. **End game** ends one, after a
-confirmation; everyone in it is sent to the lobby with a note saying the
-admin ended it. The list follows the server on its own as games come and
-go; **Refresh** pulls the counts that change without that, such as a player
-dropping off.
+game, and when it was created or started.
+
+A running game also says **what it is doing**: dealing, between hands, paused
+by the host, on a break, holding for an empty room, or waiting for a seat -
+with how many hands have been played and, once it has been quiet for a while,
+when the last hand was. Under that is the shape of the field, a pip per table
+saying whether it is dealing (▶) or idle (·) and how many are sitting at it,
+so `1 ▶ 2  2 ▶ 2  3 · 1` reads as two matches in play and one player waiting
+for an opponent without opening a single table.
+
+**End game** ends one, after a confirmation; everyone in it is sent to the
+lobby with a note saying the admin ended it. The page keeps itself up to date
+while it is open, and follows the server as games come and go; **Refresh**
+asks again at once.
 
 This is the one place an unlisted game and its code are shown to somebody
 who is not in it. Hand codes out with care.

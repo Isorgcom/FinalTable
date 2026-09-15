@@ -567,6 +567,24 @@ function createTournamentRegistry(deps = {}) {
         pending: entry.pending.size,
         watchers: entry.watchers.size,
         tables: entry.director.tables.length,
+        // What it is actually doing, which "running" does not say. A game can
+        // be running and dealing nothing for half an hour, and finding out
+        // which used to mean a shell on the host.
+        activity: entry.status === 'running' ? entry.director.activity() : null,
+        lastHandAt: entry.status === 'running' ? entry.director.lastHandAt() : null,
+        hands: entry.status === 'running' ? entry.director.handsDealt() : 0,
+        // The field's shape, which is the other half of the same question: one
+        // table of one beside two of two is a game nobody can deal at, and it
+        // reads at a glance rather than by opening three tables.
+        tableRows:
+          entry.status === 'running'
+            ? entry.director.tables.map((t) => ({
+                n: t.tableNumber,
+                players: t.players.length,
+                running: !!t.isRunning,
+                broken: !!t._broken,
+              }))
+            : [],
       }));
   }
 

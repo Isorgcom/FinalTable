@@ -13,6 +13,23 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- The Admin page's **Games** list says what each game is actually doing -
+  dealing, between hands, paused by the host, on a break, holding for an empty
+  room, or waiting for a seat - with how many hands have been played, when the
+  last one was once it has been quiet for a while, and a pip per table showing
+  whether it is dealing and how many are sitting at it. The page keeps itself
+  up to date while it is open instead of waiting for a game to be created or
+  ended.
+
+### Fixed
+
+- A seat plate no longer cuts a badge in half. It shows the one thing worth
+  saying about that seat right now, so a host who is sitting out reads
+  "sitting out" rather than "HO SITTIN". The host is still named on the Info
+  tab, in the roster and in the seat's own menu.
+
 ## 0.17.0 - 2026-09-15
 
 ### Added

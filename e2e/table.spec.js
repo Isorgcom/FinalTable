@@ -3039,3 +3039,27 @@ test('the Info tab offers the way back in, and the add-on, when the server says 
   expect(gone).toBe(true);
   expect(pageErrors).toEqual([]);
 });
+
+// The plate is 152px and holds a name beside one badge. A host who sat out
+// used to get two and the second was cut through a letter - "B... HO SITTIN" -
+// because text-overflow does not ellipsise an inline-flex badge, it clips it.
+test('a seat plate never carries more than one badge', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Plate');
+  await deal(page);
+
+  // The viewer is the host, so their own seat is the one that used to carry
+  // "host" and "sitting out" at once.
+  await page.click('#btnAutoPlay');
+  const mine = page.locator('#playerSeats .player-seat.is-me');
+  const badges = mine.locator('.player-name > span:not(.player-name-text)');
+  await expect(badges).toHaveCount(1);
+  await expect(badges).toHaveText('sitting out');
+
+  // And no seat anywhere carries two, whatever it is doing.
+  const all = page.locator(
+    '#playerSeats .player-seat:not(.seat-empty) .player-name > span:not(.player-name-text)'
+  );
+  const seats = await page.locator('#playerSeats .player-seat:not(.seat-empty)').count();
+  expect(await all.count()).toBeLessThanOrEqual(seats);
+  expect(pageErrors).toEqual([]);
+});

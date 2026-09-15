@@ -2268,3 +2268,119 @@ describe('the field leaderboard', () => {
     d.stop();
   });
 });
+
+// ============================================================
+//  What the field is doing
+// ============================================================
+//
+// "running" is not an answer to "is this game alive". A field can be running
+// and dealing nothing for half an hour, and finding out which used to mean a
+// shell on the host and a script against the container.
+describe('what the field is doing', () => {
+  const SCHEDULE = [
+    { sb: 10, bb: 20, ante: 0, duration: 99999 },
+    { break: true, duration: 99999 },
+    { sb: 20, bb: 40, ante: 0, duration: 99999 },
+  ];
+
+  function rngFrom(seed) {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      return s / 2147483648;
+    };
+  }
+
+  // Bust one seat at a table the way a hand would, chips and all.
+  function bustOne(d, table) {
+    const [keeper, gone] = table.players;
+    keeper.chips += gone.chips;
+    gone.chips = 0;
+    d.tournament.recordElimination(gone.name, 1, gone.uid);
+    d._handleRoundEnd(table, null);
+    return gone;
+  }
+
+  test('dealing, and between hands, and how much has happened', () => {
+    const d = makeDirector(6, { tableSize: 2 });
+    d.start();
+    expect(d.activity()).toBe('idle');
+    expect(d.lastHandAt()).toBeNull();
+    expect(d.handsDealt()).toBe(0);
+
+    d.tables[0].startRound();
+    expect(d.activity()).toBe('dealing');
+    playHand(d.tables[0], rngFrom(4), 0);
+    expect(d.activity()).toBe('idle');
+    expect(d.handsDealt()).toBe(1);
+    expect(d.lastHandAt()).toBe(d.tables[0]._handEndedAt);
+
+    // The field's newest, not one table's: the admin wants to know whether
+    // anything at all has happened lately.
+    d.tables[1].startRound();
+    playHand(d.tables[1], rngFrom(9), 0);
+    expect(d.handsDealt()).toBe(2);
+    expect(d.lastHandAt()).toBe(Math.max(d.tables[0]._handEndedAt, d.tables[1]._handEndedAt));
+    d.stop();
+  });
+
+  test('the clock stopping is the answer whatever a table is doing', () => {
+    const d = makeDirector(4, { tableSize: 4, blindSchedule: SCHEDULE });
+    d.start();
+    expect(d.activity()).toBe('idle');
+
+    expect(d.pause()).toBe(true);
+    expect(d.activity()).toBe('paused');
+    expect(d.resume()).toBe(true);
+    expect(d.activity()).toBe('idle');
+
+    // The hold outranks the pause it lays on the clock: one is waiting for a
+    // player, the other for the host, and the card must not say the wrong one.
+    expect(d.holdForAbsence()).toBe(true);
+    expect(d.activity()).toBe('holding');
+    expect(d.releaseFromAbsence()).toBe(true);
+
+    d.tournament.currentLevel = 1;
+    d.tournament.onLevelUp(1, d.tournament.getCurrentBlinds());
+    expect(d.tournament.onBreak()).toBe(true);
+    expect(d.activity()).toBe('break');
+
+    d.stop();
+    expect(d.activity()).toBe('stopped');
+  });
+
+  // The field that started all of this: heads-up, five left, one player with
+  // nobody to deal to while the other two matches play on. The game is alive
+  // and somebody is still stuck, and the card has to say both.
+  test('a table with nobody to deal to is said even while the rest deal', () => {
+    const d = makeDirector(6, { tableSize: 2 });
+    d.start();
+    bustOne(d, d.tables[0]);
+    expect(d.tables.map((t) => t.players.length)).toEqual([1, 2, 2]);
+    expect(d.activity()).toBe('waiting-seat');
+
+    d.tables[1].startRound();
+    d.tables[2].startRound();
+    expect(d.activity()).toBe('waiting-seat');
+    d.stop();
+  });
+
+  test('a table held while the field rebalances says that instead', () => {
+    const d = makeDirector(7, { tableSize: 6 });
+    d.start();
+    const t1 = d.tables.find((t) => t.tableNumber === 1);
+    const t2 = d.tables.find((t) => t.tableNumber === 2);
+    t2.startRound();
+    bustOne(d, t1); // six now fit one table, but table 2 is mid-hand
+    t1.startRound();
+    playHand(t2, rngFrom(3), 0);
+    expect(t2.isRunning).toBe(false);
+    expect(t1.isRunning).toBe(true);
+    expect(d.activity()).toBe('waiting-balance');
+
+    playHand(t1, rngFrom(8), 0);
+    expect(t2._broken).toBe(true);
+    expect(d.activity()).toBe('idle');
+    d.stop();
+  });
+});

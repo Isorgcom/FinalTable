@@ -1130,14 +1130,14 @@
    with an ellipsis rather than being cut through a letter. The :not() matters:
    a bare `.player-name > span` outranks `.player-name-text` and would pin the
    name at its natural width, leaving the badges to overflow instead. */
-/* Everything on this line can give way, so nothing ever escapes the plate.
-   The name yields first and furthest, but it keeps a couple of characters:
-   a plate showing two badges and no name at all names nobody. */
+/* The badge never gives way, because it cannot do it gracefully: it is an
+   inline-flex box, so text-overflow does not ellipsise it, it is simply cut
+   through a letter. The name is what yields, and it yields with an ellipsis.
+   There is only ever one badge now (appendPlayerIdentity picks it), which is
+   what makes this fit at all. */
 .player-name > span:not(.player-name-text) {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .player-name-text {
   flex: 1 1 auto;

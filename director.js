@@ -151,6 +151,44 @@ class TournamentDirector {
     return this.fieldPlayers().filter((p) => p.chips > 0).length;
   }
 
+  // What the field is doing, in one word, for anybody who has to answer "is
+  // this game alive".
+  //
+  // Ordered by what it would take to change it. The clock stopping stops every
+  // table, so it is the answer whatever any one of them is doing. Then a table
+  // that cannot deal, which is worth saying even while the rest play on: that
+  // is somebody sitting in front of nothing, and the caller draws a pip per
+  // table beside this, so who is dealing is already on the screen. Only then
+  // the ordinary two - something is dealing, or the field is between hands.
+  activity() {
+    if (!this.isRunning || this.finished) return 'stopped';
+    if (this._awayHeld) return 'holding';
+    if (this._paused || this.isPaused()) return 'paused';
+    if (this.tournament.onBreak()) return 'break';
+    const waiting = this.tables.map((t) => this._tableWaitingOn(t));
+    if (waiting.includes('seat')) return 'waiting-seat';
+    if (waiting.includes('balance')) return 'waiting-balance';
+    if (this.tables.some((t) => t.isRunning)) return 'dealing';
+    return 'idle';
+  }
+
+  // When a hand last ended anywhere in the field. Already stamped per table by
+  // _handleRoundEnd for the beat between hands; this is the same number asked
+  // of the whole field, which is what says whether a game is moving at all.
+  lastHandAt() {
+    let last = 0;
+    for (const table of this.tables) {
+      if (table._handEndedAt > last) last = table._handEndedAt;
+    }
+    return last || null;
+  }
+
+  // How many hands the field has dealt, every table added up. A broken table
+  // keeps its count, so this only ever goes up.
+  handsDealt() {
+    return this.tables.reduce((sum, t) => sum + (t.roundCount || 0), 0);
+  }
+
   // Total chips the whole field is accountable for. This must not change for
   // the life of the tournament; see assertChipConservation.
   totalChips() {

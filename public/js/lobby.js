@@ -546,6 +546,64 @@
     renderAdminGames();
   }
 
+  // What a running game is doing, in the words a person would use. Mirrors
+  // director.activity(); a status the card cannot name falls through to the
+  // status line that was already there.
+  const ACTIVITY_WORDS = {
+    dealing: 'Dealing',
+    idle: 'Between hands',
+    paused: 'Paused by the host',
+    break: 'On a break',
+    holding: 'Holding for an empty room',
+    'waiting-seat': 'Waiting for a seat',
+    'waiting-balance': 'Waiting while the field rebalances',
+  };
+
+  // A hand takes seconds and the beat between hands is a second or two, so a
+  // minute and a half of nothing is the first honest sign a game has stopped
+  // moving. Below that the card says nothing about it rather than making a
+  // normal pause look like a problem.
+  const QUIET_MS = 90000;
+
+  // How often the Games page asks again while it is open.
+  const ADMIN_GAMES_POLL_MS = 3000;
+
+  function activityLine(t) {
+    const word = ACTIVITY_WORDS[t.activity];
+    if (!word) return '';
+    const parts = [word];
+    if (t.hands) parts.push(`${t.hands} hand${t.hands === 1 ? '' : 's'}`);
+    if (t.lastHandAt && Date.now() - t.lastHandAt > QUIET_MS) {
+      parts.push(`last hand ${sessionAge(t.lastHandAt)}`);
+    }
+    return parts.join(' · ');
+  }
+
+  // The field's shape on one line: which table, whether it is dealing, and how
+  // many are sitting at it. One table of one beside two of two is a game
+  // nobody can deal at, and this says so without opening any of them.
+  function tablesRow(rows) {
+    const row = document.createElement('div');
+    row.className = 'admin-tables';
+    const label = document.createElement('span');
+    label.className = 'admin-tables-label';
+    label.textContent = 'tables';
+    row.appendChild(label);
+    rows.forEach((table) => {
+      const pip = document.createElement('span');
+      pip.className =
+        'admin-table-pip' + (table.broken ? ' broken' : table.running ? ' dealing' : '');
+      pip.textContent = table.broken
+        ? `${table.n} ✕`
+        : `${table.n} ${table.running ? '▶' : '·'} ${table.players}`;
+      pip.title = table.broken
+        ? `Table ${table.n} is broken`
+        : `Table ${table.n}: ${table.players} seated, ${table.running ? 'dealing' : 'idle'}`;
+      row.appendChild(pip);
+    });
+    return row;
+  }
+
   function adminCard(t) {
     const card = document.createElement('div');
     card.className = `t-card t-card-${t.status}`;
@@ -574,6 +632,13 @@
     status.className = 't-card-status';
     status.textContent = statusLine(t);
 
+    // What it is doing right now, which is the question "running" does not
+    // answer. Only a running game has one.
+    const activity = activityLine(t);
+    const doing = document.createElement('div');
+    doing.className = 'admin-activity admin-activity-' + (t.activity || 'none');
+    doing.textContent = activity;
+
     const meta = document.createElement('div');
     meta.className = 't-card-meta';
     const total = t.entrants ? t.entrants.total : 0;
@@ -593,7 +658,10 @@
     ].filter(Boolean);
     meta.textContent = parts.join(' · ');
 
-    card.append(head, code, status, meta);
+    card.append(head, code, status);
+    if (activity) card.appendChild(doing);
+    if (t.tableRows && t.tableRows.length) card.appendChild(tablesRow(t.tableRows));
+    card.appendChild(meta);
     if (t.status !== 'finished') {
       const actions = document.createElement('div');
       actions.className = 'admin-card-actions';
@@ -642,6 +710,12 @@
         t.remaining,
         t.tables,
         t.lateRegOpen,
+        t.activity,
+        t.hands,
+        // Bucketed to the minute: the card says "last hand 4 minutes ago", so
+        // it has to redraw when that number changes and not on every poll.
+        t.lastHandAt ? Math.floor((Date.now() - t.lastHandAt) / 60000) : null,
+        t.tableRows,
       ])
     );
     if (sig === _drawnGamesSig) return;
@@ -2391,6 +2465,13 @@
     consumeReturnHash();
 
     setInterval(tickCountdowns, 1000);
+    // The Games page is a live view: "Dealing" and "last hand 4 minutes ago"
+    // are worth nothing if they only move when somebody creates or cancels a
+    // game, which is all the registry's list push covers. Only while that page
+    // is the one showing - there is nothing to ask for behind a closed tab.
+    setInterval(() => {
+      if (view === 'admin' && adminTab === 'games') askForAdminGames();
+    }, ADMIN_GAMES_POLL_MS);
     ensureSocket();
     if ((fromLink || railLink) && !nameValue() && !pendingGnToken) needName();
   }

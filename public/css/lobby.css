@@ -676,6 +676,54 @@
   color: var(--gold);
   margin: 4px 0;
 }
+/* What a game is doing right now, which "running" does not say. Its own row
+   across the card, so a long line never squeezes the button column. Gold when
+   something is holding the game up, quiet when it is simply dealing. */
+.admin-activity {
+  grid-column: 1 / -1;
+  font-size: 0.74rem;
+  color: var(--smoke);
+  font-variant-numeric: tabular-nums;
+}
+.admin-activity-paused,
+.admin-activity-holding,
+.admin-activity-waiting-seat,
+.admin-activity-waiting-balance {
+  color: var(--gold);
+}
+/* The field's shape: one pip per table, saying whether it is dealing and how
+   many are sitting at it. */
+.admin-tables {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+.admin-tables-label {
+  font-size: 0.6rem;
+  color: var(--smoke);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.admin-table-pip {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(92, 61, 26, 0.35);
+  background: rgba(13, 31, 18, 0.6);
+  color: var(--cream);
+  white-space: nowrap;
+}
+.admin-table-pip.dealing {
+  border-color: rgba(201, 168, 76, 0.45);
+  color: var(--gold);
+}
+.admin-table-pip.broken {
+  opacity: 0.45;
+}
 /* The Log: one line per thing the server did, newest first. A list rather than
    cards - a row is a tag, a sentence and a time, and the reading is down the
    left edge. */

@@ -959,6 +959,44 @@ describe('Tournament socket layer', () => {
     await cancelGame(hostB);
   });
 
+  // "running" is not an answer to "is this game alive". The row says what the
+  // field is actually doing, so an admin does not have to open a table to find
+  // out - which is what it used to take.
+  test('a running game says on the admin list what it is doing', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+
+    const op = await connectClient();
+    const unlocked = waitFor(op, 'adminStatus', (st) => st.ok === true);
+    op.emit('adminLogin', { password: 'correct horse battery staple' });
+    await unlocked;
+
+    // Before the start there is nothing to say, and the row does not invent it.
+    const before = waitFor(op, 'adminTournaments');
+    op.emit('adminListTournaments');
+    expect((await before).list.find((t) => t.id === created.id)).toMatchObject({
+      status: 'registering',
+      activity: null,
+      lastHandAt: null,
+      hands: 0,
+      tableRows: [],
+    });
+
+    await startAndDeal(host, guest);
+    const after = waitFor(op, 'adminTournaments');
+    op.emit('adminListTournaments');
+    const running = (await after).list.find((t) => t.id === created.id);
+    expect(running.status).toBe('running');
+    expect(['dealing', 'idle']).toContain(running.activity);
+    expect(running.hands).toBeGreaterThanOrEqual(1);
+    // The field's shape, which is the other half of the question.
+    expect(running.tableRows).toEqual([{ n: 1, players: 2, running: true, broken: false }]);
+
+    const gone = waitFor(host, 'tournamentCancelled');
+    op.emit('adminCancelTournament', { id: created.id });
+    await gone;
+  });
+
   test('a wrong password unlocks nothing and the tournament survives', async () => {
     const host = await connectClient();
     const { created, guest } = await createTournamentWithGuest(host);

@@ -76,6 +76,19 @@ hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
 
+The admin panel. One thing with two names - **Admin** everywhere it is written
+for a person, `admin` everywhere it is written for a machine - and what it
+lacked was smaller than a dashboard: seeing the games without opening each
+table. A card now says what a game is actually doing rather than only that it
+is running: dealing, between hands, paused, on a break, holding for an empty
+room, or waiting for a seat, with how many hands have been played, when the
+last one was, and a pip per table saying whether it is dealing and how many
+are sitting at it. It keeps itself up to date while the page is open. There
+turned out to be almost nothing to unstick: every running game has a tick that
+settles a field waiting on nothing, and a throw in that tick ends the game
+rather than freezing it, so what looks stuck is one of a handful of legible
+states and the fix was to say which. Ending one stays the only control.
+
 The Log. What the server has done, behind the password that was already there:
 a row for every game and how it ended - a winner, cancelled, or written off
 after everybody left - with the entrants, the level and who finished where; a
@@ -216,25 +229,9 @@ action bubble that used to outlive its street. See the CHANGELOG.
 
 Not the game, and not the split below: what the person who hosts it needs.
 
-### A real admin panel
-
-One thing, two names: the page a player never sees is called **Admin**
-everywhere it is written for a person and **admin** everywhere it is written
-for a machine - `ADMIN_PASSWORD`, `adminLogin`, `adminCredential`. The admin
-panel and the Admin page are the same panel, and this is it.
-
-Today it is settings and a list: the Game Night pairing, its own password, and
-every game the server holds with the one control it already had, which is
-ending one. That is enough to run a game night and not enough to run a server.
-It was on the "not on either path" list below, as a full admin console that
-the Admin page should not grow into; that was a distinction without a
-difference, and it is on the path now.
-
-**The log was the first piece, and it is done** - see Done below. What an
-admin actually lacks is smaller than a dashboard
-and worth naming before building one: seeing the games without opening each
-table, and ending or unsticking one from the same place. The controls over a
-running game stay in the table menu where they are, behind the same password.
+**The admin panel is done** - see Done above. What stays ruled out is a
+dashboard for its own sake, and the controls over a running game, which live
+in the table menu behind the same password.
 
 ## Architecture
 
@@ -352,6 +349,7 @@ scrolls away.
 - A full admin console **was here**, described as a thing the Admin page
   should not grow into. They were never two things: the panel is called
   Admin to a person and admin to the code, and ruling out one while keeping
-  the other was ruling out nothing. It moved to "A real admin panel" above.
-  What stays ruled out is a dashboard for its own sake, and the controls over
-  a running game, which live in the table menu behind the same password.
+  the other was ruling out nothing. It moved onto the path, and it is done -
+  see Done. What stays ruled out is a dashboard for its own sake, and the
+  controls over a running game, which live in the table menu behind the same
+  password.
