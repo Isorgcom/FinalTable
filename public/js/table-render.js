@@ -224,9 +224,16 @@ function measureSweep(prev, next) {
   const wrapRect = wrap.getBoundingClientRect();
   const out = [];
   for (const s of stacks) {
-    const el = feltBetElementFor(s.id);
-    if (!el) continue;
-    const r = el.getBoundingClientRect();
+    // The bet is where the money was, and the chair is where the money came
+    // from. Either will do; a box of nothing will not, because it measures as
+    // the page's own corner and sends every chip in from off the screen.
+    let el = feltBetElementFor(s.id);
+    let r = el ? el.getBoundingClientRect() : null;
+    if (!r || r.width < 1 || r.height < 1) {
+      el = seatElementForPlayer(s.id);
+      r = el ? el.getBoundingClientRect() : null;
+    }
+    if (!r || r.width < 1 || r.height < 1) continue;
     out.push({
       amount: s.amount,
       point: {
@@ -1447,14 +1454,7 @@ function updateActionsPanel() {
       const npEl = document.getElementById('raiseNeedPay');
       if (npEl) npEl.textContent = `to ${raiseTo} · +${Math.max(0, raiseTo - me.bet)}`;
       renderRaisePresets(me, minRaise, maxRaiseTo);
-      // With the sizing open the raise button is the confirm, so it says what
-      // pressing it will cost. Closed, it is the way in and says only that.
-      const raiseBtn = document.getElementById('btnRaise');
-      if (raiseBtn) {
-        const sizing =
-          panel.classList.contains('is-compact') && panel.classList.contains('is-sizing');
-        raiseBtn.textContent = sizing ? `raise ${raiseTo}` : 'raise';
-      }
+      syncRaiseLabel();
     }
   }
   // Nothing left to size: the way in should not be a door to an empty room.
@@ -1618,6 +1618,25 @@ function markPickedPreset() {
   }
 }
 
+// With the sizing open the raise button is the confirm, so it says what
+// pressing it will cost. Closed, it is the way in and says only that.
+//
+// It reads the box, because the box is what the press sends (app-init.js reads
+// the same element). It used to be written once per render from a figure
+// worked out in that pass, which is fine until something changes the amount
+// without a render - a preset, or a drag of the slider - and then the button
+// goes on offering a number it will not bet. Everything that moves the money
+// calls this, and there is no other way to move it.
+function syncRaiseLabel() {
+  const btn = document.getElementById('btnRaise');
+  const panel = document.getElementById('actionsPanel');
+  const input = document.getElementById('raiseInput');
+  if (!btn || !panel || !input) return;
+  const sizing = panel.classList.contains('is-compact') && panel.classList.contains('is-sizing');
+  const amount = parseInt(input.value, 10);
+  btn.textContent = sizing && Number.isFinite(amount) ? `raise ${amount}` : 'raise';
+}
+
 // A preset fills the slider and the input; the raise button still sends.
 function applyRaisePreset(value) {
   const slider = document.getElementById('raiseSlider');
@@ -1634,6 +1653,7 @@ function applyRaisePreset(value) {
   const npEl = document.getElementById('raiseNeedPay');
   if (npEl) npEl.textContent = `to ${v} · +${Math.max(0, v - me.bet)}`;
   markPickedPreset();
+  syncRaiseLabel();
 }
 
 // The viewer's own stack, on the bar. The bar sits over their plate on a short

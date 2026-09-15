@@ -572,6 +572,8 @@ function init() {
     raiseNeedPay.textContent = formatRaiseSummary(clampedValue, me.bet);
     // Dragging off a preset puts its light out; landing back on one lights it.
     if (typeof markPickedPreset === 'function') markPickedPreset();
+    // And the button is the confirm on a phone, so it follows the drag too.
+    if (typeof syncRaiseLabel === 'function') syncRaiseLabel();
   }
 
   slider.addEventListener('input', () => {

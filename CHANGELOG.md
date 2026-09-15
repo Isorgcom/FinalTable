@@ -13,6 +13,15 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Fixed
+
+- The raise button now says the amount it is about to bet. Pressing a preset or
+  dragging the slider changed what the second tap would send without changing
+  the number on the button, so it could read **raise 240** and bet **600**.
+- On a phone the chips sweeping into the pot come from the players again rather
+  than flying in from off the top of the screen, and the chips going in animate
+  again as well.
+
 ## 0.16.2 - 2026-09-15
 
 ### Fixed

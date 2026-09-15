@@ -298,6 +298,124 @@ test.describe('phone', () => {
     expect(pageErrors).toEqual([]);
   });
 
+  // The number on the button is a promise about the money. It is the only
+  // number a thumb sees before it commits, and on this bar the amount is only
+  // ever changed by a preset or the slider - so those are the two paths that
+  // have to keep it honest.
+  test('the raise button says the amount it is about to bet', async ({ page }) => {
+    const pageErrors = await seatAtTournamentTable(page, 'Honest');
+    await deal(page);
+    const panel = page.locator('#actionsPanel');
+    await expect(panel).not.toHaveClass(/hidden/, { timeout: 20000 });
+    await page.click('#btnRaise');
+    await expect(panel).toHaveClass(/is-sizing/);
+
+    // The label and the box, read together: the label is what the player is
+    // told, the box is what the second tap actually sends.
+    const agree = () =>
+      page.evaluate(() => ({
+        label: document.getElementById('btnRaise').textContent.trim(),
+        input: document.getElementById('raiseInput').value,
+      }));
+
+    const opened = await agree();
+    expect(opened.label).toBe(`raise ${opened.input}`);
+
+    // A preset moves the money. The button has to move with it.
+    const preset = page.locator('#presetGroup .preset-btn:not([disabled])').last();
+    const presetTo = await preset.getAttribute('data-to');
+    await preset.click();
+    await expect(page.locator('#raiseInput')).toHaveValue(presetTo);
+    const afterPreset = await agree();
+    expect(afterPreset.label).toBe(`raise ${presetTo}`);
+
+    // And so does the slider, which is the other way to change it.
+    const dragged = await page.evaluate(() => {
+      const slider = document.getElementById('raiseSlider');
+      const min = Number(slider.min);
+      const max = Number(slider.max);
+      const value = String(Math.round(min + (max - min) * 0.6));
+      slider.value = value;
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      return value;
+    });
+    const afterDrag = await agree();
+    expect(afterDrag.input).toBe(dragged);
+    expect(afterDrag.label).toBe(`raise ${dragged}`);
+
+    // And the promise is kept: what the button said is what the engine is told.
+    // Every line the dealer says is kept as it arrives, because the hand moves
+    // on from a raise this size faster than a ticker can be read.
+    await page.evaluate(() => {
+      window.__said = [];
+      socket.on('gameMessage', (msg) => window.__said.push(msg));
+    });
+    await page.click('#btnRaise');
+    await expect
+      .poll(() => page.evaluate(() => window.__said.join(' | ')), { timeout: 15000 })
+      .toContain(`raises to ${dragged}`);
+
+    expect(pageErrors).toEqual([]);
+  });
+
+  // A chip has to start where the money was. The sweep remembers each bet's
+  // coordinates before the render wipes the layer, which is the only chance it
+  // gets - so anything that stops those bets being measurable sends every chip
+  // off from the same wrong place, and on a phone that place is off the top of
+  // the screen.
+  test('the chips sweeping into the pot start on the felt', async ({ page }) => {
+    const pageErrors = await seatAtTournamentTable(page, 'Flight');
+    await deal(page);
+    const game = await gameForPage(page);
+
+    // Every chip's starting point, caught as it is added: they are removed
+    // when the flight ends, so there is nothing to measure afterwards.
+    await page.evaluate(() => {
+      window.__starts = [];
+      const wrap = document.querySelector('.poker-table-wrapper');
+      new MutationObserver((records) => {
+        for (const rec of records) {
+          for (const node of rec.addedNodes) {
+            if (node.classList && node.classList.contains('chip-fly')) {
+              window.__starts.push({
+                x: parseFloat(node.style.left),
+                y: parseFloat(node.style.top),
+                sweep: node.classList.contains('chip-sweep'),
+              });
+            }
+          }
+        }
+      }).observe(wrap, { childList: true });
+    });
+
+    const before = await page.evaluate(() => window.__anim.sweeps);
+    await page.click('#btnCall');
+    await expect
+      .poll(() => game.communityCards.length, { timeout: 15000 })
+      .toBeGreaterThanOrEqual(3);
+    await expect.poll(() => page.evaluate(() => window.__anim.sweeps)).toBe(before + 1);
+
+    // The felt's own box, and where the chips set off from inside it.
+    const flight = await page.evaluate(() => {
+      const wrap = document.querySelector('.poker-table-wrapper').getBoundingClientRect();
+      return { felt: { w: wrap.width, h: wrap.height }, starts: window.__starts };
+    });
+
+    const swept = flight.starts.filter((c) => c.sweep);
+    expect(swept.length).toBeGreaterThan(0);
+    // Coordinates are relative to the felt, so anything outside 0..width and
+    // 0..height set off from somewhere that is not the table. A bet measured
+    // through a hidden element lands every chip at the page's top-left corner,
+    // which on a phone is a long way above the felt and reads as chips flying
+    // in from nowhere.
+    const offFelt = swept.filter(
+      (c) => !(c.x >= -4 && c.x <= flight.felt.w + 4 && c.y >= -4 && c.y <= flight.felt.h + 4)
+    );
+    expect(JSON.stringify(offFelt)).toBe('[]');
+
+    expect(pageErrors).toEqual([]);
+  });
+
   test('the side panel is a drawer: toggle, Escape, scrim, and the stats button', async ({
     page,
   }) => {
@@ -1462,13 +1580,26 @@ async function seatCollisions(page) {
     // the felt and separated only by the difference in ring radius, so on a
     // narrow screen a bet can land inside the chair that made it - and the
     // seats paint above the bet layer, so it simply disappears.
+    //
+    // Where the felt is too small to hold a bet at all the layer is hidden on
+    // purpose, and a hidden bet is excused the overlap below. It is not
+    // excused having a box: the sweep reads these coordinates to know where
+    // the chips fly from, so a bet that cannot be measured is a bug whether it
+    // is visible or not. That is the difference between visibility and
+    // display, and the reason this asks about both.
     const bets = seats
       .map((el) => {
         const bet = document.querySelector(
           `#feltBets .felt-bet[data-player-id="${el.dataset.playerId}"]`
         );
+        if (!bet) return null;
         const cards = el.querySelector('.player-hole-cards');
-        return bet ? { slot: el.dataset.slot, box: r(bet), cards: cards ? r(cards) : null } : null;
+        return {
+          slot: el.dataset.slot,
+          box: r(bet),
+          shown: getComputedStyle(bet).visibility !== 'hidden',
+          cards: cards ? r(cards) : null,
+        };
       })
       .filter(Boolean);
     const out = {
@@ -1478,8 +1609,16 @@ async function seatCollisions(page) {
       overBanner: [],
       betUnderCards: [],
       betUnderPlate: [],
+      betNotMeasurable: [],
     };
     for (const bet of bets) {
+      // Measurable whether or not it is drawn, because the chip flight reads
+      // it either way.
+      if (bet.box.width < 1 || bet.box.height < 1) {
+        out.betNotMeasurable.push(`slot ${bet.slot}`);
+        continue;
+      }
+      if (!bet.shown) continue;
       if (bet.cards && bet.cards.width > 0 && hit(bet.box, bet.cards)) {
         out.betUnderCards.push(`slot ${bet.slot}`);
       }
@@ -1534,6 +1673,7 @@ for (const vp of SEAT_VIEWPORTS) {
         overBanner: [],
         betUnderCards: [],
         betUnderPlate: [],
+        betNotMeasurable: [],
       });
       expect(pageErrors).toEqual([]);
     });

@@ -36,7 +36,7 @@
      width back, so this only applies while the panel is docked. */
   @media (min-width: 1024px) and (max-width: 1120px) {
     body:not(.rail-hidden) .felt-bets {
-      display: none;
+      visibility: hidden;
     }
   }
   .poker-table-wrapper {
@@ -360,9 +360,15 @@
      the board puts them under the chairs. There is no radius that is clear of
      both, and a stack nobody can see is worse than no stack. The amount is not
      lost with it - every plate carries "in N", which is the same number and
-     cannot be covered by anything. */
+     cannot be covered by anything.
+
+     visibility rather than display, for the reason the break rule in table.css
+     gives: the street sweep reads where each bet is before the render wipes
+     the layer, and a display:none box measures as nothing at the page's
+     corner, which sent every chip flying in from off the top of the screen. A
+     hidden box is still a box. */
   .felt-bets {
-    display: none;
+    visibility: hidden;
   }
   .player-info {
     min-width: 72px;
