@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.17.0 - 2026-09-15
+
 ### Added
 
 - The Admin page's **Log** holds what the server has done, rather than saying it
