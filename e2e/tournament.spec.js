@@ -127,13 +127,10 @@ test('the host can leave the table and rejoin it, back in control', async ({ bro
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
 
-  // Leave through the menu, confirming the dialog. The lobby then says what
-  // happened to the stack, and that notice has to be dismissed like any other:
-  // it is a real dialog over the lobby, not something to click through.
+  // Leave through the menu, confirming the dialog. That dialog is the whole of
+  // what the player is asked and told; the lobby does not repeat it back.
   await page.click('#menuToggle');
   await page.click('#btnExit');
-  await page.click('#btnAppDialogConfirm');
-  await expect(page.locator('#appDialogBody')).toContainText('You left the table');
   await page.click('#btnAppDialogConfirm');
   await expect(page.locator('#appDialogModal')).toBeHidden();
   await expect(page.locator('#lobbyHome')).toBeVisible();
@@ -202,10 +199,12 @@ test('the door in the corner of the table goes back to the lobby', async ({ brow
   await door.click();
   await expect(page.locator('#appDialogBody')).toContainText('stack stays at the table');
   await page.click('#btnAppDialogConfirm');
-  await expect(page.locator('#appDialogBody')).toContainText('You left the table');
-  await page.click('#btnAppDialogConfirm');
   await expect(page.locator('#lobbyHome')).toBeVisible();
 
+  // Asked once and told once. The lobby used to open a second dialog saying
+  // what the first had just said and what the card behind it already shows, so
+  // what matters here is that nothing is waiting to be dismissed.
+  await expect(page.locator('#appDialogModal')).toBeHidden();
   const card = page.locator('#listYours .t-card').first();
   await expect(card.locator('.t-card-go')).toHaveText('Rejoin');
   expect(errors).toEqual([]);
@@ -374,7 +373,6 @@ test('a host who busts out and goes back to the lobby can still end their game',
   await page.click('#menuToggle');
   await page.click('#btnExit');
   await page.click('#btnAppDialogConfirm');
-  await page.click('#btnAppDialogConfirm').catch(() => {});
   await expect(page.locator('#lobbyHome')).toBeVisible({ timeout: 10000 });
 
   // The card they made carries the one control that was never about a hand.
@@ -450,7 +448,6 @@ test('a busted player who declines and leaves is still offered the way back in',
   await page.click('#menuToggle');
   await page.click('#btnExit');
   await page.click('#btnAppDialogConfirm');
-  await page.click('#btnAppDialogConfirm').catch(() => {});
   await expect(page.locator('#lobbyHome')).toBeVisible({ timeout: 10000 });
 
   // The card still offers it, and taking it lands them back at a table with

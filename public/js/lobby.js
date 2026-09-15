@@ -1002,16 +1002,15 @@
     if (view === 'waiting') renderWaiting();
   }
 
+  // A notice is for news. Leaving is not news to the person who just pressed
+  // Leave in a dialog that said the stack would sit out and they could rejoin -
+  // and the game is on the lobby behind it with a Rejoin button, which is the
+  // same fact where it can be acted on. Being removed is the other way round:
+  // the host confirmed that one, so this is the only word the player gets.
   function onLeft(data) {
     if (data && data.id !== currentId) return;
     const reason = data ? data.reason : null;
-    returnToLobby(
-      reason === 'left'
-        ? 'You left the table. Your stack sits out; join by code to take it back.'
-        : reason === 'removed'
-          ? 'The host removed you from the game.'
-          : null
-    );
+    returnToLobby(reason === 'removed' ? 'The host removed you from the game.' : null);
   }
 
   function onCancelled(data) {

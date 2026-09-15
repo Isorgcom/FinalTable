@@ -13,6 +13,14 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Fixed
+
+- Leaving a table no longer tells you a second time. The dialog on the way out
+  already says your stack sits out and you can rejoin, and the lobby behind it
+  shows the game with a **Rejoin** button on it, so the notice that used to
+  open there said nothing new. Being removed by the host still says so - nobody
+  asked you about that one.
+
 ## 0.16.3 - 2026-09-15
 
 ### Fixed
