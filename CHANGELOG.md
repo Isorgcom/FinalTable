@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.16.3 - 2026-09-15
+
 ### Fixed
 
 - The raise button now says the amount it is about to bet. Pressing a preset or
