@@ -19,6 +19,11 @@ test.beforeAll(async () => {
   process.env.HOST = '127.0.0.1';
   process.env.AUTO_TURN_DELAY_MS = '40';
   process.env.TOURNAMENT_SWEEP_MS = '100';
+  // Every test here creates a game and most leave it standing, against a
+  // server that holds eight by default. The cap is not what any of them is
+  // about, and without this the next test added to the file is the one that
+  // finds it.
+  process.env.MAX_TOURNAMENTS = '50';
   // The table holds a beat between streets and between hands. Short here, or
   // a spec that waits for hands to turn over waits out the real pacing.
   process.env.STREET_PAUSE_MS = '400';
@@ -665,6 +670,52 @@ test('the way back in stays put across hand boundaries', async ({ browser, page 
   expect(samples).toBe(90);
   expect(endRound).toBeGreaterThan(startRound); // hands really did turn over
   expect(hidden).toBe(0);
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
+// The Stats tab used to draw the table's own record: at one table that is the
+// same list, but it said nothing at all until a hand had finished, and across
+// several tables it listed whoever had sat at yours and nobody else.
+test('the Stats tab is the whole field, from the first deal', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Host');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Host');
+  await page.click('#btnCreateTournament');
+  await page.fill('#tName', 'Board Night');
+  await page.click('#tStartQuick button[data-min="15"]');
+  await page.click('#btnCreateSubmit');
+  await expect(page.locator('#lobbyWaiting')).toBeVisible();
+  const code = (await page.locator('#wrCode').textContent()).trim();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${baseUrl}/?t=${code}`);
+  await guest.fill('#playerName', 'Guest');
+  await guest.locator('#playerName').blur();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await expect(page.locator('#wrRoster')).toContainText('Guest');
+
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+
+  await page.click('#tabStats');
+  const panel = page.locator('#panelStatsBody');
+  await expect(panel).toContainText('Tournament leaderboard');
+  const rows = panel.locator('.lb-table tbody tr');
+  await expect(rows).toHaveCount(2);
+  await expect(panel).toContainText('Host');
+  await expect(panel).toContainText('Guest');
+  // Ranked by stack, so the number beside a name is a place in the field, and
+  // the column beside that is a stack rather than a hand count. Not asserted
+  // as 5,000: the blinds may already be posted by the time this is read.
+  await expect(rows.first().locator('td').nth(0)).toHaveText('1');
+  await expect(rows.first().locator('td').nth(2)).toHaveText(/^[\d,]+$/);
+
   expect(errors).toEqual([]);
   await guestContext.close();
 });

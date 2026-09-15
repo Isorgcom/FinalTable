@@ -69,6 +69,7 @@ class PokerGame {
     this.actionTimeoutMs = this.configuredActionTimeoutMs || 0;
     this.onUpdate = null;
     this.onMessage = null;
+    this.onHandFinished = null;
 
     // Hand-shape tracking, used by the chip-conservation assertions.
     this.handStartPlayerCount = 0;
@@ -1556,6 +1557,10 @@ class PokerGame {
     const finishedHand = this.handHistory.finishHand(this.pot, this.phase);
     if (finishedHand) {
       this.leaderboard.update(finishedHand);
+      // And anybody keeping a wider record than this table's. A tournament
+      // keeps one for the whole field, so a player's hands follow them from
+      // table to table instead of starting again at each one.
+      if (this.onHandFinished) this.onHandFinished(finishedHand);
       this.lastWarReport = HandHistory.generateWarReport(finishedHand);
     }
 

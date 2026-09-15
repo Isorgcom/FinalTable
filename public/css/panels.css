@@ -558,6 +558,14 @@
   font-weight: 600;
   opacity: 1;
 }
+/* Out of the tournament: still on the board, because a tournament's record is
+   everyone who played it, but a step behind the players still holding chips. */
+.lb-table tr.lb-out td {
+  opacity: 0.45;
+}
+.lb-table tr.lb-out.lb-me td {
+  opacity: 0.7;
+}
 
 /* Replay */
 .replay-panel {

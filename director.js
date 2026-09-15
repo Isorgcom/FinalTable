@@ -11,6 +11,7 @@
 
 const { PokerGame, DEFAULT_MAX_PLAYERS } = require('./engine');
 const { Tournament } = require('./tournament');
+const { Leaderboard } = require('./hand-history');
 const random = require('./random');
 
 class ChipConservationError extends Error {}
@@ -107,6 +108,14 @@ class TournamentDirector {
     // is the granularity, so the wait is this rounded up to the next tick.
     this.handPauseMs = Math.max(0, options.handPauseMs || 0);
     this.now = options.now || (() => Date.now());
+
+    // One record for the whole field. Each table keeps its own as well, which
+    // is what a casual room wants, but a tournament's board has to be the
+    // tournament's: a player carried to another table takes their hands with
+    // them, and somebody who busted is still part of the story. Keyed by uid
+    // for that reason - it is the one handle that survives a reconnect, a
+    // move and a re-entry.
+    this.leaderboard = new Leaderboard({ keyBy: (p) => p.uid || p.name });
 
     // Hooks the host (a server, or a test) supplies.
     this.onMessage = options.onMessage || null;
@@ -433,6 +442,7 @@ class TournamentDirector {
     for (const e of this.tournament.eliminations) if (e.uid) placeByUid.set(e.uid, e.place);
     return this.entrants.map((e) => {
       const seat = seats.get(e.uid) || null;
+      const played = this.leaderboard.getPlayerStats(e.uid);
       return {
         uid: e.uid,
         name: e.name,
@@ -440,6 +450,13 @@ class TournamentDirector {
         chips: seat ? seat.player.chips : null,
         table: seat ? seat.table.tableNumber : null,
         place: placeByUid.get(e.uid) || null,
+        // What they have played, which is what the field's leaderboard is
+        // drawn from. Three numbers rather than the whole record: the roster
+        // is one broadcast for the whole field, and everything on it is paid
+        // for once per entrant.
+        hands: played ? played.handsPlayed : 0,
+        won: played ? played.handsWon : 0,
+        biggestPot: played ? played.biggestPot : 0,
         reentries: this._reentries.get(e.uid) || 0,
         addOn: this._addOns.has(e.uid),
         autoPlay: seat ? !!seat.player.autoPlay : false,
@@ -507,6 +524,8 @@ class TournamentDirector {
     // Same instance on every table, not a copy.
     table.tournament = this.tournament;
     table.onRoundEnd = (g, tournamentResult) => this._handleRoundEnd(g, tournamentResult);
+    // Every table feeds the one field-wide board.
+    table.onHandFinished = (hand) => this.leaderboard.update(hand);
     this.tables.push(table);
     if (this.onTableCreated) this.onTableCreated(table);
     return table;
@@ -1492,6 +1511,10 @@ class TournamentDirector {
         ...t,
         players: t.players.map((p) => ({ ...p })),
       })),
+      // What everybody has played. Cannot be read back off the seats, and a
+      // board that restarts from zero halfway through a tournament is worse
+      // than no board.
+      leaderboard: this.leaderboard.toJSON(),
       clock: this.tournament.snapshotClock(),
     };
   }
@@ -1509,6 +1532,7 @@ class TournamentDirector {
     this.extraEntries = Number(snap.extraEntries) || 0;
     this._reentries = new Map(Array.isArray(snap.reentries) ? snap.reentries : []);
     this._addOns = new Set(Array.isArray(snap.addOns) ? snap.addOns : []);
+    this.leaderboard.load(snap.leaderboard);
 
     for (const entry of snap.tables) {
       const table = this._createTable(entry.tableNumber - 1);

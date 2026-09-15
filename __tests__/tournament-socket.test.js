@@ -620,6 +620,22 @@ describe('Tournament socket layer', () => {
     ).toBe(false);
   });
 
+  // The leaderboard the table draws is the field's, and it rides the roster
+  // rather than a broadcast of its own: the roster already goes out once for
+  // everybody instead of once per recipient.
+  test('the roster carries what each player has played', async () => {
+    const host = await connectClient();
+    const created = await createTournament(host);
+    const guest = await connectClient();
+    const seen = waitFor(host, 'tournamentRoster', (p) => p.roster.length === 2);
+    await joinByCode(guest, created.code, { name: 'Second' });
+    const { roster } = await seen;
+    for (const row of roster) {
+      expect(row).toMatchObject({ hands: 0, won: 0, biggestPot: 0 });
+    }
+    await cancelGame(host);
+  });
+
   test('leaving a running tournament keeps the seat under auto-play', async () => {
     const host = await connectClient();
     const { created, guest } = await createTournamentWithGuest(host);

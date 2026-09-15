@@ -821,14 +821,12 @@ function renderStatsTab() {
   if (!body) return;
   body.textContent = '';
 
-  const board = infoSection('Leaderboard');
+  const board = infoSection(window.mttField ? 'Tournament leaderboard' : 'Leaderboard');
   const table = document.createElement('table');
   table.className = 'lb-table';
   const thead = document.createElement('thead');
   const head = document.createElement('tr');
-  ['#', 'Player', 'Wins', 'Hands', 'Rate', 'Max Pot'].forEach((label) =>
-    head.appendChild(createTextElement('th', '', label))
-  );
+  LEADERBOARD_COLUMNS.forEach((label) => head.appendChild(createTextElement('th', '', label)));
   thead.appendChild(head);
   const tbody = document.createElement('tbody');
   table.append(thead, tbody);
@@ -889,6 +887,70 @@ function renderHistoryTab() {
 // ============================================================
 //  LEADERBOARD
 // ============================================================
+// 1st, 2nd, 3rd, and the teens that break the pattern.
+function ordinal(n) {
+  const teen = n % 100;
+  if (teen >= 11 && teen <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
+}
+
+// One header for both places the board is drawn, so the Stats tab and the top
+// bar's modal cannot drift apart.
+const LEADERBOARD_COLUMNS = ['#', 'Player', 'Chips', 'Hands', 'Won', 'Max pot'];
+
+// The rows, from whichever record is the right one.
+//
+// In a tournament that is the field's, carried on the roster: the table you
+// are sitting at is an accident of the draw, and a board scoped to it lists
+// the player who busted out of your table an hour ago while leaving out
+// everybody at the other tables - and forgets your own hands the moment you
+// are moved. A casual room has no field, so it keeps the table's own board.
+//
+// Returns null when there is nothing to draw yet, which the caller says
+// differently from an empty field.
+function leaderboardRows() {
+  const field = window.mttField;
+  const roster = field && Array.isArray(field.roster) ? field.roster : null;
+  if (roster) {
+    const myUid = field.you ? field.you.uid : null;
+    const rows = roster.map((r) => ({
+      name: r.name,
+      chips: r.chips || 0,
+      place: r.place || null,
+      out: !(r.chips > 0),
+      hands: r.hands || 0,
+      won: r.won || 0,
+      biggestPot: r.biggestPot || 0,
+      isMe: !!myUid && r.uid === myUid,
+    }));
+    // Still in, by stack, so the number beside a name is the place in the
+    // field it looks like; then the busted, in the order they went out.
+    rows.sort((a, b) => {
+      if (a.out !== b.out) return a.out ? 1 : -1;
+      if (a.out) return (a.place || Infinity) - (b.place || Infinity);
+      return b.chips - a.chips;
+    });
+    return rows;
+  }
+  if (!gameState || !gameState.leaderboard) return null;
+  const chipsFor = (name) => {
+    const p = gameState.players.find((x) => x.name === name);
+    return p ? p.chips : 0;
+  };
+  return gameState.leaderboard
+    .map((s) => ({
+      name: s.name,
+      chips: chipsFor(s.name),
+      place: null,
+      out: false,
+      hands: s.handsPlayed,
+      won: s.handsWon,
+      biggestPot: s.biggestPot,
+      isMe: gameState.players.some((p) => p.name === s.name && p.id === myId),
+    }))
+    .sort((a, b) => b.chips - a.chips);
+}
+
 function renderLeaderboard(target) {
   const body = target || document.getElementById('lbBody');
   if (!body) return;
@@ -896,29 +958,35 @@ function renderLeaderboard(target) {
   const appendEmptyRow = (text) => {
     const row = document.createElement('tr');
     const cell = createTextElement('td', 'table-empty', text);
-    cell.colSpan = 6;
+    cell.colSpan = LEADERBOARD_COLUMNS.length;
     row.appendChild(cell);
     body.appendChild(row);
   };
 
-  if (!gameState || !gameState.leaderboard) {
+  const rows = leaderboardRows();
+  if (!rows) {
     appendEmptyRow('No data yet');
     return;
   }
-  const lb = gameState.leaderboard;
-  if (lb.length === 0) {
+  if (rows.length === 0) {
     appendEmptyRow('No data yet — play some hands');
     return;
   }
 
-  lb.forEach((s, i) => {
-    const wr = s.handsPlayed > 0 ? ((s.handsWon / s.handsPlayed) * 100).toFixed(0) + '%' : '-';
-    const isMe = gameState.players.some((p) => p.name === s.name && p.id === myId);
+  rows.forEach((r, i) => {
     const row = document.createElement('tr');
-    if (isMe) row.className = 'lb-me';
-    [i + 1, s.name, s.handsWon, s.handsPlayed, wr, s.biggestPot].forEach((value) => {
-      row.appendChild(createTextElement('td', '', value));
-    });
+    if (r.isMe) row.classList.add('lb-me');
+    // Out of the tournament: the stack is gone, so the column carries where
+    // they finished instead, and the row steps back from the ones still in it.
+    if (r.out) row.classList.add('lb-out');
+    [
+      r.out ? '—' : i + 1,
+      r.name,
+      r.out ? (r.place ? ordinal(r.place) : 'out') : fmtNum(r.chips),
+      r.hands,
+      r.won,
+      fmtNum(r.biggestPot),
+    ].forEach((value) => row.appendChild(createTextElement('td', '', value)));
     body.appendChild(row);
   });
 }

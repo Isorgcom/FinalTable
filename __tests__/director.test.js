@@ -2154,3 +2154,117 @@ describe('re-entry and the add-on', () => {
     revived.stop();
   });
 });
+
+// ============================================================
+//  One leaderboard for the field, not one per table
+// ============================================================
+//
+// Each table keeps its own record, which is right for a casual room and wrong
+// for a tournament: the table you sit at is an accident of the draw, so a
+// board scoped to it lists somebody who busted out of your table an hour ago,
+// leaves out everyone at the other tables, and forgets your own hands the
+// moment you are carried somewhere else.
+describe('the field leaderboard', () => {
+  function rngFrom(seed) {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      return s / 2147483648;
+    };
+  }
+
+  // A hand at a table, played out without anybody shoving, so the field stays
+  // whole and the only thing that changes is the record.
+  function dealOne(table, rng) {
+    table.startRound();
+    playHand(table, rng, 0);
+  }
+
+  test('every table feeds the one board, and it rides the roster', () => {
+    const d = makeDirector(6, { tableSize: 2, startChips: 2000 });
+    d.start();
+    const rng = rngFrom(7);
+    for (const table of d.tables) dealOne(table, rng);
+
+    // Six players across three tables, all six on one board.
+    expect(d.leaderboard.getRankings()).toHaveLength(6);
+    const roster = d.roster();
+    expect(roster).toHaveLength(6);
+    for (const row of roster) {
+      expect(row.hands).toBe(1);
+      expect(row.biggestPot).toBeGreaterThanOrEqual(0);
+    }
+    // One of them won each hand.
+    expect(roster.filter((r) => r.won === 1)).toHaveLength(3);
+    d.stop();
+  });
+
+  test('a player carried to another table takes their record with them', () => {
+    const d = makeDirector(7, { tableSize: 6 });
+    d.start();
+    const rng = rngFrom(3);
+    const t1 = d.tables.find((t) => t.tableNumber === 1);
+    const t2 = d.tables.find((t) => t.tableNumber === 2);
+    dealOne(t2, rng);
+    dealOne(t2, rng);
+    const mover = t2.players[0];
+    expect(d.leaderboard.getPlayerStats(mover.uid).handsPlayed).toBe(2);
+
+    // Somebody busts at table 1: six fit one table, and table 2 breaks into it.
+    const keeper = t1.players[0];
+    const gone = t1.players[1];
+    keeper.chips += gone.chips;
+    gone.chips = 0;
+    d.tournament.recordElimination(gone.name, 1, gone.uid);
+    d._handleRoundEnd(t1, null);
+    expect(t2._broken).toBe(true);
+    expect(d.playerByUid(mover.uid).table.tableNumber).toBe(1);
+
+    // The record is the player's, not the table's.
+    const row = d.roster().find((r) => r.uid === mover.uid);
+    expect(row).toMatchObject({ table: 1, hands: 2 });
+
+    // And the one who busted is still on the board, with where they finished.
+    const out = d.roster().find((r) => r.uid === gone.uid);
+    expect(out.place).toBeTruthy();
+    expect(out.chips).toBeNull();
+    d.stop();
+  });
+
+  test('the record survives a snapshot and a restore', () => {
+    const d = makeDirector(4, { tableSize: 4, startChips: 2000 });
+    d.start();
+    const rng = rngFrom(5);
+    for (let i = 0; i < 3; i++) dealOne(d.tables[0], rng);
+    const before = d.roster().map((r) => [r.uid, r.hands, r.won, r.biggestPot]);
+    expect(before.every(([, hands]) => hands === 3)).toBe(true);
+    const snap = d.snapshot();
+
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: snap.tableSize,
+      startChips: snap.startChips,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    expect(revived.restoreFrom(snap)).toBe(true);
+    expect(revived.roster().map((r) => [r.uid, r.hands, r.won, r.biggestPot])).toEqual(before);
+
+    // And it carries on from where it was rather than starting again.
+    dealOne(revived.tables[0], rngFrom(9));
+    expect(revived.roster().every((r) => r.hands === 4)).toBe(true);
+    d.stop();
+    revived.stop();
+  });
+
+  test('a casual table still keeps its own board, keyed by name', () => {
+    const d = makeDirector(4, { tableSize: 4 });
+    d.start();
+    dealOne(d.tables[0], rngFrom(2));
+    // The engine's own, untouched: one row per name at that table.
+    const table = d.tables[0].leaderboard.getRankings();
+    expect(table).toHaveLength(4);
+    expect(table.every((r) => r.handsPlayed === 1)).toBe(true);
+    d.stop();
+  });
+});

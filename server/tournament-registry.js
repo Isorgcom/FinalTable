@@ -410,11 +410,12 @@ function createTournamentRegistry(deps = {}) {
   // legacy `tournamentField` event carries the same payload until the client
   // has moved to `tournamentState`.
   // A cheap stand-in for "has the roster changed", over the fields that can:
-  // stacks, seats, finishing places, sitting out, and who is connected.
+  // stacks, seats, finishing places, hands played, sitting out, and who is
+  // connected.
   function rosterSignature(roster) {
     let sig = '';
     for (const r of roster) {
-      sig += `${r.uid}:${r.chips}:${r.table}:${r.place}:${r.autoPlay ? 1 : 0}:${r.connected ? 1 : 0}:${r.muted ? 1 : 0}|`;
+      sig += `${r.uid}:${r.chips}:${r.table}:${r.place}:${r.hands}:${r.autoPlay ? 1 : 0}:${r.connected ? 1 : 0}:${r.muted ? 1 : 0}|`;
     }
     return sig;
   }

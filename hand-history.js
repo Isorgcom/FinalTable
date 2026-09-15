@@ -213,16 +213,26 @@ class HandHistory {
 
 // Leaderboard stats (cumulative across hands)
 class Leaderboard {
-  constructor() {
-    this.stats = {}; // playerName → stats
+  // Keyed by name by default, which is all a single table needs: everybody at
+  // it is on screen at once and their names are distinct. A tournament passes
+  // uid instead, because that is what a player keeps through a reconnect, a
+  // move to another table and a re-entry - and their record has to follow them
+  // rather than start again at whichever table they were carried to.
+  constructor(options = {}) {
+    this.keyBy = typeof options.keyBy === 'function' ? options.keyBy : (p) => p.name;
+    this.stats = {}; // key → stats
   }
 
   update(hand) {
     if (!hand) return;
 
     for (const p of hand.players) {
-      if (!this.stats[p.name]) {
-        this.stats[p.name] = {
+      const key = this.keyBy(p);
+      if (key === undefined || key === null || key === '') continue;
+      if (!this.stats[key]) {
+        this.stats[key] = {
+          key,
+          uid: p.uid || null,
           name: p.name,
           handsPlayed: 0,
           handsWon: 0,
@@ -236,7 +246,10 @@ class Leaderboard {
           bestHandRank: 0,
         };
       }
-      const s = this.stats[p.name];
+      const s = this.stats[key];
+      // Whatever they are called now. Keyed by uid a rename is the same
+      // player, and the board should say the name they are wearing.
+      s.name = p.name;
       s.handsPlayed++;
 
       const actions = hand.actions.filter((a) => a.playerId === p.id);
@@ -260,8 +273,24 @@ class Leaderboard {
     );
   }
 
-  getPlayerStats(name) {
-    return this.stats[name] || null;
+  getPlayerStats(key) {
+    return this.stats[key] || null;
+  }
+
+  // For a tournament's snapshot: the whole board, and back again. A field that
+  // is restored after a restart keeps what everybody has played rather than
+  // starting the record from zero halfway through.
+  toJSON() {
+    return Object.values(this.stats).map((s) => ({ ...s }));
+  }
+
+  load(rows) {
+    this.stats = {};
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (!row || row.key === undefined || row.key === null) continue;
+      this.stats[row.key] = { ...row };
+    }
+    return Object.keys(this.stats).length;
   }
 
   reset() {

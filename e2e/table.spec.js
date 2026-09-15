@@ -174,7 +174,7 @@ test('a tournament table seats every player, deals, and hands the viewer the act
   await expect(page.locator('#panelInfoBody')).toContainText('Blinds');
   await page.click('#btnLeaderboard');
   await expect(page.locator('#panelStats')).toBeVisible();
-  await expect(page.locator('#panelStatsBody')).toContainText('Leaderboard');
+  await expect(page.locator('#panelStatsBody')).toContainText(/leaderboard/i);
   await expect(page.locator('#lbPanel')).toBeHidden();
   await page.click('#btnReplay');
   await expect(page.locator('#panelHistory')).toBeVisible();

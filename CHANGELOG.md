@@ -23,6 +23,15 @@ Release on GitHub to go with it.
   drop off by age and by count so the file cannot grow without end. No hole
   card, device token, password or join code is ever written to it.
 
+### Changed
+
+- The Stats tab's leaderboard covers the whole tournament rather than the table
+  you happen to be sitting at. Everyone who entered is on it, ranked by stack,
+  with the players who have busted below in finishing order - and your own
+  record follows you when you are moved to another table instead of starting
+  again from nothing. It shows stacks now in place of the win rate, which was
+  the two columns beside it divided.
+
 ### Fixed
 
 - A table with nobody to deal to now says so. At heads-up an odd number of

@@ -428,8 +428,13 @@ button opens and closes it). Five tabs:
   an **Add-on** block with its ([Being eliminated](#being-eliminated) and
   [How a tournament runs](#how-a-tournament-runs) say what each costs). When
   the game ends, the final standings.
-- **Stats**: a leaderboard for this game (wins, hands, win rate, biggest
-  pot) and your last ten hands.
+- **Stats**: the leaderboard, and your last ten hands. In a tournament the
+  board covers the whole field: everyone who entered, ranked by stack, with
+  the players who have busted below them in finishing order, and your own
+  record follows you when you are moved to another table. At a casual table
+  it is that table's. Either way it holds hands played, hands won and the
+  biggest pot taken. The last ten hands are the ones dealt where you are
+  sitting now.
 - **History**: every hand you were dealt, replayable card by card and action
   by action. Only cards that were shown at the table appear, and a card
   somebody kept down shows as a back beside the one they turned over; nobody's
