@@ -23,6 +23,14 @@ Release on GitHub to go with it.
   drop off by age and by count so the file cannot grow without end. No hole
   card, device token, password or join code is ever written to it.
 
+### Fixed
+
+- A table with nobody to deal to now says so. At heads-up an odd number of
+  players cannot be seated in pairs, so one of them waits for a seat: the felt
+  reads "Waiting for a seat" and the banner "Waiting · for an opponent" until a
+  match somewhere else ends, instead of sitting on the last hand with nothing to
+  explain it. A table held while another is being broken up says that too.
+
 ## 0.16.4 - 2026-09-15
 
 ### Fixed

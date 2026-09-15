@@ -209,6 +209,11 @@ class TournamentDirector {
       myChips: mePlayer ? mePlayer.chips : null,
       myRank,
       myTable: seat ? seat.table.tableNumber : null,
+      // Why this player's table is not dealing, when the reason is the field
+      // and not the clock: 'seat' while it is short of an opponent, 'balance'
+      // while it is held for a break or a move. The felt says so rather than
+      // sitting on the last hand's result with nothing to explain it.
+      tableWaiting: seat ? this._tableWaitingOn(seat.table) : null,
       tablesLeft: this.activeTables().length,
       paidPlaces: this.paidPlaces || 0,
       prizePool: this.prizePool(),
@@ -1018,6 +1023,33 @@ class TournamentDirector {
     return this._tableDueToBreak() === table || this._tableDueToGive() === table;
   }
 
+  // Why a table that is otherwise ready is not dealing, when the reason is the
+  // field rather than the clock. Two of them:
+  //
+  //   'seat'    - fewer than two players with chips. A moment at 8-max, and
+  //               arithmetic at heads-up: five players cannot be seated in
+  //               pairs, so one of them has a bye until a match somewhere else
+  //               ends. Balancing cannot help there - with two seats a table
+  //               the largest gap there can be is one, which is exactly why
+  //               _tableDueToGive never fires at that size.
+  //   'balance' - held by _waitingOnField for a break or a move that needs
+  //               another table to finish its hand first.
+  //
+  // Null while the clock is what is stopping it - a break, the host's pause,
+  // the hold for an empty room - because each of those already says so on the
+  // felt, and null on the last table standing, where one player left is a
+  // tournament ending rather than a table waiting.
+  _tableWaitingOn(table) {
+    if (!table || table._broken || table.players.length === 0) return null;
+    if (!this.isRunning || this.finished) return null;
+    if (table.isRunning) return null;
+    if (this._paused || this._awayHeld || this.isPaused()) return null;
+    if (this.tournament.onBreak()) return null;
+    if (this.activeTables().length < 2) return null;
+    if (table.players.filter((p) => p.chips > 0).length < 2) return 'seat';
+    return this._waitingOnField(table) ? 'balance' : null;
+  }
+
   // ── Seat maths ───────────────────────────────────────────────────────────
 
   // Index of the seat that will post the big blind on the next hand.
@@ -1119,6 +1151,20 @@ class TournamentDirector {
     // the same way is what stops it being handed players again later.
     for (const table of this.tables) {
       if (table.players.length === 0) this._announceBreak(table);
+    }
+
+    // A table left without an opponent says so once, and says it again only if
+    // it falls back into the same state after dealing. The felt carries this
+    // to the player who is waiting; the line is what the log and the game's
+    // history have afterwards.
+    for (const table of this.tables) {
+      const short = this._tableWaitingOn(table) === 'seat';
+      if (short && !table._waitSaid) {
+        table._waitSaid = true;
+        this._say(`Table ${table.tableNumber} is a player short and waits for a seat to open`);
+      } else if (!short) {
+        table._waitSaid = false;
+      }
     }
 
     this.assertChipConservation();

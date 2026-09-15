@@ -1691,6 +1691,134 @@ describe('a field waiting on a table', () => {
     expect(t1.isRunning).toBe(true);
     d.stop();
   });
+
+  // ── The table with nobody to deal to ──
+  //
+  // Reported from a live game: Heads-up with five bots, "only 1 bot in game",
+  // and then nothing at all after winning. Six players at two seats a table is
+  // three tables of two, so one opponent is right; what was wrong is what
+  // happened next. Five players cannot be seated in pairs, so one of them has
+  // a bye - and the field said nothing, which reads as a dead game.
+
+  const BREAK_SCHEDULE = [
+    { sb: 10, bb: 20, ante: 0, duration: 99999 },
+    { break: true, duration: 99999 },
+    { sb: 20, bb: 40, ante: 0, duration: 99999 },
+  ];
+
+  test('heads-up: a player left without an opponent is told, and the field plays on', () => {
+    const said = [];
+    const d = makeDirector(6, { tableSize: 2, onMessage: (m) => said.push(m) });
+    d.start();
+    expect(d.tables.map((t) => t.players.length)).toEqual([2, 2, 2]);
+    const t1 = d.tables[0];
+    const waiter = t1.players[0];
+    bustAt(d, t1, 1);
+
+    expect(d.tables.map((t) => t.players.length)).toEqual([1, 2, 2]);
+    expect(d.playersRemaining()).toBe(5);
+    // Neither rebalance path can help, and this is the whole of the bug: five
+    // do not fit on two tables of two, and with two seats a table the largest
+    // gap there can be is one, so the test for a move - a gap of more than one
+    // - can never be true at this size.
+    expect(d._tableDueToBreak()).toBeNull();
+    expect(d._tableDueToGive()).toBeNull();
+
+    expect(d._tableWaitingOn(t1)).toBe('seat');
+    expect(d.fieldSummary(waiter.uid).tableWaiting).toBe('seat');
+    expect(said).toContain('Table 1 is a player short and waits for a seat to open');
+    // Once, however many times the field settles.
+    d.rebalanceField();
+    d.rebalanceField();
+    expect(said.filter((m) => /waits for a seat/.test(m))).toHaveLength(1);
+
+    // A bye, not a stall: the other two matches are still dealing, and nobody
+    // at them is told they are waiting for anything.
+    expect(d.canStartHand(t1)).toBe(false);
+    expect(d.canStartHand(d.tables[1])).toBe(true);
+    expect(d.canStartHand(d.tables[2])).toBe(true);
+    expect(d.fieldSummary(d.tables[1].players[0].uid).tableWaiting).toBeNull();
+    // And the rail is watching, not waiting.
+    expect(d.fieldSummary('nobody').tableWaiting).toBeNull();
+    d.stop();
+  });
+
+  test('heads-up: the wait ends as soon as another match does', () => {
+    const d = makeDirector(6, { tableSize: 2 });
+    d.start();
+    const t1 = d.tables[0];
+    const waiter = t1.players[0];
+    bustAt(d, t1, 1);
+    expect(d.fieldSummary(waiter.uid).tableWaiting).toBe('seat');
+
+    // A second match ends: four left, two pairs, and the waiter is dealt in.
+    bustAt(d, d.tables[1], 1);
+    const seat = d.playerByUid(waiter.uid);
+    expect(seat.table.players.length).toBe(2);
+    expect(d._tableWaitingOn(seat.table)).toBeNull();
+    expect(d.fieldSummary(waiter.uid).tableWaiting).toBeNull();
+    expect(d.canStartHand(seat.table)).toBe(true);
+    d.stop();
+  });
+
+  test('a table held while another is broken up says that instead', () => {
+    const d = makeDirector(7, { tableSize: 6 });
+    d.start();
+    const t1 = d.tables.find((t) => t.tableNumber === 1);
+    const t2 = d.tables.find((t) => t.tableNumber === 2);
+    t2.startRound();
+    bustAt(d, t1, 1); // six now fit one table, but table 2 is mid-hand
+    t1.startRound();
+    playHand(t2, lcg(), 0);
+    expect(t2.isRunning).toBe(false);
+    expect(d.canStartHand(t2)).toBe(false);
+    expect(d._tableWaitingOn(t2)).toBe('balance');
+    expect(d.fieldSummary(t2.players[0].uid).tableWaiting).toBe('balance');
+    // The table that is dealing is not waiting on anything.
+    expect(d._tableWaitingOn(t1)).toBeNull();
+
+    playHand(t1, lcg(5), 0);
+    expect(t2._broken).toBe(true);
+    expect(d._tableWaitingOn(t1)).toBeNull();
+    expect(d.fieldSummary(t1.players[0].uid).tableWaiting).toBeNull();
+    d.stop();
+  });
+
+  test('the clock stopping is never called waiting for a seat', () => {
+    const d = makeDirector(6, { tableSize: 2, blindSchedule: BREAK_SCHEDULE });
+    d.start();
+    const t1 = d.tables[0];
+    const waiter = t1.players[0];
+    bustAt(d, t1, 1);
+    expect(d._tableWaitingOn(t1)).toBe('seat');
+
+    // The host's pause, the hold for an empty room and a break each say so on
+    // the felt already; a second reason over the top of them would be a lie
+    // about which one is in force.
+    expect(d.pause()).toBe(true);
+    expect(d.fieldSummary(waiter.uid).tableWaiting).toBeNull();
+    expect(d.resume()).toBe(true);
+    expect(d._tableWaitingOn(t1)).toBe('seat');
+
+    expect(d.holdForAbsence()).toBe(true);
+    expect(d.fieldSummary(waiter.uid).tableWaiting).toBeNull();
+    expect(d.releaseFromAbsence()).toBe(true);
+    expect(d._tableWaitingOn(t1)).toBe('seat');
+
+    d.tournament.currentLevel = 1;
+    d.tournament.onLevelUp(1, d.tournament.getCurrentBlinds());
+    expect(d.tournament.onBreak()).toBe(true);
+    expect(d.fieldSummary(waiter.uid).tableWaiting).toBeNull();
+    d.stop();
+  });
+
+  test('an ordinary multi-table field is never waiting on anything', () => {
+    const d = makeDirector(18, { tableSize: 8 });
+    d.start();
+    for (const t of d.tables) expect(d._tableWaitingOn(t)).toBeNull();
+    for (const p of d.fieldPlayers()) expect(d.fieldSummary(p.uid).tableWaiting).toBeNull();
+    d.stop();
+  });
 });
 
 describe('re-entry and the add-on', () => {

@@ -143,7 +143,9 @@ Press **Create a tournament**. The form:
   provided two people are registered. With only one it waits, and after
   thirty minutes with nobody else it is cancelled.
 - **Table size**: heads-up, 6-max or 8-max. Fields larger than one table are
-  spread across as many tables as it takes.
+  spread across as many tables as it takes. At heads-up an odd number left in
+  cannot be seated in pairs, so one player waits for a seat until a match
+  somewhere else ends; their table says "Waiting for a seat" while they do.
 - **Starting stack**: 1,000 to 10,000 chips.
 - **Level length**: 2 to 15 minutes per blind level.
 - **Blind structure**: Turbo, Standard or Deep. The line under the choice

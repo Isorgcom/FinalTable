@@ -1809,6 +1809,12 @@ function updateTopBar() {
         : gameState.tournament && gameState.tournament.isActive
           ? 'Spectating · eliminated from tournament'
           : 'Spectating';
+  } else if (me && !gameState.isRunning && field && field.tableWaiting) {
+    // Short of an opponent, or held while the director breaks a table up.
+    // Without this the bar reads "Round 7 · Showdown · 12,000" over a table
+    // that will not deal again until somebody else's match ends.
+    text = field.tableWaiting === 'seat' ? 'Waiting for a seat' : 'Waiting for the tables to move';
+    if (Number.isFinite(field.remaining)) text += ` · ${field.remaining} left`;
   } else if (!gameState.isRunning && gameState.roundCount === 0) {
     text = 'Waiting for the first deal';
     if (gameState.hostName) text += ` · Host ${gameState.hostName}`;

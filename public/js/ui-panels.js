@@ -113,15 +113,29 @@ function paintBreakPlate() {
   // be told, and the middle of the table is where they are already looking.
   const held = !!(window.mttField && window.mttField.awayHeld);
   const holding = !!(t && t.isActive && held && !gameState.isRunning && !window.mttFinished);
+  // And a table that has nobody to deal to clears the same way. At heads-up an
+  // odd field cannot be seated in pairs, so one player waits for a seat while
+  // the other tables play on - which without this is a felt frozen on the last
+  // hand and no way to tell a bye from a dead game.
+  const waitingOn = (window.mttField && window.mttField.tableWaiting) || null;
+  const waiting = !!(
+    t &&
+    t.isActive &&
+    waitingOn &&
+    !onBreak &&
+    !held &&
+    !gameState.isRunning &&
+    !window.mttFinished
+  );
   const sinceHand = Date.now() - _breakHandEndedAt;
   const settled = sinceHand >= BREAK_PLATE_DELAY_MS;
-  const show = (onBreak || holding) && settled;
+  const show = (onBreak || holding || waiting) && settled;
   if (_breakPlateTimer) {
     clearTimeout(_breakPlateTimer);
     _breakPlateTimer = null;
   }
   // The break is on but the hand's result is still up: come back for it.
-  if ((onBreak || holding) && !settled) {
+  if ((onBreak || holding || waiting) && !settled) {
     _breakPlateTimer = setTimeout(paintBreakPlate, BREAK_PLATE_DELAY_MS - sinceHand + 50);
   }
   const was = stage.classList.contains('on-break');
@@ -145,7 +159,13 @@ function paintBreakPlate() {
     TournamentField.offerAddOn(window.mttField);
   }
   if (!show) return;
-  document.getElementById('feltBreakTitle').textContent = held ? 'Holding' : 'On break';
+  document.getElementById('feltBreakTitle').textContent = held
+    ? 'Holding'
+    : waiting
+      ? waitingOn === 'seat'
+        ? 'Waiting for a seat'
+        : 'Tables are moving'
+      : 'On break';
   // Frozen while the table holds, because the clock it counts is stopped too.
   document.getElementById('feltBreakClock').textContent = formatClock(_blindClockRemaining);
   const paused = !!(t.paused || (window.mttField && window.mttField.paused));
@@ -154,9 +174,13 @@ function paintBreakPlate() {
   const addOns = window.mttField && window.mttField.addOnOpen ? ' · add-ons open' : '';
   document.getElementById('feltBreakNote').textContent = held
     ? 'Waiting for players to come back · your chips are safe'
-    : paused
-      ? 'Paused by the host · back at ' + blinds
-      : 'play resumes at ' + blinds + addOns;
+    : waiting
+      ? waitingOn === 'seat'
+        ? 'The other tables are still playing · you are back in as soon as a seat opens'
+        : 'The field is being rebalanced · you deal again in a moment'
+      : paused
+        ? 'Paused by the host · back at ' + blinds
+        : 'play resumes at ' + blinds + addOns;
 }
 
 function updateBlindClock() {
@@ -183,18 +207,31 @@ function updateBlindClock() {
   // to the one person sitting at it is telling them to wait for a host who is
   // not coming; this tells them what is actually being waited for.
   const held = !!(window.mttField && window.mttField.awayHeld);
+  // Short of an opponent, or held while another table is broken up. Neither is
+  // the clock stopping, so the banner names what is actually being waited for
+  // rather than leaving the level reading on over a table that cannot deal.
+  const waitingOn =
+    !held && !paused && !t.onBreak
+      ? (window.mttField && window.mttField.tableWaiting) || null
+      : null;
   document.getElementById('tbLevelLabel').textContent = held
     ? 'Holding · '
     : paused
       ? 'Paused · '
       : t.onBreak
         ? 'Break · '
-        : 'Level ' + levelNumber + ' · ';
+        : waitingOn
+          ? 'Waiting · '
+          : 'Level ' + levelNumber + ' · ';
   document.getElementById('tbBlinds').textContent = held
     ? 'waiting for players'
     : t.onBreak
       ? 'back at ' + blindsText
-      : blindsText;
+      : waitingOn === 'seat'
+        ? 'for an opponent'
+        : waitingOn
+          ? 'tables are moving'
+          : blindsText;
   // Nothing follows the final level, so nothing to count down to.
   document.getElementById('tbNext').classList.toggle('hidden', !!t.finalLevel);
   banner.classList.toggle('on-break', !!t.onBreak && !paused && !held);
