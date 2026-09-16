@@ -11,7 +11,7 @@
 
 const { PokerGame, DEFAULT_MAX_PLAYERS } = require('./engine');
 const { Tournament } = require('./tournament');
-const { Leaderboard } = require('./hand-history');
+const { Leaderboard, seatIdsForUid, visibleCardsFor } = require('./hand-history');
 const random = require('./random');
 
 class ChipConservationError extends Error {}
@@ -116,6 +116,14 @@ class TournamentDirector {
     // for that reason - it is the one handle that survives a reconnect, a
     // move and a re-entry.
     this.leaderboard = new Leaderboard({ keyBy: (p) => p.uid || p.name });
+
+    // Every hand the field has played, from every table, so a player can take
+    // their own away afterwards. The recorder on a table keeps twenty and the
+    // table breaks; this is the game's. Bounded by count, because the whole
+    // point is that it is long and a tournament that runs all night must not
+    // grow without end. Zero turns the export off entirely.
+    this.historyMax = Math.max(0, Number.isFinite(options.historyMax) ? options.historyMax : 500);
+    this.history = [];
 
     // Hooks the host (a server, or a test) supplies.
     this.onMessage = options.onMessage || null;
@@ -562,8 +570,9 @@ class TournamentDirector {
     // Same instance on every table, not a copy.
     table.tournament = this.tournament;
     table.onRoundEnd = (g, tournamentResult) => this._handleRoundEnd(g, tournamentResult);
-    // Every table feeds the one field-wide board.
-    table.onHandFinished = (hand) => this.leaderboard.update(hand);
+    // Every table feeds the one field-wide board, and the one field-wide
+    // history behind the export.
+    table.onHandFinished = (hand) => this._recordHand(table, hand);
     this.tables.push(table);
     if (this.onTableCreated) this.onTableCreated(table);
     return table;
@@ -1042,6 +1051,70 @@ class TournamentDirector {
     this._captureIdleTables();
     if (this.onSnapshot) this.onSnapshot(this);
     if (this.onFieldUpdate) this.onFieldUpdate();
+  }
+
+  // ── What the field has played ────────────────────────────────────────────
+
+  _recordHand(table, hand) {
+    this.leaderboard.update(hand);
+    if (!hand || this.historyMax <= 0) return;
+    // Kept by reference on purpose: a card turned over after the pot was
+    // pushed amends the hand that was already filed, and the export should
+    // show what the table showed.
+    this.history.push({
+      hand,
+      // A hand number is its table's round count, so a field of three tables
+      // deals three hand 7s. Which table, and the level the clock was on, are
+      // what tell them apart afterwards.
+      tableNumber: table.tableNumber,
+      level: this.tournament.levelNumber(),
+    });
+    if (this.history.length > this.historyMax) {
+      this.history.splice(0, this.history.length - this.historyMax);
+    }
+  }
+
+  // One player's own hands, as they are allowed to see them: their holding,
+  // the board, every action, and whatever was turned face up - never anybody
+  // else's folded cards. Oldest first, which is the order they were played.
+  //
+  // Nobody's uid but the asker's own is in the result: a file that gets pasted
+  // into a thread has no business carrying the other players' identifiers, and
+  // `you` says which seats were theirs without it.
+  historyFor(uid) {
+    if (!uid) return [];
+    const out = [];
+    for (const row of this.history) {
+      const hand = row.hand;
+      const mine = seatIdsForUid(hand, uid);
+      if (!mine.size) continue;
+      out.push({
+        handNum: hand.handNum,
+        tableNumber: row.tableNumber,
+        level: row.level,
+        at: hand.timestamp || null,
+        pot: hand.pot,
+        phase: hand.finalPhase,
+        winners: hand.winners,
+        communityCards: hand.communityCards,
+        holeCards: visibleCardsFor(hand, mine),
+        actions: hand.actions,
+        players: (hand.players || []).map((p) => ({
+          id: p.id,
+          name: p.name,
+          chips: p.chips,
+          seatIndex: p.seatIndex,
+        })),
+        you: [...mine],
+        dealerIndex: hand.dealerIndex,
+        sbIndex: hand.sbIndex,
+        bbIndex: hand.bbIndex,
+        smallBlind: hand.smallBlind,
+        bigBlind: hand.bigBlind,
+        ante: hand.ante || 0,
+      });
+    }
+    return out.sort((a, b) => (a.at || 0) - (b.at || 0) || a.tableNumber - b.tableNumber);
   }
 
   // ── Waiting on the field ─────────────────────────────────────────────────

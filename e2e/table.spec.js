@@ -3063,3 +3063,39 @@ test('a seat plate never carries more than one badge', async ({ page }) => {
   expect(await all.count()).toBeLessThanOrEqual(seats);
   expect(pageErrors).toEqual([]);
 });
+
+// The History tab shows the last ten hands of the table you are at. The
+// download is the whole game, and the point of it is that you keep it.
+test('the game can be taken away as a file', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Keeper');
+  await deal(page);
+  // Finish the hand in front of us, so there is something written down.
+  await page.click('#btnFold');
+  await expect(page.locator('#actionsPanel')).not.toHaveClass(/hidden/, { timeout: 20000 });
+
+  await page.click('#tabHistory');
+  await expect(page.locator('#historyExport')).toBeVisible();
+
+  const saving = page.waitForEvent('download');
+  await page.click('#btnHistoryText');
+  const file = await saving;
+  expect(file.suggestedFilename()).toMatch(/^finaltable-.*\.txt$/);
+  const text = fs.readFileSync(await file.path(), 'utf8');
+  // It says what it is, and it holds the reader's own cards.
+  expect(text).toContain('FinalTable');
+  expect(text).toContain('You:');
+  expect(text).toContain('Preflop');
+  await expect(page.locator('#historyExportNote')).toContainText('saved');
+
+  // And the same hands as data.
+  const savingJson = page.waitForEvent('download');
+  await page.click('#btnHistoryJson');
+  const json = await savingJson;
+  expect(json.suggestedFilename()).toMatch(/^finaltable-.*\.json$/);
+  const parsed = JSON.parse(fs.readFileSync(await json.path(), 'utf8'));
+  expect(Array.isArray(parsed.hands)).toBe(true);
+  expect(parsed.hands.length).toBeGreaterThan(0);
+  expect(parsed.hands[0].you).toHaveLength(1);
+
+  expect(pageErrors).toEqual([]);
+});

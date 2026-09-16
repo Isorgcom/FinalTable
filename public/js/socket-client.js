@@ -66,6 +66,10 @@ function ensureSocket() {
   socket.on('adminLogRows', (data) => {
     if (window.Lobby) Lobby.onAdminLogRows(data);
   });
+  // A player's own hands, asked for by the History tab's download buttons.
+  socket.on('handHistoryExport', (data) => {
+    if (typeof onHandHistoryExport === 'function') onHandHistoryExport(data);
+  });
   socket.on('adminPasswordResult', (data) => {
     if (window.Lobby) Lobby.onAdminPasswordResult(data);
   });

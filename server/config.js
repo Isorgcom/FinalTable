@@ -118,6 +118,11 @@ function loadConfig() {
     // keeping. A row used to go in on every identify - every reload, every
     // reconnect - which buried the games. Zero writes one every time.
     adminLogSignInGapMs: intFromEnv('ADMIN_LOG_SIGNIN_GAP_MS', 3600000, 0, 86400000),
+    // How many hands a running game keeps for the export, over the whole field.
+    // A long game runs a couple of hundred, so this covers one and then stops a
+    // server that is left up for a week from growing without end. Zero turns
+    // the export off.
+    handHistoryMax: intFromEnv('HAND_HISTORY_MAX', 500, 0, 5000),
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),

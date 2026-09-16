@@ -112,6 +112,7 @@ function createTournamentRegistry(deps = {}) {
     maxTournaments = 8,
     tableOptions = {},
     handPauseMs = 0,
+    historyMax = 500,
     // Every connected socket, for the personalised tournament list. Injectable
     // so the registry tests can drive it without a real socket.io server.
     connectedSockets = () => (io && io.sockets ? io.sockets.sockets.values() : []),
@@ -1135,6 +1136,7 @@ function createTournamentRegistry(deps = {}) {
       reentryLevels: settings.reentryLevels,
       addOn: settings.addOn,
       handPauseMs,
+      historyMax,
       gameOptions: { gameMode: 'tournament', ...tableOptions },
       onTableCreated: (table) => {
         wireTable(entry, table);
@@ -2240,6 +2242,26 @@ function createTournamentRegistry(deps = {}) {
     return null;
   }
 
+  // The hands one player may take away, from whichever game they are in - or
+  // were in, because the moment somebody most wants their history is just
+  // after it ended. A finished game is held for a while yet; one the sweep has
+  // taken is gone, and so is its history.
+  function handHistoryFor(uid) {
+    if (!uid) return null;
+    for (const entry of tournaments.values()) {
+      if (!entry.registrations.has(uid)) continue;
+      return {
+        id: entry.id,
+        name: entry.name,
+        status: entry.status,
+        startedAt: entry.startedAt || null,
+        finishedAt: entry.finishedAt || null,
+        hands: entry.director.historyFor(uid),
+      };
+    }
+    return null;
+  }
+
   // ── The sweep ────────────────────────────────────────────────────────────
 
   function sweep() {
@@ -2494,6 +2516,7 @@ function createTournamentRegistry(deps = {}) {
     publicList,
     adminList,
     findByUid,
+    handHistoryFor,
     findPendingByUid,
     byCode,
     requireHost,

@@ -407,6 +407,13 @@ function init() {
   document.getElementById('btnCloseLeaderboard').addEventListener('click', () => {
     document.getElementById('lbPanel').classList.add('hidden');
   });
+  document
+    .getElementById('btnHistoryText')
+    .addEventListener('click', () => askForHandHistory('text'));
+  document
+    .getElementById('btnHistoryJson')
+    .addEventListener('click', () => askForHandHistory('json'));
+
   document.getElementById('btnReplay').addEventListener('click', () => {
     closeMenu();
     if (window.SidePanel) {

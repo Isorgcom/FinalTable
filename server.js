@@ -215,6 +215,7 @@ const tournamentLayer = registerTournamentHandlers({
   hostTransferGraceMs: config.hostTransferGraceMs,
   sweepMs: config.tournamentSweepMs,
   handPauseMs: config.handPauseMs,
+  historyMax: config.handHistoryMax,
   adminCredential,
   tableOptions: { streetPauseMs: config.streetPauseMs, showWindowMs: config.showWindowMs },
   chatStore,

@@ -298,4 +298,46 @@ class Leaderboard {
   }
 }
 
-module.exports = { HandHistory, Leaderboard };
+// ── Who may see what, in one place ──────────────────────────────────────────
+//
+// This is what stands between a replay and handing every player the folding
+// range of everybody else, so it is written once and called from both the
+// engine (a viewer at a table) and the director (a whole game, exported). A
+// second copy of it would be a second thing to get wrong.
+
+// The seats in a recorded hand that belong to one identity. A reconnect issues
+// a new socket id and a move to another table a new seat, so the uid is the
+// only handle that holds across a whole game.
+function seatIdsForUid(hand, uid) {
+  const ids = new Set();
+  if (!uid) return ids;
+  for (const p of (hand && hand.players) || []) {
+    if (p && p.uid === uid) ids.add(p.id);
+  }
+  return ids;
+}
+
+// A recorded hand's cards as the holder of those seats is allowed to see them:
+// their own, and whatever was actually turned face up. A seat that folded is
+// absent from the result rather than null - there is nothing to say about it.
+//
+// A showdown turns both cards over; the winner of an uncontested pot may have
+// turned one. The card that stayed down comes back as a null, not a gap, so a
+// reader draws a back where the felt drew one.
+function visibleCardsFor(hand, ownSeatIds) {
+  const mine = ownSeatIds instanceof Set ? ownSeatIds : new Set(ownSeatIds || []);
+  const shown = new Set((hand && hand.shownPlayerIds) || []);
+  const perCard = (hand && hand.shownCards) || {};
+  const visible = {};
+  for (const [id, cards] of Object.entries((hand && hand.holeCards) || {})) {
+    if (mine.has(id)) {
+      visible[id] = cards;
+    } else if (shown.has(id)) {
+      const idx = perCard[id];
+      visible[id] = idx ? cards.map((c, i) => (idx.includes(i) ? c : null)) : cards;
+    }
+  }
+  return visible;
+}
+
+module.exports = { HandHistory, Leaderboard, seatIdsForUid, visibleCardsFor };

@@ -636,6 +636,58 @@ describe('Tournament socket layer', () => {
     await cancelGame(host);
   });
 
+  // The hands a player can take away. Everything in it is what they could
+  // already see; the redaction itself is tested against the bytes elsewhere.
+  test('a player takes their own hands away, and a stranger takes nothing', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
+
+    // Heads-up, so one fold finishes the hand. Both send it and the server
+    // listens to whichever of them is to act.
+    const entry = serverModule.tournaments.get(created.id);
+    host.emit('action', { action: 'fold' });
+    guest.emit('action', { action: 'fold' });
+    await until(() => entry.director.history.length > 0);
+
+    const got = waitFor(host, 'handHistoryExport');
+    host.emit('exportHandHistory');
+    const mine = await got;
+    expect(mine.id).toBe(created.id);
+    expect(mine.hands.length).toBeGreaterThan(0);
+    const hand = mine.hands[0];
+    // Their seat is named, their own two cards are there, and the blinds the
+    // hand was dealt with came with it.
+    expect(hand.you).toHaveLength(1);
+    expect(hand.holeCards[hand.you[0]]).toHaveLength(2);
+    expect(hand.smallBlind).toBeGreaterThan(0);
+    expect(hand.tableNumber).toBe(1);
+    // Never anybody's identifier.
+    const raw = JSON.stringify(mine);
+    expect(raw).not.toContain(guest.__identity.uid);
+    expect(raw).not.toContain(host.__identity.uid);
+
+    // Somebody not in it gets an answer with nothing in it, not somebody
+    // else's game.
+    const stranger = await connectClient();
+    await identify(stranger, { name: 'Stranger', avatar: '🐸' });
+    const nothing = waitFor(stranger, 'handHistoryExport');
+    stranger.emit('exportHandHistory');
+    expect((await nothing).hands).toEqual([]);
+
+    // And a socket that never said who it was is answered with silence, like
+    // everything else keyed to an identity.
+    const anon = await connectClient();
+    let answered = false;
+    anon.on('handHistoryExport', () => (answered = true));
+    anon.emit('exportHandHistory');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(answered).toBe(false);
+
+    host.emit('cancelTournament');
+    await waitFor(host, 'tournamentCancelled');
+  });
+
   test('leaving a running tournament keeps the seat under auto-play', async () => {
     const host = await connectClient();
     const { created, guest } = await createTournamentWithGuest(host);

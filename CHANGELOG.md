@@ -13,6 +13,18 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- Your hands are yours to keep. Under the **History** tab, **Transcript
+  (.txt)** and **Data (.json)** write the game you are playing to a file:
+  every hand you were dealt into, following you across any table you were
+  moved to, rather than the ten the panel shows for the table you happen to be
+  at. Busting out does not take it away. The files hold what you could already
+  see - your own cards, the board, every action, and whatever was turned face
+  up - and never anybody's folded holding. A server keeps the last 500 hands
+  of a game for this (`HAND_HISTORY_MAX`), and the file says which hand it
+  starts at.
+
 ## 0.18.1 - 2026-09-16
 
 ### Fixed

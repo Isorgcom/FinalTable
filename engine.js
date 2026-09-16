@@ -4,7 +4,7 @@ const { evaluateHand, compareHands } = require('./hand-eval');
 const { describeHand, describeBest } = require('./hand-describe');
 const random = require('./random');
 const { createStructuredLogger } = require('./server/logger');
-const { HandHistory, Leaderboard } = require('./hand-history');
+const { HandHistory, Leaderboard, visibleCardsFor } = require('./hand-history');
 
 const PHASES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 
@@ -2070,24 +2070,10 @@ class PokerGame {
   }
 
   // A recorded hand's cards as this viewer is allowed to see them: their own,
-  // and whatever was turned face up at showdown.
+  // and whatever was turned face up at showdown. The rule itself lives in
+  // hand-history.js, because the export applies the same one to a whole game.
   visibleHistoryCards(hand, viewerId) {
-    const mine = this.historyIdsForViewer(hand, viewerId);
-    const shown = new Set(hand.shownPlayerIds || []);
-    const perCard = hand.shownCards || {};
-    const visible = {};
-    for (const [id, cards] of Object.entries(hand.holeCards || {})) {
-      if (mine.has(id)) {
-        visible[id] = cards;
-      } else if (shown.has(id)) {
-        // A showdown turns both over; a winner of an uncontested pot may have
-        // turned one. The card that stayed down is a null, not a gap, so the
-        // replay draws a back where the felt drew one.
-        const idx = perCard[id];
-        visible[id] = idx ? cards.map((c, i) => (idx.includes(i) ? c : null)) : cards;
-      }
-    }
-    return visible;
+    return visibleCardsFor(hand, this.historyIdsForViewer(hand, viewerId));
   }
 
   // The ten-hand window this viewer is entitled to see. Rebuilt only when a

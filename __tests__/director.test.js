@@ -2384,3 +2384,163 @@ describe('what the field is doing', () => {
     d.stop();
   });
 });
+
+// ============================================================
+//  The hands a player can take away
+// ============================================================
+//
+// The recorder on a table keeps twenty and the table breaks. This is the
+// game's history, so a player moved when the field balances does not leave
+// half their hands behind - the same defect the leaderboard had.
+describe('the field history', () => {
+  function rngFrom(seed) {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      return s / 2147483648;
+    };
+  }
+
+  function dealOne(table, rng) {
+    table.startRound();
+    playHand(table, rng, 0);
+  }
+
+  test('every table feeds it, and two tables’ hand 7s are told apart', () => {
+    const d = makeDirector(6, { tableSize: 2, startChips: 2000 });
+    d.start();
+    const rng = rngFrom(11);
+    dealOne(d.tables[0], rng);
+    dealOne(d.tables[1], rng);
+    expect(d.history).toHaveLength(2);
+    // Both are hand 1 at their own table; the table number is what separates
+    // them, and it is on the record rather than left to be worked out.
+    expect(d.history.map((h) => [h.hand.handNum, h.tableNumber])).toEqual([
+      [1, 1],
+      [1, 2],
+    ]);
+    expect(d.history.every((h) => h.level >= 1)).toBe(true);
+    d.stop();
+  });
+
+  test('a player carried to another table gets both halves of their game', () => {
+    const d = makeDirector(7, { tableSize: 6 });
+    d.start();
+    const rng = rngFrom(3);
+    const t1 = d.tables.find((t) => t.tableNumber === 1);
+    const t2 = d.tables.find((t) => t.tableNumber === 2);
+    dealOne(t2, rng);
+    dealOne(t2, rng);
+    const mover = t2.players[0];
+    expect(d.historyFor(mover.uid)).toHaveLength(2);
+
+    // Table 1 loses a player, six fit one table, and table 2 breaks into it.
+    const keeper = t1.players[0];
+    const gone = t1.players[1];
+    keeper.chips += gone.chips;
+    gone.chips = 0;
+    d.tournament.recordElimination(gone.name, 1, gone.uid);
+    d._handleRoundEnd(t1, null);
+    expect(t2._broken).toBe(true);
+    expect(d.playerByUid(mover.uid).table.tableNumber).toBe(1);
+
+    dealOne(t1, rng);
+    const mine = d.historyFor(mover.uid);
+    expect(mine).toHaveLength(3);
+    expect(mine.map((h) => h.tableNumber)).toEqual([2, 2, 1]);
+    // Oldest first, which is the order they were played.
+    expect(mine[0].at).toBeLessThanOrEqual(mine[2].at);
+    d.stop();
+  });
+
+  test('only the hands you were in, and your own cards in every one', () => {
+    const d = makeDirector(4, { tableSize: 2 });
+    d.start();
+    const rng = rngFrom(5);
+    dealOne(d.tables[0], rng);
+    dealOne(d.tables[1], rng);
+    const me = d.tables[0].players[0];
+    const mine = d.historyFor(me.uid);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].tableNumber).toBe(1);
+    // Their seat is named, and their cards are there.
+    expect(mine[0].you).toHaveLength(1);
+    expect(mine[0].holeCards[mine[0].you[0]]).toHaveLength(2);
+    d.stop();
+  });
+
+  // What leaves the server, asserted against the bytes rather than the object.
+  // Seat ids and uids are deliberately different here: the harness elsewhere
+  // gives an entrant the same string for both, which would hide a uid leak
+  // behind a seat id that belongs in the file.
+  test('no uid and no unshown holding is in what is written out', () => {
+    const d = new TournamentDirector({
+      id: 'test',
+      tableSize: 4,
+      startChips: 2000,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    for (let i = 0; i < 4; i++) d.register({ id: `seat${i}`, uid: `uid${i}`, name: `P${i}` });
+    d.start();
+
+    // Driven by hand rather than by the random driver: everybody but the
+    // viewer folds, so the pot is uncontested and nobody shows a thing. With
+    // the driver they all call to a showdown, every card is turned over, and
+    // the assertion below has nothing left to prove.
+    const table = d.tables[0];
+    const me = table.players[0];
+    table.startRound();
+    for (let guard = 0; table.isRunning && guard < 200; guard++) {
+      const cur = table.players[table.currentPlayerIndex];
+      if (!cur) break;
+      if (cur.id !== me.id) table.handleAction(cur.id, 'fold');
+      else if (!table.handleAction(cur.id, 'check')) table.handleAction(cur.id, 'call');
+    }
+    expect(d.history).toHaveLength(1);
+
+    const mine = d.historyFor(me.uid);
+    const raw = JSON.stringify(mine);
+    // Nobody's uid, the asker's own included: the seat ids in `you` say which
+    // seats were theirs, and a file pasted into a thread has no use for an
+    // identifier.
+    for (const p of d.entrants) {
+      expect(`${p.uid}: ${raw.includes(p.uid) ? 'leaked' : 'absent'}`).toBe(`${p.uid}: absent`);
+    }
+
+    // And every card that was neither theirs nor turned face up. A deck holds
+    // one of each, so the exact card is an exact test.
+    const dealt = d.history[0].hand;
+    const shown = new Set(dealt.shownPlayerIds || []);
+    const mineIds = new Set(mine[0].you);
+    let checked = 0;
+    for (const [id, cards] of Object.entries(dealt.holeCards || {})) {
+      if (mineIds.has(id) || shown.has(id)) continue;
+      for (const card of cards) {
+        checked++;
+        const bytes = JSON.stringify(card);
+        expect(`${bytes}: ${raw.includes(bytes) ? 'leaked' : 'absent'}`).toBe(`${bytes}: absent`);
+      }
+    }
+    // Vacuous if nobody's cards were hidden, so say so.
+    expect(checked).toBeGreaterThan(0);
+    d.stop();
+  });
+
+  test('the bound drops the earliest hands, and zero keeps none', () => {
+    const d = makeDirector(2, { tableSize: 2, historyMax: 3 });
+    d.start();
+    const rng = rngFrom(13);
+    for (let i = 0; i < 5; i++) dealOne(d.tables[0], rng);
+    expect(d.history).toHaveLength(3);
+    expect(d.history.map((h) => h.hand.handNum)).toEqual([3, 4, 5]);
+
+    const off = makeDirector(2, { tableSize: 2, historyMax: 0 });
+    off.start();
+    dealOne(off.tables[0], rngFrom(17));
+    expect(off.history).toHaveLength(0);
+    expect(off.historyFor(off.tables[0].players[0].uid)).toEqual([]);
+    d.stop();
+    off.stop();
+  });
+});

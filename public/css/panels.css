@@ -567,6 +567,23 @@
   opacity: 0.7;
 }
 
+/* Taking your hands with you: under the list, because the list is the ten most
+   recent and these are the whole game. */
+.history-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(92, 61, 26, 0.2);
+}
+.history-export-note {
+  flex: 1 1 100%;
+  font-size: 0.7rem;
+  color: var(--smoke);
+  min-height: 1em;
+}
+
 /* Replay */
 .replay-panel {
   position: fixed;

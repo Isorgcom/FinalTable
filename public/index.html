@@ -1111,6 +1111,17 @@
             aria-labelledby="tabHistory"
           >
             <div class="panel-scroll" id="panelHistoryBody"></div>
+            <!-- The list above is a panel and shows the last ten. These write
+                 the whole game out: every hand you were dealt into, across any
+                 table you were moved to, holding only what you could already
+                 see. -->
+            <div class="history-export" id="historyExport">
+              <button class="btn-secondary" id="btnHistoryText" type="button">
+                Transcript (.txt)
+              </button>
+              <button class="btn-secondary" id="btnHistoryJson" type="button">Data (.json)</button>
+              <div class="history-export-note" id="historyExportNote"></div>
+            </div>
           </section>
         </div>
       </aside>

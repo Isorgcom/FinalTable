@@ -992,6 +992,224 @@ function renderLeaderboard(target) {
 }
 
 // ============================================================
+//  TAKING YOUR HANDS WITH YOU
+// ============================================================
+//
+// The History tab shows the last ten hands of the table you are at. These
+// write the whole game: every hand you were dealt into, following you across
+// any table you were moved to. Two files, because the two uses are different -
+// one to read or paste somewhere, one for anything that reads by machine.
+//
+// What is in them is what was already on your screen. The server builds the
+// records with the same redaction the replay panel has always used: your own
+// holding, the board, every action, and whatever was turned face up. Nobody's
+// folded cards, and nobody's uid but the fact that a seat was yours.
+
+const EXPORT_PHASES = {
+  preflop: 'Preflop',
+  flop: 'Flop',
+  turn: 'Turn',
+  river: 'River',
+  showdown: 'Showdown',
+};
+const EXPORT_ACTIONS = {
+  fold: 'folds',
+  check: 'checks',
+  call: 'calls',
+  raise: 'raises',
+  allin: 'is all in',
+};
+const EXPORT_WRAP = 58;
+
+// Which button is waiting on the answer. One round trip either way: the server
+// sends the records and the file is made from them here.
+let _exportWanted = null;
+
+function setExportNote(text) {
+  const note = document.getElementById('historyExportNote');
+  if (note) note.textContent = text || '';
+}
+
+function askForHandHistory(kind) {
+  if (typeof socket === 'undefined' || !socket || !socket.connected) {
+    setExportNote('Not connected.');
+    return;
+  }
+  _exportWanted = kind;
+  setExportNote('Building…');
+  socket.emit('exportHandHistory');
+}
+
+function onHandHistoryExport(game) {
+  const kind = _exportWanted;
+  _exportWanted = null;
+  const hands = game && Array.isArray(game.hands) ? game.hands : [];
+  if (!hands.length) {
+    setExportNote('No hands to write down yet.');
+    return;
+  }
+  const who = (window.__identity && window.__identity.name) || 'player';
+  const stem = exportFileStem(game, who);
+  if (kind === 'json') {
+    saveTextFile(`${stem}.json`, JSON.stringify(game, null, 2), 'application/json');
+  } else {
+    saveTextFile(`${stem}.txt`, handHistoryText(game, who), 'text/plain');
+  }
+  setExportNote(`${hands.length} hand${hands.length === 1 ? '' : 's'} saved.`);
+}
+
+function saveTextFile(name, text, type) {
+  const blob = new Blob([text], { type: `${type};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Not revoked straight away: doing it in the same turn races the download in
+  // some browsers and hands the reader an empty file.
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function exportFileStem(game, who) {
+  const slug = (value) =>
+    String(value || '')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 24) || 'game';
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `finaltable-${slug(game && game.name)}-${slug(who)}-${date}`;
+}
+
+function exportCard(card) {
+  if (!card) return '??';
+  return `${card.rank}${SUIT_SYMBOLS[card.suit] || ''}`;
+}
+
+// Actions run along a line until it is full, then continue indented under it,
+// so a busy street reads as a paragraph rather than a column of one-word rows.
+function wrapUnder(indent, parts) {
+  const out = [];
+  let line = '';
+  for (const part of parts) {
+    const next = line ? `${line} · ${part}` : part;
+    if (next.length > EXPORT_WRAP && line) {
+      out.push(indent + line);
+      line = part;
+    } else {
+      line = next;
+    }
+  }
+  if (line) out.push(indent + line);
+  return out;
+}
+
+function handHistoryBlock(hand) {
+  const mine = new Set(hand.you || []);
+  const seatName = (id) => {
+    if (mine.has(id)) return 'You';
+    const seat = (hand.players || []).find((p) => p.id === id);
+    return seat ? seat.name : 'Someone';
+  };
+
+  const out = [];
+  const head =
+    `Hand ${hand.handNum}` +
+    (hand.tableNumber ? ` · Table ${hand.tableNumber}` : '') +
+    (hand.level ? ` · Level ${hand.level}` : '') +
+    ` · blinds ${hand.smallBlind}/${hand.bigBlind}` +
+    (hand.ante ? ` ante ${hand.ante}` : '');
+  out.push(`── ${head} ${'─'.repeat(Math.max(2, EXPORT_WRAP - head.length))}`);
+  const seats = (hand.players || []).length;
+  out.push(` ${seats} player${seats === 1 ? '' : 's'}`);
+  for (const id of mine) {
+    const cards = hand.holeCards[id];
+    if (cards) out.push(` You: ${cards.map(exportCard).join(' ')}`);
+  }
+  out.push('');
+
+  const board = hand.communityCards || [];
+  const boardFor = {
+    preflop: [],
+    flop: board.slice(0, 3),
+    turn: board.slice(3, 4),
+    river: board.slice(4, 5),
+  };
+  const byPhase = new Map();
+  for (const a of hand.actions || []) {
+    if (!byPhase.has(a.phase)) byPhase.set(a.phase, []);
+    byPhase.get(a.phase).push(a);
+  }
+  for (const phase of ['preflop', 'flop', 'turn', 'river']) {
+    const acts = byPhase.get(phase) || [];
+    const cards = boardFor[phase] || [];
+    if (!acts.length && !cards.length) continue;
+    const label = (EXPORT_PHASES[phase] || phase).padEnd(8);
+    out.push(` ${label} ${cards.map(exportCard).join(' ')}`.trimEnd());
+    out.push(
+      ...wrapUnder(
+        '          ',
+        acts.map(
+          (a) =>
+            `${seatName(a.playerId)} ${EXPORT_ACTIONS[a.action] || a.action}` +
+            (a.amount ? ` ${fmtNum(a.amount)}` : '')
+        )
+      )
+    );
+  }
+
+  // Anybody else whose cards were actually turned over. A card that stayed
+  // down is a back, which is what the null in the record means.
+  const shown = Object.entries(hand.holeCards || {}).filter(([id]) => !mine.has(id));
+  if (shown.length) {
+    out.push('');
+    for (const [id, cards] of shown) {
+      out.push(
+        ` Shown    ${seatName(id)}: ${cards.map((c) => (c ? exportCard(c) : '▮')).join(' ')}`
+      );
+    }
+  }
+
+  out.push('');
+  const winners = hand.winners || [];
+  out.push(
+    winners.length
+      ? ` Pot ${fmtNum(hand.pot)} to ${winners
+          .map(
+            (w) =>
+              `${seatName(w.playerId)}${w.handName ? ` (${w.handName})` : ''}` +
+              (winners.length > 1 && Number.isFinite(w.amount) ? ` ${fmtNum(w.amount)}` : '')
+          )
+          .join(', ')}.`
+      : ` Pot ${fmtNum(hand.pot)}.`
+  );
+  out.push('');
+  return out;
+}
+
+function handHistoryText(game, who) {
+  const hands = game.hands || [];
+  const first = hands[0];
+  const last = hands[hands.length - 1];
+  const when = (ms) => (ms ? new Date(ms).toLocaleString() : null);
+  const lines = [`FinalTable · ${game.name || 'a game'}`];
+  lines.push(`${who} · ${hands.length} hand${hands.length === 1 ? '' : 's'}`);
+  // What this file covers, said plainly: a game the server restarted during,
+  // or one longer than the server keeps, starts later than its first hand and
+  // should not look complete.
+  if (first && when(first.at)) {
+    lines.push(`From hand ${first.handNum} on ${when(first.at)} to hand ${last.handNum}.`);
+  }
+  lines.push('Your own cards and whatever was turned face up. Nothing else was ever yours to see.');
+  lines.push('');
+  for (const hand of hands) lines.push(...handHistoryBlock(hand));
+  return lines.join('\n');
+}
+
+// ============================================================
 //  HAND REPLAY
 // ============================================================
 const PHASE_NAMES = { preflop: 'Preflop', flop: 'Flop', turn: 'Turn', river: 'River' };

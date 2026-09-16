@@ -440,6 +440,17 @@ button opens and closes it). Five tabs:
   somebody kept down shows as a back beside the one they turned over; nobody's
   hidden hole cards are ever in a history but their own.
 
+  The list is the last ten hands of the table you are sitting at. Underneath
+  it, **Transcript (.txt)** and **Data (.json)** write the whole game to a
+  file: every hand you were dealt into, following you across any table you
+  were moved to, oldest first. The transcript reads as a hand history - the
+  streets down the page, your cards, the board and what everybody did - and
+  the JSON is the same hands for anything that reads by machine. Both hold
+  exactly what was already on your screen, and a busted player can still take
+  theirs. A running server keeps the last 500 hands of a game
+  (`HAND_HISTORY_MAX`); the file says which hand it starts at, so one cut
+  short by that or by a restart does not read as the whole game.
+
 ### How the cards look
 
 **cards** in the table menu holds three settings, and all three are about how

@@ -22,20 +22,15 @@ None of this waits on the split below, and all of it is visible to a player.
 
 ### Taking the hand history with you
 
-The server already records every hand in full, and a player is already sent
-the part of it they are entitled to see. What is missing is a way to keep it.
-A download of your own history - the hands as the replay panel has them, your
-own holding plus whatever was genuinely turned face up - is worth having for
-its own sake: to look at a spot again after the game, to settle an argument at
-the table, to paste a hand into a thread.
-
-Three things about the recorder shape it. It keeps the last twenty hands and
-sends ten, so the window is short. It lives in memory and is not in the
-tournament snapshot, so a restart loses it. And it belongs to a table, so a
-player moved when the field balances leaves the old table's hands behind. An
-export that is worth downloading probably wants at least the first of those
-fixed, and the redaction has to survive the trip: what lands in the file is
-what that player could already see, never the table's folded cards.
+**Most of this is done** - see Done below. What is not, and what the rest of
+this item is now: the history lives in memory, so a server that restarts
+mid-game loses the hands played before it came back, and the export says so
+rather than pretending otherwise. Keeping it would mean a store of its own - a
+megabyte rewritten on every hand is not an option, so it needs its own file and
+its own write strategy, which is more work than everything above it put
+together. It is also the thing _Trust, but verify_ below would need first: a
+deck committed to at the deal can only be checked afterwards against a history
+that outlived the tournament.
 
 ### Games other than Hold'em
 
@@ -75,6 +70,20 @@ properly means shipping a verifier as well. Worth revisiting if this is ever
 hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
+
+Taking your hands with you. The server always recorded every hand in full and
+always sent each player the part of it they were entitled to see; what was
+missing was a way to keep it. The History tab writes the whole game to a file
+now - a transcript to read or paste somewhere, and the same hands as JSON -
+covering every hand you were dealt into rather than the ten the panel shows for
+whichever table you are at, and following you across a table move the way the
+leaderboard learned to. Two of the three things that were in the way went with
+it: the window, and the history belonging to a table rather than to you. What
+is in the file is what was already on your screen, because it is built with the
+redaction the replay panel has always used - which moved into one place for the
+purpose, since a second copy of that rule is a second thing to get wrong. No
+uid is in it either, not even the reader's own: a file that gets pasted into a
+thread has no business carrying anybody's identifier.
 
 The admin panel. One thing with two names - **Admin** everywhere it is written
 for a person, `admin` everywhere it is written for a machine - and what it

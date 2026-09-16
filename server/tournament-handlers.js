@@ -17,6 +17,11 @@ const { createTournamentRegistry } = require('./tournament-registry');
 // How often one socket may ask for a page of the log. Generous for a person
 // reading and paging, mean against anything else.
 const ADMIN_LOG_LIMIT = 30;
+// The export is the largest thing one socket can ask the server to build, and
+// a person clicking a download button does it once or twice. Well above that
+// and well below anything that would cost.
+const EXPORT_LIMIT = 6;
+const EXPORT_WINDOW_MS = 60 * 1000;
 const ADMIN_LOG_WINDOW_MS = 10 * 1000;
 const ADMIN_MAX_ATTEMPTS = 5;
 const ADMIN_FAIL_DELAY_MS = 400;
@@ -262,6 +267,26 @@ function registerTournamentHandlers(deps) {
       // next identifies, and so a value this server refused does not sit in
       // the client believing it was kept.
       if (prefs) socket.emit('preferences', prefs);
+    });
+
+    // A player's own hands, to keep. Everything in it is what they could
+    // already see at the table - their own holding, the board, every action,
+    // and whatever was turned face up - because it is built with the same
+    // redaction the replay panel has always used, applied to the whole game
+    // rather than to a ten-hand window. Answered to anybody registered in the
+    // game, seated or not: busting out is exactly when you want it.
+    socket.on('exportHandHistory', () => {
+      if (!socket.data.uid) return;
+      const at = Date.now();
+      const recent = (socket.data.historyAsks || []).filter((t) => at - t < EXPORT_WINDOW_MS);
+      if (recent.length >= EXPORT_LIMIT) {
+        socket.data.historyAsks = recent;
+        return;
+      }
+      recent.push(at);
+      socket.data.historyAsks = recent;
+      const game = registry.handHistoryFor(socket.data.uid);
+      socket.emit('handHistoryExport', game || { hands: [] });
     });
 
     // The devices this identity is signed in on. Answered only to the identity
