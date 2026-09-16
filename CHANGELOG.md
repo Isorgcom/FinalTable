@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.18.0 - 2026-09-16
+
 ### Added
 
 - The Admin page's **Games** list says what each game is actually doing -
