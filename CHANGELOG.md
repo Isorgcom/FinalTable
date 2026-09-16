@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.19.0 - 2026-09-16
+
 ### Added
 
 - Your hands are yours to keep. Under the **History** tab, **Transcript
