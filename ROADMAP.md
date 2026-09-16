@@ -20,6 +20,29 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
+### A login of its own
+
+An identity here is one of two things. A **guest** is a name and a token in one
+browser: clear the storage or pick up a different device and you are somebody
+else. Or a **GameNight account**, through the SSO bridge below, which is a real
+account and is not available to anybody running this server without a GameNight
+site to pair it with. There is nothing in between, and the in-between is what
+most people who host this will actually want.
+
+What one needs: a credential of FinalTable's own - `server/admin-credential.js`
+already hashes and checks one, so the shape is there and the mistakes are
+already made once; signing up and signing in from any browser; and a decision
+about the guest identities already on the server, which is the interesting part
+rather than the password. Recovery is the hard question, because a server
+somebody runs for their own game night has no email to send anything to, and
+"ask the admin" may be the honest answer.
+
+Three things it would immediately make better, all of which already exist and
+are today built on an identity that is really a browser: the **devices** list,
+the preferences that follow you rather than the browser, and **your games** -
+the hands are kept for thirty days, which is exactly as long as a guest
+identity lasts, so an account is what would make an archive properly somebody's.
+
 ### Games other than Hold'em
 
 The largest of these by far. The engine deals two cards and makes the best five
