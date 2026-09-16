@@ -657,6 +657,12 @@
   font-size: 0.8rem;
   color: var(--smoke);
 }
+/* A game's two downloads, side by side at the end of its row. */
+.session-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 /* The admin's list of games: the lobby's cards, with the code on each. */
 .admin-games {

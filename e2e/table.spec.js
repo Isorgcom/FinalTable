@@ -3099,3 +3099,36 @@ test('the game can be taken away as a file', async ({ page }) => {
 
   expect(pageErrors).toEqual([]);
 });
+
+// A game is reaped ten minutes after its winner. The hands are not: the point
+// of writing them down is that you still have them afterwards, so they are in
+// the lobby rather than only at the table you have left.
+test('a game you have left is still yours in the lobby', async ({ page }) => {
+  const pageErrors = await seatAtTournamentTable(page, 'Archivist');
+  await deal(page);
+  await page.click('#btnFold');
+  await expect(page.locator('#actionsPanel')).not.toHaveClass(/hidden/, { timeout: 20000 });
+
+  // Out of the table, the way the corner door goes.
+  await page.click('#btnToLobby');
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#lobbyHome')).toBeVisible();
+
+  await page.click('#lobbyMenuToggle');
+  await page.click('#btnMyGames');
+  await expect(page.locator('#lobbyGames')).toBeVisible();
+  const rows = page.locator('#myGamesList .session-row');
+  await expect(rows).toHaveCount(1, { timeout: 10000 });
+  await expect(rows.first()).toContainText('Archivist table');
+  await expect(rows.first()).toContainText('hand');
+
+  const saving = page.waitForEvent('download');
+  await rows.first().getByText('Transcript').click();
+  const file = await saving;
+  const text = fs.readFileSync(await file.path(), 'utf8');
+  expect(text).toContain('FinalTable');
+  expect(text).toContain('You:');
+  await expect(page.locator('#myGamesStatus')).toContainText('saved');
+
+  expect(pageErrors).toEqual([]);
+});

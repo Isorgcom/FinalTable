@@ -123,6 +123,14 @@ function loadConfig() {
     // server that is left up for a week from growing without end. Zero turns
     // the export off.
     handHistoryMax: intFromEnv('HAND_HISTORY_MAX', 500, 0, 5000),
+    // And how long a game's hands are kept after it, which is the whole point
+    // of writing them down: a tournament is reaped ten minutes after its
+    // winner, and somebody wants their hands the next morning. Thirty days,
+    // which is also what a guest identity gets before it is expired - an
+    // archive nobody can prove they own is no use to anybody.
+    handHistoryTtlMs: intFromEnv('HAND_HISTORY_TTL_MS', 2592000000, 60000, 31536000000),
+    // And a count, so a busy month cannot fill a disk with poker.
+    handHistoryMaxGames: intFromEnv('HAND_HISTORY_MAX_GAMES', 200, 1, 10000),
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),

@@ -449,7 +449,10 @@ button opens and closes it). Five tabs:
   exactly what was already on your screen, and a busted player can still take
   theirs. A running server keeps the last 500 hands of a game
   (`HAND_HISTORY_MAX`); the file says which hand it starts at, so one cut
-  short by that or by a restart does not read as the whole game.
+  short by that does not read as the whole game. The game you are playing is
+  written down as it goes, so a server restart no longer loses what came
+  before it, and **Your games** in the lobby menu has the ones you have
+  finished - see below.
 
 ### How the cards look
 
@@ -659,6 +662,18 @@ The admin is whoever knows the server's admin password. It unlocks the
 table menu. The unlock lasts as long as the browser's connection; a reload
 asks again.
 
+### Your games
+
+**your games** in the lobby's corner menu lists every game you have played that
+the server still keeps, newest first, with how many hands you were dealt into
+and when it ended. **Transcript** and **Data** on a row write the same two
+files the History tab writes at the table, for that game.
+
+A game is only listed for the people who played in it, and asking for one you
+were not in is refused rather than answered with an empty file. They are kept
+for thirty days (`HAND_HISTORY_TTL_MS`) and the server keeps the most recent
+200 games (`HAND_HISTORY_MAX_GAMES`), whichever runs out first.
+
 ### The Admin page
 
 Four pages behind one strip of tabs: **Games**, **Sign-in**, **Password** and
@@ -740,17 +755,20 @@ game on the Admin page, reached without leaving the felt.
 These live in the server's `.env` (see `.env.example`) and take effect on a
 restart:
 
-| Setting                      | Default  | What it does                                                      |
-| ---------------------------- | -------- | ----------------------------------------------------------------- |
-| `ADMIN_PASSWORD`             | none     | The first admin password. None means no admin surface.            |
-| `MAX_TOURNAMENTS`            | 8        | How many games the server holds at once.                          |
-| `CHAT_ENABLED`               | true     | Chat exists at all.                                               |
-| `REACTIONS_ENABLED`          | true     | The reaction strip exists at all.                                 |
-| `TOURNAMENT_FINISHED_TTL_MS` | 600000   | How long a finished game stays listed (ten minutes).              |
-| `TOURNAMENT_ZOMBIE_HOLD_MS`  | 21600000 | How long a held game waits for somebody before it is written off. |
-| `HOST_TRANSFER_GRACE_MS`     | 120000   | How long a missing host keeps the game before it passes.          |
-| `CHAT_RATE`, `REACTION_RATE` | 4, 3     | Messages and reactions allowed per ten seconds.                   |
-| `GAMENIGHT_URL` and friends  | none     | Seed the GameNight pairing on a first boot; the page wins after.  |
+| Setting                      | Default    | What it does                                                      |
+| ---------------------------- | ---------- | ----------------------------------------------------------------- |
+| `ADMIN_PASSWORD`             | none       | The first admin password. None means no admin surface.            |
+| `MAX_TOURNAMENTS`            | 8          | How many games the server holds at once.                          |
+| `CHAT_ENABLED`               | true       | Chat exists at all.                                               |
+| `REACTIONS_ENABLED`          | true       | The reaction strip exists at all.                                 |
+| `TOURNAMENT_FINISHED_TTL_MS` | 600000     | How long a finished game stays listed (ten minutes).              |
+| `TOURNAMENT_ZOMBIE_HOLD_MS`  | 21600000   | How long a held game waits for somebody before it is written off. |
+| `HOST_TRANSFER_GRACE_MS`     | 120000     | How long a missing host keeps the game before it passes.          |
+| `CHAT_RATE`, `REACTION_RATE` | 4, 3       | Messages and reactions allowed per ten seconds.                   |
+| `GAMENIGHT_URL` and friends  | none       | Seed the GameNight pairing on a first boot; the page wins after.  |
+| `HAND_HISTORY_MAX`           | 500        | Hands a running game keeps for the download. Zero turns it off.   |
+| `HAND_HISTORY_TTL_MS`        | 2592000000 | How long a game's hands are kept afterwards (thirty days).        |
+| `HAND_HISTORY_MAX_GAMES`     | 200        | How many games' hands the server keeps at once.                   |
 
 ## Privacy and fairness, briefly
 

@@ -20,18 +20,6 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
-### Taking the hand history with you
-
-**Most of this is done** - see Done below. What is not, and what the rest of
-this item is now: the history lives in memory, so a server that restarts
-mid-game loses the hands played before it came back, and the export says so
-rather than pretending otherwise. Keeping it would mean a store of its own - a
-megabyte rewritten on every hand is not an option, so it needs its own file and
-its own write strategy, which is more work than everything above it put
-together. It is also the thing _Trust, but verify_ below would need first: a
-deck committed to at the deal can only be checked afterwards against a history
-that outlived the tournament.
-
 ### Games other than Hold'em
 
 The largest of these by far. The engine deals two cards and makes the best five
@@ -64,12 +52,23 @@ part that would be rigged, so it answers a narrower question than the one
 being asked. The reveal has a cost of its own: the shuffled order is every
 folded player's cards, so revealing it per hand hands back exactly what the
 history redaction exists to withhold, and revealing it at the end instead
-means the history has to survive the tournament, which today it does not. And
+means the history has to survive the tournament - which it now does, so that
+half of the objection has gone. And
 a published hash nobody can conveniently check is theatre, so doing it
 properly means shipping a verifier as well. Worth revisiting if this is ever
 hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
+
+Keeping them. The hands are written down as the game goes, so a restart no
+longer loses what came before it, and they outlive the game itself: a
+tournament is reaped ten minutes after its winner and its chat goes with it,
+while its hands are kept for thirty days. **Your games** in the lobby menu
+lists what somebody has played and hands them the same two files the table
+does. One file a game plus a small index saying who was in which, which is
+what lets a player be given a game the registry has long since forgotten - and
+the uid is the whole authorisation, so a game somebody did not play in is
+refused rather than redacted down to nothing.
 
 Taking your hands with you. The server always recorded every hand in full and
 always sent each player the part of it they were entitled to see; what was

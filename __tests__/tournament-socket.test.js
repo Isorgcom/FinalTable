@@ -688,6 +688,53 @@ describe('Tournament socket layer', () => {
     await waitFor(host, 'tournamentCancelled');
   });
 
+  // A game is reaped ten minutes after its winner. Its hands are not: the
+  // whole point of writing them down is that somebody still has them the next
+  // morning.
+  test('a game that is over is still yours to take away', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host);
+    await startAndDeal(host, guest);
+    const entry = serverModule.tournaments.get(created.id);
+    host.emit('action', { action: 'fold' });
+    guest.emit('action', { action: 'fold' });
+    await until(() => entry.director.history.length > 0);
+
+    // The game goes.
+    host.emit('cancelTournament');
+    await waitFor(host, 'tournamentCancelled');
+    expect(serverModule.tournaments.get(created.id)).toBeUndefined();
+
+    // The hands do not.
+    const listed = waitFor(host, 'myGames');
+    host.emit('listMyGames');
+    const { games } = await listed;
+    const row = games.find((g) => g.id === created.id);
+    expect(row).toBeTruthy();
+    expect(row.hands).toBeGreaterThan(0);
+    // A list of games, not of who else was in them.
+    expect(JSON.stringify(games)).not.toContain(guest.__identity.uid);
+
+    const got = waitFor(host, 'handHistoryExport');
+    host.emit('exportHandHistory', { id: created.id });
+    const kept = await got;
+    expect(kept.id).toBe(created.id);
+    expect(kept.hands.length).toBeGreaterThan(0);
+    expect(kept.hands[0].you).toHaveLength(1);
+    expect(JSON.stringify(kept)).not.toContain(host.__identity.uid);
+
+    // And somebody who was not in it is refused rather than redacted down to
+    // nothing: the two are different answers and only one of them is honest.
+    const stranger = await connectClient();
+    await identify(stranger, { name: 'Outsider', avatar: '🐸' });
+    const refused = waitFor(stranger, 'handHistoryExport');
+    stranger.emit('exportHandHistory', { id: created.id });
+    expect((await refused).hands).toEqual([]);
+    const theirs = waitFor(stranger, 'myGames');
+    stranger.emit('listMyGames');
+    expect((await theirs).games).toEqual([]);
+  });
+
   test('leaving a running tournament keeps the seat under auto-play', async () => {
     const host = await connectClient();
     const { created, guest } = await createTournamentWithGuest(host);

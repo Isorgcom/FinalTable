@@ -275,18 +275,37 @@ function registerTournamentHandlers(deps) {
     // redaction the replay panel has always used, applied to the whole game
     // rather than to a ten-hand window. Answered to anybody registered in the
     // game, seated or not: busting out is exactly when you want it.
-    socket.on('exportHandHistory', () => {
-      if (!socket.data.uid) return;
+    function exportAllowed() {
+      if (!socket.data.uid) return false;
       const at = Date.now();
       const recent = (socket.data.historyAsks || []).filter((t) => at - t < EXPORT_WINDOW_MS);
       if (recent.length >= EXPORT_LIMIT) {
         socket.data.historyAsks = recent;
-        return;
+        return false;
       }
       recent.push(at);
       socket.data.historyAsks = recent;
-      const game = registry.handHistoryFor(socket.data.uid);
+      return true;
+    }
+
+    // With an id, a game that has been kept; without one, the game being
+    // played now. A game somebody did not play in is refused rather than
+    // redacted down to nothing: the two are different answers and only one of
+    // them is honest.
+    socket.on('exportHandHistory', (payload = {}) => {
+      if (!exportAllowed()) return;
+      const id = payload && payload.id ? String(payload.id) : null;
+      const game = id
+        ? registry.pastGameFor(socket.data.uid, id)
+        : registry.handHistoryFor(socket.data.uid);
       socket.emit('handHistoryExport', game || { hands: [] });
+    });
+
+    // The games this player has played that are still kept. Names games,
+    // never who else was in them.
+    socket.on('listMyGames', () => {
+      if (!exportAllowed()) return;
+      socket.emit('myGames', { games: registry.pastGamesFor(socket.data.uid) });
     });
 
     // The devices this identity is signed in on. Answered only to the identity

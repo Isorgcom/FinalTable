@@ -12,6 +12,7 @@
 // need the same loop anyway. `now` and `timers` are injectable for tests.
 
 const { TournamentDirector } = require('../director');
+const { exportHandsFor } = require('../hand-history');
 const { createChatRooms } = require('./chat-rooms');
 const reactions = require('./reactions');
 
@@ -113,6 +114,7 @@ function createTournamentRegistry(deps = {}) {
     tableOptions = {},
     handPauseMs = 0,
     historyMax = 500,
+    historyStore = null,
     // Every connected socket, for the personalised tournament list. Injectable
     // so the registry tests can drive it without a real socket.io server.
     connectedSockets = () => (io && io.sockets ? io.sockets.sockets.values() : []),
@@ -247,6 +249,7 @@ function createTournamentRegistry(deps = {}) {
     // now - a shutdown that wrote the field but not the last thing anyone said
     // would be a strange thing to have built on purpose.
     if (chatStore) chatStore.flush();
+    if (historyStore) historyStore.flush();
     if (!store) return;
     const list = [...tournaments.values()]
       .filter((e) => e.status === 'registering' || e.status === 'running')
@@ -836,6 +839,26 @@ function createTournamentRegistry(deps = {}) {
     if (chatStore) chatStore.record(entry.id, chat.snapshot(entry.id));
   }
 
+  // The hands, which outlive the game they were dealt in: a tournament is
+  // reaped ten minutes after its winner and its chat goes with it, but the
+  // point of somebody's hands is that they still have them tomorrow. The
+  // store ages them out on a clock of its own.
+  function persistHistory(entry) {
+    if (!historyStore || entry.status === 'registering') return;
+    historyStore.record(
+      entry.id,
+      {
+        name: entry.name,
+        startedAt: entry.startedAt || null,
+        endedAt: entry.finishedAt || null,
+        // Everybody who was ever in it, which is what says whose game this is
+        // when the registry has long since forgotten it.
+        uids: entry.director.entrants.map((e) => e.uid).filter(Boolean),
+      },
+      entry.director.historySnapshot()
+    );
+  }
+
   // Sent whenever a client attaches to a room: a fresh join, a reconnect, a
   // reload, or the balancer moving them to a table mid-conversation. One path
   // for all four, so none of them can be the one that was forgotten.
@@ -1171,6 +1194,7 @@ function createTournamentRegistry(deps = {}) {
         if (entry.restoreCount && now() - (entry.restoredAt || 0) > RESTORE_STABLE_MS) {
           entry.restoreCount = 0;
         }
+        persistHistory(entry);
         persist();
       },
       onFieldUpdate: () => {
@@ -2187,6 +2211,10 @@ function createTournamentRegistry(deps = {}) {
       entry.timer = null;
     }
     entry.director.stop();
+    // Written one last time, with an ending on it, and then left alone. The
+    // chat file goes; the hands stay until they age out.
+    entry.finishedAt = entry.finishedAt || now();
+    persistHistory(entry);
     chat.dropTournament(entry.id);
     if (chatStore) chatStore.remove(entry.id);
     tournaments.delete(entry.id);
@@ -2260,6 +2288,32 @@ function createTournamentRegistry(deps = {}) {
       };
     }
     return null;
+  }
+
+  // The games one player has played that are still kept, newest first. Names
+  // games, never who else was in them.
+  function pastGamesFor(uid) {
+    return historyStore ? historyStore.listFor(uid) : [];
+  }
+
+  // One of those games, as that player is allowed to see it. The uid is the
+  // whole authorisation: a game somebody did not play in is refused rather
+  // than redacted down to nothing, because the two are different answers and
+  // only one of them is honest.
+  function pastGameFor(uid, id) {
+    if (!historyStore || !uid || !id) return null;
+    if (!historyStore.played(uid, id)) return null;
+    const kept = historyStore.load(id);
+    if (!kept) return null;
+    const meta = kept.meta || {};
+    return {
+      id,
+      name: meta.name || null,
+      status: 'kept',
+      startedAt: meta.startedAt || null,
+      finishedAt: meta.endedAt || null,
+      hands: exportHandsFor(kept.hands, uid),
+    };
   }
 
   // ── The sweep ────────────────────────────────────────────────────────────
@@ -2430,6 +2484,13 @@ function createTournamentRegistry(deps = {}) {
       // one somebody is trying to work out what happened to, so its chat is
       // the last thing that should vanish.
       if (chatStore) chat.hydrate(chatStore.load(saved.id));
+      // And the hands played before the process went down. Nothing depends on
+      // the field being seated again either: a game that cannot be dealt is
+      // exactly the one somebody wants the hands out of.
+      if (historyStore) {
+        const kept = historyStore.load(saved.id);
+        if (kept) entry.director.hydrateHistory(kept.hands);
+      }
       // A tournament that was mid-play when the process went down is seated
       // again from the field it recorded between hands. Every seat comes back
       // sitting out and is taken over by its player when they reconnect.
@@ -2479,6 +2540,9 @@ function createTournamentRegistry(deps = {}) {
         if (!tournaments.has(id)) chatStore.remove(id);
       }
     }
+    // A history file whose tournament did not come back is not an orphan, it
+    // is the archive. Only age and the count take one away.
+    if (historyStore) historyStore.prune();
     return restored;
   }
 
@@ -2517,6 +2581,8 @@ function createTournamentRegistry(deps = {}) {
     adminList,
     findByUid,
     handHistoryFor,
+    pastGamesFor,
+    pastGameFor,
     findPendingByUid,
     byCode,
     requireHost,

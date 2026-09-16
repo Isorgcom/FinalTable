@@ -11,7 +11,7 @@
 
 const { PokerGame, DEFAULT_MAX_PLAYERS } = require('./engine');
 const { Tournament } = require('./tournament');
-const { Leaderboard, seatIdsForUid, visibleCardsFor } = require('./hand-history');
+const { Leaderboard, exportHandsFor } = require('./hand-history');
 const random = require('./random');
 
 class ChipConservationError extends Error {}
@@ -1076,45 +1076,27 @@ class TournamentDirector {
 
   // One player's own hands, as they are allowed to see them: their holding,
   // the board, every action, and whatever was turned face up - never anybody
-  // else's folded cards. Oldest first, which is the order they were played.
-  //
-  // Nobody's uid but the asker's own is in the result: a file that gets pasted
-  // into a thread has no business carrying the other players' identifiers, and
-  // `you` says which seats were theirs without it.
+  // else's folded cards. The rule and the shape both live in hand-history.js,
+  // because a game read back off the disk a month from now has to come out of
+  // exactly the same function.
   historyFor(uid) {
-    if (!uid) return [];
-    const out = [];
-    for (const row of this.history) {
-      const hand = row.hand;
-      const mine = seatIdsForUid(hand, uid);
-      if (!mine.size) continue;
-      out.push({
-        handNum: hand.handNum,
-        tableNumber: row.tableNumber,
-        level: row.level,
-        at: hand.timestamp || null,
-        pot: hand.pot,
-        phase: hand.finalPhase,
-        winners: hand.winners,
-        communityCards: hand.communityCards,
-        holeCards: visibleCardsFor(hand, mine),
-        actions: hand.actions,
-        players: (hand.players || []).map((p) => ({
-          id: p.id,
-          name: p.name,
-          chips: p.chips,
-          seatIndex: p.seatIndex,
-        })),
-        you: [...mine],
-        dealerIndex: hand.dealerIndex,
-        sbIndex: hand.sbIndex,
-        bbIndex: hand.bbIndex,
-        smallBlind: hand.smallBlind,
-        bigBlind: hand.bigBlind,
-        ante: hand.ante || 0,
-      });
-    }
-    return out.sort((a, b) => (a.at || 0) - (b.at || 0) || a.tableNumber - b.tableNumber);
+    return exportHandsFor(this.history, uid);
+  }
+
+  // What the field has played, as it should go on disk. The rows are exactly
+  // what historyFor reads, so what is written is what a restart gives back.
+  historySnapshot() {
+    return this.history;
+  }
+
+  // And back again. Bounded on the way in as well as on the way out: a file
+  // written when the bound was larger must not put the memory back where it
+  // was.
+  hydrateHistory(rows) {
+    if (!Array.isArray(rows)) return 0;
+    const kept = rows.filter((row) => row && row.hand && Array.isArray(row.hand.players));
+    this.history = this.historyMax > 0 ? kept.slice(-this.historyMax) : [];
+    return this.history.length;
   }
 
   // ── Waiting on the field ─────────────────────────────────────────────────

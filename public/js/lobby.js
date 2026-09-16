@@ -202,6 +202,9 @@
     // A guest is one browser and would see a list of one. The list is here for
     // an account whose devices are more than this one.
     $('btnSessions').classList.toggle('hidden', !linked);
+    // Unlike the devices list, this one is for a guest too: they have played
+    // the games whether or not they have an account to hang them on.
+    $('btnMyGames').classList.toggle('hidden', !identity);
     $('playerName').readOnly = linked;
     $('playerName').classList.remove('input-invalid');
   }
@@ -304,6 +307,8 @@
   // pulling the page out from under them to add a line at the top is worse
   // than the line arriving late.
   let adminLogPaged = false;
+  // The games this player has played that are still kept. Null until asked for.
+  let myGames = null;
 
   // ── The Admin page's tabs ───────────────────────────────────────────────
   //
@@ -992,6 +997,84 @@
     askForSessions();
   }
 
+  function openMyGames() {
+    closeLobbyMenu();
+    myGames = null;
+    showView('games');
+    renderMyGames();
+    askForMyGames();
+  }
+
+  function askForMyGames() {
+    if (socket && socket.connected) socket.emit('listMyGames');
+  }
+
+  function onMyGames(data) {
+    myGames = data && Array.isArray(data.games) ? data.games : [];
+    renderMyGames();
+  }
+
+  function renderMyGames() {
+    const list = $('myGamesList');
+    const status = $('myGamesStatus');
+    if (!list || !status) return;
+    list.textContent = '';
+    if (myGames === null) {
+      status.textContent = 'Loading…';
+      return;
+    }
+    if (!myGames.length) {
+      status.textContent = '';
+      const empty = document.createElement('div');
+      empty.className = 'session-empty';
+      empty.textContent = 'Nothing kept yet. A game you play is written down as it goes.';
+      list.appendChild(empty);
+      return;
+    }
+    const n = myGames.length;
+    status.textContent = `${n} game${n === 1 ? '' : 's'}`;
+    myGames.forEach((game) => list.appendChild(myGameRow(game)));
+  }
+
+  function myGameRow(game) {
+    const row = document.createElement('div');
+    row.className = 'session-row';
+
+    const text = document.createElement('div');
+    text.className = 'session-what';
+    const name = document.createElement('div');
+    name.className = 'session-name';
+    name.textContent = game.name || 'A game';
+    const when = document.createElement('div');
+    when.className = 'session-when';
+    when.textContent = [
+      game.hands ? `${game.hands} hand${game.hands === 1 ? '' : 's'}` : null,
+      game.endedAt ? fmtWhen(game.endedAt) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    text.append(name, when);
+
+    const actions = document.createElement('div');
+    actions.className = 'session-actions';
+    for (const [label, kind] of [
+      ['Transcript', 'text'],
+      ['Data', 'json'],
+    ]) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-secondary';
+      btn.textContent = label;
+      btn.addEventListener('click', () =>
+        askForHandHistory(kind, { id: game.id, noteId: 'myGamesStatus' })
+      );
+      actions.appendChild(btn);
+    }
+
+    row.append(text, actions);
+    return row;
+  }
+
   function askForSessions() {
     if (socket && socket.connected) socket.emit('listSessions');
   }
@@ -1302,7 +1385,7 @@
 
   function showView(name) {
     view = name;
-    ['home', 'create', 'waiting', 'pending', 'admin', 'sessions'].forEach((v) => {
+    ['home', 'create', 'waiting', 'pending', 'admin', 'sessions', 'games'].forEach((v) => {
       const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
       if (node) node.classList.toggle('hidden', v !== name);
     });
@@ -2444,6 +2527,9 @@
     $('btnGameNight').addEventListener('click', startGameNightLogin);
     $('btnGameNightSignOut').addEventListener('click', signOutOfGameNight);
     $('btnSessions').addEventListener('click', openSessions);
+    $('btnMyGames').addEventListener('click', openMyGames);
+    $('btnMyGamesRefresh').addEventListener('click', askForMyGames);
+    $('btnMyGamesBack').addEventListener('click', () => showView('home'));
     // Whatever the page that reloaded this one had to say.
     const waiting = store.get(NOTICE_KEY);
     if (waiting) {
@@ -2553,6 +2639,7 @@
     onIdentifyFailed,
     onSessionReplaced,
     onSessions,
+    onMyGames,
     onSessionEnded,
     onList,
     onJoined,

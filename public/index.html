@@ -90,6 +90,7 @@
         </button>
         <div class="menu-dropdown" id="lobbyMenuDropdown" role="menu">
           <button class="menu-item hidden" id="btnLobbyAdmin" type="button">admin</button>
+          <button class="menu-item hidden" id="btnMyGames" type="button">your games</button>
           <button class="menu-item hidden" id="btnSessions" type="button">your devices</button>
           <button class="menu-item hidden" id="btnGameNightSignOut" type="button">sign out</button>
           <div class="menu-note" id="lobbyMenuVersion"></div>
@@ -184,6 +185,22 @@
           <div class="lobby-actions">
             <button class="btn-secondary" id="btnSessionsRefresh" type="button">Refresh</button>
             <button class="btn-secondary" id="btnSessionsBack" type="button">Back</button>
+          </div>
+        </section>
+
+        <!-- The hands you were dealt, kept past the game they were dealt in. -->
+        <section class="lobby-view lobby-card hidden" id="lobbyGames" aria-label="Your games">
+          <div class="lobby-title">Your games</div>
+          <p class="admin-help">
+            Every game you have played that is still kept, newest first. The files hold what you
+            could already see - your own cards, the board, and whatever was turned face up - and
+            never anybody else's folded holding.
+          </p>
+          <div class="admin-status" id="myGamesStatus" aria-live="polite"></div>
+          <div class="session-list" id="myGamesList"></div>
+          <div class="lobby-actions">
+            <button class="btn-secondary" id="btnMyGamesRefresh" type="button">Refresh</button>
+            <button class="btn-secondary" id="btnMyGamesBack" type="button">Back</button>
           </div>
         </section>
 

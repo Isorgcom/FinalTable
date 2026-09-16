@@ -6,6 +6,7 @@ const path = require('path');
 const { createIdentityStore } = require('./server/identity');
 const { createTournamentStore } = require('./server/tournament-store');
 const { createChatStore } = require('./server/chat-store');
+const { createHandHistoryStore } = require('./server/hand-history-store');
 const { loadLocalEnv } = require('./server/load-env');
 const { loadConfig } = require('./server/config');
 const { applySecurityHeaders, createRateLimiter } = require('./server/http-middleware');
@@ -177,6 +178,18 @@ const chatStore = config.chatEnabled
   ? createChatStore({ saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data') })
   : null;
 
+// The hands a game was played with, which outlive the game. Absent when the
+// history is switched off entirely, which is what stops a server that keeps
+// nothing from writing files anyway.
+const handHistoryStore =
+  config.handHistoryMax > 0
+    ? createHandHistoryStore({
+        saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+        ttlMs: config.handHistoryTtlMs,
+        maxGames: config.handHistoryMaxGames,
+      })
+    : null;
+
 // Admin settings, set from the lobby and kept beside the saves.
 const settingsStore = createSettingsStore({
   saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
@@ -216,6 +229,7 @@ const tournamentLayer = registerTournamentHandlers({
   sweepMs: config.tournamentSweepMs,
   handPauseMs: config.handPauseMs,
   historyMax: config.handHistoryMax,
+  historyStore: handHistoryStore,
   adminCredential,
   tableOptions: { streetPauseMs: config.streetPauseMs, showWindowMs: config.showWindowMs },
   chatStore,
@@ -251,6 +265,11 @@ function flushStores() {
   }
   try {
     if (chatStore) chatStore.flush();
+  } catch (_err) {
+    /* as above */
+  }
+  try {
+    if (handHistoryStore) handHistoryStore.flush();
   } catch (_err) {
     /* as above */
   }
@@ -344,6 +363,7 @@ module.exports = {
   identity,
   sso,
   settingsStore,
+  handHistoryStore,
   adminCredential,
   flushStores,
   startServer,

@@ -1024,20 +1024,26 @@ const EXPORT_WRAP = 58;
 // Which button is waiting on the answer. One round trip either way: the server
 // sends the records and the file is made from them here.
 let _exportWanted = null;
+// Where to say so. The History tab has a line of its own; the lobby's Your
+// games page has its own status row and asks for the same files.
+let _exportNoteId = 'historyExportNote';
 
 function setExportNote(text) {
-  const note = document.getElementById('historyExportNote');
+  const note = document.getElementById(_exportNoteId);
   if (note) note.textContent = text || '';
 }
 
-function askForHandHistory(kind) {
+// `id` names a game that has been kept; without one it is the game being
+// played now.
+function askForHandHistory(kind, { id = null, noteId = 'historyExportNote' } = {}) {
+  _exportNoteId = noteId;
   if (typeof socket === 'undefined' || !socket || !socket.connected) {
     setExportNote('Not connected.');
     return;
   }
   _exportWanted = kind;
   setExportNote('Building…');
-  socket.emit('exportHandHistory');
+  socket.emit('exportHandHistory', id ? { id } : {});
 }
 
 function onHandHistoryExport(game) {

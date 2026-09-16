@@ -67,6 +67,10 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onAdminLogRows(data);
   });
   // A player's own hands, asked for by the History tab's download buttons.
+  // The games this player has played that the server still keeps.
+  socket.on('myGames', (data) => {
+    if (window.Lobby) Lobby.onMyGames(data);
+  });
   socket.on('handHistoryExport', (data) => {
     if (typeof onHandHistoryExport === 'function') onHandHistoryExport(data);
   });

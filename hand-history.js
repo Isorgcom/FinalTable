@@ -340,4 +340,71 @@ function visibleCardsFor(hand, ownSeatIds) {
   return visible;
 }
 
-module.exports = { HandHistory, Leaderboard, seatIdsForUid, visibleCardsFor };
+// One recorded hand as one player is allowed to see it, in the shape the
+// export writes and the replay panel draws. Null when that player was not in
+// the hand at all.
+//
+// `row` is the director's stored form - the hand, plus the two things a hand
+// does not know about itself: which table dealt it, and the level the clock
+// was on. The same function serves the game being played and one read back
+// off the disk a month later, so there is no second copy of the rule to get
+// wrong.
+//
+// No uid comes out of it, the asker's own included: `you` names the seats that
+// were theirs, and a file that gets pasted into a thread has no business
+// carrying anybody's identifier.
+function exportRowFor(row, uid) {
+  const hand = row && row.hand;
+  if (!hand) return null;
+  const mine = seatIdsForUid(hand, uid);
+  if (!mine.size) return null;
+  return {
+    handNum: hand.handNum,
+    tableNumber: row.tableNumber === undefined ? null : row.tableNumber,
+    level: row.level === undefined ? null : row.level,
+    at: hand.timestamp || null,
+    pot: hand.pot,
+    phase: hand.finalPhase,
+    winners: hand.winners,
+    communityCards: hand.communityCards,
+    holeCards: visibleCardsFor(hand, mine),
+    actions: hand.actions,
+    players: (hand.players || []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      chips: p.chips,
+      seatIndex: p.seatIndex,
+    })),
+    you: [...mine],
+    dealerIndex: hand.dealerIndex,
+    sbIndex: hand.sbIndex,
+    bbIndex: hand.bbIndex,
+    smallBlind: hand.smallBlind,
+    bigBlind: hand.bigBlind,
+    ante: hand.ante || 0,
+  };
+}
+
+// Oldest first, which is the order they were played. A hand number is its
+// table's round count, so a field of three tables deals three hand 7s; the
+// time is what orders them and the table number is what tells them apart.
+function exportHandsFor(rows, uid) {
+  if (!uid || !Array.isArray(rows)) return [];
+  const out = [];
+  for (const row of rows) {
+    const record = exportRowFor(row, uid);
+    if (record) out.push(record);
+  }
+  return out.sort(
+    (a, b) => (a.at || 0) - (b.at || 0) || (a.tableNumber || 0) - (b.tableNumber || 0)
+  );
+}
+
+module.exports = {
+  HandHistory,
+  Leaderboard,
+  seatIdsForUid,
+  visibleCardsFor,
+  exportRowFor,
+  exportHandsFor,
+};

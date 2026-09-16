@@ -13,6 +13,17 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- Your hands keep for thirty days. The game you are playing is written down as
+  it goes, so a server restart no longer loses the hands played before it, and
+  **your games** in the lobby's corner menu lists every game you have played
+  that is still kept - with the same **Transcript** and **Data** downloads the
+  History tab has at the table. A game is only listed for the people who played
+  in it, and asking for one you were not in is refused rather than answered
+  with an empty file. Thirty days by default (`HAND_HISTORY_TTL_MS`), and the
+  most recent 200 games (`HAND_HISTORY_MAX_GAMES`).
+
 ## 0.19.0 - 2026-09-16
 
 ### Added
