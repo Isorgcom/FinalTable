@@ -340,6 +340,57 @@ test('the Log holds what the server has done, behind the same password', async (
   expect(errors).toEqual([]);
 });
 
+// The Log is a live page, and the unlock is not: it lives on the socket, so a
+// server restart takes it and every admin request is then answered with
+// silence. From inside the page that used to be indistinguishable from a page
+// that had stopped working - the Log simply sat on "Loading...".
+test('the Log follows the server, and says so when the unlock goes', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Watcher');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Watcher');
+
+  await openLobbyMenu(page);
+  await page.click('#btnLobbyAdmin');
+  await page.fill('#appDialogInput', ADMIN_PASSWORD);
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#lobbyAdmin')).toBeVisible();
+  await expect(page.locator('#adminLocked')).toBeHidden();
+
+  await page.click('#tabAdminLog');
+  await expect(page.locator('#adminLogList .admin-log-row').first()).toBeVisible({ timeout: 5000 });
+
+  // Somebody signs in elsewhere. Nothing is clicked here and the row arrives.
+  const other = await browser.newContext();
+  const stranger = await other.newPage();
+  await stranger.goto(baseUrl);
+  await stranger.fill('#playerName', 'Latecomer');
+  await stranger.locator('#playerName').blur();
+  await expect(page.locator('#adminLogList')).toContainText('Latecomer signed in', {
+    timeout: 15000,
+  });
+  await other.close();
+
+  // The transport drops the way a server restart drops it. The socket comes
+  // back; the unlock does not, because nothing keeps the password.
+  await page.evaluate(() => socket.io.engine.close());
+  await expect(page.locator('#adminLocked')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#adminLocked')).toContainText('locked again');
+
+  // And the way back in is on the banner, landing where the reader was rather
+  // than starting again at Games.
+  await page.click('#btnAdminUnlock');
+  await page.fill('#appDialogInput', ADMIN_PASSWORD);
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#adminLocked')).toBeHidden({ timeout: 10000 });
+  await expect(page.locator('#tabAdminLog')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#adminLogList .admin-log-row').first()).toBeVisible();
+
+  expect(errors).toEqual([]);
+});
+
 test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
   const fakeGn = await new Promise((resolve) => {
     const s = http.createServer((req, res) => {

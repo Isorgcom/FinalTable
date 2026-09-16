@@ -469,6 +469,15 @@ function init() {
                 : 'Wrong password.',
           });
       },
+      // The socket carried the unlock and the socket has gone. Nothing is
+      // re-sent - the password is not kept anywhere - so this is a real
+      // sign-out and the corner menu offers the way back in again.
+      onDisconnected() {
+        if (!authed) return;
+        authed = false;
+        paint();
+        if (window.Lobby) Lobby.onAdminLocked('dropped');
+      },
       isAuthed: () => authed,
     };
   })();

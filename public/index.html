@@ -190,6 +190,15 @@
         <!-- Admin: server settings, behind the admin password -->
         <section class="lobby-view lobby-card hidden" id="lobbyAdmin" aria-label="Admin">
           <div class="lobby-title">Admin</div>
+          <!-- The unlock lives on the socket, so anything that drops the
+               connection - a server restart, a laptop waking up - takes it
+               with it. Every admin request is then answered with silence, on
+               purpose, which from in here is indistinguishable from a page
+               that has stopped working. So it says so. -->
+          <div class="admin-locked hidden" id="adminLocked" role="status">
+            <span id="adminLockedText"></span>
+            <button class="btn-secondary" id="btnAdminUnlock" type="button">Unlock</button>
+          </div>
           <!-- One page at a time. The tab look is the side panel's, shared rather than
                forked a third time; the strip around it is all that is new here. A page is
                one entry in ADMIN_PAGES, one button here, and one section below. -->

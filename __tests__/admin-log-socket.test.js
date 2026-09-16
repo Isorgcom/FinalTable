@@ -113,6 +113,23 @@ describe('the admin log over the socket', () => {
     expect(JSON.stringify(rows)).not.toContain(made.code);
   });
 
+  // The reader pages back through older rows while the page follows the newest
+  // on a timer. Both arrive on the same event, so the answer has to say which
+  // one it is rather than leaving the client to guess by what it asked last.
+  test('an answer says which page it is', async () => {
+    const s = await connect();
+    await unlock(s);
+    const first = await readLog(s, { limit: 2 });
+    expect(first.before).toBeNull();
+    expect(first.rows.length).toBeGreaterThan(0);
+
+    const oldest = first.rows[first.rows.length - 1].id;
+    const next = await readLog(s, { limit: 2, before: oldest });
+    expect(next.before).toBe(oldest);
+    // And it really is the older page, not the same one again.
+    expect(next.rows.every((r) => r.id < oldest)).toBe(true);
+  });
+
   test('a page is capped, and a socket asking in a loop is cut off', async () => {
     const s = await connect();
     await unlock(s);

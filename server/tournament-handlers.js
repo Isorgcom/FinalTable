@@ -708,13 +708,14 @@ function registerTournamentHandlers(deps) {
       recent.push(at);
       socket.data.adminLogAsks = recent;
       const before = Number(payload.before);
-      socket.emit(
-        'adminLogRows',
-        adminLog.list({
-          limit: payload.limit,
-          before: Number.isFinite(before) ? before : null,
-        })
-      );
+      const from = Number.isFinite(before) ? before : null;
+      socket.emit('adminLogRows', {
+        ...adminLog.list({ limit: payload.limit, before: from }),
+        // Which page this is, echoed back. The newest page replaces what the
+        // reader has; an older one is added to it, and a refresh that arrives
+        // while a "show older" is in flight must not be mistaken for it.
+        before: from,
+      });
     });
 
     // Every game on the server, listed or not, with its code: the Admin

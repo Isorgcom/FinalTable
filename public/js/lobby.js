@@ -297,6 +297,13 @@
   let adminLogMore = false;
   let _drawnLogSig = null;
   let _drawnGamesSig = null;
+  // Why the admin page is locked, when it is. Admin.isAuthed() is the truth of
+  // whether it is; this is only what to say about it.
+  let adminLockReason = null;
+  // Whether the reader has paged back into older rows. They are reading, and
+  // pulling the page out from under them to add a line at the top is worse
+  // than the line arriving late.
+  let adminLogPaged = false;
 
   // ── The Admin page's tabs ───────────────────────────────────────────────
   //
@@ -360,31 +367,47 @@
     list[next].focus();
   }
 
+  function unlocked() {
+    return !!(socket && socket.connected && window.Admin && Admin.isAuthed());
+  }
+
   function askForAdminGames() {
-    if (socket && socket.connected) socket.emit('adminListTournaments');
+    if (unlocked()) socket.emit('adminListTournaments');
   }
 
   // The Log, a page at a time. `fresh` starts again from the newest, which is
   // what opening the tab means; otherwise it asks for what is older than the
   // oldest row already shown.
-  function askForAdminLog({ fresh = false } = {}) {
-    if (!socket || !socket.connected) return;
+  // `fresh` starts again from the newest, which is what opening the tab means.
+  // `quiet` is the same ask without blanking the list first: the page follows
+  // the newest rows on a timer, and a flash of "Loading..." every few seconds
+  // would be worse than not following them at all.
+  function askForAdminLog({ fresh = false, quiet = false } = {}) {
+    if (!unlocked()) return;
     if (fresh) {
-      adminLogRows = null;
-      adminLogMore = false;
-      _drawnLogSig = null;
-      renderAdminLog();
+      if (!quiet) {
+        adminLogRows = null;
+        adminLogMore = false;
+        _drawnLogSig = null;
+        renderAdminLog();
+      }
+      adminLogPaged = false;
+      socket.emit('adminLog', {});
+      return;
     }
     const oldest =
-      !fresh && adminLogRows && adminLogRows.length
-        ? adminLogRows[adminLogRows.length - 1].id
-        : null;
+      adminLogRows && adminLogRows.length ? adminLogRows[adminLogRows.length - 1].id : null;
+    if (oldest) adminLogPaged = true;
     socket.emit('adminLog', oldest ? { before: oldest } : {});
   }
 
   function onAdminLogRows(data) {
     const page = data && Array.isArray(data.rows) ? data.rows : [];
-    adminLogRows = adminLogRows ? adminLogRows.concat(page) : page;
+    // The server says which page this is. The newest replaces what is held;
+    // an older one is added under it. Told rather than guessed, so a refresh
+    // landing while a "Show older" is in flight cannot be taken for it.
+    const newest = !data || data.before === null || data.before === undefined;
+    adminLogRows = newest ? page : (adminLogRows || []).concat(page);
     adminLogMore = !!(data && data.more);
     renderAdminLog();
   }
@@ -457,12 +480,17 @@
 
   async function openAdmin() {
     closeLobbyMenu();
+    // Already here and unlocking again after a drop: stay on the page being
+    // read rather than starting over at Games.
+    const reopening = view === 'admin';
     if (window.Admin && Admin.isAuthed()) {
       setPwStatus('');
+      adminLockReason = null;
       showView('admin');
+      paintAdminLock();
       renderAdminGames();
       // Back to the first page each time, and selecting it asks for the list.
-      selectAdminTab('games');
+      selectAdminTab(reopening ? adminTab : 'games');
       // Asked for whatever tab is showing: the pairing decides whether the
       // sign-in button exists at all, which is not only this page's business.
       if (socket) socket.emit('adminGetGameNight');
@@ -485,10 +513,39 @@
   }
 
   function onAdminStatus(st) {
+    // A password changed elsewhere signs every other admin session out. The
+    // page has to say so for the same reason a drop does.
+    if (st && !st.ok && st.signedOut) onAdminLocked('password');
+    if (st && st.ok) {
+      adminLockReason = null;
+      paintAdminLock();
+    }
     if (!adminPending) return;
     adminPending = false;
     window.__adminPending = false;
     if (st && st.ok) openAdmin();
+  }
+
+  // The unlock is gone. Said here, on the page, because every admin request is
+  // answered with silence when a socket is not unlocked - which is right
+  // against somebody probing the server, and unreadable from inside the page.
+  function onAdminLocked(reason) {
+    adminLockReason = reason || 'dropped';
+    paintAdminLock();
+  }
+
+  const LOCK_WORDS = {
+    dropped: 'The connection dropped, so the admin controls locked again.',
+    password: 'The admin password was changed, so this session was signed out.',
+  };
+
+  function paintAdminLock() {
+    const banner = $('adminLocked');
+    const text = $('adminLockedText');
+    if (!banner) return;
+    const locked = !(window.Admin && Admin.isAuthed());
+    banner.classList.toggle('hidden', !locked);
+    if (locked && text) text.textContent = LOCK_WORDS[adminLockReason] || LOCK_WORDS.dropped;
   }
 
   function setPairingStatus(text, kind) {
@@ -565,8 +622,8 @@
   // normal pause look like a problem.
   const QUIET_MS = 90000;
 
-  // How often the Games page asks again while it is open.
-  const ADMIN_GAMES_POLL_MS = 3000;
+  // How often the Games and Log pages ask again while one is open.
+  const ADMIN_POLL_MS = 3000;
 
   function activityLine(t) {
     const word = ACTIVITY_WORDS[t.activity];
@@ -2403,6 +2460,7 @@
       closeLobbyMenu();
     });
     $('btnLobbyAdmin').addEventListener('click', openAdmin);
+    $('btnAdminUnlock').addEventListener('click', openAdmin);
     $('btnAdminPair').addEventListener('click', pairGameNight);
     $('btnAdminRefresh').addEventListener('click', refreshGameNightKey);
     $('btnAdminUnpair').addEventListener('click', unpairGameNight);
@@ -2470,8 +2528,12 @@
     // game, which is all the registry's list push covers. Only while that page
     // is the one showing - there is nothing to ask for behind a closed tab.
     setInterval(() => {
-      if (view === 'admin' && adminTab === 'games') askForAdminGames();
-    }, ADMIN_GAMES_POLL_MS);
+      if (view !== 'admin') return;
+      if (adminTab === 'games') askForAdminGames();
+      // The Log follows the newest page only, and only while the reader has
+      // not paged back into older rows.
+      else if (adminTab === 'log' && !adminLogPaged) askForAdminLog({ fresh: true, quiet: true });
+    }, ADMIN_POLL_MS);
     ensureSocket();
     if ((fromLink || railLink) && !nameValue() && !pendingGnToken) needName();
   }
@@ -2482,6 +2544,7 @@
     closeLobbyMenu,
     onServerInfo,
     onAdminStatus,
+    onAdminLocked,
     onAdminGameNight,
     onAdminTournaments,
     onAdminLogRows,

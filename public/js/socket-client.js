@@ -39,6 +39,10 @@ function ensureSocket() {
     if (window.Lobby) Lobby.identify();
   });
   socket.on('disconnect', () => {
+    // The admin unlock is per socket on the server, so it goes with this one.
+    // Said out loud here rather than discovered later by a page whose requests
+    // are all being answered with silence.
+    if (window.Admin) Admin.onDisconnected();
     if (window.Lobby) Lobby.setConnection(false);
     if (gameState) addLog('⚠️ Disconnected, reconnecting...');
   });

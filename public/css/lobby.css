@@ -665,6 +665,25 @@
   gap: 10px;
   margin-bottom: 12px;
 }
+/* The admin page, locked out again. Loud enough to be read before anything
+   below it is believed. */
+.admin-locked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(201, 168, 76, 0.45);
+  border-radius: 6px;
+  background: rgba(201, 168, 76, 0.1);
+  color: var(--gold);
+  font-size: 0.8rem;
+}
+.admin-locked.hidden {
+  display: none;
+}
 .admin-games-empty {
   font-size: 0.8rem;
   color: var(--smoke);

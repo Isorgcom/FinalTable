@@ -19,11 +19,18 @@ Release on GitHub to go with it.
   dealing, between hands, paused by the host, on a break, holding for an empty
   room, or waiting for a seat - with how many hands have been played, when the
   last one was once it has been quiet for a while, and a pip per table showing
-  whether it is dealing and how many are sitting at it. The page keeps itself
-  up to date while it is open instead of waiting for a game to be created or
-  ended.
+  whether it is dealing and how many are sitting at it. The **Games** and
+  **Log** pages keep themselves up to date while one of them is open, instead
+  of showing whatever was there when it was opened. Paging back through older
+  log entries stops the Log following, so nothing moves while you read.
 
 ### Fixed
+
+- The Admin page says when its unlock has gone. It lives on the connection, so
+  a server restart or a laptop waking up ends it - and every admin request was
+  then answered with silence, which from inside the page looked like a Log that
+  would not load. It now says so and offers the way back in, landing on the
+  page you were reading.
 
 - A seat plate no longer cuts a badge in half. It shows the one thing worth
   saying about that seat right now, so a host who is sitting out reads

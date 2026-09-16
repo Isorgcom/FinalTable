@@ -675,6 +675,11 @@ lobby with a note saying the admin ended it. The page keeps itself up to date
 while it is open, and follows the server as games come and go; **Refresh**
 asks again at once.
 
+The unlock belongs to the connection, not to the browser. A server restart, or
+a laptop waking up, ends it - the page says so across the top and offers
+**Unlock**, which puts you back on the page you were reading. Changing the
+password from here signs out every other admin session the same way.
+
 This is the one place an unlisted game and its code are shown to somebody
 who is not in it. Hand codes out with care.
 
@@ -700,8 +705,10 @@ that logged a warning or an error, which is the half that says why.
 
 It is kept in a file beside the other saves, so it survives a restart, and
 entries drop off both by age and by count so the file cannot grow without end
-(`ADMIN_LOG_MAX_AGE_MS` and `ADMIN_LOG_MAX_ROWS`). **Show older** pages back
-through it.
+(`ADMIN_LOG_MAX_AGE_MS` and `ADMIN_LOG_MAX_ROWS`). New entries appear while
+the page is open, without touching anything. **Show older** pages back
+through it, and once you have, the page stops following so nothing moves under
+you while you read; opening the Log again starts at the newest.
 
 What is never written to it: a hole card, a device token, a password, or a
 join code. An admin runs the server, which is not the same as being allowed to
