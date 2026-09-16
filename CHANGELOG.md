@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.18.1 - 2026-09-16
+
 ### Fixed
 
 - The Admin page's **Log** keeps one row for each person's visit rather than
