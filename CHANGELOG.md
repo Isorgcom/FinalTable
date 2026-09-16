@@ -13,6 +13,16 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Fixed
+
+- The Admin page's **Log** keeps one row for each person's visit rather than
+  one every time their browser says hello. A row went in on every page load,
+  reload and reconnect, so an evening of testing left eight rows for one player
+  and one for the game they played - and since the log is bounded, that noise
+  would eventually have pushed the games off the end of it. An hour by default,
+  set with `ADMIN_LOG_SIGNIN_GAP_MS`; somebody the server has never seen is
+  always written down.
+
 ## 0.18.0 - 2026-09-16
 
 ### Added

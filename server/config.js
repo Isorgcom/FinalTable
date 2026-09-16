@@ -114,6 +114,10 @@ function loadConfig() {
     // here that is bounded and also written to disk.
     adminLogMaxRows: intFromEnv('ADMIN_LOG_MAX_ROWS', 2000, 10, 100000),
     adminLogMaxAgeMs: intFromEnv('ADMIN_LOG_MAX_AGE_MS', 7776000000, 60000, 31536000000),
+    // How long after a sign-in row another one for the same person is worth
+    // keeping. A row used to go in on every identify - every reload, every
+    // reconnect - which buried the games. Zero writes one every time.
+    adminLogSignInGapMs: intFromEnv('ADMIN_LOG_SIGNIN_GAP_MS', 3600000, 0, 86400000),
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),

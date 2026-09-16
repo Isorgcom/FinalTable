@@ -32,6 +32,17 @@ const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 // One page of rows. An admin reads a screenful; a log of thousands is paged
 // rather than sent whole, the way nothing else on the admin surface is.
 const PAGE_LIMIT = 100;
+// How long after somebody's last sign-in row another one is worth keeping.
+//
+// A row was written on every identify, which is every page load, every reload
+// and every reconnect. One evening of testing put eight rows in for one person
+// and one row in for the game they played, and the ring is bounded, so the
+// noise would eventually push the history off the end of the file. What an
+// admin wants is who has been on this server, not how many times their browser
+// said hello. An hour collapses a reload, a restart and a dropped connection
+// into the visit they belong to, and still separates the morning from the
+// evening.
+const SIGNIN_GAP_MS = 60 * 60 * 1000;
 // Long enough to say what happened, short enough that a stack trace cannot
 // turn one bad night into the whole file.
 const MAX_TEXT = 500;
@@ -41,6 +52,7 @@ function createAdminLog(options = {}) {
     saveDir = null,
     maxRows = MAX_ROWS,
     maxAgeMs = MAX_AGE_MS,
+    signInGapMs = SIGNIN_GAP_MS,
     flushDebounceMs = FLUSH_DEBOUNCE_MS,
     now = () => Date.now(),
   } = options;
@@ -48,6 +60,9 @@ function createAdminLog(options = {}) {
 
   let rows = [];
   let nextId = 1;
+  // When each uid was last written down, so a reload does not earn a row of
+  // its own. Rebuilt on load, so a restart does not reset everybody's visit.
+  const lastSignIn = new Map();
   let flushTimer = null;
   let writing = false;
   let writeQueued = false;
@@ -115,10 +130,21 @@ function createAdminLog(options = {}) {
     });
   }
 
+  // One row a visit, not one a hello. A player who reloads, reconnects or comes
+  // back after a restart is the same visit and writes nothing; see
+  // SIGNIN_GAP_MS. Somebody the server has never seen is always written down,
+  // whatever else is going on.
   function recordSignIn(who = {}) {
+    const uid = text(who.uid, 64);
+    const at = now();
+    if (uid && who.isNew !== true && signInGapMs > 0) {
+      const last = lastSignIn.get(uid);
+      if (last !== undefined && at - last < signInGapMs) return null;
+    }
+    if (uid) lastSignIn.set(uid, at);
     return push({
       kind: 'signin',
-      uid: text(who.uid, 64),
+      uid,
       name: text(who.name, 32),
       provider: text(who.provider, 32) || 'guest',
       isNew: who.isNew === true ? true : undefined,
@@ -225,6 +251,11 @@ function createAdminLog(options = {}) {
       // next one carries on from the highest there was.
       nextId = rows.reduce((max, r) => Math.max(max, Number(r.id) || 0), 0) + 1;
       prune();
+      // The visit a restart landed in the middle of is still that visit.
+      lastSignIn.clear();
+      for (const r of rows) {
+        if (r.kind === 'signin' && r.uid) lastSignIn.set(r.uid, r.at);
+      }
     } catch (_err) {
       rows = []; // a corrupt file starts empty, as every other store here does
       nextId = 1;
@@ -241,7 +272,7 @@ function createAdminLog(options = {}) {
     load,
     flush,
     file,
-    limits: { maxRows, maxAgeMs, pageLimit: PAGE_LIMIT },
+    limits: { maxRows, maxAgeMs, signInGapMs, pageLimit: PAGE_LIMIT },
   };
 }
 

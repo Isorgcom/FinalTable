@@ -127,6 +127,7 @@ const adminLog = createAdminLog({
   saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
   maxRows: config.adminLogMaxRows,
   maxAgeMs: config.adminLogMaxAgeMs,
+  signInGapMs: config.adminLogSignInGapMs,
 });
 adminLog.load();
 

@@ -157,6 +157,66 @@ describe('admin log', () => {
     expect(raw).toContain('Unhandled server exception');
   });
 
+  // A row used to go in on every identify - every page load, every reload,
+  // every reconnect. One evening of testing put eight rows in for one person
+  // and one for the game they played, against a ring that eventually pushes
+  // the older thing off the end.
+  describe('one row a visit, not one a hello', () => {
+    test('a reload inside the window is the same visit', () => {
+      let clock = 1_000_000;
+      const log = createAdminLog({ saveDir: dir, signInGapMs: 60_000, now: () => clock });
+      expect(log.recordSignIn({ uid: 'u1', name: 'Ann' })).toBeTruthy();
+      clock += 5_000;
+      expect(log.recordSignIn({ uid: 'u1', name: 'Ann' })).toBeNull();
+      clock += 5_000;
+      expect(log.recordSignIn({ uid: 'u1', name: 'Ann' })).toBeNull();
+      expect(log.list().rows).toHaveLength(1);
+
+      // Long enough away and it is a visit of its own.
+      clock += 60_001;
+      expect(log.recordSignIn({ uid: 'u1', name: 'Ann' })).toBeTruthy();
+      expect(log.list().rows).toHaveLength(2);
+    });
+
+    test('somebody else is always their own row', () => {
+      const log = createAdminLog({ saveDir: dir });
+      log.recordSignIn({ uid: 'u1', name: 'Ann' });
+      log.recordSignIn({ uid: 'u2', name: 'Bob' });
+      expect(log.list().rows.map((r) => r.name)).toEqual(['Bob', 'Ann']);
+    });
+
+    // Somebody the server has never seen is worth knowing about whatever else
+    // is going on, and a new identity has a uid of its own anyway.
+    test('a brand new identity is written down whatever the window says', () => {
+      let clock = 1_000_000;
+      const log = createAdminLog({ saveDir: dir, signInGapMs: 60_000, now: () => clock });
+      log.recordSignIn({ uid: 'u1', name: 'Ann' });
+      clock += 1_000;
+      expect(log.recordSignIn({ uid: 'u1', name: 'Ann', isNew: true })).toBeTruthy();
+      expect(log.list().rows).toHaveLength(2);
+    });
+
+    test('a restart does not restart everybody\u2019s visit', () => {
+      let clock = 1_000_000;
+      const first = createAdminLog({ saveDir: dir, signInGapMs: 60_000, now: () => clock });
+      first.recordSignIn({ uid: 'u1', name: 'Ann' });
+      first.flush();
+
+      clock += 5_000;
+      const back = createAdminLog({ saveDir: dir, signInGapMs: 60_000, now: () => clock });
+      expect(back.load()).toBe(1);
+      expect(back.recordSignIn({ uid: 'u1', name: 'Ann' })).toBeNull();
+      expect(back.list().rows).toHaveLength(1);
+    });
+
+    test('zero keeps every one of them, for anybody who wants that', () => {
+      const log = createAdminLog({ saveDir: dir, signInGapMs: 0 });
+      log.recordSignIn({ uid: 'u1', name: 'Ann' });
+      log.recordSignIn({ uid: 'u1', name: 'Ann' });
+      expect(log.list().rows).toHaveLength(2);
+    });
+  });
+
   test('a long detail is cut rather than kept whole', () => {
     const log = createAdminLog({ saveDir: dir });
     log.recordServer({ level: 'error', event: 'e', message: 'm', detail: 'x'.repeat(5000) });

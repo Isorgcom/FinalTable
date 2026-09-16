@@ -699,7 +699,10 @@ change the new one wins, and a forgotten one is reset as described in
 **Log** is what this server has done, newest first. A row for every game and
 how it ended - a winner, cancelled by the host or the admin, or written off
 after everybody walked away - with the entrants, the level it reached and who
-finished where. A row for every sign-in. A row for every restart, which is what
+finished where. A row for each person's visit - one when they arrive, not one
+every time their browser says hello, so a reload or a dropped connection does
+not bury the games (`ADMIN_LOG_SIGNIN_GAP_MS`, an hour by default; zero writes
+one every time). A row for every restart, which is what
 answers "has this thing been coming up over and over". And a row for anything
 that logged a warning or an error, which is the half that says why.
 
