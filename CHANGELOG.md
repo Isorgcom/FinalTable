@@ -24,6 +24,12 @@ Release on GitHub to go with it.
   with an empty file. Thirty days by default (`HAND_HISTORY_TTL_MS`), and the
   most recent 200 games (`HAND_HISTORY_MAX_GAMES`).
 
+### Fixed
+
+- A game that comes back from a restart carries on counting its hands instead
+  of starting again at one. The felt said "Round 1" over a table that had
+  played twenty, and a downloaded history had two hand 1s in it.
+
 ## 0.19.0 - 2026-09-16
 
 ### Added

@@ -1555,6 +1555,11 @@ class TournamentDirector {
       this._tableSnapshots.set(table.tableNumber, {
         tableNumber: table.tableNumber,
         dealerIndex: table.dealerIndex || 0,
+        // How many hands this table has dealt, which is the number every hand
+        // is known by - on the felt as "Round 7" and in a player's own history
+        // as "Hand 7". Without it a restored table starts counting again from
+        // one, and a game that came back through a restart has two hand 1s.
+        roundCount: table.roundCount || 0,
         broken: !!table._broken,
         players: table.players.map((p) => ({
           uid: p.uid,
@@ -1655,6 +1660,7 @@ class TournamentDirector {
       // After seating: inserting a seat at or before the button moves it, so
       // setting it first would leave the button somewhere else entirely.
       table.dealerIndex = Math.min(entry.dealerIndex || 0, Math.max(0, table.players.length - 1));
+      table.roundCount = Math.max(0, Number(entry.roundCount) || 0);
       this._tableSnapshots.set(table.tableNumber, { ...entry });
     }
 

@@ -2257,6 +2257,35 @@ describe('the field leaderboard', () => {
     revived.stop();
   });
 
+  // A table's hand number is its round count, and it is what every hand is
+  // known by - "Round 7" on the felt, "Hand 7" in somebody's own history. A
+  // restore used to start it again from one, so a game that came back through
+  // a restart had two hand 1s at the same table.
+  test('a restored table carries on counting its hands', () => {
+    const d = makeDirector(4, { tableSize: 4, startChips: 2000 });
+    d.start();
+    const rng = rngFrom(15);
+    for (let i = 0; i < 3; i++) dealOne(d.tables[0], rng);
+    expect(d.tables[0].roundCount).toBe(3);
+    const snap = d.snapshot();
+
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: snap.tableSize,
+      startChips: snap.startChips,
+      levelDuration: 99999,
+      gameOptions: { actionTimeoutMs: 0 },
+    });
+    expect(revived.restoreFrom(snap)).toBe(true);
+    expect(revived.tables[0].roundCount).toBe(3);
+
+    dealOne(revived.tables[0], rngFrom(19));
+    expect(revived.tables[0].roundCount).toBe(4);
+    expect(revived.history[revived.history.length - 1].hand.handNum).toBe(4);
+    d.stop();
+    revived.stop();
+  });
+
   test('a casual table still keeps its own board, keyed by name', () => {
     const d = makeDirector(4, { tableSize: 4 });
     d.start();
