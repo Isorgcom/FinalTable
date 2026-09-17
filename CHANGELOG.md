@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.20.0 - 2026-09-17
+
 ### Added
 
 - Your hands keep for thirty days. The game you are playing is written down as
