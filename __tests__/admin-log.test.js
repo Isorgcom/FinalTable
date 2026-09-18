@@ -18,6 +18,15 @@ describe('admin log', () => {
 
   const read = () => JSON.parse(fs.readFileSync(path.join(dir, 'admin-log.json'), 'utf8'));
 
+  async function until(check, timeoutMs = 3000, everyMs = 10) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (check()) return true;
+      await new Promise((resolve) => setTimeout(resolve, everyMs));
+    }
+    return false;
+  }
+
   test('without a directory every call is a no-op', () => {
     const log = createAdminLog({});
     expect(() => log.recordServer({ level: 'warn', event: 'x', message: 'y' })).not.toThrow();
@@ -87,7 +96,16 @@ describe('admin log', () => {
   test('a burst collapses into one write, and none of it is lost', async () => {
     const log = createAdminLog({ saveDir: dir, flushDebounceMs: 5 });
     for (let i = 0; i < 20; i++) log.recordServer({ event: 'e' + i, message: 'm' + i });
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    // Waited for rather than slept through: a fixed pause races a debounce on
+    // a loaded machine, and a test that fails once a fortnight teaches people
+    // to rerun the suite instead of reading it.
+    await until(() => {
+      try {
+        return read().rows.length === 20;
+      } catch (_err) {
+        return false;
+      }
+    });
     expect(read().rows).toHaveLength(20);
     expect(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
   });
