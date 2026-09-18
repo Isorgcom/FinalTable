@@ -30,15 +30,28 @@ const {
 
 function createAdminCredential({ settingsStore = null, envPassword = '', log = () => {} } = {}) {
   const fromEnv = typeof envPassword === 'string' ? envPassword.trim() : '';
-  let saved = settingsStore ? settingsStore.get('adminPassword') : null;
-  if (saved && (saved.algo !== 'scrypt' || !saved.salt || !saved.hash)) saved = null;
+
+  // Read when asked rather than when this was made. The settings are loaded
+  // before the server listens and this is built before that, so a copy taken
+  // here would be the copy from before there was one.
+  // Somewhere to keep it when there is no settings store at all, which is a
+  // server that cannot remember anything across a restart. It can still be
+  // changed for as long as the process lives.
+  let unstored = null;
+
+  function stored() {
+    const saved = settingsStore ? settingsStore.get('adminPassword') : unstored;
+    if (!saved || saved.algo !== 'scrypt' || !saved.salt || !saved.hash) return null;
+    return saved;
+  }
 
   function isEnabled() {
-    return !!saved || fromEnv.length > 0;
+    return !!stored() || fromEnv.length > 0;
   }
 
   function verify(password) {
     if (typeof password !== 'string' || !isEnabled()) return false;
+    const saved = stored();
     return saved ? matchesRecord(password, saved) : sameString(password, fromEnv);
   }
 
@@ -49,18 +62,19 @@ function createAdminCredential({ settingsStore = null, envPassword = '', log = (
     const problem = passwordProblem(next);
     if (problem) return problem;
     if (verify(next)) return 'That is already the password.';
-    saved = hashPassword(next);
-    if (settingsStore) settingsStore.set('adminPassword', saved);
+    const record = hashPassword(next);
+    if (settingsStore) settingsStore.set('adminPassword', record);
+    else unstored = record;
     log({
       level: 'info',
       event: 'admin_password_changed',
       message: 'Admin password changed',
-      data: { storedTo: settingsStore ? settingsStore.file : null },
     });
     return null;
   }
 
   function status() {
+    const saved = stored();
     return {
       enabled: isEnabled(),
       source: saved ? 'saved' : fromEnv ? 'env' : null,

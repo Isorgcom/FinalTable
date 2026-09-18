@@ -15,6 +15,7 @@ const {
   keyIdFor,
 } = require('../server/gamenight-pairing');
 const { createSettingsStore } = require('../server/settings-store');
+const { createMemoryDatabase } = require('../server/db');
 
 const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PEM = publicKey.export({ type: 'spki', format: 'pem' }).trim();
@@ -227,32 +228,38 @@ describe('the runtime: saved pairing, environment seed, live changes', () => {
 });
 
 describe('settings store', () => {
-  let dir;
-  beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-settings-'));
-  });
-  afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
+  const freshDb = (name) => createMemoryDatabase({ database: `settings-${name}` });
 
-  test('set, get, and survive a new instance', () => {
-    const store = createSettingsStore({ saveDir: dir });
+  test('set, get, and survive a new instance on the same database', async () => {
+    const db = freshDb('survive');
+    const store = createSettingsStore({ db });
+    await store.load();
     expect(store.get('gamenight')).toBeNull();
     store.set('gamenight', { issuer: 'x' });
     store.set('other', 1);
-    const again = createSettingsStore({ saveDir: dir });
+    await Promise.resolve();
+
+    // A new process, the same database.
+    const again = createSettingsStore({ db });
+    await again.load();
     expect(again.get('gamenight')).toEqual({ issuer: 'x' });
-    expect(again.load()).toEqual({ gamenight: { issuer: 'x' }, other: 1 });
+    expect(again.all()).toEqual({ gamenight: { issuer: 'x' }, other: 1 });
     again.set('gamenight', null);
     expect(again.get('gamenight')).toBeNull();
     expect(again.get('other')).toBe(1);
   });
 
-  test('a corrupt file starts empty; no directory is a no-op', () => {
-    fs.writeFileSync(path.join(dir, 'settings.json'), '{nope');
-    expect(createSettingsStore({ saveDir: dir }).load()).toEqual({});
+  // It used to re-read the file for every get, so with nowhere to write, a
+  // setting went nowhere and came back null. Held in memory now, which is the
+  // more useful answer: it works for as long as the process does.
+  test('with no database it still answers, just not after a restart', async () => {
     const none = createSettingsStore();
+    expect(await none.load()).toBe(0);
     none.set('x', 1);
-    expect(none.get('x')).toBeNull();
+    expect(none.get('x')).toBe(1);
+
+    const next = createSettingsStore();
+    await next.load();
+    expect(next.get('x')).toBeNull();
   });
 });

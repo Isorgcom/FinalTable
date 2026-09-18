@@ -14,6 +14,7 @@ const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
 const { createAdminCredential } = require('./server/admin-credential');
 const { createAccounts } = require('./server/accounts');
+const { createDatabase } = require('./server/db');
 const { createMailer } = require('./server/mailer');
 const { createSsoRuntime } = require('./server/gamenight-pairing');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
@@ -349,9 +350,22 @@ const handHistoryStore =
     : null;
 
 // Admin settings, set from the lobby and kept beside the saves.
-const settingsStore = createSettingsStore({
-  saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+// Where everything is kept. Made here and connected in startServer, because
+// nothing may be read out of it before the server is listening and everything
+// is read out of it after.
+const db = createDatabase({
+  url: config.dbUrl,
+  host: config.dbHost,
+  port: config.dbPort,
+  user: config.dbUser,
+  password: config.dbPassword,
+  database: config.dbName,
+  log: structuredLog,
 });
+
+const settingsStore = createSettingsStore({ db, log: structuredLog });
+// startServer can be called more than once in a test run; the stores open once.
+let storesOpen = false;
 
 // The admin password: the environment's until somebody changes it from the
 // Admin page, after which the stored one wins.
@@ -364,7 +378,9 @@ const adminCredential = createAdminCredential({
 // The GameNight sign-in bridge. Paired from the Admin page, or seeded from
 // the environment on a first boot; unpaired, the lobby never offers the button.
 const sso = createSsoRuntime({ settingsStore, envConfig: config.gamenight, log: structuredLog });
-sso.init();
+// init() is not called here: it reads the stored pairing, and the settings are
+// not loaded until openStores() below. Reading now would find an empty store
+// and seed the environment over a pairing somebody set from the page.
 
 const tournamentLayer = registerTournamentHandlers({
   io,
@@ -452,36 +468,38 @@ function startServer(options = {}) {
   const host = options.host || config.host;
   const unrefServer = options.unrefServer === true;
 
-  return new Promise((resolve, reject) => {
-    // once, not on: startServer can be called again in a test, and a listener
-    // per call would answer for a failure that is not its own.
-    server.once('error', (err) => {
-      // Nothing listens for this today, so EADDRINUSE on a box that is already
-      // running is exactly the kind of crash loop this page exists to show.
-      structuredLog({
-        level: 'error',
-        event: 'server_start_failed',
-        message: 'The server could not start',
-        data: { error: err.message },
-      });
-      try {
-        adminLog.flush();
-      } catch (_err) {
-        /* the row is already in memory; the disk is best effort here */
-      }
-      reject(err);
-    });
-    server.listen(port, host, () => {
-      if (restoredTournaments) {
-        console.log(
-          `Restored ${restoredTournaments} scheduled tournament(s) from ${tournamentStore.file}`
-        );
-      }
-      if (unrefServer && typeof server.unref === 'function') server.unref();
-      const address = server.address();
-      const actualPort = typeof address === 'object' && address ? address.port : port;
-      if (SERVER_TEXT_LOGS) {
-        console.log(`
+  return openStores().then(
+    () =>
+      new Promise((resolve, reject) => {
+        // once, not on: startServer can be called again in a test, and a
+        // listener per call would answer for a failure that is not its own.
+        server.once('error', (err) => {
+          // Nothing listens for this today, so EADDRINUSE on a box that is already
+          // running is exactly the kind of crash loop this page exists to show.
+          structuredLog({
+            level: 'error',
+            event: 'server_start_failed',
+            message: 'The server could not start',
+            data: { error: err.message },
+          });
+          try {
+            adminLog.flush();
+          } catch (_err) {
+            /* the row is already in memory; the disk is best effort here */
+          }
+          reject(err);
+        });
+        server.listen(port, host, () => {
+          if (restoredTournaments) {
+            console.log(
+              `Restored ${restoredTournaments} scheduled tournament(s) from ${tournamentStore.file}`
+            );
+          }
+          if (unrefServer && typeof server.unref === 'function') server.unref();
+          const address = server.address();
+          const actualPort = typeof address === 'object' && address ? address.port : port;
+          if (SERVER_TEXT_LOGS) {
+            console.log(`
 ╔══════════════════════════════════════════════╗
 ║    ♠ FinalTable ♠                           ║
 ║    Running on ${host}:${actualPort}                    ║
@@ -489,30 +507,54 @@ function startServer(options = {}) {
 ║    For entertainment & education only        ║
 ╚══════════════════════════════════════════════╝
   `);
-      }
-      structuredLog({
-        level: 'info',
-        event: 'server_started',
-        message: 'FinalTable server started',
-        data: {
-          host,
-          port: actualPort,
-          assetVersion,
-          gamenightSso: sso.get() ? sso.get().config.issuer : null,
-        },
-      });
-      // A restart is the one info-level line the Log keeps, because "when did
-      // this box last come up" is half of "why did it come up nine times".
-      adminLog.recordServer({
-        level: 'info',
-        event: 'server_started',
-        message: 'Server started',
-        detail: `version ${require('./package.json').version} on ${host}:${actualPort}`,
-      });
+          }
+          structuredLog({
+            level: 'info',
+            event: 'server_started',
+            message: 'FinalTable server started',
+            data: {
+              host,
+              port: actualPort,
+              assetVersion,
+              gamenightSso: sso.get() ? sso.get().config.issuer : null,
+            },
+          });
+          // A restart is the one info-level line the Log keeps, because "when did
+          // this box last come up" is half of "why did it come up nine times".
+          adminLog.recordServer({
+            level: 'info',
+            event: 'server_started',
+            message: 'Server started',
+            detail: `version ${require('./package.json').version} on ${host}:${actualPort}`,
+          });
 
-      resolve({ app, server, io, config });
+          resolve({ app, server, io, config });
+        });
+      })
+  );
+}
+
+// Everything that has to be ready before a browser can be answered: the
+// database reached, the tables made, and every store that reads at boot having
+// read. A page served by a server whose settings have not loaded is a page
+// that says there is no admin surface on a box that has one.
+async function openStores() {
+  if (storesOpen) return;
+  storesOpen = true;
+  await db.connect();
+  await db.apply();
+  await settingsStore.load();
+  // Everything that reads a setting at boot, now that there are settings to
+  // read: the GameNight pairing set from the Admin page beats the environment,
+  // and it can only know that once the store has loaded.
+  sso.init();
+  if (db.driver === 'memory') {
+    structuredLog({
+      level: 'warn',
+      event: 'db_memory',
+      message: 'No database configured: nothing will survive a restart',
     });
-  });
+  }
 }
 
 if (require.main === module) {
@@ -528,6 +570,7 @@ module.exports = {
   identity,
   sso,
   settingsStore,
+  db,
   handHistoryStore,
   accounts,
   mailer,

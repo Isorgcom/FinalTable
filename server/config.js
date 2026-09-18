@@ -141,6 +141,16 @@ function loadConfig() {
     smtpUrl: (process.env.SMTP_URL || '').trim(),
     mailFrom: (process.env.MAIL_FROM || '').trim(),
     mailTransport: (process.env.MAIL_TRANSPORT || '').trim(),
+    // Where everything is kept. With none of these set the server runs on an
+    // in-memory database, which is what the tests use and what a bare
+    // `node server.js` gives somebody trying it out - nothing survives a
+    // restart there, and the log says so at boot.
+    dbUrl: (process.env.DB_URL || '').trim(),
+    dbHost: (process.env.DB_HOST || '').trim(),
+    dbPort: intFromEnv('DB_PORT', 3306, 1, 65535),
+    dbUser: (process.env.DB_USER || 'finaltable').trim(),
+    dbPassword: process.env.DB_PASSWORD || '',
+    dbName: (process.env.DB_NAME || 'finaltable').trim(),
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),

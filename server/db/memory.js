@@ -14,15 +14,34 @@
 
 const clone = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
-function createMemoryDatabase() {
-  const settings = new Map(); // k -> { k, v, updated_at }
-  const identities = new Map(); // uid -> record (devices nested)
-  const accounts = new Map(); // uid -> account
-  const pending = new Map(); // name_key -> row
-  const resets = new Map(); // token_hash -> row
+// Kept beside the process rather than inside the module, so a database
+// outlives a server that restarts into the same one - which is what a test
+// that resets its modules and boots again is simulating. Two names are two
+// databases, as they would be.
+function tablesFor(name) {
+  const held = globalThis.__finaltableMemoryDb || (globalThis.__finaltableMemoryDb = new Map());
+  if (!held.has(name)) {
+    held.set(name, {
+      settings: new Map(), // k -> { k, v, updated_at }
+      identities: new Map(), // uid -> record (devices nested)
+      accounts: new Map(), // uid -> account
+      pending: new Map(), // name_key -> row
+      resets: new Map(), // token_hash -> row
+    });
+  }
+  return held.get(name);
+}
+
+function createMemoryDatabase(options = {}) {
+  const { database = 'finaltable' } = options;
+  const { settings, identities, accounts, pending, resets } = tablesFor(database);
 
   return {
     driver: 'memory',
+    // For a test that wants a database nobody has used.
+    reset() {
+      for (const table of [settings, identities, accounts, pending, resets]) table.clear();
+    },
     async connect() {
       return this;
     },

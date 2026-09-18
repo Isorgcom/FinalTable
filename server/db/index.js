@@ -9,7 +9,7 @@ const { createMemoryDatabase } = require('./memory');
 
 function createDatabase(options = {}) {
   const { url = '', host = '', database = '', memory = false, ...rest } = options;
-  if (memory || (!url && !host)) return createMemoryDatabase();
+  if (memory || (!url && !host)) return createMemoryDatabase({ database: database || undefined });
   return createMariaDatabase({ url, host, database, ...rest });
 }
 

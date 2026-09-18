@@ -1,55 +1,64 @@
 // settings-store.js - admin settings that survive a restart.
 //
-// What the admin sets from the browser rather than from the environment:
-// today, the GameNight pairing. One small JSON file beside the saves, whole
-// file written atomically on every change, the same shape as the other
-// stores. An environment variable is read once as the seed for a setting the
-// file does not hold yet; after that the file wins, so a change made in the
+// What the admin sets from the browser rather than from the environment: the
+// GameNight pairing, and the admin password once it has been changed from the
+// page. An environment variable is read once as the seed for a setting the
+// store does not hold yet; after that the store wins, so a change made in the
 // GUI is not undone by the next restart.
+//
+// Held in memory and written behind, which is what lets get() stay synchronous
+// now that the writes go to a database. It used to read the file on every
+// get - correct, and a read of the disk for every question anybody asked.
 
-const fs = require('fs');
-const path = require('path');
+function createSettingsStore({ db = null, log = () => {} } = {}) {
+  const settings = new Map();
 
-const FILE_VERSION = 1;
-
-function createSettingsStore({ saveDir = null } = {}) {
-  const file = saveDir ? path.join(saveDir, 'settings.json') : null;
-
-  function load() {
-    if (!file || !fs.existsSync(file)) return {};
-    try {
-      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      return data && typeof data === 'object' && data.settings && typeof data.settings === 'object'
-        ? data.settings
-        : {};
-    } catch (_err) {
-      return {}; // a corrupt file starts empty; the admin sets things again
-    }
-  }
-
-  function save(settings) {
-    if (!file) return;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ version: FILE_VERSION, settings }, null, 2));
-    fs.renameSync(tmp, file);
-  }
-
-  // Read-modify-write of one key, so two settings never clobber each other.
-  function set(key, value) {
-    const settings = load();
-    if (value === null || value === undefined) delete settings[key];
-    else settings[key] = value;
-    save(settings);
-    return settings;
+  // Before the server listens. Nothing asks a setting before then, and
+  // everything asks after.
+  async function load() {
+    settings.clear();
+    if (!db) return 0;
+    for (const row of await db.settings.all()) settings.set(row.k, row.v);
+    return settings.size;
   }
 
   function get(key) {
-    const settings = load();
-    return Object.prototype.hasOwnProperty.call(settings, key) ? settings[key] : null;
+    return settings.has(key) ? settings.get(key) : null;
   }
 
-  return { load, save, get, set, file };
+  function all() {
+    return Object.fromEntries(settings);
+  }
+
+  // The write is not waited on: a setting is in memory the moment it is set,
+  // and a database that refuses it is worth a line in the log rather than an
+  // error thrown at whoever pressed the button.
+  function set(key, value) {
+    const gone = value === null || value === undefined;
+    if (gone) settings.delete(key);
+    else settings.set(key, value);
+    if (db) {
+      Promise.resolve(gone ? db.settings.remove(key) : db.settings.put(key, value)).catch((err) => {
+        log({
+          level: 'warn',
+          event: 'settings_write_failed',
+          message: 'Could not write a setting',
+          data: { key, detail: err && err.message },
+        });
+      });
+    }
+    return all();
+  }
+
+  return {
+    load,
+    get,
+    set,
+    all,
+    get size() {
+      return settings.size;
+    },
+  };
 }
 
 module.exports = { createSettingsStore };

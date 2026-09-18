@@ -1,23 +1,29 @@
 // __tests__/admin-credential.test.js - the admin password: where it comes
 // from, what it takes to change it, and what is on disk afterwards.
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const { createAdminCredential, MIN_LENGTH } = require('../server/admin-credential');
 const { createSettingsStore } = require('../server/settings-store');
+const { createMemoryDatabase } = require('../server/db');
 
 describe('admin password', () => {
-  let dir;
+  let db;
   let store;
+  // Named, and emptied: a memory database is shared by name so that a server
+  // restarting into the same one finds it there, which means two databases in
+  // one test have to say they are two.
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-admincred-'));
-    store = createSettingsStore({ saveDir: dir });
-  });
-  afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
+    db = createMemoryDatabase({ database: 'admin-credential' });
+    db.reset();
+    store = createSettingsStore({ db });
   });
 
-  const saved = () => JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
+  // What is actually written down, read back the way the store will read it
+  // on the next boot. The write is not waited on by set(), so a tick first.
+  const saved = async () => {
+    await Promise.resolve();
+    const rows = await db.settings.all();
+    const row = rows.find((r) => r.k === 'adminPassword');
+    return { settings: { adminPassword: row ? row.v : null } };
+  };
 
   test('no password anywhere means no admin surface', () => {
     const cred = createAdminCredential({ settingsStore: store });
@@ -57,10 +63,10 @@ describe('admin password', () => {
     expect(cred.change('first-password', 'first-password')).toMatch(/already the password/i);
     // None of that should have changed anything.
     expect(cred.verify('first-password')).toBe(true);
-    expect(fs.existsSync(path.join(dir, 'settings.json'))).toBe(false);
+    expect(store.get('adminPassword')).toBeNull();
   });
 
-  test('a change is stored hashed, and beats the environment from then on', () => {
+  test('a change is stored hashed, and beats the environment from then on', async () => {
     const cred = createAdminCredential({ settingsStore: store, envPassword: 'first-password' });
     expect(cred.change('first-password', 'second-password')).toBeNull();
     expect(cred.verify('second-password')).toBe(true);
@@ -68,46 +74,50 @@ describe('admin password', () => {
     expect(cred.status()).toMatchObject({ source: 'saved' });
     expect(cred.status().updatedAt).toEqual(expect.any(Number));
 
-    const record = saved().settings.adminPassword;
+    const record = (await saved()).settings.adminPassword;
     expect(record).toMatchObject({ algo: 'scrypt' });
     expect(record.salt).toEqual(expect.any(String));
     expect(JSON.stringify(record)).not.toContain('second-password');
 
-    // A new process reads the file, not the environment.
+    // A new process reads what was stored, not the environment.
+    const reopened = createSettingsStore({ db });
+    await reopened.load();
     const next = createAdminCredential({
-      settingsStore: createSettingsStore({ saveDir: dir }),
+      settingsStore: reopened,
       envPassword: 'first-password',
     });
     expect(next.verify('second-password')).toBe(true);
     expect(next.verify('first-password')).toBe(false);
   });
 
-  test('two servers with the same password do not share a hash', () => {
+  test('two servers with the same password do not share a hash', async () => {
     const a = createAdminCredential({ settingsStore: store, envPassword: 'seed-password' });
     a.change('seed-password', 'same-password');
-    const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-admincred2-'));
-    try {
+    const otherDb = createMemoryDatabase({ database: 'admin-credential-other' });
+    otherDb.reset();
+    {
       const b = createAdminCredential({
-        settingsStore: createSettingsStore({ saveDir: otherDir }),
+        settingsStore: createSettingsStore({ db: otherDb }),
         envPassword: 'seed-password',
       });
       b.change('seed-password', 'same-password');
-      const one = saved().settings.adminPassword;
-      const two = JSON.parse(fs.readFileSync(path.join(otherDir, 'settings.json'), 'utf8')).settings
-        .adminPassword;
+      const one = (await saved()).settings.adminPassword;
+      await Promise.resolve();
+      const two = (await otherDb.settings.all()).find((r) => r.k === 'adminPassword').v;
       expect(one.salt).not.toBe(two.salt);
       expect(one.hash).not.toBe(two.hash);
-    } finally {
-      fs.rmSync(otherDir, { recursive: true, force: true });
     }
   });
 
-  test('removing the stored record falls back to the environment', () => {
+  test('removing the stored record falls back to the environment', async () => {
     const cred = createAdminCredential({ settingsStore: store, envPassword: 'first-password' });
     cred.change('first-password', 'second-password');
     store.set('adminPassword', null);
+    await Promise.resolve();
+    const reopened = createSettingsStore({ db });
+    await reopened.load();
     const recovered = createAdminCredential({
-      settingsStore: createSettingsStore({ saveDir: dir }),
+      settingsStore: reopened,
       envPassword: 'first-password',
     });
     expect(recovered.verify('first-password')).toBe(true);
@@ -117,7 +127,7 @@ describe('admin password', () => {
   test('a corrupt stored record is ignored rather than locking everybody out', () => {
     store.set('adminPassword', { algo: 'nonsense', hash: 'x' });
     const cred = createAdminCredential({
-      settingsStore: createSettingsStore({ saveDir: dir }),
+      settingsStore: store,
       envPassword: 'first-password',
     });
     expect(cred.verify('first-password')).toBe(true);

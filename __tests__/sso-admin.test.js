@@ -154,8 +154,11 @@ describe('pairing with GameNight from the Admin page', () => {
     const ident = await ask(player, 'identify', { gnToken: tokenFor(gn.url) }, 'identified');
     expect(ident).toMatchObject({ uid: 'gn_42', provider: 'gamenight' });
 
-    const saved = JSON.parse(fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf8'));
-    expect(saved.settings.gamenight).toMatchObject({ issuer: gn.url, source: 'gui' });
+    // What was actually stored, read the way the next boot will read it.
+    expect(serverModule.settingsStore.get('gamenight')).toMatchObject({
+      issuer: gn.url,
+      source: 'gui',
+    });
   });
 
   test('a restart keeps the pairing with no environment at all', async () => {
@@ -205,9 +208,10 @@ describe('pairing with GameNight from the Admin page', () => {
     expect(
       (await ask(third, 'adminLogin', { password: 'a-longer-password' }, 'adminStatus')).ok
     ).toBe(true);
-    const raw = fs.readFileSync(path.join(tempDir, 'settings.json'), 'utf8');
-    expect(raw).not.toContain('a-longer-password');
-    expect(JSON.parse(raw).settings.adminPassword).toMatchObject({ algo: 'scrypt' });
+    // What is kept is the hash and never the password itself.
+    const stored = serverModule.settingsStore.get('adminPassword');
+    expect(stored).toMatchObject({ algo: 'scrypt' });
+    expect(JSON.stringify(stored)).not.toContain('a-longer-password');
 
     // And it survives the process, with the environment still holding the old one.
     await shutdown();
