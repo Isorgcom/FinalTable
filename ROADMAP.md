@@ -60,6 +60,18 @@ hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
 
+A database of its own. Everything this server keeps - accounts, identities and
+the devices they are signed in on, the games in progress, the chat, the hands
+it keeps and the admin log - lives in a MariaDB beside the server rather than
+in JSON files next to the application. Not GameNight's: like it, not it, and
+the two share nothing but the SSO bridge that was already there. Each store
+keeps the shape it had, because each was already a working set in memory with
+a file behind it; what changed is where the writes land. The name an account
+owns is a unique key the database enforces rather than a rule only the code
+knows, the two bounds on the kept games and on the log are queries, and the
+token that signs a browser in is kept as a digest. The first boot imports
+whatever the files held and sets them aside.
+
 A login of its own. A third kind of identity beside the guest and the GameNight
 account: one that belongs to this server. The name somebody already plays under
 is the account, so there is nothing new to remember, and a guest upgrades in
@@ -79,7 +91,7 @@ longer loses what came before it, and they outlive the game itself: a
 tournament is reaped ten minutes after its winner and its chat goes with it,
 while its hands are kept for thirty days. **Your games** in the lobby menu
 lists what somebody has played and hands them the same two files the table
-does. One file a game plus a small index saying who was in which, which is
+does. A row a game and a table saying who was in which, which is
 what lets a player be given a game the registry has long since forgotten - and
 the uid is the whole authorisation, so a game somebody did not play in is
 refused rather than redacted down to nothing.
