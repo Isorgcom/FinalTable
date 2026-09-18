@@ -55,6 +55,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 `up -d` rather than `restart`: the database is a second container now, and a
 restart of a stack that has gained a service does not start the new one.
 
+The move onto a database is itself a `package.json` change - it added a MariaDB
+client - so the deploy that brings it in is the rebuild case below, with
+`--build --renew-anon-volumes`. After that, ordinary deploys are `up -d` again.
+
 Then check it actually came up, which those will not tell you:
 
 ```bash
@@ -76,12 +80,24 @@ Three things to know:
   on its own changes nothing a player can see. Only CSS and images are live.
 - **A rebuild is only needed when `package.json` or the `Dockerfile` changes.**
   Then, and only then:
+
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --renew-anon-volumes
   ```
-  On this host that is worth doing at a quiet hour, or on a machine with room
-  (`docker build -t finaltable:latest .` there, then
+
+  `--renew-anon-volumes` is not optional, and leaving it off is a confusing
+  half-hour. `node_modules` lives in an anonymous volume - that is what keeps
+  the bind mount from hiding the image's copy - and an anonymous volume is
+  **reused** when a container is recreated. So a rebuild that installs a new
+  dependency succeeds, the container comes back, and the server crashes on
+  `MODULE_NOT_FOUND` for a package that is plainly in the image: what it is
+  actually reading is the old volume. Renewing it throws that away and takes
+  the image's copy.
+
+  On this host a build is worth doing at a quiet hour, or on a machine with
+  room (`docker build -t finaltable:latest .` there, then
   `docker save finaltable:latest | gzip -1 | ssh root@HOST 'gunzip | docker load'`).
+
 - **Rolling back is `git checkout`**, which is most of the reason for deploying
   this way. Any commit or tag, then restart; the image is not involved.
 
