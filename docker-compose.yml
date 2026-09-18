@@ -2,6 +2,45 @@
 # The FinalTable-dev clone keeps its own copy of this file with a different
 # container name and port; that copy is never mirrored from here.
 services:
+  # Everything FinalTable keeps lives here: accounts, identities and the
+  # devices they are signed in on, and in time the games, the chat and the log.
+  # Its own database and its own volume - nothing is shared with anything else
+  # on the host.
+  #
+  # Tuned small on purpose. The defaults assume a machine that exists to run a
+  # database; this one runs a poker server beside eight other things. Every
+  # number here is an environment variable, so a bigger box can have bigger
+  # numbers without editing this file.
+  db:
+    image: mariadb:11
+    container_name: ${DB_CONTAINER:-finaltable-db}
+    restart: unless-stopped
+    environment:
+      - MARIADB_DATABASE=${DB_NAME:-finaltable}
+      - MARIADB_USER=${DB_USER:-finaltable}
+      # No defaults for these two: a database reachable with a password
+      # somebody read in a compose file is not one.
+      - MARIADB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env}
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+      - MARIADB_AUTO_UPGRADE=1
+    command:
+      - --innodb-buffer-pool-size=${DB_BUFFER_POOL:-64M}
+      - --max-connections=${DB_MAX_CONNECTIONS:-32}
+      # Several tens of megabytes of instrumentation nobody here reads.
+      - --performance-schema=0
+    volumes:
+      - finaltable-db:/var/lib/mysql
+    # No ports. It is reachable by name from the server beside it and from
+    # nothing else; a shell on the host uses `docker exec`.
+    mem_limit: ${DB_MEM_LIMIT:-320m}
+    cpus: ${DB_CPUS:-0.5}
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   finaltable:
     build:
       context: .
@@ -9,6 +48,12 @@ services:
         NPM_REGISTRY: ${NPM_REGISTRY:-}
     container_name: finaltable
     restart: unless-stopped
+    # The server waits for the database itself - it retries for half a minute -
+    # but starting them in the right order keeps that off the log on every
+    # ordinary boot.
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       # Loopback only. A reverse proxy fronts this; the port is here for
       # debugging over an SSH tunnel.
@@ -20,6 +65,13 @@ services:
       - HOST=0.0.0.0
       - SAVE_DIR=/app/data
       - LOG_LEVEL=info
+      # Where everything is kept. `db` is the service above, by name, on the
+      # network compose makes for this project.
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_NAME=${DB_NAME:-finaltable}
+      - DB_USER=${DB_USER:-finaltable}
+      - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env}
       # Node's own heap ceiling. Left to itself it picks something near half the
       # container in a 512 MB cgroup, which is comfortable for a table or three
       # and not for twenty: a large field climbs past it and the process dies
@@ -53,3 +105,4 @@ services:
 
 volumes:
   finaltable-data:
+  finaltable-db:

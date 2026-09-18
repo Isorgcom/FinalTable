@@ -11,6 +11,18 @@
 #
 # Nobody self-hosting needs this file. The compose file beside it stands alone.
 services:
+  # The same database, sized for a box with one core and not much room. The
+  # buffer pool is the number that matters: it is MariaDB's cache of the data
+  # it is working on, and this schema is small enough that 32 MB holds all of
+  # it several times over.
+  db:
+    command:
+      - --innodb-buffer-pool-size=${DB_BUFFER_POOL:-32M}
+      - --max-connections=${DB_MAX_CONNECTIONS:-16}
+      - --performance-schema=0
+    mem_limit: ${DB_MEM_LIMIT:-256m}
+    cpus: ${DB_CPUS:-0.25}
+
   finaltable:
     # Named, so the image the host already has is reused and an ordinary deploy
     # never builds. `--build` retags this same name when dependencies change.
@@ -30,8 +42,14 @@ services:
       - NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_MB:-256}
     mem_limit: ${MEM_LIMIT:-384m}
     cpus: 0.5
+    # Both: the proxy's network so Nginx Proxy Manager can reach this by name,
+    # and the project's own so this can reach the database. Naming only the
+    # first would take it off the second, because a service's network list is
+    # replaced by an overlay rather than added to - which would leave the
+    # server unable to find a database sitting right beside it.
     networks:
       - npm_default
+      - default
 
 networks:
   npm_default:

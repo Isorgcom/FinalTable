@@ -5,14 +5,55 @@ disk, so a deploy is a pull and a restart. There is no deploy script: it is two
 commands, and a script wrapping them turned out to be more moving parts than
 the thing it wrapped.
 
+## The database
+
+FinalTable keeps what it knows in a MariaDB of its own, started beside the
+server by the compose file. It is not shared with anything else on the host and
+it publishes no port: the server reaches it by name on the network compose
+makes, and a shell uses `docker exec`.
+
+Two settings have no defaults, so `docker compose up` refuses rather than
+bringing up a database anybody who has read the compose file could open:
+
+```bash
+cp .env.example .env
+# set DB_PASSWORD and DB_ROOT_PASSWORD to something long
+```
+
+The schema is applied on every boot with `CREATE TABLE IF NOT EXISTS`, so a
+fresh database becomes a working one by being started. Nothing here ever drops
+or alters a table.
+
+**Coming from a version that kept files.** The first boot that finds the tables
+empty reads `data/*.json` in and renames each one `.imported` - never deletes
+it. Device tokens become digests on the way through, which signs nobody out:
+the browser still sends the token it has. Judged per file, so a later version
+that adds a table imports only that one.
+
+**Backing it up** is `mysqldump`, and `data/` no longer holds anything that
+matters once the import has run:
+
+```bash
+docker exec finaltable-db mariadb-dump -ufinaltable -p"$DB_PASSWORD" finaltable > finaltable.sql
+```
+
+**What it costs.** MariaDB wants a couple of hundred megabytes on a box that
+has a few hundred spare. The compose file sizes it small - a 32 MB buffer pool
+on the production overlay, which holds this schema several times over - and
+every number is an environment variable. If the box is tight, `DB_BUFFER_POOL`
+and `DB_MEM_LIMIT` are the two to look at.
+
 ## The server
 
 ```bash
 ssh root@HOST
 cd /opt/finaltable
 git pull --ff-only origin main
-docker compose -f docker-compose.yml -f docker-compose.prod.yml restart
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+`up -d` rather than `restart`: the database is a second container now, and a
+restart of a stack that has gained a service does not start the new one.
 
 Then check it actually came up, which those will not tell you:
 
