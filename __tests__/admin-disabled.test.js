@@ -7,6 +7,8 @@ const { io: Client } = require('socket.io-client');
 
 jest.setTimeout(15000);
 
+const { tokenFor } = require('./helpers/account');
+
 describe('admin surface with no password configured', () => {
   const originalEnv = { ...process.env };
   let baseUrl, serverModule, tempDir;
@@ -44,7 +46,7 @@ describe('admin surface with no password configured', () => {
     const s = await connect();
     const ident = await new Promise((res) => {
       s.once('identified', res);
-      s.emit('identify', { token: null, name: 'Nobody', avatar: '🙂' });
+      s.emit('identify', { token: tokenFor(serverModule, 'Nobody', { avatar: '🙂' }) });
     });
     expect(ident.adminAvailable).toBe(false);
 

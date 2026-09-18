@@ -1,27 +1,26 @@
 // accounts.js - a name on this server that is yours, and the password for it.
 //
-// The third kind of identity here. A guest is a name and a token in one
-// browser; a GameNight account is somebody else's account borrowed through the
-// SSO bridge; this one belongs to this server, and the name is the account -
-// setting a password against the name you already play under is what makes it
-// yours.
+// One of the two ways in. A GameNight account is somebody else's account
+// borrowed through the SSO bridge; this one belongs to this server, and the
+// name is the account - claiming a name with a password and an address you
+// confirm is what makes it yours.
 //
 // Three rules about names settle every case:
 //
-//   1. An account owns its name, compared case-insensitively. No guest may
-//      identify as a name an account owns.
-//   2. A name can be claimed when nobody else holds it. Claiming the one your
-//      own guest identity is already using is the ordinary case, and is what
-//      makes the upgrade keep your uid - and with it your preferences, your
-//      devices and your kept games.
+//   1. An account owns its name, compared case-insensitively. Nobody else may
+//      answer to a name an account owns.
+//   2. A name can be claimed when nobody else holds it - not owned by an
+//      account, and not already being played under by a GameNight identity,
+//      which is what the identity store is asked.
 //   3. A sign-up holds the name while it is pending and owns it only when the
 //      link in the mail is clicked. The hold expires, which is what stops a
 //      mistyped address locking a name away for ever.
 //
 // What is written here is a scrypt record from password.js and an address.
-// The password is never stored and never logged, and the address never leaves
-// this file: it is in no player state, no roster, no admin log, no hand
-// history and no answer to anybody else.
+// The password is never stored and never logged. The address is in no player
+// state, no roster, no hand history and no answer to another player; an
+// administrator can see one, on one account at a time, and the admin log says
+// every time they did.
 //
 // Verification and reset links are 32 random bytes, kept only as a digest.
 // What goes in the mail is the only copy: a file full of live links would be
@@ -35,6 +34,15 @@ const {
   digestToken,
   sameDigest,
 } = require('./password');
+const random = require('../random');
+
+// What is stored against an account nobody has chosen a password for yet: one
+// an administrator made, which is waiting for its owner to open the link. It
+// has to be an object rather than null on two counts - matchesRecord refuses
+// anything whose algo is not scrypt, so no password signs in against it, and
+// load() below drops a row with no password at all, which would quietly delete
+// the account on the next restart.
+const NO_PASSWORD = { algo: 'unset' };
 
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000;
@@ -139,9 +147,14 @@ function createAccounts(options = {}) {
 
   // ── Signing up ──────────────────────────────────────────────────────────
 
+  // The uid is minted here when there is not one already. There used to be:
+  // signing up was something a guest did to keep the name they were already
+  // playing under, so the socket had an identity and the account inherited it.
+  // Now a sign-up is how somebody becomes anybody at all, and the identity is
+  // not written until they first sign in - so an address that is never
+  // confirmed, or confirmed and never used, leaves nothing behind.
   async function startSignUp({ uid, name, email, password } = {}) {
     const at = now();
-    if (!uid) return { error: 'Tell the table who you are first.' };
     const safeName = sanitizeName(name);
     const key = nameKey(safeName);
     if (!key) return { error: 'Pick a name first.' };
@@ -166,7 +179,7 @@ function createAccounts(options = {}) {
     const token = mintToken();
     pending.set(key, {
       key,
-      uid,
+      uid: uid || random.randomId('u_'),
       name: safeName,
       email: address,
       password: await hashPassword(password),
@@ -211,6 +224,61 @@ function createAccounts(options = {}) {
       return { uid: account.uid, name: account.name };
     }
     return { error: 'That link is not one of ours.' };
+  }
+
+  // An account made by an administrator rather than by its owner. No password
+  // is set: what goes out is a reset link, and choosing one from that link is
+  // what makes the account usable. So the administrator never knows it, which
+  // is the only sensible way to hand one over.
+  //
+  // Returns the account, or an error to show them.
+  function createVerified({ uid, name, email, role = 'player' } = {}) {
+    const at = now();
+    const safeName = sanitizeName(name);
+    const key = nameKey(safeName);
+    if (!key) return { error: 'Pick a name first.' };
+    if (byKey.has(key)) return { error: 'That name is taken on this server.' };
+    const held = pending.get(key);
+    if (held && held.expiresAt > at) {
+      return { error: 'Somebody is already signing up with that name.' };
+    }
+    if (nameInUse(key, uid)) {
+      return { error: 'Somebody else is playing under that name. Pick another.' };
+    }
+    const address = normalizeEmail(email);
+    if (!address) return { error: 'That does not look like an email address.' };
+
+    const account = {
+      uid: uid || random.randomId('u_'),
+      key,
+      name: safeName,
+      email: address,
+      password: NO_PASSWORD,
+      createdAt: at,
+      verifiedAt: at,
+    };
+    byKey.set(account.key, account);
+    byId.set(account.uid, account);
+    write(() => db.accounts.put(account));
+    return { uid: account.uid, name: account.name, email: address, role };
+  }
+
+  // Gone. The identity is the caller's to remove - this is only the half that
+  // holds the password and the address.
+  function remove(uid) {
+    const account = byUid(uid);
+    if (!account) return false;
+    byKey.delete(account.key);
+    byId.delete(account.uid);
+    // Any link out to this account is dead with it.
+    for (const [hash, row] of [...resets]) {
+      if (row.uid === uid) {
+        resets.delete(hash);
+        write(() => db.accounts.removeReset(hash));
+      }
+    }
+    write(() => db.accounts.remove(uid));
+    return true;
   }
 
   // ── Signing in ──────────────────────────────────────────────────────────
@@ -344,6 +412,8 @@ function createAccounts(options = {}) {
   return {
     ownerOf,
     holderOf,
+    createVerified,
+    remove,
     byUid,
     isHeld,
     isAccountName,

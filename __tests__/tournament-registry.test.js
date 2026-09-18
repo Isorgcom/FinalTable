@@ -20,7 +20,7 @@ function makeIo() {
 function makeIdentity(names) {
   return {
     get: (uid) => (names[uid] ? { uid, name: names[uid], avatar: '🙂' } : null),
-    expireIdle: () => 0,
+    expireDevices: () => 0,
   };
 }
 
@@ -1958,7 +1958,7 @@ describe('the rail', () => {
   function anyIdentity() {
     return {
       get: (uid) => (uid ? { uid, name: names[uid] || `Rail ${uid}`, avatar: '🙂' } : null),
-      expireIdle: () => 0,
+      expireDevices: () => 0,
     };
   }
 

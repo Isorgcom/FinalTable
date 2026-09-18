@@ -59,20 +59,40 @@ function boot(env) {
 
 // Two people registered for a tournament that has not started: the waiting
 // room is one chat room, so a reaction from either reaches both.
+//
+// A pair of their own each time. A name is one person on this server now, so
+// reusing Host would be reusing the Host still sitting in the last test's
+// game - and nobody is in two games at once.
+let pairs = 0;
+
 async function twoInAWaitingRoom(h) {
+  const who = `P${pairs++}`;
+  const names = { host: `${who}Host`, guest: `${who}Guest` };
   const { s: host } = await h.connect();
-  await h.ask(host, 'identify', { token: null, name: 'Host', avatar: '🙂' }, 'identified');
+  await h.ask(
+    host,
+    'identify',
+    { token: tokenFor(h.serverModule, names.host, { avatar: '🙂' }), avatar: '🙂' },
+    'identified'
+  );
   const joined = new Promise((r) => host.once('tournamentJoined', r));
   host.emit('createTournament', { name: 'Reacts', startsAt: Date.now() + 60000 });
   await joined;
   const state = await h.ask(host, 'requestTournamentState', {}, 'tournamentState');
   const { s: guest } = await h.connect();
-  await h.ask(guest, 'identify', { token: null, name: 'Guest', avatar: '🙂' }, 'identified');
+  await h.ask(
+    guest,
+    'identify',
+    { token: tokenFor(h.serverModule, names.guest, { avatar: '🙂' }), avatar: '🙂' },
+    'identified'
+  );
   const guestJoined = new Promise((r) => guest.once('tournamentJoined', r));
   guest.emit('joinTournament', { code: state.code });
   await guestJoined;
-  return { host, guest };
+  return { host, guest, names };
 }
+
+const { tokenFor } = require('./helpers/account');
 
 describe('reactions over the socket', () => {
   let h;
@@ -88,12 +108,12 @@ describe('reactions over the socket', () => {
   });
 
   test('a tap reaches the other seat, and the sender, with the real name', async () => {
-    const { host, guest } = await twoInAWaitingRoom(h);
+    const { host, guest, names } = await twoInAWaitingRoom(h);
     const seenByGuest = new Promise((r) => guest.once('reaction', r));
     const seenByHost = new Promise((r) => host.once('reaction', r));
     host.emit('reaction', { emoji: REACTIONS[0] });
     const got = await seenByGuest;
-    expect(got).toMatchObject({ name: 'Host', emoji: REACTIONS[0] });
+    expect(got).toMatchObject({ name: names.host, emoji: REACTIONS[0] });
     expect(typeof got.uid).toBe('string');
     expect((await seenByHost).emoji).toBe(REACTIONS[0]);
   });
@@ -111,7 +131,12 @@ describe('reactions over the socket', () => {
 
   test('a socket in no tournament is ignored, not answered', async () => {
     const { s } = await h.connect();
-    await h.ask(s, 'identify', { token: null, name: 'Nobody', avatar: '🙂' }, 'identified');
+    await h.ask(
+      s,
+      'identify',
+      { token: tokenFor(h.serverModule, 'Nobody', { avatar: '🙂' }), avatar: '🙂' },
+      'identified'
+    );
     let answered = false;
     s.on('chatDenied', () => (answered = true));
     s.on('reaction', () => (answered = true));

@@ -104,28 +104,28 @@
         <div class="login-subtitle">Play down to one table.</div>
         <div class="login-divider"></div>
 
-        <!-- Who you are -->
-        <section class="lobby-card" id="identityCard" aria-label="Your name and avatar">
-          <div class="form-group">
-            <label for="playerName">Name</label>
-            <input
-              type="text"
-              id="playerName"
-              placeholder="Enter your name"
-              maxlength="16"
-              autocomplete="nickname"
-            />
+        <!-- Who you are. Three states, in place: signed out, signing up, and
+             signed in. Everybody has an account now, so this is the door - the
+             lobby behind it is not drawn until somebody is through. -->
+        <section class="lobby-card" id="identityCard" aria-label="Sign in">
+          <!-- Signed in: one line, and the picture behind it. -->
+          <div class="identity-signed-in hidden" id="signedInRow">
+            <div class="identity-status" id="identityStatus" aria-live="polite"></div>
           </div>
-          <div class="form-group">
-            <label>Avatar</label>
-            <div class="avatar-picker" id="avatarPicker"></div>
-            <input type="hidden" id="playerAvatar" value="🧑" />
-          </div>
-          <div class="identity-status" id="identityStatus" aria-live="polite"></div>
-          <!-- An account of this server's own. Shown only when the server can
-               hold one - it needs somewhere for a link to point and a way to
-               send it - and says why when it cannot. -->
-          <div class="identity-account hidden" id="accountRow">
+
+          <!-- Signed out, and signing up. The name and password are both, the
+               email only the second. -->
+          <div class="identity-account" id="accountRow">
+            <div class="form-group">
+              <label for="playerName">Name</label>
+              <input
+                type="text"
+                id="playerName"
+                placeholder="Your name here"
+                maxlength="16"
+                autocomplete="username"
+              />
+            </div>
             <div class="form-group">
               <label for="accountPassword">Password</label>
               <input
@@ -133,7 +133,7 @@
                 id="accountPassword"
                 autocomplete="current-password"
                 maxlength="128"
-                placeholder="Keep this name for yourself"
+                placeholder="Your password"
               />
             </div>
             <div class="form-group hidden" id="accountEmailGroup">
@@ -141,13 +141,21 @@
               <input type="email" id="accountEmail" autocomplete="email" maxlength="254" />
               <div class="seg-hint">
                 Used once to prove the name is yours, and again only if you forget the password. It
-                is never shown to anybody else.
+                is never shown to another player.
               </div>
             </div>
+            <!-- The avatar belongs to the account, so it is chosen while one is
+                 being made and changed from your account afterwards - never on
+                 the way in, where it would belong to nobody. -->
+            <div class="form-group hidden" id="accountAvatarGroup">
+              <label>Avatar</label>
+              <div class="avatar-picker" id="avatarPicker"></div>
+              <input type="hidden" id="playerAvatar" value="🧑" />
+            </div>
             <div class="identity-account-actions">
-              <button class="btn-secondary" id="btnSignIn" type="button">Sign in</button>
+              <button class="btn-enter" id="btnSignIn" type="button">Sign in</button>
               <button class="btn-secondary" id="btnCreateAccount" type="button">
-                Create account
+                Create an account
               </button>
               <button class="btn-link" id="btnForgotPassword" type="button">
                 Forgot your password?
@@ -162,7 +170,7 @@
               Sign in with GameNight
             </button>
             <span class="identity-sso-hint" id="ssoHint"
-              >Use your GameNight account instead of a guest name.</span
+              >Use your GameNight account instead of one here.</span
             >
           </div>
         </section>

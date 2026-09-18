@@ -43,6 +43,10 @@ test.beforeAll(async () => {
   helpers.configure({ baseUrl, serverModule });
 });
 
+// Each test starts on a server with nothing left over: a name is one person
+// now, so the host of the last test is the host of this one.
+test.afterEach(() => helpers.clearGames());
+
 test.afterAll(async () => {
   serverModule.registry.stop();
   await new Promise((resolve) => serverModule.io.close(resolve));
@@ -56,7 +60,7 @@ test.afterAll(async () => {
 const identifyAs = (page, name, opts) => helpers.signInAs(page, name, opts);
 const createTournament = (page, opts) => helpers.createTournament(page, opts);
 
-test('a name and avatar become an identity that survives a reload', async ({ page }) => {
+test('signing in is an identity that survives a reload', async ({ page }) => {
   await identifyAs(page, 'Ann');
   const uid = await page.evaluate(() => window.__identity.uid);
   const token = await page.evaluate(() => localStorage.getItem('finaltable_identity_token'));
@@ -65,9 +69,21 @@ test('a name and avatar become an identity that survives a reload', async ({ pag
   expect(token).not.toBe(uid);
 
   await page.reload();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Ann');
+  await expect(page.locator('#identityStatus')).toContainText('Playing as');
+  await expect(page.locator('#identityStatus')).toContainText('Ann');
   expect(await page.evaluate(() => window.__identity.uid)).toBe(uid);
   await expect(page.locator('#lobbyEmpty')).toBeVisible();
+});
+
+// Nobody sees the lobby until they are through the door.
+test('a browser with no account is shown the way in and nothing else', async ({ page }) => {
+  await page.goto(baseUrl);
+  await expect(page.locator('#accountRow')).toBeVisible();
+  await expect(page.locator('#lobbyHome')).toBeHidden();
+  await expect(page.locator('#identityStatus')).toBeHidden();
+  // And the games running here are not handed to them over the wire either.
+  const answer = await fetch(`${baseUrl}/api/tournaments`);
+  expect(answer.status).toBe(401);
 });
 
 test('creating a tournament lands in the waiting room with roster, code and settings', async ({
@@ -90,7 +106,7 @@ test('creating a tournament lands in the waiting room with roster, code and sett
   await expect(page.locator('#wrHostControls')).toBeVisible();
   // A field of one cannot deal, so the host waits for a second person.
   await expect(page.locator('#btnStartNow')).toBeDisabled();
-  const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+  const list = await helpers.apiTournaments();
   const card = list.find((t) => t.name === 'Sunday Deepstack');
   expect(card).toMatchObject({ status: 'registering', hostName: 'Host' });
   // Anyone can fetch this list, so the code the waiting room shows is not in it.
@@ -105,14 +121,11 @@ test('a second player joins by link, both see each other, and the host starts fo
   await identifyAs(page, 'Host');
   const code = await createTournament(page, { name: 'Two Up', minutes: 15 });
 
-  const guestContext = await browser.newContext();
-  const guest = await guestContext.newPage();
-  const guestErrors = [];
-  guest.on('pageerror', (err) => guestErrors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
+  const opened = await helpers.openAs(browser, 'Guest', { join: code });
+  const guestContext = opened.context;
+  const guest = opened.page;
+  const guestErrors = opened.errors;
   await expect(guest.locator('#joinCodeInput')).toHaveValue(code);
-  await guest.fill('#playerName', 'Guest');
-  await guest.locator('#playerName').blur();
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await expect(guest.locator('#wrName')).toHaveText('Two Up');
   await expect(guest.locator('#wrHostControls')).toBeHidden();
@@ -208,7 +221,7 @@ test('unregistering before the start returns to the lobby', async ({ page }) => 
   await expect(page.locator('#lobbyWaiting')).toBeHidden();
   await expect
     .poll(async () => {
-      const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+      const list = await helpers.apiTournaments();
       return list.some((t) => t.name === 'Changed My Mind');
     })
     .toBe(false);
@@ -253,9 +266,7 @@ test("a private game is nowhere on a stranger's lobby, and joins by link", async
   await identifyAs(other, 'Nosy');
   // Earlier tests leave public games behind on the shared server, so the
   // check is that this one is not among them, on the wire or on the page.
-  expect(JSON.stringify(await (await fetch(`${baseUrl}/api/tournaments`)).json())).not.toContain(
-    'Just Us'
-  );
+  expect(JSON.stringify(await helpers.apiTournaments())).not.toContain('Just Us');
   await other.waitForTimeout(250); // the list push lands just after identified
   await expect(other.locator('.t-card', { hasText: 'Just Us' })).toHaveCount(0);
 
@@ -271,11 +282,9 @@ test('an invite-only game: the link knocks, the host lets you in', async ({ brow
   const code = await createTournament(page, { name: 'Doorman', minutes: 15, visibility: 'invite' });
   await expect(page.locator('#wrCodeHint')).toContainText('you let them in');
 
-  const guestContext = await browser.newContext();
-  const guest = await guestContext.newPage();
-  await guest.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
-  await guest.fill('#playerName', 'Knocker');
-  await guest.locator('#playerName').blur();
+  const opened = await helpers.openAs(browser, 'Knocker', { join: code });
+  const guestContext = opened.context;
+  const guest = opened.page;
   await expect(guest.locator('#lobbyPending')).toBeVisible();
   await expect(guest.locator('#pdName')).toHaveText('Doorman');
   await expect(guest.locator('#pdStatus')).toContainText('Waiting for Host to let you in');
@@ -304,11 +313,9 @@ test('an invite-only game: turned away lands back in the lobby with a reason', a
     minutes: 15,
     visibility: 'invite',
   });
-  const guestContext = await browser.newContext();
-  const guest = await guestContext.newPage();
-  await guest.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
-  await guest.fill('#playerName', 'Hopeful');
-  await guest.locator('#playerName').blur();
+  const opened = await helpers.openAs(browser, 'Hopeful', { join: code });
+  const guestContext = opened.context;
+  const guest = opened.page;
   await expect(guest.locator('#lobbyPending')).toBeVisible();
   const row = page.locator('#wrPendingList .wr-row', { hasText: 'Hopeful' });
   await row.locator('.wr-decline').click();
@@ -414,7 +421,7 @@ test('a host picks a structure, edits a level, and the waiting room shows the la
   await page.click('#wrStructure summary');
   await expect(page.locator('#wrStructureList')).toContainText('15/35');
   await expect(page.locator('#wrStructureList .structure-row')).toHaveCount(26);
-  const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+  const list = await helpers.apiTournaments();
   expect(list.find((t) => t.name === 'Deep Night')).toMatchObject({ structure: 'Custom' });
 });
 

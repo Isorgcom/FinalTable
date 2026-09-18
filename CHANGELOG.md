@@ -13,6 +13,30 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Changed
+
+- **Everybody who plays here has an account now.** Typing a name into a box is
+  no longer a way in: you sign in, either with an account on this server or
+  with GameNight, and the lobby is not shown to anybody who has not. A name
+  belongs to one person - the same in any letters - so nobody can sit down
+  under somebody else's, and a GameNight name that is already taken here is
+  worn with a number after it and said so. Your name, your avatar, your
+  preferences, the devices you are signed in on and the games you have played
+  all follow the account rather than the browser, and a browser that is signed
+  out is signed out rather than turned into somebody new.
+- A server that cannot send mail and is not paired with a GameNight has no way
+  for anybody to sign in. It says so at boot and on the sign-in screen, instead
+  of quietly letting people in as guests.
+- The list of games on this server is for the people who can sit down at one.
+  Both the lobby's list and `GET /api/tournaments` need somebody signed in;
+  the HTTP one takes the device token as a bearer header.
+
+### Removed
+
+- Guests. There is no longer a way to play without an account, and the guest
+  identities a server was holding are deleted when it upgrades. Their kept
+  games stay where they are.
+
 ### Added
 
 - An account of your own, on this server. Set a password against the name you

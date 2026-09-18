@@ -137,6 +137,15 @@ function createMariaDatabase(options = {}) {
       async exec(statements) {
         for (const sql of statements || []) await pool.query(sql);
       },
+      // Asked by the step that makes a name unique, before it tries. A
+      // constraint that cannot be added is a server that will not boot, and
+      // the fix wants naming rather than guessing at.
+      async clashingNames() {
+        const [rows] = await pool.query(
+          'SELECT name_key FROM identities GROUP BY name_key HAVING COUNT(*) > 1'
+        );
+        return rows.map((r) => r.name_key);
+      },
     },
 
     settings: {
@@ -161,8 +170,8 @@ function createMariaDatabase(options = {}) {
       // join would send every identity once per device it has.
       async all() {
         const [people] = await pool.query(
-          'SELECT uid, name, name_key, avatar, provider, gn_user_id, created_at, ' +
-            'last_seen_at, prefs FROM identities'
+          'SELECT uid, name, name_key, avatar, provider, role, disabled_at, gn_user_id, ' +
+            'created_at, last_seen_at, prefs FROM identities'
         );
         const [devices] = await pool.query(
           'SELECT token_hash, uid, id, label, created_at, last_seen_at FROM devices'
@@ -175,6 +184,8 @@ function createMariaDatabase(options = {}) {
             nameKey: row.name_key,
             avatar: row.avatar,
             provider: row.provider,
+            role: row.role,
+            disabledAt: num(row.disabled_at),
             gnUserId: row.gn_user_id,
             createdAt: num(row.created_at),
             lastSeenAt: num(row.last_seen_at),
@@ -205,10 +216,12 @@ function createMariaDatabase(options = {}) {
         try {
           await conn.beginTransaction();
           await conn.query(
-            'INSERT INTO identities (uid, name, name_key, avatar, provider, gn_user_id, ' +
-              'created_at, last_seen_at, prefs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+            'INSERT INTO identities (uid, name, name_key, avatar, provider, role, ' +
+              'disabled_at, gn_user_id, created_at, last_seen_at, prefs) ' +
+              'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
               'ON DUPLICATE KEY UPDATE name = VALUES(name), name_key = VALUES(name_key), ' +
-              'avatar = VALUES(avatar), provider = VALUES(provider), ' +
+              'avatar = VALUES(avatar), provider = VALUES(provider), role = VALUES(role), ' +
+              'disabled_at = VALUES(disabled_at), ' +
               'gn_user_id = VALUES(gn_user_id), last_seen_at = VALUES(last_seen_at), ' +
               'prefs = VALUES(prefs)',
             [
@@ -216,7 +229,9 @@ function createMariaDatabase(options = {}) {
               record.name || '',
               record.nameKey || '',
               record.avatar || '🧑',
-              record.provider || 'guest',
+              record.provider || 'local',
+              record.role || 'player',
+              Number.isFinite(record.disabledAt) ? record.disabledAt : null,
               record.gnUserId || null,
               record.createdAt || Date.now(),
               record.lastSeenAt || Date.now(),

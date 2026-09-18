@@ -4,17 +4,26 @@
 // avatar, and the device tokens that prove it. A token is the only
 // credential; the uid never proves anything.
 //
-// Two kinds of identity live here. A guest is a name typed into the lobby,
-// bound to a token this server minted for that browser. A GameNight identity
-// is a person who signed in there and arrived with a signed token (see
-// gamenight-sso.js): the uid is derived from their GameNight account, the
-// name is GameNight's to set, and every browser they sign in from gets a
-// device token of its own on the same identity, so the phone and the iPad
-// are the same player. The lobby and tournament code never see the
-// difference beyond a `provider` field.
+// Two kinds of identity live here, and both of them are accounts. A local one
+// belongs to this server: a name somebody claimed, a password, and an address
+// they confirmed (see accounts.js). A GameNight one is a person who signed in
+// there and arrived with a signed token (see gamenight-sso.js): the uid is
+// derived from their GameNight account and the name is GameNight's to set.
+// Either way every browser they sign in from gets a device token of its own on
+// the same identity, so the phone and the iPad are the same player, and the
+// lobby and tournament code never see the difference beyond a `provider`
+// field.
+//
+// There used to be a third kind - a guest, which was a name typed into a box
+// and a token, and nothing else. Nothing mints one here any more: an identity
+// is made by signing in to an account, and by nothing else.
+//
+// Which means an identity is permanent. Devices still expire after a month of
+// not being used, but the person behind them does not: their name is theirs,
+// their preferences are theirs, and the games they played are still listed for
+// them whenever they come back.
 
 const crypto = require('crypto');
-const random = require('../random');
 const { digestToken } = require('./password');
 
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,7 +32,7 @@ const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // A material change - a mint, a rename - is rare and worth writing promptly.
 // A lastSeenAt touch is neither: `identify` runs on every connect and every
 // reconnect, so a busy server touches constantly, and the only thing that
-// reads lastSeenAt is expireIdle below, which measures in days. Letting
+// reads lastSeenAt is expireDevices below, which measures in days. Letting
 // touches ride a minute behind keeps a reconnect storm off the disk entirely
 // and leaves the timestamp accurate to far inside its one consumer. The cost
 // of a hard kill is that a record's lastSeenAt can be up to a minute stale
@@ -103,10 +112,24 @@ function createIdentityStore(options = {}) {
     log = () => {},
   } = options;
 
-  // uid -> { uid, name, avatar, provider, gnUserId, createdAt, lastSeenAt,
+  // uid -> { uid, name, avatar, provider, role, disabledAt, gnUserId,
+  //          createdAt, lastSeenAt,
   //          tokens: Map<tokenHash, { id, label, createdAt, lastSeenAt }> }
   const identities = new Map();
   const tokens = new Map(); // tokenHash -> uid
+
+  // Two indexes over the same records, kept because identities are permanent
+  // now and both questions are asked often enough to matter.
+  //
+  // Names: every sign-up asks whether one is free, and that used to be a walk
+  // over every identity the server had ever seen - which was tolerable while
+  // guests aged out after a month and is not now that nobody does.
+  //
+  // Administrators: every guard that refuses to leave the server without one
+  // asks how many there are, and the answer must not depend on how many
+  // players there are.
+  const byNameKey = new Map(); // nameKey -> uid
+  const admins = new Set(); // uid
 
   // Who has changed since the last write. The whole map used to go to disk on
   // every flush, which was O(every identity ever seen) for one rename; a
@@ -129,6 +152,34 @@ function createIdentityStore(options = {}) {
     if (!uid) return;
     dirty.delete(uid);
     gone.add(uid);
+  }
+
+  // The one place a record's name is set, so the index cannot drift from it.
+  function setName(rec, name) {
+    const previous = nameKeyOf(rec.name);
+    if (previous && byNameKey.get(previous) === rec.uid) byNameKey.delete(previous);
+    rec.name = name;
+    const key = nameKeyOf(name);
+    if (key) byNameKey.set(key, rec.uid);
+  }
+
+  // And the one place a record joins or leaves the map, for the same reason.
+  function hold(rec) {
+    identities.set(rec.uid, rec);
+    const key = nameKeyOf(rec.name);
+    if (key) byNameKey.set(key, rec.uid);
+    if (rec.role === 'admin') admins.add(rec.uid);
+  }
+
+  function drop(uid) {
+    const rec = identities.get(uid);
+    if (!rec) return false;
+    for (const tokenHash of rec.tokens.keys()) tokens.delete(tokenHash);
+    const key = nameKeyOf(rec.name);
+    if (byNameKey.get(key) === uid) byNameKey.delete(key);
+    admins.delete(uid);
+    identities.delete(uid);
+    return true;
   }
 
   // Keyed by a digest of the token, never by the token. What is written down
@@ -200,7 +251,15 @@ function createIdentityStore(options = {}) {
       uid: fields.uid,
       name: fields.name || '',
       avatar: fields.avatar || '🧑',
-      provider: ['gamenight', 'local'].includes(fields.provider) ? fields.provider : 'guest',
+      // Two providers, and no third. A guest used to be the default and the
+      // commonest kind; now an identity is an account, and an account came
+      // either from here or from GameNight.
+      provider: fields.provider === 'gamenight' ? 'gamenight' : 'local',
+      // What they may do, and whether they may do anything at all. Both live
+      // here rather than on the account, because a GameNight player has no
+      // account row and is just as much a person.
+      role: fields.role === 'admin' ? 'admin' : 'player',
+      disabledAt: Number.isFinite(fields.disabledAt) ? fields.disabledAt : null,
       gnUserId: fields.gnUserId ? String(fields.gnUserId) : null,
       createdAt: fields.createdAt || at,
       lastSeenAt: fields.lastSeenAt || at,
@@ -214,6 +273,8 @@ function createIdentityStore(options = {}) {
   async function load() {
     identities.clear();
     tokens.clear();
+    byNameKey.clear();
+    admins.clear();
     dirty.clear();
     gone.clear();
     if (!db) return 0;
@@ -226,6 +287,8 @@ function createIdentityStore(options = {}) {
           avatar: row.avatar,
           provider: row.provider,
           gnUserId: row.gnUserId,
+          role: row.role,
+          disabledAt: row.disabledAt,
           createdAt: row.createdAt,
           lastSeenAt: row.lastSeenAt,
           prefs: row.prefs,
@@ -242,10 +305,11 @@ function createIdentityStore(options = {}) {
         });
         tokens.set(device.tokenHash, rec.uid);
       }
-      // An identity with no device on it is nobody, and was already dropped on
-      // the way in when this was a file.
-      if (rec.tokens.size === 0) continue;
-      identities.set(rec.uid, rec);
+      // An identity with no device on it used to be nobody, and was dropped
+      // here. It is somebody now: signing out everywhere leaves one, and so
+      // does an account whose owner has not been back since their last device
+      // aged out. Their password and their name are still theirs.
+      hold(rec);
     }
     return identities.size;
   }
@@ -257,6 +321,8 @@ function createIdentityStore(options = {}) {
       nameKey: nameKeyOf(rec.name),
       avatar: rec.avatar,
       provider: rec.provider,
+      role: rec.role,
+      disabledAt: rec.disabledAt,
       gnUserId: rec.gnUserId,
       createdAt: rec.createdAt,
       lastSeenAt: rec.lastSeenAt,
@@ -355,58 +421,90 @@ function createIdentityStore(options = {}) {
     mark(rec.uid);
   }
 
-  // Returns the identity, or null when a new identity would have no name.
-  // A token on a GameNight identity carries its name from GameNight, so the
-  // one the browser sends is ignored; the avatar is still the player's own.
-  function identify({ token, name, avatar, userAgent } = {}) {
-    const safeName = sanitizeName(name);
+  // ── Who owns a name ─────────────────────────────────────────────────────
+  //
+  // One rule, one place, for both kinds of identity. A name belongs to one
+  // person on this server: an account owns it, or somebody is already playing
+  // under it, and either way nobody else may have it. Every path that sets a
+  // name comes through here, which is what stops the two stores disagreeing
+  // about who is called what.
+  //
+  // Answers null when the name is free for this uid, or the uid that holds it.
+  function nameHeldBy(name, uid) {
+    const key = nameKeyOf(name);
+    if (!key) return null;
+    const owner = nameOwner(name);
+    if (owner && owner !== uid) return owner;
+    const playing = byNameKey.get(key);
+    if (playing && playing !== uid) return playing;
+    return null;
+  }
+
+  // Returns the identity, or an error the caller can answer with. There is no
+  // minting here any more: a token this server does not know is a browser with
+  // nothing to sign in as, and the answer is to go and make an account.
+  //
+  // The name the browser sends is not consulted at all. It used to be how you
+  // became somebody, and while it was, an existing account could be renamed by
+  // typing over the box - which left identities.name and the account's own
+  // name_key disagreeing until the next sign-in. A name changes through
+  // rename() now, and nowhere else.
+  function identify({ token, avatar } = {}) {
     const safeAvatar = avatar ? sanitizeAvatar(avatar) : '';
     const at = now();
-    let rec = recordFor(token);
-    let isNew = false;
+    const rec = recordFor(token);
+    if (!rec) return { error: 'no-account' };
+    if (rec.disabledAt) return { error: 'disabled' };
     let changed = false;
-    // A name an account owns is that account's, whoever is asking. The owner
-    // comes through here every time they reconnect, so it is only somebody
-    // else who is turned away.
-    if (safeName) {
-      const owner = nameOwner(safeName);
-      if (owner && (!rec || rec.uid !== owner)) return { error: 'name-taken' };
+    // Only a value that actually moves earns a prompt write. The ordinary
+    // reconnect resends the avatar the record already holds, and that must
+    // cost nothing.
+    if (safeAvatar && safeAvatar !== rec.avatar) {
+      rec.avatar = safeAvatar;
+      changed = true;
     }
-    if (!rec) {
-      if (!safeName) return null;
-      token = mintToken();
-      rec = newRecord({ uid: random.randomId('u_'), name: safeName, avatar: safeAvatar }, at);
-      identities.set(rec.uid, rec);
-      attachToken(rec, token, at, userAgent);
-      isNew = true;
-    } else {
-      // Only a value that actually moves earns a prompt write. The ordinary
-      // reconnect resends the name and avatar the record already holds, and
-      // that must cost nothing.
-      if (rec.provider !== 'gamenight' && safeName && safeName !== rec.name) {
-        rec.name = safeName;
-        changed = true;
-      }
-      if (safeAvatar && safeAvatar !== rec.avatar) {
-        rec.avatar = safeAvatar;
-        changed = true;
-      }
-      touch(rec, token, at);
-    }
+    touch(rec, token, at);
     mark(rec.uid);
-    scheduleFlush(isNew || changed ? 'material' : 'touch');
-    return { ...publicView(token, rec), isNew };
+    scheduleFlush(changed ? 'material' : 'touch');
+    return { ...publicView(token, rec), isNew: false };
   }
 
   // Is anybody other than `uid` playing under this name? Asked by the accounts
-  // store before it lets somebody claim one: a name is only free if nobody
-  // else is already answering to it.
+  // store before it lets somebody claim one. One lookup now rather than a walk
+  // over every identity the server has ever seen, which matters because
+  // nothing prunes them any more.
   function nameHolder(key, uid) {
-    for (const rec of identities.values()) {
-      if (rec.uid === uid) continue;
-      if (nameKeyOf(rec.name) === key) return true;
+    const held = byNameKey.get(key);
+    return !!held && held !== uid;
+  }
+
+  // Change the name somebody plays under. Refused if anybody else holds it,
+  // and the caller is expected to have refused it already if they are sitting
+  // at a table - the standings and the log carry names rather than uids, so a
+  // rename mid-tournament would rewrite who won.
+  //
+  // Returns null on success, or a sentence to show them.
+  function rename(uid, name) {
+    const rec = uid ? identities.get(uid) : null;
+    if (!rec) return 'There is nobody here by that name.';
+    // A GameNight name belongs to GameNight. Changing it here would last until
+    // their next sign-in and no longer, which is worse than refusing.
+    if (rec.provider === 'gamenight') {
+      return 'That name comes from GameNight. Change it there.';
     }
-    return false;
+    const safeName = sanitizeName(name);
+    if (!safeName) return 'Pick a name first.';
+    if (nameKeyOf(safeName) === nameKeyOf(rec.name)) {
+      // The same name in different letters is still a rename worth making,
+      // because it is what they will be shown as.
+      if (safeName === rec.name) return null;
+    } else if (nameHeldBy(safeName, uid)) {
+      return 'That name is taken on this server.';
+    }
+    setName(rec, safeName);
+    mark(rec.uid);
+    scheduleFlush('material');
+    return null;
   }
 
   // An account signing in, which is not the same as a browser coming back: the
@@ -417,7 +515,12 @@ function createIdentityStore(options = {}) {
     if (!uid) return null;
     const at = now();
     let rec = identities.get(uid);
+    if (rec && rec.disabledAt) return { error: 'disabled' };
+    let isNew = false;
     if (!rec) {
+      // The first sign-in after the link in the mail was opened. The account
+      // has existed since then; this is the moment it becomes somebody who can
+      // sit down, which is why nothing was written here before now.
       rec = newRecord(
         {
           uid,
@@ -427,18 +530,22 @@ function createIdentityStore(options = {}) {
         },
         at
       );
-      identities.set(uid, rec);
+      hold(rec);
+      isNew = true;
     } else {
       rec.provider = 'local';
       const safeName = sanitizeName(name);
-      if (safeName) rec.name = safeName;
+      // The account's name is the name. It cannot collide - the accounts
+      // table holds it unique - but it is set through setName so the index
+      // follows a name that was changed while they were away.
+      if (safeName && safeName !== rec.name) setName(rec, safeName);
       rec.lastSeenAt = at;
     }
     const token = mintToken();
     attachToken(rec, token, at, userAgent);
     mark(rec.uid);
     scheduleFlush('material');
-    return { ...publicView(token, rec), isNew: false };
+    return { ...publicView(token, rec), isNew };
   }
 
   // A player arriving from GameNight with a verified token. The uid is the
@@ -446,6 +553,27 @@ function createIdentityStore(options = {}) {
   // browser; this browser gets a device token of its own, and the ones
   // already out stay good. The name is refreshed every time, because it is
   // GameNight's and can change there.
+  // A name from GameNight is not one this server can refuse. It was chosen
+  // somewhere else, by somebody who cannot see this server's list and has no
+  // screen here to change it on, and turning them away at the door for it
+  // would mean a GameNight account that simply cannot play through no fault of
+  // anybody's. So a taken name is worn with a number after it, the player is
+  // told, and every later sign-in tries the real one again first - which makes
+  // an administrator freeing the name fix itself the next time they visit.
+  const NAME_SUFFIX_TRIES = 9;
+
+  function claimGameNightName(wanted, uid, current) {
+    if (!nameHeldBy(wanted, uid)) return { name: wanted, adjusted: false };
+    for (let n = 2; n <= NAME_SUFFIX_TRIES; n++) {
+      const tail = ` ${n}`;
+      const candidate = sanitizeName(wanted.slice(0, 16 - tail.length) + tail);
+      if (candidate && !nameHeldBy(candidate, uid)) return { name: candidate, adjusted: true };
+    }
+    // Nine of them are taken. Keep whatever they are already called rather
+    // than refuse the sign-in.
+    return { name: current || null, adjusted: true };
+  }
+
   function identifyFromGameNight({ sub, name, avatar, userAgent } = {}) {
     if (sub === undefined || sub === null || String(sub) === '') return null;
     const safeName = sanitizeName(name);
@@ -454,16 +582,19 @@ function createIdentityStore(options = {}) {
     const at = now();
     const uid = `gn_${sub}`;
     let rec = identities.get(uid);
+    if (rec && rec.disabledAt) return { error: 'disabled' };
     let isNew = false;
+    const claim = claimGameNightName(safeName, uid, rec ? rec.name : null);
     if (!rec) {
+      if (!claim.name) return null;
       rec = newRecord(
-        { uid, name: safeName, avatar: safeAvatar, provider: 'gamenight', gnUserId: sub },
+        { uid, name: claim.name, avatar: safeAvatar, provider: 'gamenight', gnUserId: sub },
         at
       );
-      identities.set(uid, rec);
+      hold(rec);
       isNew = true;
     } else {
-      rec.name = safeName;
+      if (claim.name && claim.name !== rec.name) setName(rec, claim.name);
       if (safeAvatar) rec.avatar = safeAvatar;
       rec.lastSeenAt = at;
     }
@@ -471,7 +602,15 @@ function createIdentityStore(options = {}) {
     attachToken(rec, token, at, userAgent);
     mark(rec.uid);
     scheduleFlush('material');
-    return { ...publicView(token, rec), isNew };
+    if (claim.adjusted) {
+      log({
+        level: 'info',
+        event: 'gamenight_name_taken',
+        message: 'A GameNight name was already somebody else’s here',
+        data: { wanted: safeName, seatedAs: rec.name },
+      });
+    }
+    return { ...publicView(token, rec), isNew, nameAdjusted: claim.adjusted ? safeName : null };
   }
 
   // A patch, not a replacement: the client sends the one preference that just
@@ -515,24 +654,25 @@ function createIdentityStore(options = {}) {
       : null;
   }
 
-  function rename(uid, { name, avatar } = {}) {
-    const rec = identities.get(uid);
+  // The picture, which is nobody else's business and cannot collide with
+  // anything. Its own function now that rename() has a name rule to keep.
+  function setAvatar(uid, avatar) {
+    const rec = uid ? identities.get(uid) : null;
     if (!rec) return null;
-    const safeName = sanitizeName(name);
     const safeAvatar = avatar ? sanitizeAvatar(avatar) : '';
-    if (safeName && rec.provider !== 'gamenight') rec.name = safeName;
-    if (safeAvatar) rec.avatar = safeAvatar;
+    if (!safeAvatar || safeAvatar === rec.avatar) return rec.avatar;
+    rec.avatar = safeAvatar;
     rec.lastSeenAt = now();
     mark(rec.uid);
     scheduleFlush('material');
-    return { uid: rec.uid, name: rec.name, avatar: rec.avatar, provider: rec.provider };
+    return rec.avatar;
   }
 
   // ── Sessions ─────────────────────────────────────────────────────────────
   //
-  // The devices this identity is signed in on. A guest is one browser and will
-  // see one row; a Game Night account is the reason this exists. The token
-  // itself never leaves the server: a row is named by the id minted with it.
+  // The devices this identity is signed in on - a phone, a laptop, the machine
+  // at work. The token itself never leaves the server: a row is named by the
+  // id minted with it.
   function sessions(uid, currentToken = null) {
     const rec = uid ? identities.get(uid) : null;
     if (!rec) return [];
@@ -563,15 +703,10 @@ function createIdentityStore(options = {}) {
       if (t.id !== id) continue;
       rec.tokens.delete(tokenHash);
       tokens.delete(tokenHash);
-      // An identity with no devices left is nobody. Dropping it here rather
-      // than waiting for the idle sweep keeps the store honest, and matches
-      // what load() would do with it on the next boot anyway.
-      if (rec.tokens.size === 0) {
-        identities.delete(rec.uid);
-        markGone(rec.uid);
-      } else {
-        mark(rec.uid);
-      }
+      // The identity stays, whether or not that was the last device. Signing
+      // out of everywhere is a thing somebody does on purpose, and it must not
+      // be the same as deleting the account they did it from.
+      mark(rec.uid);
       scheduleFlush('material');
       return tokenHash;
     }
@@ -587,9 +722,13 @@ function createIdentityStore(options = {}) {
     return !!row && !!endSession(rec.uid, row.id);
   }
 
-  // Tokens expire one at a time; an identity goes when its last one does.
-  // Returns how many identities were dropped.
-  function expireIdle() {
+  // A device that has not been seen for a month stops being signed in. The
+  // person does not: they have an account, and an account that went quiet over
+  // the summer is still theirs when they come back to it. Only the browser
+  // forgets.
+  //
+  // Returns how many devices were signed out.
+  function expireDevices() {
     let dropped = 0;
     const at = now();
     for (const [uid, rec] of identities) {
@@ -599,18 +738,120 @@ function createIdentityStore(options = {}) {
           rec.tokens.delete(tokenHash);
           tokens.delete(tokenHash);
           lost = true;
+          dropped++;
         }
       }
-      if (rec.tokens.size === 0) {
-        identities.delete(uid);
-        markGone(uid);
-        dropped++;
-      } else if (lost) {
-        mark(uid);
-      }
+      if (lost) mark(uid);
     }
     if (dropped) scheduleFlush('material');
     return dropped;
+  }
+
+  // ── Who runs the server, and who may not play ───────────────────────────
+  //
+  // Both are facts about a person rather than about their account, so both
+  // live here: a GameNight player has no account row and is just as much
+  // somebody who might administer this server or be kept off it.
+
+  function isAdmin(uid) {
+    return !!uid && admins.has(uid);
+  }
+
+  function adminCount() {
+    return admins.size;
+  }
+
+  // Would taking this uid's administrator away leave nobody? Every guard that
+  // refuses - demote, disable, delete - asks this one question, so there is
+  // one answer to keep right rather than three.
+  function wouldOrphan(uid) {
+    return isAdmin(uid) && admins.size <= 1;
+  }
+
+  function setRole(uid, role) {
+    const rec = uid ? identities.get(uid) : null;
+    if (!rec) return false;
+    const next = role === 'admin' ? 'admin' : 'player';
+    if (rec.role === next) return true;
+    rec.role = next;
+    if (next === 'admin') admins.add(uid);
+    else admins.delete(uid);
+    mark(uid);
+    scheduleFlush('material');
+    return true;
+  }
+
+  function isDisabled(uid) {
+    const rec = uid ? identities.get(uid) : null;
+    return !!rec && !!rec.disabledAt;
+  }
+
+  function setDisabled(uid, at) {
+    const rec = uid ? identities.get(uid) : null;
+    if (!rec) return false;
+    rec.disabledAt = Number.isFinite(at) ? at : at ? now() : null;
+    mark(uid);
+    scheduleFlush('material');
+    return true;
+  }
+
+  // Every device, at once. What "sign out everywhere" does, and what disabling
+  // or deleting somebody has to do before it means anything - a token already
+  // in a browser would otherwise keep working until it aged out.
+  //
+  // Returns the digests, so the caller can find the sockets holding them.
+  function revokeAll(uid) {
+    const rec = uid ? identities.get(uid) : null;
+    if (!rec) return [];
+    const dropped = [...rec.tokens.keys()];
+    for (const tokenHash of dropped) tokens.delete(tokenHash);
+    rec.tokens.clear();
+    mark(uid);
+    scheduleFlush('material');
+    return dropped;
+  }
+
+  function remove(uid) {
+    if (!drop(uid)) return false;
+    markGone(uid);
+    scheduleFlush('material');
+    return true;
+  }
+
+  // The Users page. Searched, filtered and paged here rather than in the
+  // browser: the page polls, and a server with a thousand players should not
+  // send a thousand rows three times a minute to show twenty-five of them.
+  function list({ q = '', filter = 'all', limit = 25, offset = 0 } = {}) {
+    const needle = String(q || '')
+      .trim()
+      .toLocaleLowerCase();
+    let rows = [...identities.values()];
+    if (needle) rows = rows.filter((rec) => nameKeyOf(rec.name).includes(needle));
+    if (filter === 'admin') rows = rows.filter((rec) => rec.role === 'admin');
+    else if (filter === 'disabled') rows = rows.filter((rec) => !!rec.disabledAt);
+    // Newest visit first, and uid to break a tie, so paging is stable while
+    // people come and go underneath it.
+    rows.sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0) || (a.uid < b.uid ? -1 : 1));
+    const total = rows.length;
+    const from = Math.max(0, Number(offset) || 0);
+    const size = Math.max(1, Math.min(50, Number(limit) || 25));
+    return {
+      total,
+      offset: from,
+      limit: size,
+      rows: rows.slice(from, from + size).map((rec) => ({
+        uid: rec.uid,
+        name: rec.name,
+        avatar: rec.avatar,
+        provider: rec.provider,
+        role: rec.role,
+        disabled: !!rec.disabledAt,
+        disabledAt: rec.disabledAt,
+        createdAt: rec.createdAt,
+        lastSeenAt: rec.lastSeenAt,
+        devices: rec.tokens.size,
+      })),
+    };
   }
 
   return {
@@ -618,14 +859,25 @@ function createIdentityStore(options = {}) {
     identifyFromGameNight,
     signInAs,
     nameHolder,
+    nameHeldBy,
     verify,
     get,
     rename,
+    setAvatar,
     setPrefs,
     sessions,
     endSession,
     revokeToken,
-    expireIdle,
+    revokeAll,
+    expireDevices,
+    isAdmin,
+    isDisabled,
+    setRole,
+    setDisabled,
+    adminCount,
+    wouldOrphan,
+    list,
+    remove,
     load,
     flush,
     // So a caller holding a raw token can compare it with what endSession

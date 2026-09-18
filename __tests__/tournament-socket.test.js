@@ -7,6 +7,8 @@ const { io: Client } = require('socket.io-client');
 
 jest.setTimeout(15000);
 
+const { accountFor } = require('./helpers/account');
+
 describe('Tournament socket layer', () => {
   const originalEnv = { ...process.env };
   const clients = [];
@@ -41,6 +43,19 @@ describe('Tournament socket layer', () => {
       if (!socket) continue;
       socket.removeAllListeners();
       socket.close();
+    }
+    // And the games they left standing. A name is one person now, so the Host
+    // of one test is the Host of the next - and a person can only be in one
+    // game at a time. Tests used to be isolated by accident, because every
+    // guest called Host was a different guest.
+    for (const entry of [...serverModule.tournaments.values()]) {
+      serverModule.registry.forceCancel(entry, 'the test finished');
+    }
+    // And every device they signed in on, for the same reason: the accounts
+    // outlive the test now, so without this the second test to ask for Ann
+    // would find her signed in on the first test's browser as well.
+    for (const row of serverModule.identity.list({ limit: 50 }).rows) {
+      serverModule.identity.revokeAll(row.uid);
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   });
@@ -99,9 +114,27 @@ describe('Tournament socket layer', () => {
     });
   }
 
-  function identify(socket, { token = null, name = 'Host', avatar = '🦊' } = {}) {
+  // The games list over HTTP, which wants the same credential the socket does.
+  // A reader of its own, so it never collides with whoever the test is playing
+  // as.
+  async function publicList() {
+    const answer = await fetch(`${baseUrl}/api/tournaments`, {
+      headers: { authorization: `Bearer ${accountFor(serverModule, 'ApiReader').token}` },
+    });
+    return answer.json();
+  }
+
+  // A name is not an identity any more: somebody with an account signs in, and
+  // the browser identifies with the device token that came back. accountFor
+  // does the first half against the server's own stores - the same calls the
+  // Users page and the signIn handler make - so a test that wants a player
+  // still asks for one by name.
+  function identify(socket, { token = null, name = 'Host', avatar = '🦊', role = null } = {}) {
     const reply = waitFor(socket, 'identified');
-    socket.emit('identify', { token, name, avatar });
+    socket.emit('identify', {
+      token: token || accountFor(serverModule, name, { avatar, role }).token,
+      avatar,
+    });
     return reply;
   }
 
@@ -310,13 +343,17 @@ describe('Tournament socket layer', () => {
     expect(rows[0].id).toMatch(/^[0-9a-f]{16}$/);
     expect(JSON.stringify(rows)).not.toContain(me.token);
 
-    // A second device, which is a second token.
+    // A second device, which is a second token - and the same person, because
+    // signing in as Ann is signing in as Ann wherever you do it.
     const laptop = await connectClient();
     const other = await identify(laptop, { name: 'Ann' });
+    expect(other.uid).toBe(me.uid);
     expect(other.token).not.toBe(me.token);
     const both = waitFor(laptop, 'sessions');
     laptop.emit('listSessions');
-    expect(await both).toHaveLength(1);
+    const two = await both;
+    expect(two).toHaveLength(2);
+    expect(two.filter((r) => r.current)).toHaveLength(1);
   });
 
   test('signing a device out reaches every tab it had open', async () => {
@@ -349,10 +386,13 @@ describe('Tournament socket layer', () => {
     first.emit('endSession', { id: mine[0].id });
     expect(await endedFirst).toMatchObject({ mine: true });
     expect(await endedSecond).toMatchObject({ mine: false });
-    // And the token is no good to anybody afterwards.
+    // And the token is no good to anybody afterwards. It used to make them
+    // somebody new, because a name was an identity; now it makes them nobody,
+    // and the browser is shown the way back in.
     const stale = await connectClient();
-    const back = await identify(stale, { token: me.token, name: 'Bee' });
-    expect(back.uid).not.toBe(me.uid);
+    const refusedToken = waitFor(stale, 'identifyFailed');
+    stale.emit('identify', { token: me.token });
+    expect(await refusedToken).toMatchObject({ reason: 'no-account' });
     expect(theirs.uid).toBeTruthy();
   });
 
@@ -360,11 +400,12 @@ describe('Tournament socket layer', () => {
     const socket = await connectClient();
     const me = await identify(socket, { name: 'Dee' });
     socket.emit('signOut');
-    // The next socket presenting that token is a stranger with a new identity.
+    // The next socket presenting that token is nobody, and is told so.
     await new Promise((resolve) => setTimeout(resolve, 50));
     const after = await connectClient();
-    const fresh = await identify(after, { token: me.token, name: 'Dee' });
-    expect(fresh.uid).not.toBe(me.uid);
+    const failed = waitFor(after, 'identifyFailed');
+    after.emit('identify', { token: me.token });
+    expect(await failed).toMatchObject({ provider: 'local', reason: 'no-account' });
   });
 
   test('a fresh socket with the same token rejoins the seat and the table follows', async () => {
@@ -443,7 +484,7 @@ describe('Tournament socket layer', () => {
     });
     expect(state.entrants).toBe(2);
     expect(state.isHost).toBe(true);
-    const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+    const list = await publicList();
     const card = list.find((t) => t.id === created.id);
     expect(card).toMatchObject({
       status: 'registering',
@@ -454,14 +495,22 @@ describe('Tournament socket layer', () => {
     expect(card).not.toHaveProperty('code');
   });
 
-  test('a duplicate name is refused', async () => {
+  // Two people at one table with one name used to be possible and had to be
+  // refused at the door. It is not possible any more: a name is one person on
+  // this server, so the refusal moved to the only place a second claim can be
+  // made, which is making an account.
+  test('a name somebody already has cannot be claimed by anybody else', async () => {
     const host = await connectClient();
-    const created = await createTournament(host);
-    const twin = await connectClient();
-    twin.__identity = await identify(twin, { name: 'host', avatar: '🐸' });
-    const refused = waitFor(twin, 'error', (e) => /Name already taken/.test(e.message));
-    twin.emit('joinTournament', { code: created.code });
-    await refused;
+    const me = await identify(host, { name: 'Twinned' });
+
+    // The same name in any letters is the same name.
+    expect(serverModule.accounts.ownerOf('TWINNED')).toBe(me.uid);
+    expect(
+      serverModule.accounts.createVerified({ name: 'twinned', email: 'twin@example.com' }).error
+    ).toMatch(/taken/);
+    expect(serverModule.identity.nameHolder('twinned', 'u_somebody-else')).toBe(true);
+    // And it is still their own name, not something they are locked out of.
+    expect(serverModule.identity.nameHolder('twinned', me.uid)).toBe(false);
   });
 
   test('a scheduled start deals to everyone when the time arrives', async () => {
@@ -481,7 +530,7 @@ describe('Tournament socket layer', () => {
   test('a private game is off the public list and refuses an id, but a code gets in', async () => {
     const host = await connectClient();
     const created = await createTournament(host, { name: 'Quiet night' });
-    const list = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+    const list = await publicList();
     expect(list.find((t) => t.id === created.id)).toBeUndefined();
     const guest = await connectClient();
     await identify(guest, { name: 'Guest', avatar: '🐸' });
@@ -1045,7 +1094,7 @@ describe('Tournament socket layer', () => {
       pending: 1,
     });
     // Still nowhere public.
-    const pub = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+    const pub = await publicList();
     expect(pub.find((t) => t.id === quiet.id || t.id === door.id)).toBeUndefined();
 
     // Ending one from the list, by id.

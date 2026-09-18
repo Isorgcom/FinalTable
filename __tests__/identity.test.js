@@ -1,4 +1,9 @@
 // __tests__/identity.test.js - the identity store: tokens, uids, persistence
+//
+// Nothing mints an identity from a name any more. Somebody becomes somebody by
+// signing in to an account, so that is how these tests make one: signInAs is
+// what the accounts store calls once a name and a password have gone together,
+// and the uid it is handed is the account's.
 const { createIdentityStore } = require('../server/identity');
 const { createMemoryDatabase } = require('../server/db');
 
@@ -11,60 +16,97 @@ describe('identity store', () => {
     return db;
   };
 
-  test('identify mints a token that is not the uid and reidentifies the same uid', () => {
+  // An account signing in, which is the only way anybody arrives now.
+  const signIn = (store, name, extra = {}) =>
+    store.signInAs({ uid: `u_${String(name).toLocaleLowerCase()}`, name, ...extra });
+
+  test('signing in mints a token that is not the uid, and the token comes back', () => {
     const store = createIdentityStore();
-    const first = store.identify({ name: 'Bryce', avatar: '🦊' });
+    const first = signIn(store, 'Bryce', { avatar: '🦊' });
     expect(first.isNew).toBe(true);
-    expect(first.uid).toMatch(/^u_/);
+    expect(first.uid).toBe('u_bryce');
     expect(first.token).not.toBe(first.uid);
     expect(first.token.length).toBeGreaterThanOrEqual(24);
-    const again = store.identify({ token: first.token, name: 'Bryce', avatar: '🦊' });
+    const again = store.identify({ token: first.token, avatar: '🦊' });
     expect(again.isNew).toBe(false);
     expect(again.uid).toBe(first.uid);
     expect(again.token).toBe(first.token);
   });
 
-  test('an unknown token mints a fresh identity; a new one needs a name', () => {
+  // The whole of what changed. A name in a box used to be an identity; now it
+  // is nothing at all, whatever shape it arrives in.
+  test('a name identifies nobody, and an unknown token mints nothing', () => {
     const store = createIdentityStore();
-    expect(store.identify({ token: 'nope', name: '' })).toBeNull();
-    const fresh = store.identify({ token: 'nope', name: 'Ann' });
-    expect(fresh.isNew).toBe(true);
-    expect(fresh.token).not.toBe('nope');
+    expect(store.identify({ name: 'Ann' })).toEqual({ error: 'no-account' });
+    expect(store.identify({ token: 'nope', name: 'Ann' })).toEqual({ error: 'no-account' });
+    expect(store.identify({})).toEqual({ error: 'no-account' });
+    expect(store.size).toBe(0);
   });
 
-  test('verify, get and rename agree', () => {
+  test('verify and get agree, and a rename needs the name to be free', () => {
     const store = createIdentityStore();
-    const me = store.identify({ name: 'Bryce', avatar: '🦊' });
+    const me = signIn(store, 'Bryce', { avatar: '🦊' });
     expect(store.verify(me.token)).toMatchObject({ uid: me.uid, name: 'Bryce', avatar: '🦊' });
     expect(store.verify('unknown')).toBeNull();
     expect(store.get(me.uid)).toEqual({
       uid: me.uid,
       name: 'Bryce',
       avatar: '🦊',
-      provider: 'guest',
+      provider: 'local',
     });
-    store.rename(me.uid, { name: 'B', avatar: '🐸' });
-    expect(store.get(me.uid)).toEqual({ uid: me.uid, name: 'B', avatar: '🐸', provider: 'guest' });
-    // Re-identifying with an empty name keeps the stored one.
-    expect(store.identify({ token: me.token, name: '' }).name).toBe('B');
+
+    expect(store.rename(me.uid, 'B')).toBeNull();
+    expect(store.get(me.uid)).toMatchObject({ uid: me.uid, name: 'B' });
+    // Somebody else's name is not available.
+    signIn(store, 'Ann');
+    expect(store.rename(me.uid, 'Ann')).toMatch(/taken/);
+    expect(store.rename(me.uid, '')).toMatch(/Pick a name/);
+    expect(store.rename('u_nobody', 'Whoever')).toMatch(/nobody/);
+    // The name it already has, in different letters, is still allowed.
+    expect(store.rename(me.uid, 'b')).toBeNull();
+    expect(store.get(me.uid).name).toBe('b');
   });
 
-  test('idle identities expire', () => {
+  // A device that has not been used for a month stops being signed in. The
+  // person does not: they have an account, and it is still theirs.
+  test('an idle device is signed out and its owner is not', () => {
     let clock = 1000;
     const store = createIdentityStore({ ttlMs: 500, now: () => clock });
-    const a = store.identify({ name: 'A' });
+    const a = signIn(store, 'A');
     clock += 300;
-    const b = store.identify({ name: 'B' });
+    const b = signIn(store, 'B');
     clock += 300;
-    expect(store.expireIdle()).toBe(1);
+    expect(store.expireDevices()).toBe(1);
     expect(store.verify(a.token)).toBeNull();
     expect(store.verify(b.token)).not.toBeNull();
+    // Both of them are still people.
+    expect(store.get('u_a')).toMatchObject({ name: 'A' });
+    expect(store.size).toBe(2);
+  });
+
+  // An account with nothing signed in to it is what signing out everywhere
+  // leaves, and it has to survive a restart or the account is deleted by its
+  // owner tidying up.
+  test('an account with no devices left is still somebody, across a restart', async () => {
+    const db = freshDb('deviceless');
+    const store = createIdentityStore({ db });
+    const me = signIn(store, 'Ann');
+    store.revokeAll(me.uid);
+    expect(store.get(me.uid)).toMatchObject({ name: 'Ann' });
+    await store.flush();
+
+    const reopened = createIdentityStore({ db });
+    expect(await reopened.load()).toBe(1);
+    expect(reopened.get(me.uid)).toMatchObject({ name: 'Ann' });
+    expect(reopened.sessions(me.uid)).toEqual([]);
+    // And signing in again on a new browser finds the same person.
+    expect(signIn(reopened, 'Ann').uid).toBe(me.uid);
   });
 
   test('identities are written down and survive a new store', async () => {
     const db = freshDb('persist');
     const store = createIdentityStore({ db });
-    const me = store.identify({ name: 'Bryce', avatar: '🦊' });
+    const me = signIn(store, 'Bryce', { avatar: '🦊' });
     await store.flush();
 
     const reopened = createIdentityStore({ db });
@@ -79,7 +121,7 @@ describe('identity store', () => {
   test('the token itself is never written down', async () => {
     const db = freshDb('digests');
     const store = createIdentityStore({ db });
-    const me = store.identify({ name: 'Bryce' });
+    const me = signIn(store, 'Bryce');
     await store.flush();
 
     const written = JSON.stringify(await db.identities.all());
@@ -92,7 +134,7 @@ describe('identity store', () => {
 
   test('a store with nowhere to write still works, just not across a restart', async () => {
     const store = createIdentityStore();
-    const me = store.identify({ name: 'Nowhere' });
+    const me = signIn(store, 'Nowhere');
     expect(store.verify(me.token)).toMatchObject({ uid: me.uid });
     await store.flush();
     expect(store.size).toBe(1);
@@ -113,18 +155,18 @@ describe('identity store', () => {
       return db.identities.put(row);
     };
     const store = createIdentityStore({ db: counted, flushDebounceMs: 5, touchFlushMs: 60000 });
-    const me = store.identify({ name: 'Bryce', avatar: '🦊' });
+    const me = signIn(store, 'Bryce', { avatar: '🦊' });
     await settle(40);
     expect(writes).toBe(1);
 
-    // The ordinary reconnect: same token, same name, same avatar. This is the
-    // hot path - it runs on every connect - and it must not be written.
-    store.identify({ token: me.token, name: 'Bryce', avatar: '🦊' });
+    // The ordinary reconnect: same token, same avatar. This is the hot path -
+    // it runs on every connect - and it must not be written.
+    store.identify({ token: me.token, avatar: '🦊' });
     await settle(40);
     expect(writes).toBe(1);
 
-    // A name that actually moves is a different matter.
-    store.identify({ token: me.token, name: 'Bee', avatar: '🦊' });
+    // A rename is a different matter.
+    store.rename(me.uid, 'Bee');
     await settle(40);
     expect(writes).toBe(2);
     expect((await db.identities.all())[0]).toMatchObject({ name: 'Bee' });
@@ -133,7 +175,7 @@ describe('identity store', () => {
   test('a touched lastSeenAt still reaches the store on the slow tier', async () => {
     const db = freshDb('touch');
     const store = createIdentityStore({ db, flushDebounceMs: 5, touchFlushMs: 10 });
-    const me = store.identify({ name: 'Ann' });
+    const me = signIn(store, 'Ann');
     await settle(40);
     const before = (await db.identities.all())[0].lastSeenAt;
     store.verify(me.token);
@@ -146,7 +188,7 @@ describe('identity store', () => {
   test('a burst of writes settles with everybody in it', async () => {
     const db = freshDb('burst');
     const store = createIdentityStore({ db, flushDebounceMs: 1, touchFlushMs: 1 });
-    for (let i = 0; i < 40; i++) store.identify({ name: `P${i}` });
+    for (let i = 0; i < 40; i++) signIn(store, `P${i}`);
     await settle(150);
     expect(await db.identities.all()).toHaveLength(40);
   });
@@ -154,7 +196,7 @@ describe('identity store', () => {
   test('flush resolves when everything is written, so shutdown can wait on it', async () => {
     const db = freshDb('flush');
     const store = createIdentityStore({ db, flushDebounceMs: 60000 });
-    store.identify({ name: 'Zed' });
+    signIn(store, 'Zed');
     expect(await db.identities.all()).toHaveLength(0);
     await store.flush();
     expect(await db.identities.all()).toHaveLength(1);
@@ -181,7 +223,8 @@ describe('identity store', () => {
   test("the name is GameNight's: refreshed on sign-in, never taken from the browser", () => {
     const store = createIdentityStore();
     const me = store.identifyFromGameNight({ sub: '7', name: 'oldname', avatar: '🦊' });
-    // A reconnect sending some other name changes nothing but the avatar.
+    // A reconnect changes nothing but the avatar - and could not change the
+    // name if it tried, because identify no longer reads one.
     const again = store.identify({ token: me.token, name: 'impostor', avatar: '🐸' });
     expect(again).toMatchObject({
       uid: 'gn_7',
@@ -189,15 +232,34 @@ describe('identity store', () => {
       avatar: '🐸',
       provider: 'gamenight',
     });
-    expect(store.rename('gn_7', { name: 'impostor' })).toMatchObject({ name: 'oldname' });
+    expect(store.rename('gn_7', 'impostor')).toMatch(/comes from GameNight/);
     // The account was renamed on GameNight; the next sign-in carries it.
     store.identifyFromGameNight({ sub: '7', name: 'newname' });
     expect(store.get('gn_7')).toMatchObject({ name: 'newname' });
   });
 
-  test('a stale GameNight token with no name mints nothing', () => {
+  // A GameNight name was chosen somewhere else, by somebody who cannot see
+  // this server's list. Turning them away for it would mean an account that
+  // simply cannot play here, so they wear a number instead and are told.
+  test('a GameNight name somebody here already has is worn with a number', () => {
     const store = createIdentityStore();
-    expect(store.identify({ token: 'gone', avatar: '🦊' })).toBeNull();
+    signIn(store, 'Bryce');
+    const gn = store.identifyFromGameNight({ sub: '11', name: 'Bryce' });
+    expect(gn.name).toBe('Bryce 2');
+    expect(gn.nameAdjusted).toBe('Bryce');
+    // Still one person per name.
+    expect(store.get('u_bryce').name).toBe('Bryce');
+
+    // And the moment the name is free, the next sign-in takes it back.
+    store.remove('u_bryce');
+    const back = store.identifyFromGameNight({ sub: '11', name: 'Bryce' });
+    expect(back.name).toBe('Bryce');
+    expect(back.nameAdjusted).toBeNull();
+  });
+
+  test('a stale GameNight token mints nothing', () => {
+    const store = createIdentityStore();
+    expect(store.identify({ token: 'gone', avatar: '🦊' })).toEqual({ error: 'no-account' });
     expect(store.size).toBe(0);
   });
 
@@ -207,32 +269,33 @@ describe('identity store', () => {
     expect(store.identifyFromGameNight({ sub: '1', name: '' })).toBeNull();
   });
 
-  test('a GameNight identity outlives one expired device and goes with the last', () => {
+  test('a GameNight identity outlives every one of its devices', () => {
     let clock = 1000;
     const store = createIdentityStore({ ttlMs: 500, now: () => clock });
     const a = store.identifyFromGameNight({ sub: '9', name: 'nine' });
     clock += 300;
     const b = store.identifyFromGameNight({ sub: '9', name: 'nine' });
     clock += 300;
-    expect(store.expireIdle()).toBe(0);
+    expect(store.expireDevices()).toBe(1);
     expect(store.verify(a.token)).toBeNull();
     expect(store.verify(b.token)).not.toBeNull();
     clock += 600;
-    expect(store.expireIdle()).toBe(1);
-    expect(store.get('gn_9')).toBeNull();
+    expect(store.expireDevices()).toBe(1);
+    // Signed out of everywhere, and still a person with a name of their own.
+    expect(store.get('gn_9')).toMatchObject({ name: 'nine' });
   });
 
   test('provider and GameNight id survive a restart', async () => {
     const db = freshDb('provider');
     const store = createIdentityStore({ db });
     const gn = store.identifyFromGameNight({ sub: '3', name: 'three' });
-    const guest = store.identify({ name: 'Ann' });
+    const local = signIn(store, 'Ann');
     await store.flush();
 
     const reopened = createIdentityStore({ db });
     await reopened.load();
     expect(reopened.verify(gn.token)).toMatchObject({ uid: 'gn_3', provider: 'gamenight' });
-    expect(reopened.verify(guest.token)).toMatchObject({ uid: guest.uid, provider: 'guest' });
+    expect(reopened.verify(local.token)).toMatchObject({ uid: local.uid, provider: 'local' });
   });
 
   // Preferences belong to the person, so they hang off the identity and not
@@ -240,7 +303,7 @@ describe('identity store', () => {
   // one place a client can ask the server to write something it keeps.
   test('preferences are kept against the identity, and only the ones named', () => {
     const store = createIdentityStore();
-    const me = store.identify({ name: 'Bryce' });
+    const me = signIn(store, 'Bryce');
     expect(me.prefs).toEqual({});
 
     expect(store.setPrefs(me.uid, { muted: true, seat: 3, panelTab: 'stats' })).toEqual({
@@ -282,7 +345,7 @@ describe('identity store', () => {
   // off the disk in a year has to be one the client can still draw.
   test('the card settings are kept, and only the ones the client can draw', () => {
     const store = createIdentityStore();
-    const me = store.identify({ name: 'Bryce' });
+    const me = signIn(store, 'Bryce');
     const chosen = { cardBack: 'ivory', deck: 'four', cardFace: 'large' };
 
     expect(store.setPrefs(me.uid, chosen)).toEqual(chosen);
@@ -300,7 +363,7 @@ describe('identity store', () => {
   // server, and it carries the name and the avatar on purpose.
   test('preferences go to their owner, not into the roster', () => {
     const store = createIdentityStore();
-    const me = store.identify({ name: 'Bryce' });
+    const me = signIn(store, 'Bryce');
     store.setPrefs(me.uid, { muted: true, seat: 2 });
     expect(store.get(me.uid).prefs).toBeUndefined();
     expect(store.verify(me.token).prefs).toEqual({ muted: true, seat: 2 });
@@ -309,7 +372,7 @@ describe('identity store', () => {
   test('preferences survive a restart', async () => {
     const db = freshDb('prefs');
     const store = createIdentityStore({ db });
-    const me = store.identify({ name: 'Bryce' });
+    const me = signIn(store, 'Bryce');
     store.setPrefs(me.uid, { muted: true, seat: 5, panelTab: 'history' });
     await store.flush();
 
@@ -325,7 +388,7 @@ describe('identity store', () => {
   test('an identity stored with no preferences comes back with none', async () => {
     const db = freshDb('noprefs');
     const store = createIdentityStore({ db });
-    const me = store.identify({ name: 'Old' });
+    const me = signIn(store, 'Old');
     await store.flush();
     // As a record written before there were any preferences would look.
     const row = (await db.identities.all())[0];
@@ -335,6 +398,122 @@ describe('identity store', () => {
     const older = createIdentityStore({ db });
     await older.load();
     expect(older.verify(me.token).prefs).toEqual({});
+  });
+
+  // ── Who runs the server, and who may not play ────────────────────────────
+
+  test('a role is remembered, and the last administrator is protected', async () => {
+    const db = freshDb('roles');
+    const store = createIdentityStore({ db });
+    const ann = signIn(store, 'Ann');
+    const bob = signIn(store, 'Bob');
+    expect(store.isAdmin(ann.uid)).toBe(false);
+    expect(store.adminCount()).toBe(0);
+
+    store.setRole(ann.uid, 'admin');
+    expect(store.isAdmin(ann.uid)).toBe(true);
+    expect(store.adminCount()).toBe(1);
+    // The only one there is, so taking it away would leave nobody.
+    expect(store.wouldOrphan(ann.uid)).toBe(true);
+    expect(store.wouldOrphan(bob.uid)).toBe(false);
+
+    store.setRole(bob.uid, 'admin');
+    expect(store.adminCount()).toBe(2);
+    expect(store.wouldOrphan(ann.uid)).toBe(false);
+    // Standing down is allowed while somebody else is there.
+    store.setRole(ann.uid, 'player');
+    expect(store.isAdmin(ann.uid)).toBe(false);
+    expect(store.wouldOrphan(bob.uid)).toBe(true);
+
+    await store.flush();
+    const reopened = createIdentityStore({ db });
+    await reopened.load();
+    expect(reopened.isAdmin(bob.uid)).toBe(true);
+    expect(reopened.isAdmin(ann.uid)).toBe(false);
+    expect(reopened.adminCount()).toBe(1);
+  });
+
+  test('a disabled account cannot get in by any door', async () => {
+    const db = freshDb('disabled');
+    const store = createIdentityStore({ db });
+    const ann = signIn(store, 'Ann');
+    const gn = store.identifyFromGameNight({ sub: '5', name: 'Five' });
+
+    store.setDisabled(ann.uid, 1000);
+    store.setDisabled('gn_5', 1000);
+    expect(store.isDisabled(ann.uid)).toBe(true);
+    // The token they are holding.
+    expect(store.identify({ token: ann.token })).toEqual({ error: 'disabled' });
+    expect(store.identify({ token: gn.token })).toEqual({ error: 'disabled' });
+    // A fresh sign-in, with the password.
+    expect(signIn(store, 'Ann')).toEqual({ error: 'disabled' });
+    // And a fresh GameNight token.
+    expect(store.identifyFromGameNight({ sub: '5', name: 'Five' })).toEqual({ error: 'disabled' });
+
+    await store.flush();
+    const reopened = createIdentityStore({ db });
+    await reopened.load();
+    expect(reopened.isDisabled(ann.uid)).toBe(true);
+    // Lifted, and they are back.
+    reopened.setDisabled(ann.uid, null);
+    expect(reopened.isDisabled(ann.uid)).toBe(false);
+    expect(reopened.identify({ token: ann.token })).toMatchObject({ uid: ann.uid });
+  });
+
+  test('signing somebody out everywhere ends every device and keeps the person', () => {
+    const store = createIdentityStore();
+    const me = signIn(store, 'Ann', { userAgent: UA_MAC });
+    const second = signIn(store, 'Ann', { userAgent: UA_IPHONE });
+    expect(store.sessions(me.uid)).toHaveLength(2);
+
+    const dropped = store.revokeAll(me.uid);
+    expect(dropped).toHaveLength(2);
+    expect(dropped).toContain(store.hashToken(me.token));
+    expect(store.verify(me.token)).toBeNull();
+    expect(store.verify(second.token)).toBeNull();
+    expect(store.get(me.uid)).toMatchObject({ name: 'Ann' });
+    expect(store.revokeAll('u_nobody')).toEqual([]);
+  });
+
+  test('removing somebody takes their name and their devices with them', () => {
+    const store = createIdentityStore();
+    const me = signIn(store, 'Ann');
+    store.setRole(me.uid, 'admin');
+    expect(store.remove(me.uid)).toBe(true);
+    expect(store.get(me.uid)).toBeNull();
+    expect(store.verify(me.token)).toBeNull();
+    expect(store.adminCount()).toBe(0);
+    // And the name is free for somebody else.
+    expect(store.nameHolder('ann', 'u_other')).toBe(false);
+    expect(store.remove(me.uid)).toBe(false);
+  });
+
+  test('the list is searched, filtered and paged where the rows are', () => {
+    let clock = 1000;
+    const store = createIdentityStore({ now: () => clock });
+    for (const name of ['Ann', 'Bob', 'Carol', 'Dave']) {
+      clock += 1000;
+      signIn(store, name);
+    }
+    store.setRole('u_bob', 'admin');
+    store.setDisabled('u_carol', clock);
+
+    const all = store.list();
+    expect(all.total).toBe(4);
+    // Newest visit first.
+    expect(all.rows.map((r) => r.name)).toEqual(['Dave', 'Carol', 'Bob', 'Ann']);
+    expect(all.rows[2]).toMatchObject({ role: 'admin', provider: 'local', devices: 1 });
+    expect(all.rows[1]).toMatchObject({ disabled: true });
+
+    expect(store.list({ q: 'ar' }).rows.map((r) => r.name)).toEqual(['Carol']);
+    expect(store.list({ filter: 'admin' }).rows.map((r) => r.name)).toEqual(['Bob']);
+    expect(store.list({ filter: 'disabled' }).rows.map((r) => r.name)).toEqual(['Carol']);
+
+    const page = store.list({ limit: 2, offset: 2 });
+    expect(page).toMatchObject({ total: 4, offset: 2, limit: 2 });
+    expect(page.rows.map((r) => r.name)).toEqual(['Bob', 'Ann']);
+    // A page is capped however much is asked for.
+    expect(store.list({ limit: 5000 }).limit).toBe(50);
   });
 
   // The devices an account is signed in on. A row is named by an id minted
@@ -370,7 +549,7 @@ describe('identity store', () => {
     const store = createIdentityStore();
     const phone = store.identifyFromGameNight({ sub: '8', name: 'Bryce', userAgent: UA_IPHONE });
     const mac = store.identifyFromGameNight({ sub: '8', name: 'Bryce', userAgent: UA_MAC });
-    const stranger = store.identify({ name: 'Someone else' });
+    const stranger = signIn(store, 'Stranger');
 
     const phoneRow = store.sessions(phone.uid).find((r) => r.label === 'Safari on iPhone');
     // The id is not a secret; the uid is what authorises the sign-out.
@@ -386,12 +565,13 @@ describe('identity store', () => {
     expect(store.endSession(mac.uid, phoneRow.id)).toBeNull();
   });
 
-  test('signing out the last device leaves nobody behind', () => {
+  test('signing out the last device leaves the account behind', () => {
     const store = createIdentityStore();
-    const me = store.identify({ name: 'Bryce', userAgent: UA_MAC });
+    const me = signIn(store, 'Bryce', { userAgent: UA_MAC });
     expect(store.revokeToken(me.token)).toBe(true);
     expect(store.verify(me.token)).toBeNull();
-    expect(store.get(me.uid)).toBeNull();
+    // The browser is signed out. The person is not deleted by it.
+    expect(store.get(me.uid)).toMatchObject({ name: 'Bryce' });
     expect(store.revokeToken(me.token)).toBe(false);
     expect(store.revokeToken('never-was-a-token')).toBe(false);
   });
@@ -399,7 +579,7 @@ describe('identity store', () => {
   test('a device keeps its name and its id across a restart', async () => {
     const db = freshDb('device');
     const store = createIdentityStore({ db });
-    const me = store.identify({ name: 'Bryce', userAgent: UA_IPHONE });
+    const me = signIn(store, 'Bryce', { userAgent: UA_IPHONE });
     const before = store.sessions(me.uid, me.token);
     await store.flush();
 
@@ -421,7 +601,7 @@ describe('identity store', () => {
       name: 'Old',
       nameKey: 'old',
       avatar: '🧑',
-      provider: 'guest',
+      provider: 'local',
       createdAt: 1,
       lastSeenAt: 1,
       devices: [{ tokenHash: 'f'.repeat(64), createdAt: 1, lastSeenAt: 1 }],

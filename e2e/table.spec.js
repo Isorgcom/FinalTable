@@ -82,6 +82,7 @@ test.beforeEach(({ browser }) => {
 test.afterEach(async () => {
   if (guestContext) await guestContext.close();
   guestContext = null;
+  helpers.clearGames();
   // Both seats of a finished test's table are sitting out once the pages
   // close, and a table of sit-outs keeps dealing itself hands until the
   // abandon reaper notices. Stop the field so it does not compete with the
@@ -2283,9 +2284,10 @@ test('the buttons answer a press, and the presets show which sizing is loaded', 
 test('the turn clock waits for the cards to land before it is drawn', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
-  await page.goto(baseUrl);
-  // Watching from before the table exists, because the thing being measured
-  // happens in the first two seconds of it.
+  // Signed in first, because that is a page load and the watcher below would
+  // not survive one. Still from before the table exists, which is what matters:
+  // the thing being measured happens in its first two seconds.
+  await helpers.signInAs(page, 'Patience');
   await page.evaluate(() => {
     window.__seen = { armedAt: null, ringAt: null, dealingWhenRingShown: null };
     const tick = () => {
@@ -2307,8 +2309,6 @@ test('the turn clock waits for the cards to land before it is drawn', async ({ p
     requestAnimationFrame(tick);
   });
 
-  await page.fill('#playerName', 'Patience');
-  await page.locator('#playerName').blur();
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Patience table');
   await page.check('#tBots');
@@ -2838,9 +2838,7 @@ test('the rail link brings a watcher to the table, who can talk but not play', a
   const rail = await railContext.newPage();
   const railErrors = [];
   rail.on('pageerror', (err) => railErrors.push(err.message));
-  await rail.goto(`${baseUrl}/?w=${entry.rail.toLowerCase()}`);
-  await rail.fill('#playerName', 'Rail');
-  await rail.locator('#playerName').blur();
+  await helpers.signInAs(rail, 'Rail', { watch: entry.rail.toLowerCase() });
   await expect(rail.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
   await expect(rail.locator('#topInfo')).toContainText('Watching table 1');
   await expect(rail.locator('#actionsPanel')).toHaveClass(/hidden/);

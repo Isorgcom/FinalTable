@@ -10,8 +10,10 @@
 // identities and is now meeting accounts for the first time imports only
 // those. An empty table plus a file that exists is the whole test.
 //
-// The one thing that changes on the way through is device tokens. The file
-// kept them as themselves; the database keeps a digest. Nobody is signed out
+// Two things change on the way through. Guests are not imported at all - a
+// name and a token stopped being an identity, so there is nothing for one to
+// sign in to - and device tokens, which the file kept as themselves and the
+// database keeps as a digest. Nobody is signed out
 // by that - a browser still sends the token it has, and the store hashes it to
 // look it up - but it does mean the import is the last moment those tokens
 // exist anywhere on the server.
@@ -86,6 +88,12 @@ async function migrateFromFiles(options = {}) {
       let devices = 0;
       for (const rec of rows) {
         if (!rec || !rec.uid) continue;
+        // Guests, which is most of any file this old, are not imported. They
+        // cannot sign in to anything - a name and a token stopped being an
+        // identity - and bringing them across would only reinstate rows the
+        // migration that deletes them has already been past. A file from this
+        // era holds GameNight identities too, and those are still people.
+        if (rec.provider !== 'gamenight') continue;
         // Version 1 kept one token per record, on the record itself.
         const tokens = Array.isArray(rec.tokens)
           ? rec.tokens
@@ -113,7 +121,7 @@ async function migrateFromFiles(options = {}) {
           name: rec.name || '',
           nameKey: nameKey(rec.name),
           avatar: rec.avatar || '🧑',
-          provider: ['gamenight', 'local'].includes(rec.provider) ? rec.provider : 'guest',
+          provider: 'gamenight',
           gnUserId: rec.gnUserId ? String(rec.gnUserId) : null,
           createdAt: rec.createdAt || Date.now(),
           lastSeenAt: rec.lastSeenAt || rec.createdAt || Date.now(),

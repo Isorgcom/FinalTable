@@ -112,8 +112,20 @@ app.use(
   createRateLimiter({ limit: config.httpRateLimit, windowMs: config.httpRateWindow })
 );
 
+// The games running here, for somebody signed in to one of the accounts this
+// server keeps. The device token is the credential, the same one the socket
+// uses; without it this is a list of who is playing what tonight, handed to
+// anybody who asks.
+//
+// Closed at the same time as the socket's own list, and for the same reason:
+// gating one while the other served the same rows would have been gating
+// nothing at all.
 app.get('/api/tournaments', (req, res) => {
-  res.json(tournamentLayer.publicList());
+  const header = String(req.get('authorization') || '');
+  const bearer = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  const who = bearer ? identity.verify(bearer) : null;
+  if (!who) return res.status(401).json({ error: 'Sign in first.' });
+  res.json(tournamentLayer.listFor(who.uid));
 });
 
 // The blind structures a host can pick from, for the create form's editor.
@@ -200,8 +212,10 @@ const identity = createIdentityStore({
 });
 
 // The two messages this server sends, both of them links. Without a public URL
-// to build them against and a way to send them, there are no accounts: the
-// lobby says so and guests carry on exactly as they did.
+// to build them against and a way to send them, nobody can make an account
+// here - and since an account is the only way in, a server with no mail and no
+// GameNight pairing has no way in at all. It says so at boot, and the sign-in
+// screen says so to whoever loads it.
 const mailer = createMailer({
   smtpUrl: config.smtpUrl,
   from: config.mailFrom,
@@ -217,7 +231,7 @@ if (!mailer.available()) {
   structuredLog({
     level: 'info',
     event: 'accounts_unavailable',
-    message: 'Player accounts are off',
+    message: 'Nobody can sign up here',
     data: { reason: mailer.why() },
   });
 }
@@ -580,6 +594,21 @@ async function openStores() {
   // read: the GameNight pairing set from the Admin page beats the environment,
   // and it can only know that once the store has loaded.
   sso.init();
+  // Now that the pairing is known, the one thing worth stopping to say. An
+  // account is the only way in; a server that can send no mail and is paired
+  // with no GameNight has no way for anybody to become anybody, including
+  // whoever is trying to set it up.
+  if (!mailer.available() && !sso.get()) {
+    structuredLog({
+      level: 'error',
+      event: 'no_way_in',
+      message: 'Nobody can sign in to this server',
+      data: {
+        detail:
+          'Set PUBLIC_URL and SMTP_URL so accounts can be made, or pair the server with a GameNight.',
+      },
+    });
+  }
   if (db.driver === 'memory') {
     structuredLog({
       level: 'warn',

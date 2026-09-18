@@ -9,6 +9,8 @@ const { io: Client } = require('socket.io-client');
 
 jest.setTimeout(15000);
 
+const { tokenFor } = require('./helpers/account');
+
 describe('GameNight sign-in when the server is not paired', () => {
   const originalEnv = { ...process.env };
   let baseUrl, serverModule, tempDir;
@@ -57,13 +59,13 @@ describe('GameNight sign-in when the server is not paired', () => {
     expect(serverModule.identity.size).toBe(before);
   });
 
-  test('a guest identifies exactly as before', async () => {
+  test('an account of this server’s own is unaffected by there being no pairing', async () => {
     const { s } = await connect();
     const ident = await new Promise((res) => {
       s.once('identified', res);
-      s.emit('identify', { token: null, name: 'Nobody', avatar: '🙂' });
+      s.emit('identify', { token: tokenFor(serverModule, 'Nobody', { avatar: '🙂' }) });
     });
-    expect(ident).toMatchObject({ name: 'Nobody', provider: 'guest' });
+    expect(ident).toMatchObject({ name: 'Nobody', provider: 'local' });
   });
 });
 

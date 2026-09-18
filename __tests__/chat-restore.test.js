@@ -21,7 +21,7 @@ function makeIo() {
 const names = { h: 'Host', g: 'Guest' };
 const identity = {
   get: (uid) => (names[uid] ? { uid, name: names[uid], avatar: '🙂' } : null),
-  expireIdle: () => 0,
+  expireDevices: () => 0,
 };
 
 function makeSocket(id, uid) {

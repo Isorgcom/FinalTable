@@ -25,19 +25,26 @@ const SCHEMA = [
      updated_at  BIGINT       NOT NULL
    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
-  // Who somebody is. The name is not unique here - two guests may share one,
-  // and it is the accounts table that makes a name somebody's.
+  // Who somebody is. Every row here is an account - a local one or a GameNight
+  // one - so a name belongs to exactly one of them. That rule is kept in code,
+  // at one chokepoint in identity.js, and the unique index is the backstop
+  // rather than the enforcement: the write path is a debounced background
+  // flush whose only error handler is a log line, which is a bad place to find
+  // out about a constraint.
   `CREATE TABLE IF NOT EXISTS identities (
      uid          VARCHAR(64)  NOT NULL PRIMARY KEY,
      name         VARCHAR(64)  NOT NULL,
      name_key     VARCHAR(64)  NOT NULL,
      avatar       VARCHAR(16)  NOT NULL DEFAULT '🧑',
-     provider     VARCHAR(16)  NOT NULL DEFAULT 'guest',
+     provider     VARCHAR(16)  NOT NULL DEFAULT 'local',
+     role         VARCHAR(16)  NOT NULL DEFAULT 'player',
+     disabled_at  BIGINT       NULL,
      gn_user_id   VARCHAR(64)  NULL,
      created_at   BIGINT       NOT NULL,
      last_seen_at BIGINT       NOT NULL,
      prefs        JSON         NULL,
-     KEY idx_identities_name_key (name_key),
+     UNIQUE KEY uq_identities_name_key (name_key),
+     KEY idx_identities_role (role),
      KEY idx_identities_last_seen (last_seen_at)
    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 

@@ -29,10 +29,53 @@
 // has already run on somebody's server and its name is already in their
 // ledger.
 
-// In order. Nothing here yet: the ledger ships before the first thing that
-// rides it, so that a step going wrong is a step going wrong rather than the
-// mechanism going wrong underneath it.
-const STEPS = [];
+// In order, and never edited once shipped.
+const STEPS = [
+  // Everybody has an account, so an identity is a person rather than a browser
+  // and there are two more things worth knowing about one: whether they run
+  // this server, and whether they are allowed on it at all. Both belong here
+  // rather than on the account, because a GameNight player has no account row.
+  {
+    name: '001-identities-role-and-disabled',
+    sql: [
+      "ALTER TABLE identities ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'player'",
+      'ALTER TABLE identities ADD COLUMN IF NOT EXISTS disabled_at BIGINT NULL',
+      'ALTER TABLE identities ADD INDEX IF NOT EXISTS idx_identities_role (role)',
+    ],
+  },
+
+  // The guests, who can no longer sign in to anything. Their devices go with
+  // them on the foreign key. This is the one step here that deletes somebody's
+  // row, and it is only deleting rows that stopped meaning anything the moment
+  // the name box did.
+  {
+    name: '002-guests-go',
+    sql: ["DELETE FROM identities WHERE provider = 'guest'"],
+  },
+
+  // And now that one name is one person, the backstop. Deliberately after the
+  // purge, because the purge is what makes it true - and deliberately not a
+  // blind ALTER: if two rows somehow still share a name, adding a unique index
+  // would resolve it by throwing away one of them, or by failing every boot
+  // from here on. Better to refuse, say which names, and let somebody decide.
+  {
+    name: '003-one-name-one-person',
+    async run(db) {
+      if (db.driver !== 'mariadb') return;
+      const clash = await db.migrations.clashingNames();
+      if (clash.length) {
+        throw new Error(
+          `Two identities share a name, so the unique index cannot be added: ${clash.join(', ')}. ` +
+            'Rename or remove one of each pair and start the server again.'
+        );
+      }
+      await db.migrations.exec([
+        'ALTER TABLE identities ADD UNIQUE INDEX IF NOT EXISTS uq_identities_name_key (name_key)',
+        'ALTER TABLE identities DROP INDEX IF EXISTS idx_identities_name_key',
+      ]);
+    },
+  },
+];
 
 async function runMigrations(options = {}) {
   const { db = null, log = () => {}, steps = STEPS } = options;

@@ -40,18 +40,32 @@ tournament, a box for a code, and the list of games.
 
 ### Who you are
 
-Type a **name** (up to 16 characters) and pick an **avatar**. That is a guest
-identity, and the browser remembers it: come back tomorrow on the same device
-and you are the same player, with the same seat if a game of yours is still
-running. Your name is yours at each table: two people with the same name
-cannot register for the same game.
+Everybody who plays here has an account. There are two kinds, and the sign-in
+screen is the first thing you see.
+
+An **account on this server** is a name (up to 16 characters) and a password.
+Making one takes an email address: press **Create an account**, choose a
+password and an avatar, give an address, and open the link that arrives. That
+link is what makes the name yours - until you open it the name is held for you
+and owned by nobody, and the hold lapses after a day, so a mistyped address
+costs a retry rather than a name. After that, **Sign in** from any browser.
 
 If the server is paired with a GameNight site, there is a **Sign in with
-GameNight** button beside the name box. Signing in there seats you here under
-your GameNight username, the same player on every device you sign in from, so
-a phone and a laptop are one seat rather than two. **Sign out** is in the
-corner menu; it signs out this browser only, and ends that session here as
-well as clearing the browser.
+GameNight** button instead, and no second account to make: signing in there
+seats you here under your GameNight username. **Sign out** is in the corner
+menu; it signs out this browser only, and ends that session here as well as
+clearing the browser.
+
+Either way you are the same player on every device you sign in from, so a
+phone and a laptop are one seat rather than two. A name belongs to one person
+on the whole server - the same name in different letters is the same name - so
+nobody else can sit down under it. If your GameNight name is one somebody here
+already has, you play as that name with a number after it, and the lobby says
+so when you arrive.
+
+A server that has no way to send mail cannot make new accounts, and says so
+where the buttons would be; one that also has no GameNight pairing has no way
+in at all, which is something for whoever runs it to fix.
 
 **Your devices**, also in the corner menu, lists where you are signed in: each
 one named as far as the browser will say, with when it was last here and a
@@ -63,11 +77,9 @@ hand asks first, since nothing on that screen can undo it.
 
 Three settings follow you rather than the browser: whether the table is
 silent, which chair you are shown in, and which side panel tab opens. They are
-kept against who you are, so a GameNight account that picks a chair on the
-phone finds the same chair on the iPad. A guest identity is one browser, so
-for a guest they are remembered on that browser and nowhere else, which is as
-far as a guest goes. Changing one takes effect at once either way; the server
-is told afterwards, so nothing at the table waits on it.
+kept against who you are, so an account that picks a chair on the phone finds
+the same chair on the iPad. Changing one takes effect at once; the server is
+told afterwards, so nothing at the table waits on it.
 
 ### The corner menu
 
@@ -664,20 +676,8 @@ asks again.
 
 ### An account of your own
 
-Typing a name makes you a guest: the name is remembered in that browser and
-nowhere else, so clearing your storage or picking up your phone makes you
-somebody new. An account fixes that, and the name you already play under is
-the account - there is nothing else to remember.
-
-Under the name box, set a **password**, press **Create account**, and give an
-email address. A link goes to it; opening the link is what makes the name
-yours. Until then the name is held for you but owned by nobody, and the hold
-lapses after a day if the link is never opened - so a mistyped address costs
-you a retry rather than the name.
-
-Once it is yours, **Sign in** with the name and the password from any browser.
-Your preferences, your devices and your kept games come with you, because it
-is the same identity you already had rather than a new one.
+How to make one is under [Who you are](#who-you-are). What it is worth knowing
+besides:
 
 **Forgot your password?** sends a link to the address you signed up with. It
 works once and lasts an hour. The answer on screen is the same whether or not
@@ -685,13 +685,14 @@ that name has an account, because who plays here is not a list to hand out.
 **change password** in the corner menu changes it without signing any device
 out.
 
-Nobody else is ever shown your address, and it is in one file on the server
-and nothing else.
+No other player is ever shown your address. An administrator can see one
+account's address at a time from the Users page, and the Log says every time
+one did.
 
-A server with no mail set up cannot confirm an address, so it offers no
-accounts at all and says so under the name box. Guests work there exactly as
-they always have, and so does the GameNight sign-in if the server is paired
-with one.
+A server with no mail set up cannot confirm an address, so it makes no new
+accounts and says so where the buttons would be. Accounts somebody already has
+still work, and so does the GameNight sign-in if the server is paired with
+one.
 
 ### Your games
 

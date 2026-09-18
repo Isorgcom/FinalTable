@@ -35,6 +35,10 @@ test.beforeAll(async () => {
   helpers.configure({ baseUrl, serverModule });
 });
 
+// Each test starts on a server with nothing left over: a name is one person
+// now, so the host of the last test is the host of this one.
+test.afterEach(() => helpers.clearGames());
+
 test.afterAll(async () => {
   serverModule.registry.stop();
   await new Promise((resolve) => serverModule.io.close(resolve));

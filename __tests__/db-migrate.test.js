@@ -41,10 +41,11 @@ describe('importing what the files held', () => {
       version: 2,
       identities: [
         {
-          uid: 'u_ann',
+          uid: 'gn_ann',
           name: 'Ann',
           avatar: '🦊',
-          provider: 'guest',
+          provider: 'gamenight',
+          gnUserId: 'ann',
           createdAt: 1000,
           lastSeenAt: 2000,
           prefs: { seat: 3 },
@@ -71,9 +72,9 @@ describe('importing what the files held', () => {
     // And the browser holding it is still signed in.
     const store = createIdentityStore({ db });
     await store.load();
-    expect(store.verify('the-real-token')).toMatchObject({ uid: 'u_ann', name: 'Ann' });
+    expect(store.verify('the-real-token')).toMatchObject({ uid: 'gn_ann', name: 'Ann' });
     expect(store.verify('the-real-token').prefs).toEqual({ seat: 3 });
-    const row = store.sessions('u_ann', 'the-real-token')[0];
+    const row = store.sessions('gn_ann', 'the-real-token')[0];
     expect(row).toMatchObject({ id: 'abc123', label: 'Safari on iPhone', current: true });
   });
 
@@ -82,18 +83,56 @@ describe('importing what the files held', () => {
     write('identities.json', {
       version: 1,
       identities: [
-        { uid: 'u_old', name: 'Old', avatar: '🧑', token: 'oldtok', createdAt: 1, lastSeenAt: 1 },
+        {
+          uid: 'gn_old',
+          name: 'Old',
+          avatar: '🧑',
+          provider: 'gamenight',
+          gnUserId: 'old',
+          token: 'oldtok',
+          createdAt: 1,
+          lastSeenAt: 1,
+        },
       ],
     });
     expect(await run()).toMatchObject({ identities: 1, devices: 1 });
     const store = createIdentityStore({ db });
     await store.load();
-    expect(store.verify('oldtok')).toMatchObject({ uid: 'u_old', name: 'Old', provider: 'guest' });
+    expect(store.verify('oldtok')).toMatchObject({
+      uid: 'gn_old',
+      name: 'Old',
+      provider: 'gamenight',
+    });
     // A device with no name or id in the file gets both, or it is a row
     // nobody could ever sign out.
-    const row = store.sessions('u_old')[0];
+    const row = store.sessions('gn_old')[0];
     expect(row.label).toBe('A browser');
     expect(row.id).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  // A file this old is mostly guests, and a guest has nothing to sign in to
+  // any more. Importing them would put back exactly the rows the migration
+  // that deletes them has already been past.
+  test('guests in an old file are left there', async () => {
+    write('identities.json', {
+      version: 2,
+      identities: [
+        { uid: 'u_guest', name: 'Walkin', provider: 'guest', tokens: [{ token: 'gtok' }] },
+        {
+          uid: 'gn_5',
+          name: 'Member',
+          provider: 'gamenight',
+          gnUserId: '5',
+          tokens: [{ token: 'mtok' }],
+        },
+      ],
+    });
+    expect(await run()).toMatchObject({ identities: 1, devices: 1 });
+    const store = createIdentityStore({ db });
+    await store.load();
+    expect(store.verify('mtok')).toMatchObject({ uid: 'gn_5' });
+    expect(store.verify('gtok')).toBeNull();
+    expect(store.size).toBe(1);
   });
 
   test('an identity with no device is nobody, as it always was', async () => {

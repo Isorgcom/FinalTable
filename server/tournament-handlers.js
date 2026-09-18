@@ -151,21 +151,25 @@ function registerTournamentHandlers(deps) {
     // there is an admin surface, and whether a GameNight sign-in exists and
     // where it goes. Never the password, never the key.
     socket.emit('serverInfo', serverInfo());
-    socket.emit('tournamentList', registry.listFor(socket.data.uid));
 
-    socket.on('listTournaments', () =>
-      socket.emit('tournamentList', registry.listFor(socket.data.uid))
-    );
+    // The list is not sent yet, and is not answered for until somebody has
+    // said who they are. Every player has an account now, so the games running
+    // here - their names, their hosts, how many are in them - are for the
+    // people who can sit down at one rather than for anybody who loads the
+    // page.
+    socket.on('listTournaments', () => {
+      if (!socket.data.uid) return;
+      socket.emit('tournamentList', registry.listFor(socket.data.uid));
+    });
 
     // First thing on every connect, reconnects included. Establishes who the
     // socket is and, when that person has a live registration, rebinds it.
     //
-    // Three ways to say it. A guest sends a name and, after the first time, the
-    // token it was given. A player just back from GameNight sends the signed
-    // token from the URL, once. A linked browser reconnecting sends its device
-    // token with provider set, and no name: when that token has gone stale it
-    // is told so, rather than quietly becoming a guest of the same name with a
-    // different uid.
+    // Two ways to say it, and both of them are a token. A player just back
+    // from GameNight sends the signed one from the URL, once. Everybody else
+    // sends the device token they were given when they signed in. A token this
+    // server does not know is told so and shown the way in; there is nothing
+    // here that turns a name into somebody.
     socket.on('identify', (payload = {}) => {
       let ident = null;
       if (typeof payload.gnToken === 'string') {
@@ -191,38 +195,34 @@ function registerTournamentHandlers(deps) {
         });
         if (!ident)
           return socket.emit('identifyFailed', { provider: 'gamenight', reason: 'malformed' });
+        if (ident.error) {
+          return socket.emit('identifyFailed', { provider: 'gamenight', reason: ident.error });
+        }
         log({
           level: 'info',
           event: 'gamenight_sign_in',
           message: 'Player signed in with GameNight',
           data: { uid: ident.uid, isNew: ident.isNew },
         });
-      } else if (payload.provider === 'gamenight') {
-        // No name on purpose: with no record for the token, identify() has
-        // nothing to mint a guest from and answers null.
-        ident = identity.identify({
-          token: payload.token,
-          avatar: payload.avatar,
-          userAgent: userAgentOf(socket),
-        });
-        if (!ident || ident.provider !== 'gamenight') {
+      } else {
+        // A token, and nothing else. There is no name here to be identified by
+        // any more: a browser this server does not recognise is one with
+        // nothing to sign in as, and the answer is the sign-in screen rather
+        // than a seat.
+        ident = identity.identify({ token: payload.token, avatar: payload.avatar });
+        const provider = payload.provider === 'gamenight' ? 'gamenight' : 'local';
+        if (!ident || ident.error) {
+          const reason =
+            ident && ident.error === 'disabled'
+              ? 'disabled'
+              : provider === 'gamenight'
+                ? 'signed_out'
+                : 'no-account';
+          return socket.emit('identifyFailed', { provider, reason });
+        }
+        if (provider === 'gamenight' && ident.provider !== 'gamenight') {
           return socket.emit('identifyFailed', { provider: 'gamenight', reason: 'signed_out' });
         }
-      } else {
-        ident = identity.identify({
-          token: payload.token,
-          name: payload.name,
-          avatar: payload.avatar,
-          userAgent: userAgentOf(socket),
-        });
-        // Not a generic error: typing the name you play under is exactly how
-        // somebody with an account arrives, and a dialog saying "taken" in
-        // front of the password box they are about to use is the wrong answer
-        // to the right thing happening.
-        if (ident && ident.error === 'name-taken') {
-          return socket.emit('identifyFailed', { provider: 'local', reason: 'name-taken' });
-        }
-        if (!ident || !ident.uid) return fail(socket, 'Enter a name first');
       }
       socket.data.uid = ident.uid;
       // Kept so this socket can be found when the device it belongs to is
@@ -363,11 +363,11 @@ function registerTournamentHandlers(deps) {
 
     socket.on('signUp', async (payload = {}) => {
       if (!accountAllowed()) return;
-      if (!socket.data.uid) {
-        return socket.emit('accountResult', { ok: false, error: 'Enter a name first.' });
-      }
+      // No identity needed, and usually none to have: signing up is how
+      // somebody becomes anybody here. A socket that already has one is
+      // somebody signed in claiming a second name, and keeps their uid.
       const started = await accounts.startSignUp({
-        uid: socket.data.uid,
+        uid: socket.data.uid || null,
         name: payload.name,
         email: payload.email,
         password: payload.password,
@@ -414,15 +414,24 @@ function registerTournamentHandlers(deps) {
         userAgent: userAgentOf(socket),
       });
       if (!ident) return socket.emit('accountResult', { ok: false, error: 'That did not work.' });
+      // The third door disabling has to close. The other two are inside the
+      // identity store, on the paths that take a token; this one is here,
+      // because signing in with a name and a password never touches them.
+      if (ident.error === 'disabled') {
+        return socket.emit('accountResult', {
+          ok: false,
+          error: 'That account has been suspended on this server.',
+        });
+      }
       log({
         level: 'info',
         event: 'account_sign_in',
         message: 'Player signed in with an account',
         data: { uid: ident.uid },
       });
-      // The name comes back too: the client puts it in the name field before
-      // it identifies, or the next identify would rename the account to
-      // whatever was typed there before.
+      // The name comes back with it: the client shows who it just became, and
+      // it may not be quite what was typed - the account's own capitalisation
+      // wins over whatever was in the box.
       socket.emit('accountResult', {
         ok: true,
         signedIn: true,
@@ -1020,7 +1029,12 @@ function registerTournamentHandlers(deps) {
     });
   });
 
-  return { registry, tournaments: registry.tournaments, publicList: registry.publicList };
+  return {
+    registry,
+    tournaments: registry.tournaments,
+    publicList: registry.publicList,
+    listFor: registry.listFor,
+  };
 }
 
 module.exports = { registerTournamentHandlers };

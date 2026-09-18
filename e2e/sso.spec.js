@@ -87,6 +87,10 @@ test.beforeAll(async () => {
   });
 });
 
+// Each test starts on a server with nothing left over: a name is one person
+// now, so the host of the last test is the host of this one.
+test.afterEach(() => helpers.clearGames());
+
 test.afterAll(async () => {
   if (offMail) offMail();
   serverModule.registry.stop();
@@ -133,10 +137,14 @@ test('a signed token in the fragment signs the player in, and the device remembe
 }) => {
   await stash(page, 'state-abcdefghijklmnop');
   await page.goto(`${baseUrl}/#gn_token=${signToken()}&state=state-abcdefghijklmnop`);
-  await expect(page.locator('#identityStatus')).toContainText('Signed in with GameNight as Bryce');
-  await expect(page.locator('#playerName')).toHaveValue('Bryce');
-  await expect(page.locator('#playerName')).toHaveAttribute('readonly', '');
+  await expect(page.locator('#identityStatus')).toContainText(
+    /Signed in with GameNight as .*Bryce/
+  );
+  // Signed in, so the whole sign-in half of the card is gone rather than the
+  // name box merely being locked.
+  await expect(page.locator('#accountRow')).toBeHidden();
   await expect(page.locator('#btnGameNight')).toBeHidden();
+  await expect(page.locator('#lobbyHome')).toBeVisible();
   await openLobbyMenu(page);
   await expect(page.locator('#btnGameNightSignOut')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -150,15 +158,17 @@ test('a signed token in the fragment signs the player in, and the device remembe
 
   // A reload identifies by the device token, with no GameNight round trip.
   await page.reload();
-  await expect(page.locator('#identityStatus')).toContainText('Signed in with GameNight as Bryce');
+  await expect(page.locator('#identityStatus')).toContainText(
+    /Signed in with GameNight as .*Bryce/
+  );
   expect(await page.evaluate(() => window.__identity.uid)).toBe('gn_270');
 
-  // Sign out: back to a guest with an empty name.
+  // Sign out: back outside the door, with the way in on offer again.
   await openLobbyMenu(page);
   await page.click('#btnGameNightSignOut');
   await expect(page.locator('#btnGameNight')).toBeVisible();
-  await expect(page.locator('#playerName')).toHaveValue('');
-  await expect(page.locator('#playerName')).not.toHaveAttribute('readonly', '');
+  await expect(page.locator('#accountRow')).toBeVisible();
+  await expect(page.locator('#lobbyHome')).toBeHidden();
 });
 
 // The devices a GameNight account is signed in on, and signing one out from
@@ -166,13 +176,17 @@ test('a signed token in the fragment signs the player in, and the device remembe
 test('your devices lists both, and one signs the other out', async ({ page, browser }) => {
   await stash(page, 'state-abcdefghijklmnop');
   await page.goto(`${baseUrl}/#gn_token=${signToken()}&state=state-abcdefghijklmnop`);
-  await expect(page.locator('#identityStatus')).toContainText('Signed in with GameNight as Bryce');
+  await expect(page.locator('#identityStatus')).toContainText(
+    /Signed in with GameNight as .*Bryce/
+  );
 
   const otherContext = await browser.newContext();
   const other = await otherContext.newPage();
   await stash(other, 'state-qrstuvwxyz012345');
   await other.goto(`${baseUrl}/#gn_token=${signToken()}&state=state-qrstuvwxyz012345`);
-  await expect(other.locator('#identityStatus')).toContainText('Signed in with GameNight as Bryce');
+  await expect(other.locator('#identityStatus')).toContainText(
+    /Signed in with GameNight as .*Bryce/
+  );
   // The same player, two devices.
   expect(await other.evaluate(() => window.__identity.uid)).toBe(
     await page.evaluate(() => window.__identity.uid)
@@ -217,10 +231,7 @@ test('a join link survives the round trip', async ({ page, browser }) => {
   // Somebody else's tournament to join.
   const hostContext = await browser.newContext();
   const host = await hostContext.newPage();
-  await host.goto(baseUrl);
-  await host.fill('#playerName', 'Host');
-  await host.locator('#playerName').blur();
-  await expect(host.locator('#identityStatus')).toContainText('Playing as Host');
+  await helpers.signInAs(host, 'Host');
   await host.click('#btnCreateTournament');
   await host.fill('#tName', 'Round trip');
   await host.click('#tStartQuick button[data-min="15"]');
@@ -244,9 +255,7 @@ test('a join link survives the round trip', async ({ page, browser }) => {
 test('the admin sees every game, listed or not, and can end one', async ({ browser, page }) => {
   const hostContext = await browser.newContext();
   const host = await hostContext.newPage();
-  await host.goto(baseUrl);
-  await host.fill('#playerName', 'Quiet Host');
-  await host.locator('#playerName').blur();
+  await helpers.signInAs(host, 'Quiet Host');
   await expect(host.locator('#lobbyHome')).toBeVisible();
   await host.click('#btnCreateTournament');
   await host.fill('#tName', 'Back Room');
@@ -255,7 +264,7 @@ test('the admin sees every game, listed or not, and can end one', async ({ brows
   await expect(host.locator('#lobbyWaiting')).toBeVisible();
   const code = (await host.locator('#wrCode').textContent()).trim();
 
-  await page.goto(baseUrl);
+  await helpers.signInAs(page, 'AdminOne');
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
   await page.fill('#appDialogInput', ADMIN_PASSWORD);
@@ -270,7 +279,7 @@ test('the admin sees every game, listed or not, and can end one', async ({ brows
   // only ever "some".
   await expect(page.locator('#adminGamesStatus')).toContainText('game');
   // And still nowhere a player could see it.
-  const pub = await (await fetch(`${baseUrl}/api/tournaments`)).json();
+  const pub = await helpers.apiTournaments();
   expect(pub.find((t) => t.name === 'Back Room')).toBeUndefined();
 
   await card.locator('button', { hasText: 'End game' }).click();
@@ -287,7 +296,7 @@ test('the admin sees every game, listed or not, and can end one', async ({ brows
 // The page is four pages behind one strip now, so that a fifth can join
 // without making it a longer scroll. This is the shape, not the contents.
 test('the Admin page is tabs, opening on Games, with one page showing', async ({ page }) => {
-  await page.goto(baseUrl);
+  await helpers.signInAs(page, 'AdminTwo');
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
   await page.fill('#appDialogInput', ADMIN_PASSWORD);
@@ -336,10 +345,7 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
 test('the Log holds what the server has done, behind the same password', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'LogReader');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as LogReader');
+  await helpers.signInAs(page, 'LogReader');
 
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
@@ -372,10 +378,7 @@ test('the Log holds what the server has done, behind the same password', async (
 test('the Log follows the server, and says so when the unlock goes', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Watcher');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Watcher');
+  await helpers.signInAs(page, 'Watcher');
 
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
@@ -390,9 +393,7 @@ test('the Log follows the server, and says so when the unlock goes', async ({ br
   // Somebody signs in elsewhere. Nothing is clicked here and the row arrives.
   const other = await browser.newContext();
   const stranger = await other.newPage();
-  await stranger.goto(baseUrl);
-  await stranger.fill('#playerName', 'Latecomer');
-  await stranger.locator('#playerName').blur();
+  await helpers.signInAs(stranger, 'Latecomer');
   await expect(page.locator('#adminLogList')).toContainText('Latecomer signed in', {
     timeout: 15000,
   });
@@ -440,8 +441,7 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
     s.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${s.address().port}`, s }));
   });
   try {
-    await page.goto(baseUrl);
-    await expect(page.locator('#btnGameNight')).toBeVisible();
+    await helpers.signInAs(page, 'Repairer');
     await openLobbyMenu(page);
     await expect(page.locator('#btnLobbyAdmin')).toBeVisible();
     await page.click('#btnLobbyAdmin');
@@ -467,7 +467,9 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
     await expect(page.locator('#adminGnDetail')).toContainText('kid-from-page');
 
     await page.click('#btnAdminBack');
-    await expect(page.locator('#btnGameNight')).toBeVisible();
+    // The button itself is for somebody who is not signed in, and this page
+    // is; that the pairing took is what the status line above just said.
+    await expect(page.locator('#lobbyHome')).toBeVisible();
     // A bad address is an error line, not a broken page.
     await openLobbyMenu(page);
     await page.click('#btnLobbyAdmin');
@@ -515,7 +517,7 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
 test('the menu shows the version, and only the version when nothing is configured', async ({
   page,
 }) => {
-  await page.goto(baseUrl);
+  await helpers.signInAs(page, 'AdminThree');
   await openLobbyMenu(page);
   await expect(page.locator('#lobbyMenuVersion')).toHaveText(
     `FinalTable v${require('../package.json').version}`
@@ -537,32 +539,38 @@ test('the menu shows the version, and only the version when nothing is configure
 
 // A name on this server that is yours: set a password against it, prove the
 // address, and sign in from a browser that has never seen this server.
+// The whole way in, by hand, with no help from the test harness: this is the
+// one place the real path is walked, because a suite that always takes the
+// short cut stops proving the long way works.
 test('an account is made, confirmed and signed in to', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
   await page.goto(baseUrl);
-  await page.fill('#playerName', 'Keeper');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Keeper');
 
-  // The password box is offered, because this server can send the mail.
+  // A browser that has never been here sees the door and nothing behind it.
   await expect(page.locator('#accountRow')).toBeVisible();
+  await expect(page.locator('#lobbyHome')).toBeHidden();
   await expect(page.locator('#accountEmailGroup')).toBeHidden();
 
-  // The first press asks for an address, the second sends the link.
+  // The first press asks for an address and an avatar, the second sends the
+  // link.
+  await page.fill('#playerName', 'Keeper');
   await page.fill('#accountPassword', 'correct horse battery');
   await page.click('#btnCreateAccount');
   await expect(page.locator('#accountEmailGroup')).toBeVisible();
+  await expect(page.locator('#accountAvatarGroup')).toBeVisible();
   await page.fill('#accountEmail', 'keeper@example.com');
   await page.click('#btnCreateAccount');
   await expect(page.locator('#accountStatus')).toContainText('Check your mail', {
     timeout: 10000,
   });
+  // Still outside: the name is held, not owned, until the link is opened.
+  await expect(page.locator('#lobbyHome')).toBeHidden();
 
   const link = lastMailLink();
   expect(link).toMatch(/\/verify\?token=/);
 
-  // A browser that has never been here, opening the link out of the mail.
+  // Another browser entirely, opening the link out of the mail.
   const elsewhere = await browser.newContext();
   const other = await elsewhere.newPage();
   await other.goto(link);
@@ -571,19 +579,20 @@ test('an account is made, confirmed and signed in to', async ({ browser, page })
   // And signing in with it, from that same new browser.
   await other.goto(baseUrl);
   await other.fill('#playerName', 'Keeper');
-  await other.locator('#playerName').blur();
-  // Typing the name you play under is how somebody with an account arrives, so
-  // it is said beside the password box rather than thrown up as a dialog.
-  await expect(other.locator('#accountStatus')).toContainText('belongs to somebody here');
-  await expect(other.locator('#appDialogModal')).toBeHidden();
-  await other.fill('#accountPassword', 'correct horse battery');
+  await other.fill('#accountPassword', 'not the password');
   await other.click('#btnSignIn');
-  await expect(other.locator('#identityStatus')).toContainText('Playing as Keeper', {
+  await expect(other.locator('#accountStatus')).toContainText('do not go together', {
     timeout: 10000,
   });
-  // Signed in with an account, so the password box is gone and the menu has
-  // the way to change it.
+  await other.fill('#accountPassword', 'correct horse battery');
+  await other.click('#btnSignIn');
+  await expect(other.locator('#identityStatus')).toContainText('Playing as', { timeout: 10000 });
+  await expect(other.locator('#identityStatus')).toContainText('Keeper');
+
+  // Through the door: the sign-in half is gone, the lobby is there, and the
+  // menu has the way to change the password.
   await expect(other.locator('#accountRow')).toBeHidden();
+  await expect(other.locator('#lobbyHome')).toBeVisible();
   await other.click('#lobbyMenuToggle');
   await expect(other.locator('#btnChangePassword')).toBeVisible();
 

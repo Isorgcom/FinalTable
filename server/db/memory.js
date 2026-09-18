@@ -90,6 +90,9 @@ function createMemoryDatabase(options = {}) {
         if (name) migrations.set(name, Date.now());
       },
       async exec() {},
+      async clashingNames() {
+        return [];
+      },
     },
 
     settings: {
@@ -110,6 +113,13 @@ function createMemoryDatabase(options = {}) {
       },
       async put(record) {
         if (!record || !record.uid) return;
+        // The unique name the real schema carries, enforced here too, or a
+        // test would pass against this and fail against MariaDB.
+        for (const [uid, row] of identities) {
+          if (uid !== record.uid && row.nameKey && row.nameKey === record.nameKey) {
+            throw new Error('duplicate identity name');
+          }
+        }
         identities.set(record.uid, clone(record));
       },
       async remove(uid) {

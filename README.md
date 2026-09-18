@@ -98,7 +98,7 @@ as the memory ceiling and watch the clock separately on a small box.
 | `server.js`                                                  | Express + Socket.IO host; wires the identity store, the tournament registry and the handlers |
 | `server/tournament-registry.js`                              | A tournament's life: codes, scheduled start, registrations, host, late entry, rejoin, reaper |
 | `server/tournament-handlers.js`                              | Socket events for tournaments, a thin shim over the registry                                 |
-| `server/identity.js`                                         | Who a player is: a guest name, or a GameNight account, behind device tokens                  |
+| `server/identity.js`                                         | Who a player is: an account here, or a GameNight one, behind device tokens                   |
 | `server/gamenight-sso.js`                                    | Checks the signed token a player brings back from GameNight, with only the public key        |
 | `server/gamenight-pairing.js`, `settings-store.js`           | The pairing itself: fetched from GameNight by the admin, kept in `data/settings.json`        |
 | `server/tournament-store.js`                                 | Registering tournaments persisted as JSON so a restart keeps them                            |
@@ -135,8 +135,10 @@ the host works. Identity is now shared with Game Night, optionally: a server pai
 (from the lobby's Admin page, behind the admin password; see
 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)) offers "Sign in with GameNight",
 and a player who signs in there is seated here under their Game Night
-username, the same player on every device. Guests still type a name; a server
-with no Game Night is still whole. The same Admin page lists every game the
+username, the same player on every device. A server with no Game Night is
+still whole: it keeps accounts of its own, a name and a password with an
+address confirmed by a link. Either way everybody who plays here has an
+account - there is no way to sit down without one. The same Admin page lists every game the
 server holds, listed or not, with its code, and can end one.
 
 A blind structure is chosen when a game is made, Turbo, Standard or Deep, or

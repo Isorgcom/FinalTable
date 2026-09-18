@@ -2391,8 +2391,8 @@ function createTournamentRegistry(deps = {}) {
       }
     }
     sweeps++;
-    if (sweeps % Math.max(1, Math.round(60000 / sweepMs)) === 0 && identity.expireIdle) {
-      identity.expireIdle();
+    if (sweeps % Math.max(1, Math.round(60000 / sweepMs)) === 0 && identity.expireDevices) {
+      identity.expireDevices();
     }
   }
 

@@ -187,6 +187,22 @@
   letter-spacing: 0.04em;
   min-height: 1em;
 }
+/* The same two as .admin-status, and they matter more here: this is the only
+   feedback on a screen nobody gets past without reading it, and a refusal
+   rendered in the same gold as a success reads as neither. */
+.identity-status.ok {
+  color: #7bca95;
+}
+.identity-status.err {
+  color: #ffd1b1;
+}
+.identity-status.hidden,
+.identity-signed-in.hidden {
+  display: none;
+}
+.identity-signed-in {
+  margin-bottom: 4px;
+}
 /* The GameNight sign-in row, only present on a server paired with one. */
 .identity-sso {
   display: flex;

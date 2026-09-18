@@ -48,7 +48,8 @@
   "jest": {
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/e2e/"
+      "/e2e/",
+      "/__tests__/helpers/"
     ]
   }
 }

@@ -17,6 +17,7 @@ const { expect } = require('@playwright/test');
 
 let baseUrl = null;
 let serverModule = null;
+let made = 0;
 
 function configure(options = {}) {
   if (options.baseUrl) baseUrl = options.baseUrl;
@@ -31,17 +32,82 @@ function urlFor({ join = null, watch = null } = {}) {
 
 // Become somebody, on a page that has not been anybody yet.
 //
+// The account is made against the running server's own stores - createVerified
+// is the call the Users page makes, signInAs the one the signIn handler makes
+// once a password has gone through - and the device token it hands back is
+// written into localStorage the way a real sign-in would. No mail, no scrypt,
+// no typing: one page load, which is less than the fill and blur this replaced.
+//
+// One spec still walks the whole real path, because a suite that only ever
+// takes the short cut stops proving the long way works.
+//
 // `join` and `watch` carry a code in the query string, which is the arriving
 // -by-link case: the client holds the code, identifies, and lands in the game
 // rather than the lobby. The caller asserts where it landed, because that is
 // what those tests are about.
-async function signInAs(page, name, { join = null, watch = null } = {}) {
+async function signInAs(page, name, { join = null, watch = null, avatar = '🧑' } = {}) {
+  const ident = accountFor(name, { avatar });
+  await page.addInitScript(
+    ([token, who]) => {
+      try {
+        localStorage.setItem('finaltable_identity_token', token);
+        localStorage.setItem('finaltable_player_name', who);
+        localStorage.setItem('finaltable_identity_provider', 'local');
+      } catch (_err) {
+        /* private mode, and nothing to be done about it */
+      }
+    },
+    [ident.token, ident.name]
+  );
   await page.goto(urlFor({ join, watch }));
-  await page.fill('#playerName', name);
-  await page.locator('#playerName').blur();
   if (!join && !watch) {
-    await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
+    await expect(page.locator('#identityStatus')).toContainText(`Playing as`);
+    await expect(page.locator('#identityStatus')).toContainText(name);
   }
+}
+
+// An account on the running server, made the way the admin portal makes one.
+// Asked for twice with the same name, it answers with the same person on a
+// second device.
+function accountFor(name, { avatar = '🧑' } = {}) {
+  const { accounts, identity } = serverModule;
+  let uid = accounts.ownerOf(name);
+  if (!uid) {
+    const account = accounts.createVerified({ name, email: `e2e${made++}@example.com` });
+    if (account.error) throw new Error(`could not make an account for ${name}: ${account.error}`);
+    uid = account.uid;
+  }
+  const ident = identity.signInAs({ uid, name, avatar });
+  if (!ident || ident.error) {
+    throw new Error(`could not sign in as ${name}: ${(ident && ident.error) || 'no identity'}`);
+  }
+  return ident;
+}
+
+// Everything a finished test left standing: its games, and the browsers it was
+// signed in on. Both have to go, because a name is one person on this server
+// now - the Ann of one test is the Ann of the next, and nobody is in two games
+// at once. Tests used to be isolated by accident, every guest called Ann being
+// a different guest.
+function clearGames() {
+  if (!serverModule) return;
+  for (const entry of [...serverModule.registry.tournaments.values()]) {
+    serverModule.registry.forceCancel(entry, 'the test finished');
+  }
+  for (const row of serverModule.identity.list({ limit: 50 }).rows) {
+    serverModule.identity.revokeAll(row.uid);
+  }
+}
+
+// The games list over HTTP, which now wants the same credential the socket
+// does. A reader of its own, because the list a signed-in player is shown is
+// the public games plus their own.
+async function apiTournaments() {
+  const ident = accountFor('ApiReader');
+  const answer = await fetch(`${baseUrl}/api/tournaments`, {
+    headers: { authorization: `Bearer ${ident.token}` },
+  });
+  return answer.json();
 }
 
 // A second browser, signed in as somebody else, arriving on a join link. The
@@ -113,6 +179,9 @@ async function seatAtTournamentTable(page, name, { browser }) {
 module.exports = {
   configure,
   signInAs,
+  accountFor,
+  apiTournaments,
+  clearGames,
   openAs,
   createTournament,
   seatAtTournamentTable,

@@ -316,10 +316,11 @@ Built. What shipped, and what changed from the sketch:
   in and asks once; they land back seated, with a join link honoured across
   the round trip.
 
-Still to do here: a reject-list or server-side revoke so somebody can be
-signed out of every device mid-game (sign-out today is per browser), and a
-name reservation so a guest cannot take a Game Night member's display name in
-the same tournament (today the second to arrive is refused).
+The name reservation is done: one name is one person across both providers,
+and a Game Night display name that is already taken here is worn with a number
+after it rather than refused at the door. Still to do: a reject-list so
+somebody can be signed out of every device mid-game from the Game Night side -
+the server can do it now, but only from its own Users page.
 
 ## Seating authority
 
@@ -332,14 +333,17 @@ the same tournament (today the second to arrive is refused).
 
 Final Table must run without Game Night existing at all.
 
-- A guest username and a session token, plus join-by-URL links. Done, and
-  still the whole of what a server with no Game Night needs.
+- An account of its own: a name, a password, and an address confirmed by a
+  link, plus join-by-URL links. Done, and the whole of what a server with no
+  Game Night needs. It used to be a guest username and a session token, which
+  was simpler and meant anybody could be anybody.
 - Mixed tables - regulars alongside walk-ins. Done: every identity carries a
-  `provider`, the roster badges a Game Night player, and a guest and a member
-  sit at the same table. The one seam left is a guest taking a member's name
-  in the same tournament, where the second to arrive is refused.
-- The guest-to-account upgrade path is handled on the Game Night side, by
-  email invite and username matching.
+  `provider`, the roster badges a Game Night player, and both kinds of account
+  sit at the same table. The seam that used to be here - somebody taking a
+  member's name - is closed: one name is one person, server-wide.
+- There is no guest to upgrade any more. Somebody who plays here with an
+  account of this server's own and later joins the Game Night keeps both, and
+  they are two people as far as this server is concerned.
 
 ## Game Night side
 

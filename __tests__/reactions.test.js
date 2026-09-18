@@ -37,7 +37,7 @@ describe('reactions through the registry', () => {
   const names = { h: 'Host', g: 'Guest', x: 'Outsider' };
   const identity = {
     get: (uid) => (names[uid] ? { uid, name: names[uid], avatar: '🙂' } : null),
-    expireIdle: () => 0,
+    expireDevices: () => 0,
   };
   const makeSocket = (id, uid) => ({ id, data: uid ? { uid } : {}, emit: () => {} });
 

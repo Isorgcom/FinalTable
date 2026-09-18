@@ -27,6 +27,10 @@
   const LAST_KEY = 'finaltable_last_tournament';
   const PROVIDER_KEY = 'finaltable_identity_provider';
   const SSO_STATE_KEY = 'finaltable_gn_state'; // sessionStorage: one round trip
+  // Where a join link is kept while somebody goes off to read their mail.
+  // sessionStorage rather than a variable: signing up means leaving the page
+  // for an inbox and coming back through /verify, with no ?t= on the URL.
+  const PENDING_KEY = 'finaltable_pending_entry';
 
   let identity = null;
   let serverInfo = null;
@@ -130,10 +134,13 @@
   function avatarValue() {
     return $('playerAvatar').value || '🧑';
   }
-  function needName() {
+  // Nobody gets past the door without an account, so what used to be "type a
+  // name" is now "sign in", and the card that asks is already on the screen.
+  function needSignIn(why) {
     const input = $('playerName');
     input.classList.add('input-invalid');
     input.focus();
+    if (why) setAccountStatus(why, 'err');
     return false;
   }
 
@@ -142,6 +149,9 @@
   // Emitted on every connect. Without a name and without a token there is
   // nothing to say yet; the list still arrives, and the first name blur or
   // submit identifies.
+  // A token, and nothing else. There is no name here any more: typing one used
+  // to be how somebody became somebody, and now it is half of signing in and
+  // is sent by signIn() instead. A browser with no token has nothing to say.
   function identify() {
     if (!socket) return false;
     if (pendingGnToken) {
@@ -151,17 +161,9 @@
       return true;
     }
     const token = store.get(TOKEN_KEY);
-    if (store.get(PROVIDER_KEY) === 'gamenight') {
-      if (!token) return false;
-      // No name: it is GameNight's, and sending one would let a stale token
-      // turn into a guest of the same name on the server.
-      socket.emit('identify', { token, provider: 'gamenight', avatar: avatarValue() });
-      return true;
-    }
-    const name = nameValue();
-    if (!name && !token) return false;
-    if (name) store.set(NAME_KEY, name);
-    socket.emit('identify', { token, name, avatar: avatarValue() });
+    if (!token) return false;
+    const provider = store.get(PROVIDER_KEY) === 'gamenight' ? 'gamenight' : 'local';
+    socket.emit('identify', { token, provider });
     return true;
   }
 
@@ -192,22 +194,23 @@
     const row = $('ssoRow');
     if (!row) return;
     const offered = !!(serverInfo && serverInfo.gamenight);
-    const linked = isGameNight();
-    // Signed in, the row's only contents - the button and its hint - are both
-    // beside the point, and signing out lives in the menu. So the row goes.
-    row.classList.toggle('hidden', linked || !offered);
-    $('btnGameNight').classList.toggle('hidden', linked || !offered);
-    $('ssoHint').classList.toggle('hidden', linked);
-    $('btnGameNightSignOut').classList.toggle('hidden', !linked);
-    // A guest is one browser and would see a list of one. The list is here for
-    // an account whose devices are more than this one.
-    $('btnSessions').classList.toggle('hidden', !linked);
+    const signedIn = !!identity;
+    // Signed in, the sign-in half of the card is beside the point and the way
+    // out lives in the menu. So the whole door goes, and one line takes its
+    // place saying who came through it.
+    row.classList.toggle('hidden', signedIn || !offered);
+    $('btnGameNight').classList.toggle('hidden', signedIn || !offered);
+    $('ssoHint').classList.toggle('hidden', signedIn);
+    $('btnGameNightSignOut').classList.toggle('hidden', !isGameNight());
+    $('signedInRow').classList.toggle('hidden', !signedIn);
+    // Every account has devices worth listing now, not only a GameNight one:
+    // a password signs you in on a phone as well as a laptop.
+    $('btnSessions').classList.toggle('hidden', !signedIn);
     paintAccountRow();
-    // Unlike the devices list, this one is for a guest too: they have played
-    // the games whether or not they have an account to hang them on.
-    $('btnMyGames').classList.toggle('hidden', !identity);
-    $('playerName').readOnly = linked;
+    $('btnMyGames').classList.toggle('hidden', !signedIn);
     $('playerName').classList.remove('input-invalid');
+    // Drawn again with the answer to "is anybody through the door" now known.
+    showView(view);
   }
 
   function onServerInfo(info) {
@@ -227,15 +230,21 @@
     identity = ident;
     window.__identity = ident;
     store.set(TOKEN_KEY, ident.token);
+    store.set(NAME_KEY, ident.name);
+    $('playerName').value = ident.name;
     if (ident.provider === 'gamenight') {
       store.set(PROVIDER_KEY, 'gamenight');
-      $('playerName').value = ident.name;
-      store.set(NAME_KEY, ident.name);
-      $('identityStatus').textContent = `Signed in with GameNight as ${ident.name}`;
+      $('identityStatus').textContent = `Signed in with GameNight as ${ident.avatar} ${ident.name}`;
     } else {
-      store.set(PROVIDER_KEY, null);
-      if (ident.name && !nameValue()) $('playerName').value = ident.name;
-      $('identityStatus').textContent = `Playing as ${ident.name}`;
+      store.set(PROVIDER_KEY, 'local');
+      $('identityStatus').textContent = `Playing as ${ident.avatar} ${ident.name}`;
+    }
+    // A GameNight name that was already somebody's here. They are playing, but
+    // not under the name they expected, and being told beats wondering.
+    if (ident.nameAdjusted) {
+      notice(
+        `This server already has a ${ident.nameAdjusted}, so you are playing as ${ident.name}.`
+      );
     }
     renderIdentityRow();
     setConnection(true);
@@ -927,6 +936,32 @@
     },
   };
 
+  // A game somebody was on their way into when they were asked to sign in.
+  // Kept across the round trip through their mail, and spent once.
+  function rememberPending() {
+    const held = pendingJoin
+      ? { kind: 'join', payload: pendingJoin }
+      : pendingWatch
+        ? { kind: 'watch', payload: pendingWatch }
+        : null;
+    session.set(PENDING_KEY, held ? JSON.stringify(held) : null);
+  }
+
+  function recoverPending() {
+    const raw = session.get(PENDING_KEY);
+    if (!raw) return;
+    session.set(PENDING_KEY, null);
+    let held = null;
+    try {
+      held = JSON.parse(raw);
+    } catch (_err) {
+      return;
+    }
+    if (!held || !held.payload) return;
+    if (held.kind === 'join' && !pendingJoin) pendingJoin = held.payload;
+    if (held.kind === 'watch' && !pendingWatch) pendingWatch = held.payload;
+  }
+
   function startGameNightLogin() {
     if (!serverInfo || !serverInfo.gamenight) return;
     const state = randomState();
@@ -1023,26 +1058,38 @@
     const row = $('accountRow');
     const why = $('accountWhy');
     if (!row || !why) return;
-    const linked = isGameNight();
-    // Nothing to offer somebody already signed in with an account, or with
-    // GameNight, or on a server that cannot send the mail to verify one.
-    const offer = accountsOffered() && !linked && !isAccount();
-    row.classList.toggle('hidden', !offer);
-    // Said once, and only where a password box would have been. What is
-    // missing is the server's business rather than the player's - the reason
-    // is in the server's log, and this is what it means to whoever is trying
-    // to play.
-    const sayWhy = !!serverInfo && !serverInfo.accounts && !linked && !isAccount();
+    const signedIn = !!identity;
+    // The way in, shown to anybody who has not come through it and to nobody
+    // who has. A server that can send no mail cannot make an account, so it
+    // offers only the sign-in half - and if it has no GameNight pairing
+    // either, it has no way in at all and says so.
+    const canSignUp = accountsOffered();
+    row.classList.toggle('hidden', signedIn);
+    $('btnCreateAccount').classList.toggle('hidden', signedIn || !canSignUp);
+    $('btnForgotPassword').classList.toggle('hidden', signedIn || !canSignUp);
+
+    // Said once, where the buttons would have been. What is missing is the
+    // server's business rather than the player's - the reason is in the
+    // server's log, and this is what it means to whoever is trying to play.
+    const noWayIn = !!serverInfo && !serverInfo.accounts && !(serverInfo && serverInfo.gamenight);
+    const sayWhy = !signedIn && !!serverInfo && !serverInfo.accounts;
     why.classList.toggle('hidden', !sayWhy);
-    why.textContent = sayWhy
-      ? 'This server does not keep accounts. Your name is remembered on this browser.'
-      : '';
+    why.textContent = !sayWhy
+      ? ''
+      : noWayIn
+        ? 'This server has no way to sign anybody in yet. Whoever runs it needs to set up mail, or pair it with a GameNight.'
+        : 'This server cannot make new accounts - it has no way to send the mail that proves an address. Sign in with GameNight, or with an account somebody made for you.';
     $('btnChangePassword').classList.toggle('hidden', !isAccount());
-    if (!offer) {
-      signUpArmed = false;
-      $('accountEmailGroup').classList.add('hidden');
-      $('btnCreateAccount').textContent = 'Create account';
-    }
+    if (signedIn || !canSignUp) disarmSignUp();
+  }
+
+  // The second press of Create an account is the one that sends it. Putting
+  // the form back is its own function because three things do it.
+  function disarmSignUp() {
+    signUpArmed = false;
+    $('accountEmailGroup').classList.add('hidden');
+    $('accountAvatarGroup').classList.add('hidden');
+    $('btnCreateAccount').textContent = 'Create an account';
   }
 
   function signIn() {
@@ -1064,6 +1111,7 @@
     if (!signUpArmed) {
       signUpArmed = true;
       $('accountEmailGroup').classList.remove('hidden');
+      $('accountAvatarGroup').classList.remove('hidden');
       $('btnCreateAccount').textContent = 'Send the link';
       setAccountStatus(`Set a password for ${name} and give an address to confirm it.`);
       $('accountEmail').focus();
@@ -1074,7 +1122,8 @@
     if (!password) return setAccountStatus('Choose a password.', 'err');
     if (!email) return setAccountStatus('An address to send the link to.', 'err');
     setAccountStatus('Sending…');
-    socket.emit('signUp', { name, password, email });
+    rememberPending();
+    socket.emit('signUp', { name, password, email, avatar: avatarValue() });
   }
 
   function forgotPassword() {
@@ -1098,17 +1147,16 @@
         $('playerName').value = info.name;
         store.set(NAME_KEY, info.name);
       }
+      disarmSignUp();
       store.set(PROVIDER_KEY, 'local');
       store.set(TOKEN_KEY, info.token);
       identify();
       return;
     }
     if (info.ok) {
-      signUpArmed = false;
-      $('accountEmailGroup').classList.add('hidden');
+      disarmSignUp();
       $('accountEmail').value = '';
       $('accountPassword').value = '';
-      $('btnCreateAccount').textContent = 'Create account';
       setAccountStatus(info.message || 'Done.', 'ok');
       setPasswordStatus(info.message || 'Done.', 'ok');
       return;
@@ -1343,14 +1391,15 @@
     store.set(PROVIDER_KEY, null);
     $('identityStatus').textContent = '';
     renderIdentityRow();
-    // Somebody with an account arrives by typing the name they play under, so
-    // this is not a failure to put in a dialog: it is said next to the
-    // password box, which is what they want anyway.
-    if (reason === 'name-taken') {
-      setAccountStatus(
-        'That name belongs to somebody here. Sign in with its password, or pick another.',
-        'err'
-      );
+    // The ordinary case, and not worth a dialog: this browser has never signed
+    // in, or its token has been signed out from somewhere else. The sign-in
+    // card is already in front of them, so it says so and that is all.
+    if (reason === 'no-account') {
+      setAccountStatus('');
+      return;
+    }
+    if (reason === 'disabled') {
+      setAccountStatus('That account has been suspended on this server.', 'err');
       return;
     }
     notice(FAIL_TEXT[reason] || 'GameNight sign-in failed. Try again.');
@@ -1541,12 +1590,16 @@
 
   function showView(name) {
     view = name;
+    // Nothing behind the door is drawn until somebody is through it. The
+    // sign-in card sits outside this list, so it stays where it is.
+    const through = !!identity;
     ['home', 'create', 'waiting', 'pending', 'admin', 'sessions', 'games', 'password'].forEach(
       (v) => {
         const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
-        if (node) node.classList.toggle('hidden', v !== name);
+        if (node) node.classList.toggle('hidden', !through || v !== name);
       }
     );
+    if (!through) return;
     if (name === 'waiting') renderWaiting();
     if (name === 'home') renderList();
   }
@@ -2219,7 +2272,7 @@
   }
 
   function submitCreate() {
-    if (!nameValue() && !isGameNight()) return needName();
+    if (!identity) return needSignIn('Sign in to start a game.');
     const quick = $('tStartAt').dataset.quick;
     let startsAt = Date.parse($('tStartAt').value);
     if (quick === '0') startsAt = Date.now();
@@ -2257,9 +2310,10 @@
 
   // The list never carries a code - it is public - so a card joins by id.
   function requestJoin(payload) {
-    if (!nameValue() && !isGameNight() && !pendingGnToken) {
+    if (!identity && !pendingGnToken) {
       pendingJoin = payload;
-      return needName();
+      rememberPending();
+      return needSignIn('Sign in to join this game.');
     }
     if (identity && socket && socket.connected) {
       socket.emit('joinTournament', payload);
@@ -2272,9 +2326,10 @@
 
   // The rail: a name is needed here too, since a watcher talks.
   function requestWatch(payload) {
-    if (!nameValue() && !isGameNight() && !pendingGnToken) {
+    if (!identity && !pendingGnToken) {
       pendingWatch = payload;
-      return needName();
+      rememberPending();
+      return needSignIn('Sign in to watch this game.');
     }
     if (identity && socket && socket.connected) {
       socket.emit('watchTournament', payload);
@@ -2737,26 +2792,16 @@
       }
     });
 
-    // Name and avatar edits re-identify (the server updates the identity).
-    let renameTimer = null;
-    const reidentify = () => {
-      clearTimeout(renameTimer);
-      renameTimer = setTimeout(() => {
-        if (identity && (isGameNight() || nameValue())) identify();
-      }, 400);
+    // Enter in either box signs in, which is what a sign-in form should do.
+    // The name no longer identifies anybody by being typed: it is half of a
+    // password, and blurring the field means nothing on its own.
+    const submitOnEnter = (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      signIn();
     };
-    $('playerName').addEventListener('blur', () => {
-      if (isGameNight()) return;
-      if (!identity && nameValue()) identify();
-      else reidentify();
-    });
-    $('playerName').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        e.target.blur();
-      }
-    });
-    $('avatarPicker').addEventListener('click', reidentify);
+    $('playerName').addEventListener('keydown', submitOnEnter);
+    $('accountPassword').addEventListener('keydown', submitOnEnter);
 
     const params = new URLSearchParams(location.search);
     const fromLink = params.get('t');
@@ -2768,6 +2813,10 @@
     // A rail link arms a watch the way a join link arms a join.
     const railLink = params.get('w');
     if (railLink && !fromLink) pendingWatch = { rail: railLink.trim().toUpperCase() };
+    // And the one somebody was on their way into before they went off to make
+    // an account. They come back through the link in their mail, which has no
+    // ?t= on it, so the code has to have been kept somewhere.
+    if (!fromLink && !railLink) recoverPending();
     const savedName = store.get(NAME_KEY);
     if (savedName && !$('playerName').value) $('playerName').value = savedName;
     consumeReturnHash();
@@ -2785,7 +2834,9 @@
       else if (adminTab === 'log' && !adminLogPaged) askForAdminLog({ fresh: true, quiet: true });
     }, ADMIN_POLL_MS);
     ensureSocket();
-    if ((fromLink || railLink) && !nameValue() && !pendingGnToken) needName();
+    if ((fromLink || railLink) && !store.get(TOKEN_KEY) && !pendingGnToken) {
+      needSignIn('Sign in to join this game.');
+    }
   }
 
   window.Lobby = {

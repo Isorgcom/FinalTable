@@ -16,6 +16,8 @@ function b64url(obj) {
   return Buffer.from(JSON.stringify(obj)).toString('base64url');
 }
 
+const { tokenFor } = require('./helpers/account');
+
 describe('GameNight sign-in over the socket', () => {
   const originalEnv = { ...process.env };
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
@@ -153,7 +155,7 @@ describe('GameNight sign-in over the socket', () => {
     expect(serverModule.identity.size).toBe(before);
   });
 
-  test('a GameNight player is badged on the roster; a guest is not', async () => {
+  test('a GameNight player is badged on the roster; an account of ours is not', async () => {
     const { s: host } = await connect();
     await identify(host, { gnToken: token({ sub: '77', name: 'hostess' }) });
     const joined = new Promise((r) => host.once('tournamentJoined', r));
@@ -166,7 +168,7 @@ describe('GameNight sign-in over the socket', () => {
     const code = state.code;
 
     const { s: guest } = await connect();
-    await identify(guest, { token: null, name: 'Walkin', avatar: '🙂' });
+    await identify(guest, { token: tokenFor(serverModule, 'Walkin', { avatar: '🙂' }) });
     const guestJoined = new Promise((r) => guest.once('tournamentJoined', r));
     guest.emit('joinTournament', { code });
     await guestJoined;
@@ -178,6 +180,6 @@ describe('GameNight sign-in over the socket', () => {
       host.emit('requestTournamentState');
     });
     const byName = Object.fromEntries(roster.map((row) => [row.name, row.provider]));
-    expect(byName).toEqual({ hostess: 'gamenight', Walkin: 'guest' });
+    expect(byName).toEqual({ hostess: 'gamenight', Walkin: 'local' });
   });
 });

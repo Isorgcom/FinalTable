@@ -10,6 +10,8 @@ const { io: Client } = require('socket.io-client');
 
 jest.setTimeout(30000);
 
+const { tokenFor } = require('./helpers/account');
+
 describe('an account of this server’s own', () => {
   const originalEnv = { ...process.env };
   const sockets = [];
@@ -73,9 +75,9 @@ describe('an account of this server’s own', () => {
   }
 
   test('sign up, prove the address, and sign in from another browser', async () => {
+    // No identity first, and none to have: signing up is how somebody becomes
+    // anybody here at all.
     const first = await connect();
-    await identify(first, { name: 'Ann' });
-
     const started = await ask(
       first,
       'signUp',
@@ -85,13 +87,17 @@ describe('an account of this server’s own', () => {
     expect(started).toMatchObject({ ok: true, pending: true });
     expect(started.message).toMatch(/Check your mail/);
 
-    // Held, not owned: somebody else cannot take the name while it waits. Not
-    // a generic error either - typing the name you play under is how somebody
-    // with an account arrives, so it is its own answer and the lobby says it
-    // beside the password box.
+    // Held, not owned: somebody else cannot take the name while it waits for
+    // its link to be opened.
     const other = await connect();
-    const refused = await ask(other, 'identify', { name: 'Ann' }, 'identifyFailed');
-    expect(refused).toEqual({ provider: 'local', reason: 'name-taken' });
+    const refused = await ask(
+      other,
+      'signUp',
+      { name: 'ann', email: 'someone@example.com', password: 'a good password' },
+      'accountResult'
+    );
+    expect(refused).toMatchObject({ ok: false });
+    expect(refused.error).toMatch(/already signing up/);
 
     const link = lastLink();
     expect(link).toMatch(/\/verify\?token=/);
@@ -125,7 +131,7 @@ describe('an account of this server’s own', () => {
       'accountResult'
     );
     expect(signedIn).toMatchObject({ ok: true, signedIn: true, name: 'Ann' });
-    const ident = await identify(elsewhere, { token: signedIn.token, name: 'Ann' });
+    const ident = await identify(elsewhere, { token: signedIn.token });
     expect(ident.provider).toBe('local');
     expect(ident.name).toBe('Ann');
   });
@@ -195,7 +201,7 @@ describe('an account of this server’s own', () => {
 
     // Nor in anything a player is sent.
     const s = await connect();
-    const ident = await identify(s, { name: 'Onlooker' });
+    const ident = await identify(s, { token: tokenFor(serverModule, 'Onlooker') });
     expect(JSON.stringify(ident)).not.toContain('ann@example.com');
     const sessions = await ask(s, 'listSessions', {}, 'sessions');
     expect(JSON.stringify(sessions)).not.toContain('ann@example.com');

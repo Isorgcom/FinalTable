@@ -9,6 +9,8 @@ jest.setTimeout(20000);
 
 const PASSWORD = 'admin-secret';
 
+const { tokenFor } = require('./helpers/account');
+
 describe('the admin log over the socket', () => {
   const originalEnv = { ...process.env };
   const sockets = [];
@@ -51,7 +53,9 @@ describe('the admin log over the socket', () => {
   }
 
   const unlock = (s) => ask(s, 'adminLogin', { password: PASSWORD }, 'adminStatus');
-  const identify = (s, name) => ask(s, 'identify', { name }, 'identified');
+  // An account, then the token it hands back: the only way anybody arrives.
+  const identify = (s, name) =>
+    ask(s, 'identify', { token: tokenFor(serverModule, name) }, 'identified');
   const readLog = (s, payload = {}) => ask(s, 'adminLog', payload, 'adminLogRows');
 
   test('a socket that has not unlocked is answered with silence', async () => {
@@ -82,7 +86,7 @@ describe('the admin log over the socket', () => {
     const { rows } = await readLog(s);
     const row = rows.find((r) => r.kind === 'signin' && r.name === 'Logged');
     expect(row).toBeTruthy();
-    expect(row.provider).toBe('guest');
+    expect(row.provider).toBe('local');
     // The token is what the row must never carry: it is the credential itself.
     expect(JSON.stringify(rows)).not.toContain(ident.token);
   });

@@ -1,10 +1,11 @@
 // db-migrations.test.js - the shape changes, run once each.
 //
-// There are no steps yet. The ledger ships before the first thing that rides
-// it, so what is tested here is the mechanism: that a step runs, that it runs
-// once, that a failure is not recorded as a success, and that the SQL half is
-// the real driver's business and the memory driver ignores it.
-const { runMigrations } = require('../server/db/migrations');
+// What is tested here is the mechanism rather than any one step: that a step
+// runs, that it runs once, that a failure is not recorded as a success, and
+// that the SQL half is the real driver's business and the memory driver
+// ignores it. The steps themselves pass their own list in, so this suite does
+// not have to be edited every time one is added.
+const { runMigrations, STEPS } = require('../server/db/migrations');
 const { createMemoryDatabase } = require('../server/db');
 
 describe('the migration ledger', () => {
@@ -17,8 +18,17 @@ describe('the migration ledger', () => {
   });
 
   test('nothing to do is not an error', async () => {
-    expect(await runMigrations({ db })).toEqual([]);
+    expect(await runMigrations({ db, steps: [] })).toEqual([]);
     expect(await runMigrations({})).toEqual([]);
+  });
+
+  // The real list, against a database that has never seen any of it, and then
+  // against one that has.
+  test('the shipped steps apply once and then stay applied', async () => {
+    const first = await runMigrations({ db });
+    expect(first).toEqual(STEPS.map((step) => step.name));
+    expect(await runMigrations({ db })).toEqual([]);
+    expect((await db.migrations.applied()).sort()).toEqual(first.slice().sort());
   });
 
   test('a step runs, and is not run again', async () => {
