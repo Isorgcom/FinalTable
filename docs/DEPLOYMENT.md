@@ -158,8 +158,8 @@ The old variable is ignored, and says so.
 
 ### Pairing with GameNight
 
-Optional. Paired, the lobby offers "Sign in with GameNight" next to the guest
-name box, and a player who signs in there is seated here under their GameNight
+Optional. Paired, the lobby offers "Sign in with GameNight" beside the
+sign-in form, and a player who signs in there is seated here under their GameNight
 username with no second account. Three steps, once per server, all from a
 browser:
 

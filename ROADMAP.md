@@ -82,19 +82,18 @@ knows, the two bounds on the kept games and on the log are queries, and the
 token that signs a browser in is kept as a digest. The first boot imports
 whatever the files held and sets them aside.
 
-A login of its own. A third kind of identity beside the guest and the GameNight
-account: one that belongs to this server. The name somebody already plays under
-is the account, so there is nothing new to remember, and a guest upgrades in
-place - same uid, so the preferences, the devices and the kept games all come
-with it. An address confirmed by a link is what makes the name theirs; a
-sign-up holds the name without owning it and lapses after a day, so a mistyped
-address costs a retry rather than a name. Forgetting the password sends a
-one-time link, and the answer on screen never says whether a name has an
-account. Recovery was the question the item named as the hard one, and email
-turned out to be the answer rather than the admin.
+A login of its own, beside the GameNight one: an account that belongs to this
+server. A name, a password, and an address confirmed by a link, which is what
+makes the name theirs; a sign-up holds the name without owning it and lapses
+after a day, so a mistyped address costs a retry rather than a name.
+Forgetting the password sends a one-time link, and the answer on screen never
+says whether a name has an account. Recovery was the question the item named
+as the hard one, and email turned out to be the answer rather than the admin.
 
-What a server without mail loses is accounts and only accounts. It says so
-where the password box would be, and guests carry on exactly as before.
+It arrived beside the guest identity it has since replaced - see above.
+
+A server without mail can make no accounts, and says so where the buttons
+would be.
 
 Keeping them. The hands are written down as the game goes, so a restart no
 longer loses what came before it, and they outlive the game itself: a
@@ -164,7 +163,7 @@ identity rather than the browser, so a Game Night account gets the same table
 on the phone and the iPad. A closed set
 with a validator each, because it is a client writing into a file the server
 keeps; the browser is still written first, so nothing at the table waits on
-the network, and a guest is one browser, which is as far as a guest goes.
+the network.
 
 Showing a hand nobody paid to see. Nothing is shown by default and nobody is
 ever made to - but when a hand ends, anybody whose cards stayed down may turn

@@ -82,9 +82,10 @@ either service can be down, or absent entirely, without taking the other with
 it.
 
 That is why standalone operation is a requirement rather than a fallback.
-FinalTable must run for somebody who has never heard of GameNight - a guest
-name, a join link, and a seat - and does: a server with no `GAMENIGHT_URL` has
-no button, and a guest and a GameNight member sit at the same table.
+FinalTable must run for somebody who has never heard of GameNight - an account
+of this server's own, a join link, and a seat - and does: a server with no
+`GAMENIGHT_URL` has no button, and both kinds of account sit at the same
+table.
 
 See [ROADMAP.md](./ROADMAP.md) for the API, the events and the order of work.
 
