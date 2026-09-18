@@ -16,6 +16,9 @@ test.setTimeout(60000);
 test.beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-tourney-pw-'));
   process.env.SAVE_DIR = tempDir;
+  // A database of its own per spec file. Playwright runs them all in one
+  // process, so a name claimed in one would be claimed in the next.
+  process.env.DB_NAME = 'e2e-tournament';
   process.env.HOST = '127.0.0.1';
   process.env.AUTO_TURN_DELAY_MS = '40';
   process.env.TOURNAMENT_SWEEP_MS = '100';

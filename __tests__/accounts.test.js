@@ -3,16 +3,14 @@
 // The three rules about names are the whole of it: an account owns its name, a
 // name can be claimed when nobody else holds it, and a sign-up holds a name
 // while it is pending without owning it.
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const { createAccounts, normalizeEmail } = require('../server/accounts');
+const { createMemoryDatabase } = require('../server/db');
 
 describe('accounts', () => {
-  let dir;
+  let db;
   const make = (extra = {}) =>
     createAccounts({
-      saveDir: dir,
+      db,
       nameKey: (v) =>
         String(v || '')
           .trim()
@@ -21,10 +19,8 @@ describe('accounts', () => {
     });
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-accounts-'));
-  });
-  afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
+    db = createMemoryDatabase({ database: 'accounts-test' });
+    db.reset();
   });
 
   const signUp = (store, over = {}) =>
@@ -137,15 +133,15 @@ describe('accounts', () => {
     expect(store.signIn('Ann', 'a new password')).toBeTruthy();
   });
 
-  // What is on disk is what a stolen file would give somebody.
-  test('neither a password nor a live link is ever written down', () => {
+  // What is stored is what a stolen copy of the database would give somebody.
+  test('neither a password nor a live link is ever written down', async () => {
     const store = make();
     const started = signUp(store);
     store.completeSignUp(started.token);
     const asked = store.startReset('Ann');
-    store.flush();
+    await store.flush();
 
-    const raw = fs.readFileSync(path.join(dir, 'accounts.json'), 'utf8');
+    const raw = JSON.stringify(await db.accounts.all());
     for (const secret of ['correct horse', started.token, asked.token]) {
       expect(`${secret}: ${raw.includes(secret) ? 'leaked' : 'absent'}`).toBe(`${secret}: absent`);
     }
@@ -153,22 +149,29 @@ describe('accounts', () => {
     expect(raw).toContain('ann@example.com');
   });
 
-  test('an account comes back after a restart', () => {
+  test('an account comes back after a restart', async () => {
     const store = make();
     store.completeSignUp(signUp(store).token);
-    store.flush();
+    await store.flush();
 
     const back = make();
+    expect(await back.load()).toBe(1);
     expect(back.size).toBe(1);
     expect(back.ownerOf('Ann')).toBe('u_ann');
     expect(back.signIn('Ann', 'correct horse')).toBeTruthy();
   });
 
-  test('a corrupt file starts empty rather than throwing', () => {
-    fs.writeFileSync(path.join(dir, 'accounts.json'), '{not json');
-    const store = make();
-    expect(store.size).toBe(0);
-    expect(() => signUp(store)).not.toThrow();
+  test('a store with nowhere to write still works, just not across a restart', async () => {
+    const store = createAccounts({});
+    const started = store.startSignUp({
+      uid: 'u_ann',
+      name: 'Ann',
+      email: 'ann@example.com',
+      password: 'correct horse',
+    });
+    expect(store.completeSignUp(started.token)).toMatchObject({ uid: 'u_ann' });
+    expect(store.signIn('Ann', 'correct horse')).toBeTruthy();
+    await store.flush();
   });
 
   test('addresses are taken as they are, within reason', () => {

@@ -27,9 +27,6 @@
 // What goes in the mail is the only copy: a file full of live links would be
 // a better prize than the accounts they open.
 
-const fs = require('fs');
-const fsp = require('fs/promises');
-const path = require('path');
 const {
   hashPassword,
   matchesRecord,
@@ -39,8 +36,6 @@ const {
   sameDigest,
 } = require('./password');
 
-const FILE_VERSION = 1;
-const FLUSH_DEBOUNCE_MS = 1000;
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000;
 const MAX_EMAIL = 254;
@@ -60,7 +55,8 @@ function normalizeEmail(value) {
 
 function createAccounts(options = {}) {
   const {
-    saveDir = null,
+    db = null,
+    log = () => {},
     nameKey = (v) =>
       String(v || '')
         .trim()
@@ -74,20 +70,35 @@ function createAccounts(options = {}) {
     nameInUse = () => false,
     verifyTtlMs = VERIFY_TTL_MS,
     resetTtlMs = RESET_TTL_MS,
-    flushDebounceMs = FLUSH_DEBOUNCE_MS,
     now = () => Date.now(),
   } = options;
-  const file = saveDir ? path.join(saveDir, 'accounts.json') : null;
 
   const byKey = new Map(); // nameKey -> account
   const byId = new Map(); // uid -> account
   const pending = new Map(); // nameKey -> pending sign-up
   const resets = new Map(); // tokenHash -> { uid, expiresAt }
 
-  let flushTimer = null;
-  let writing = false;
-  let writeQueued = false;
-  let tmpSeq = 0;
+  // Written the moment they change rather than on a debounce. There are a
+  // handful of these a day on a busy server - a sign-up, a verification, a
+  // password changed - and every one of them is the sort of thing that must
+  // not be lost because the process went away a second later.
+  const inFlight = new Set();
+
+  function write(work) {
+    if (!db) return;
+    const task = Promise.resolve()
+      .then(work)
+      .catch((err) => {
+        log({
+          level: 'error',
+          event: 'account_write_failed',
+          message: 'Could not write an account',
+          data: { detail: err && err.message },
+        });
+      })
+      .finally(() => inFlight.delete(task));
+    inFlight.add(task);
+  }
 
   // ── Reading the rules ───────────────────────────────────────────────────
 
@@ -163,7 +174,7 @@ function createAccounts(options = {}) {
       createdAt: at,
       expiresAt: at + verifyTtlMs,
     });
-    schedule();
+    write(() => db.accounts.putPending(pending.get(key)));
     // The token goes to the mailer and nowhere else.
     return { token, name: safeName, email: address, expiresAt: at + verifyTtlMs };
   }
@@ -176,14 +187,13 @@ function createAccounts(options = {}) {
     for (const held of [...pending.values()]) {
       if (!sameDigest(held.tokenHash, hash)) continue;
       pending.delete(held.key);
+      write(() => db.accounts.removePending(held.key));
       if (held.expiresAt <= at) {
-        schedule();
         return { error: 'That link has expired. Sign up again.' };
       }
       // Claimed while they were reading their mail.
       const owner = byKey.get(held.key);
       if (owner && owner.uid !== held.uid) {
-        schedule();
         return { error: 'That name was taken while you were away.' };
       }
       const account = {
@@ -197,7 +207,7 @@ function createAccounts(options = {}) {
       };
       byKey.set(account.key, account);
       byId.set(account.uid, account);
-      schedule();
+      write(() => db.accounts.put(account));
       return { uid: account.uid, name: account.name };
     }
     return { error: 'That link is not one of ours.' };
@@ -221,7 +231,7 @@ function createAccounts(options = {}) {
     const problem = passwordProblem(next);
     if (problem) return problem;
     account.password = hashPassword(next);
-    schedule();
+    write(() => db.accounts.put(account));
     return null;
   }
 
@@ -234,8 +244,10 @@ function createAccounts(options = {}) {
     const account = byKey.get(nameKey(name));
     if (!account) return null;
     const token = mintToken();
-    resets.set(digestToken(token), { uid: account.uid, createdAt: at, expiresAt: at + resetTtlMs });
-    schedule();
+    const tokenHash = digestToken(token);
+    const row = { tokenHash, uid: account.uid, createdAt: at, expiresAt: at + resetTtlMs };
+    resets.set(tokenHash, row);
+    write(() => db.accounts.putReset(row));
     return { token, name: account.name, email: account.email, expiresAt: at + resetTtlMs };
   }
 
@@ -261,14 +273,14 @@ function createAccounts(options = {}) {
       // Spent whatever happens next: a link that survives a failed attempt is
       // a link somebody can keep trying.
       resets.delete(stored);
-      schedule();
+      write(() => db.accounts.removeReset(stored));
       if (row.expiresAt <= now()) return { error: 'That link has expired. Ask for another.' };
       const account = byUid(row.uid);
       if (!account) return { error: 'That account is gone.' };
       const problem = passwordProblem(password);
       if (problem) return { error: problem };
       account.password = hashPassword(password);
-      schedule();
+      write(() => db.accounts.put(account));
       return { uid: account.uid, name: account.name };
     }
     return { error: 'That link is not one of ours.' };
@@ -281,111 +293,51 @@ function createAccounts(options = {}) {
     for (const [key, held] of [...pending]) {
       if (held.expiresAt <= at) {
         pending.delete(key);
+        write(() => db.accounts.removePending(key));
         dropped++;
       }
     }
     for (const [hash, row] of [...resets]) {
       if (row.expiresAt <= at) {
         resets.delete(hash);
+        write(() => db.accounts.removeReset(hash));
         dropped++;
       }
     }
-    if (dropped) schedule();
     return dropped;
   }
 
-  // ── The disk ────────────────────────────────────────────────────────────
+  // ── What is written down ────────────────────────────────────────────────
 
-  function body() {
-    return JSON.stringify({
-      version: FILE_VERSION,
-      accounts: [...byKey.values()],
-      pending: [...pending.values()],
-      resets: [...resets.entries()].map(([tokenHash, row]) => ({ tokenHash, ...row })),
-    });
-  }
-
-  function schedule() {
-    if (!file || flushTimer) return;
-    flushTimer = setTimeout(flushAsync, flushDebounceMs);
-    if (flushTimer.unref) flushTimer.unref();
-  }
-
-  function flushAsync() {
-    flushTimer = null;
-    if (!file) return;
-    if (writing) {
-      writeQueued = true;
-      return;
-    }
-    writing = true;
-    const snapshot = body();
-    tmpSeq = (tmpSeq + 1) % 1e6;
-    const tmp = `${file}.${process.pid}.${tmpSeq}.tmp`;
-    fsp
-      .mkdir(path.dirname(file), { recursive: true })
-      .then(() => fsp.writeFile(tmp, snapshot, { mode: 0o600 }))
-      .then(() => fsp.rename(tmp, file))
-      .catch(() => fsp.rm(tmp, { force: true }).catch(() => {}))
-      .then(() => {
-        writing = false;
-        if (writeQueued) {
-          writeQueued = false;
-          schedule();
-        }
-      });
-  }
-
-  function flush() {
-    if (flushTimer) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    writeQueued = false;
-    if (!file) return;
-    try {
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      const tmp = `${file}.tmp`;
-      fs.writeFileSync(tmp, body(), { mode: 0o600 });
-      fs.renameSync(tmp, file);
-    } catch (_err) {
-      // Not worth failing a shutdown over; the next change writes again.
-    }
-  }
-
-  function load() {
+  async function load() {
     byKey.clear();
     byId.clear();
     pending.clear();
     resets.clear();
-    if (!file || !fs.existsSync(file)) return 0;
-    try {
-      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      for (const row of Array.isArray(data.accounts) ? data.accounts : []) {
-        if (!row || !row.uid || !row.key || !row.password) continue;
-        byKey.set(row.key, row);
-        byId.set(row.uid, row);
-      }
-      for (const row of Array.isArray(data.pending) ? data.pending : []) {
-        if (!row || !row.key || !row.uid) continue;
-        pending.set(row.key, row);
-      }
-      for (const row of Array.isArray(data.resets) ? data.resets : []) {
-        if (!row || !row.tokenHash || !row.uid) continue;
-        const { tokenHash, ...rest } = row;
-        resets.set(tokenHash, rest);
-      }
-      prune();
-    } catch (_err) {
-      byKey.clear();
-      byId.clear();
-      pending.clear();
-      resets.clear();
+    if (!db) return 0;
+    const stored = await db.accounts.all();
+    for (const row of stored.accounts || []) {
+      if (!row || !row.uid || !row.key || !row.password) continue;
+      byKey.set(row.key, row);
+      byId.set(row.uid, row);
     }
+    for (const row of stored.pending || []) {
+      if (!row || !row.key || !row.uid) continue;
+      pending.set(row.key, row);
+    }
+    for (const row of stored.resets || []) {
+      if (!row || !row.tokenHash || !row.uid) continue;
+      resets.set(row.tokenHash, row);
+    }
+    prune();
     return byKey.size;
   }
 
-  load();
+  // Everything still in the air. Nothing here is debounced, so this is only
+  // ever the handful of writes started in the last moment before a shutdown.
+  function flush() {
+    return Promise.all([...inFlight]).then(() => {});
+  }
 
   return {
     ownerOf,
@@ -403,8 +355,6 @@ function createAccounts(options = {}) {
     prune,
     load,
     flush,
-    flushAsync,
-    file,
     get size() {
       return byKey.size;
     },

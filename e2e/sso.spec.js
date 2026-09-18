@@ -57,6 +57,9 @@ function lastMailLink() {
 test.beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-sso-pw-'));
   process.env.SAVE_DIR = tempDir;
+  // A database of its own per spec file. Playwright runs them all in one
+  // process, so a name claimed in one would be claimed in the next.
+  process.env.DB_NAME = 'e2e-sso';
   process.env.HOST = '127.0.0.1';
   process.env.TOURNAMENT_SWEEP_MS = '100';
   process.env.GAMENIGHT_URL = ISSUER;

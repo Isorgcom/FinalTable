@@ -219,7 +219,8 @@ if (!mailer.available()) {
 }
 
 accounts = createAccounts({
-  saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+  db,
+  log: structuredLog,
   nameKey: normalizeNameKey,
   sanitizeName,
   // Rule 2: your own guest identity does not count against you, anybody
@@ -454,7 +455,7 @@ async function flushStores() {
     /* as above */
   }
   try {
-    accounts.flush();
+    await accounts.flush();
   } catch (_err) {
     /* as above */
   }
@@ -553,6 +554,7 @@ async function openStores() {
   await db.apply();
   await settingsStore.load();
   await identity.load();
+  await accounts.load();
   // Everything that reads a setting at boot, now that there are settings to
   // read: the GameNight pairing set from the Admin page beats the environment,
   // and it can only know that once the store has loaded.

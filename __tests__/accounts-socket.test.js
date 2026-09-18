@@ -175,18 +175,23 @@ describe('an account of this server’s own', () => {
 
   // The address is the most sensitive thing this server holds. It belongs in
   // one file and nowhere else.
-  test('the address is in the accounts file and nowhere else', async () => {
-    serverModule.accounts.flush();
-    serverModule.identity.flush();
+  test('the address is in the accounts table and nowhere else', async () => {
+    await serverModule.accounts.flush();
+    await serverModule.identity.flush();
     if (serverModule.adminLog) serverModule.adminLog.flush();
 
+    // It is where it belongs.
+    const stored = await serverModule.db.accounts.all();
+    expect(JSON.stringify(stored)).toContain('ann@example.com');
+
+    // And in no file this server writes, which is now every file it writes.
     const seen = [];
     for (const name of fs.readdirSync(tempDir)) {
       const full = path.join(tempDir, name);
       if (!fs.statSync(full).isFile()) continue;
       if (fs.readFileSync(full, 'utf8').includes('ann@example.com')) seen.push(name);
     }
-    expect(seen).toEqual(['accounts.json']);
+    expect(seen).toEqual([]);
 
     // Nor in anything a player is sent.
     const s = await connect();
