@@ -8,6 +8,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const helpers = require('./helpers');
 
 let serverModule;
 let baseUrl;
@@ -77,6 +78,7 @@ test.beforeAll(async () => {
   serverModule = require('../server');
   await serverModule.startServer({ port: 0, host: '127.0.0.1', unrefServer: true });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
+  helpers.configure({ baseUrl, serverModule });
   // Only now is the address known, and a link that points anywhere else is a
   // sign-up nobody can finish.
   serverModule.mailer.setBaseUrl(baseUrl);

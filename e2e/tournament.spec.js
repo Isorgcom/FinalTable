@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const helpers = require('./helpers');
 
 let serverModule;
 let baseUrl;
@@ -43,6 +44,7 @@ test.beforeAll(async () => {
     unrefServer: true,
   });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
+  helpers.configure({ baseUrl, serverModule });
 });
 
 test.afterAll(async () => {
@@ -61,10 +63,7 @@ test('two players reach one table, and one comes back to it after a reload', asy
 }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Host');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Host');
+  await helpers.signInAs(page, 'Host');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Reload Night');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -75,9 +74,7 @@ test('two players reach one table, and one comes back to it after a reload', asy
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Guest');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Guest', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await expect(page.locator('#wrRoster')).toContainText('Guest');
 
@@ -113,10 +110,7 @@ test('two players reach one table, and one comes back to it after a reload', asy
 test('the host can leave the table and rejoin it, back in control', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Leaver');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Leaver');
+  await helpers.signInAs(page, 'Leaver');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Back In A Minute');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -127,9 +121,7 @@ test('the host can leave the table and rejoin it, back in control', async ({ bro
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Stayer');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Stayer', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
@@ -173,10 +165,7 @@ test('the host can leave the table and rejoin it, back in control', async ({ bro
 test('the door in the corner of the table goes back to the lobby', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Cornered');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Cornered');
+  await helpers.signInAs(page, 'Cornered');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Out The Side');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -187,9 +176,7 @@ test('the door in the corner of the table goes back to the lobby', async ({ brow
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Seated');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Seated', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
@@ -222,10 +209,7 @@ test('the door in the corner of the table goes back to the lobby', async ({ brow
 test('a player forfeits from the menu and hands the game over', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Stayer');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Stayer');
+  await helpers.signInAs(page, 'Stayer');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Conceded');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -236,9 +220,7 @@ test('a player forfeits from the menu and hands the game over', async ({ browser
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Quitter');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Quitter', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
@@ -281,10 +263,7 @@ test('the host ends a running tournament from the Info tab, without the admin pa
 }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Runner');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Runner');
+  await helpers.signInAs(page, 'Runner');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Called Off');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -295,9 +274,7 @@ test('the host ends a running tournament from the Info tab, without the admin pa
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Player');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Player', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
@@ -338,10 +315,7 @@ test('a host who busts out and goes back to the lobby can still end their game',
 }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Maker');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Maker');
+  await helpers.signInAs(page, 'Maker');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Made It');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -354,9 +328,7 @@ test('a host who busts out and goes back to the lobby can still end their game',
     const ctx = await browser.newContext();
     const pg = await ctx.newPage();
     pg.on('pageerror', (err) => errors.push(err.message));
-    await pg.goto(`${baseUrl}/?t=${code}`);
-    await pg.fill('#playerName', name);
-    await pg.locator('#playerName').blur();
+    await helpers.signInAs(pg, name, { join: code });
     await expect(pg.locator('#lobbyWaiting')).toBeVisible();
     seats.push({ ctx, pg });
   }
@@ -408,10 +380,7 @@ test('a busted player who declines and leaves is still offered the way back in',
 }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Rebuyer');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Rebuyer');
+  await helpers.signInAs(page, 'Rebuyer');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Second Chances');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -426,9 +395,7 @@ test('a busted player who declines and leaves is still offered the way back in',
     const ctx = await browser.newContext();
     const pg = await ctx.newPage();
     pg.on('pageerror', (err) => errors.push(err.message));
-    await pg.goto(`${baseUrl}/?t=${code}`);
-    await pg.fill('#playerName', name);
-    await pg.locator('#playerName').blur();
+    await helpers.signInAs(pg, name, { join: code });
     await expect(pg.locator('#lobbyWaiting')).toBeVisible();
     seats.push({ ctx, pg });
   }
@@ -480,10 +447,7 @@ test('a busted player who declines and leaves is still offered the way back in',
 test('the winner of an uncontested pot can turn one card over', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Shower');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Shower');
+  await helpers.signInAs(page, 'Shower');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Needle');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -494,9 +458,7 @@ test('the winner of an uncontested pot can turn one card over', async ({ browser
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Watcher');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Watcher', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
@@ -560,10 +522,7 @@ test('a dropped connection sits the seat out, and coming back resumes it', async
 }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Dropper');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Dropper');
+  await helpers.signInAs(page, 'Dropper');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Signal Loss');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -574,9 +533,7 @@ test('a dropped connection sits the seat out, and coming back resumes it', async
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Steady');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Steady', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
@@ -624,9 +581,7 @@ test('a dropped connection sits the seat out, and coming back resumes it', async
 test('the way back in stays put across hand boundaries', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Steady');
-  await page.locator('#playerName').blur();
+  await helpers.signInAs(page, 'Steady');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'No Flicker');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -637,9 +592,7 @@ test('the way back in stays put across hand boundaries', async ({ browser, page 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Mover');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Mover', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
@@ -683,10 +636,7 @@ test('the way back in stays put across hand boundaries', async ({ browser, page 
 test('the Stats tab is the whole field, from the first deal', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', 'Host');
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText('Playing as Host');
+  await helpers.signInAs(page, 'Host');
   await page.click('#btnCreateTournament');
   await page.fill('#tName', 'Board Night');
   await page.click('#tStartQuick button[data-min="15"]');
@@ -697,9 +647,7 @@ test('the Stats tab is the whole field, from the first deal', async ({ browser, 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   guest.on('pageerror', (err) => errors.push(err.message));
-  await guest.goto(`${baseUrl}/?t=${code}`);
-  await guest.fill('#playerName', 'Guest');
-  await guest.locator('#playerName').blur();
+  await helpers.signInAs(guest, 'Guest', { join: code });
   await expect(guest.locator('#lobbyWaiting')).toBeVisible();
   await expect(page.locator('#wrRoster')).toContainText('Guest');
 

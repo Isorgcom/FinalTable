@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const helpers = require('./helpers');
 
 let serverModule;
 let baseUrl;
@@ -59,6 +60,7 @@ test.beforeAll(async () => {
     unrefServer: true,
   });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
+  helpers.configure({ baseUrl, serverModule });
 });
 
 test.afterAll(async () => {
@@ -101,43 +103,13 @@ async function gameForPage(page) {
 // A dealt heads-up table. A field of one never starts, so the viewer needs an
 // opponent: a second browser context joins by link and the host starts.
 //
-// The opponent sits out the moment it is seated. Left as a live human it would
-// never act, and the viewer would wait out its whole 25-second clock before the
-// action came round; sitting out, it checks or folds on its own and the turn
-// reaches the viewer within a hand. The context is closed in afterEach.
+// The guest's context is kept here and closed in afterEach; the helper hands
+// it back rather than owning it, because only this file knows when the test is
+// done with it.
 async function seatAtTournamentTable(page, name) {
-  const pageErrors = [];
-  page.on('pageerror', (err) => pageErrors.push(err.message));
-  await page.goto(baseUrl);
-  await page.fill('#playerName', name);
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
-  await page.click('#btnCreateTournament');
-  await page.fill('#tName', `${name} table`);
-  await page.click('#tStartQuick button[data-min="15"]');
-  await page.click('#btnCreateSubmit');
-  await expect(page.locator('#lobbyWaiting')).toBeVisible();
-  const code = (await page.locator('#wrCode').textContent()).trim();
-
-  guestContext = await browserRef.newContext();
-  const guest = await guestContext.newPage();
-  await guest.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
-  await guest.fill('#playerName', `${name}Foe`);
-  await guest.locator('#playerName').blur();
-  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
-
-  // Enabled only once the guest's registration has reached the host.
-  await expect(page.locator('#btnStartNow')).toBeEnabled();
-  await page.click('#btnStartNow');
-  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 15000 });
-  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 15000 });
-  // The game screen opens on tournamentJoined, before the first gameState
-  // arrives; clicking sit-out any earlier is a no-op because the client has no
-  // seat to toggle yet.
-  await expect(guest.locator('#playerSeats .player-seat:not(.seat-empty)')).toHaveCount(2);
-  await guest.click('#btnAutoPlay');
-  await expect(guest.locator('#seatBanner')).toBeVisible({ timeout: 10000 });
-  return pageErrors;
+  const seated = await helpers.seatAtTournamentTable(page, name, { browser: browserRef });
+  guestContext = seated.guestContext;
+  return seated.pageErrors;
 }
 
 async function deal(page) {

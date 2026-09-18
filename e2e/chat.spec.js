@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const helpers = require('./helpers');
 
 let serverModule;
 let baseUrl;
@@ -31,6 +32,7 @@ test.beforeAll(async () => {
   serverModule = require('../server');
   await serverModule.startServer({ port: 0, host: '127.0.0.1', unrefServer: true });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
+  helpers.configure({ baseUrl, serverModule });
 });
 
 test.afterAll(async () => {
@@ -43,34 +45,14 @@ test.afterAll(async () => {
   process.env = originalEnv;
 });
 
-async function identifyAs(page, name) {
-  await page.goto(baseUrl);
-  await page.fill('#playerName', name);
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
-}
+const identifyAs = (page, name) => helpers.signInAs(page, name);
 
-async function hostCreates(page, name, { tableSize = null } = {}) {
-  await page.click('#btnCreateTournament');
-  await expect(page.locator('#lobbyCreate')).toBeVisible();
-  await page.fill('#tName', name);
-  if (tableSize) await page.selectOption('#tTableSize', String(tableSize));
-  await page.click('#tStartQuick button[data-min="15"]');
-  await page.click('#btnCreateSubmit');
-  await expect(page.locator('#lobbyWaiting')).toBeVisible();
-  return (await page.locator('#wrCode').textContent()).trim();
-}
+const hostCreates = (page, name, opts = {}) => helpers.createTournament(page, { name, ...opts });
 
 async function guestJoins(browser, code, name) {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  const errors = [];
-  page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto(`${baseUrl}/?t=${code.toLowerCase()}`);
-  await page.fill('#playerName', name);
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#lobbyWaiting')).toBeVisible();
-  return { context, page, errors };
+  const opened = await helpers.openAs(browser, name, { join: code });
+  await expect(opened.page.locator('#lobbyWaiting')).toBeVisible();
+  return opened;
 }
 
 test('the waiting room carries the conversation before there is a table', async ({

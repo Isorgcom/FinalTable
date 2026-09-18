@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const helpers = require('./helpers');
 
 let serverModule;
 let baseUrl;
@@ -39,6 +40,7 @@ test.beforeAll(async () => {
     unrefServer: true,
   });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
+  helpers.configure({ baseUrl, serverModule });
 });
 
 test.afterAll(async () => {
@@ -51,30 +53,8 @@ test.afterAll(async () => {
   process.env = originalEnv;
 });
 
-async function identifyAs(page, name) {
-  await page.goto(baseUrl);
-  await page.fill('#playerName', name);
-  await page.locator('#playerName').blur();
-  await expect(page.locator('#identityStatus')).toContainText(`Playing as ${name}`);
-}
-
-async function createTournament(
-  page,
-  { name = 'Friday Night', minutes = 15, bots = false, visibility = null } = {}
-) {
-  await page.click('#btnCreateTournament');
-  await expect(page.locator('#lobbyCreate')).toBeVisible();
-  await page.fill('#tName', name);
-  // Private is the default; a test that wants a listed game says so.
-  if (visibility) await page.click(`#tVisibility button[data-vis="${visibility}"]`);
-  await page.click(`#tStartQuick button[data-min="${minutes}"]`);
-  if (bots) await page.check('#tBots');
-  await page.click('#btnCreateSubmit');
-  await expect(page.locator('#lobbyWaiting')).toBeVisible();
-  const code = (await page.locator('#wrCode').textContent()).trim();
-  expect(code).toMatch(/^[A-Z2-9]{5}$/);
-  return code;
-}
+const identifyAs = (page, name, opts) => helpers.signInAs(page, name, opts);
+const createTournament = (page, opts) => helpers.createTournament(page, opts);
 
 test('a name and avatar become an identity that survives a reload', async ({ page }) => {
   await identifyAs(page, 'Ann');
