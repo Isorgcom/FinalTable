@@ -24,14 +24,18 @@ function makeIdentity(names) {
   };
 }
 
+// The store as the registry sees it: load() is awaited before the server
+// listens, saved() is what a restore reads, and save() takes the whole list.
 function makeStore() {
   let saved = [];
   return {
     saves: 0,
-    load: () => saved,
+    load: async () => saved,
+    saved: () => saved,
     save(list) {
       saved = JSON.parse(JSON.stringify(list));
       this.saves++;
+      return Promise.resolve();
     },
   };
 }
@@ -508,11 +512,11 @@ describe('tournament registry', () => {
     );
     first.join('g', { code: entry.code }, makeSocket('sg'));
     first.flush();
-    expect(store.load()).toHaveLength(1);
-    expect(store.load()[0]).toMatchObject({ id: entry.id, code: entry.code, hostUid: 'h' });
+    expect(store.saved()).toHaveLength(1);
+    expect(store.saved()[0]).toMatchObject({ id: entry.id, code: entry.code, hostUid: 'h' });
     expect(
       store
-        .load()[0]
+        .saved()[0]
         .registrations.map((r) => r.uid)
         .sort()
     ).toEqual(['g', 'h']);
@@ -547,7 +551,7 @@ describe('tournament registry', () => {
     // to be dropped, on the grounds that a hand in progress cannot be rebuilt
     // — which is true, and is why the field is recorded between hands instead.
     second.flush();
-    const saved = store.load();
+    const saved = store.saved();
     expect(saved).toHaveLength(1);
     expect(saved[0].status).toBe('running');
     expect(saved[0].field.tables[0].players.map((p) => p.uid).sort()).toEqual(['g', 'h']);
@@ -597,7 +601,7 @@ describe('tournament registry', () => {
     jest.advanceTimersByTime(1500);
     expect(second.tournaments.has(entry.id)).toBe(false);
     second.flush();
-    expect(store.load()).toHaveLength(0);
+    expect(store.saved()).toHaveLength(0);
     second.stop();
 
     // Whereas a player who does come back keeps the field, as they always did.
@@ -707,8 +711,8 @@ describe('tournament registry', () => {
     first.stop();
 
     // Three boots that could not get a hand out, already counted.
-    store.load()[0].restoreCount = 3;
-    const chips = store.load()[0].field.tables[0].players.map((p) => p.chips);
+    store.saved()[0].restoreCount = 3;
+    const chips = store.saved()[0].field.tables[0].players.map((p) => p.chips);
 
     const second = boot();
     expect(second.restore()).toBe(1);
@@ -727,8 +731,8 @@ describe('tournament registry', () => {
     // The file still carries the field, so the next restart holds it as well
     // rather than reading it back as one waiting for its start time.
     second.flush();
-    expect(store.load()[0].held).toBe(true);
-    expect(store.load()[0].field.tables[0].players.map((p) => p.chips)).toEqual(chips);
+    expect(store.saved()[0].held).toBe(true);
+    expect(store.saved()[0].field.tables[0].players.map((p) => p.chips)).toEqual(chips);
     second.stop();
 
     const third = boot();
@@ -746,7 +750,7 @@ describe('tournament registry', () => {
     expect(still.status).toBe('running');
     expect(still.director.isRunning).toBe(true);
     third.flush();
-    expect(store.load()[0].held).toBe(false);
+    expect(store.saved()[0].held).toBe(false);
     third.stop();
   });
 
@@ -1554,7 +1558,7 @@ describe('tournament registry', () => {
     registry.flush();
     registry.stop();
     // A file from before the setting existed: no visibility field at all.
-    const saved = store.load();
+    const saved = store.saved();
     const legacy = JSON.parse(JSON.stringify(saved[0]));
     legacy.id = 'legacy';
     legacy.code = 'LEGCY';
@@ -1655,7 +1659,7 @@ describe('blind structures in the registry', () => {
     expect(entry.settings.structure.name).toBe('Sunday');
     expect(entry.settings.structure.levels).toHaveLength(3);
     first.flush();
-    const saved = store.load()[0].settings.structure;
+    const saved = store.saved()[0].settings.structure;
     expect(saved).toEqual(entry.settings.structure);
     first.stop();
 
@@ -1819,7 +1823,7 @@ describe('the host controls in the registry', () => {
   test('the creator is written down and comes back, and an old file falls back to its host', () => {
     const entry = running();
     registry.flush();
-    const saved = store.load()[0];
+    const saved = store.saved()[0];
     expect(saved.creatorUid).toBe('h');
 
     registry.stop();
@@ -1830,7 +1834,7 @@ describe('the host controls in the registry', () => {
 
     // A file written before any of this has no creator in it; the host it was
     // saved with is the best answer there is, and it is the right one.
-    const older = store.load();
+    const older = store.saved();
     delete older[0].creatorUid;
     store.save(older);
     const third = makeRegistry(store);
@@ -1889,7 +1893,7 @@ describe('the host controls in the registry', () => {
     expect(registry.removePlayer(entry, 'h', 'g')).toEqual({ error: 'They are not seated' });
 
     registry.flush();
-    expect(store.load()[0].removedUids).toEqual(['g']);
+    expect(store.saved()[0].removedUids).toEqual(['g']);
     registry.stop();
     const second = makeRegistry(store);
     expect(second.restore()).toBe(1);
@@ -2168,7 +2172,7 @@ describe('the rail', () => {
   test('the rail survives a restart, and an old file gets one', () => {
     const entry = running();
     registry.flush();
-    const saved = store.load();
+    const saved = store.saved();
     expect(saved[0].rail).toBe(entry.rail);
     registry.stop();
     const second = makeRegistry(store);
@@ -2176,7 +2180,7 @@ describe('the rail', () => {
     expect(second.tournaments.get(entry.id).rail).toBe(entry.rail);
     second.stop();
 
-    const old = store.load().map((row) => ({ ...row }));
+    const old = store.saved().map((row) => ({ ...row }));
     delete old[0].rail;
     const legacy = makeStore();
     legacy.save(old);
@@ -2402,7 +2406,7 @@ describe('re-entry and the add-on in the registry', () => {
 
     // Written down, and read back.
     registry.flush();
-    expect(store.load()[0].settings).toMatchObject({ reentryLevels: 2, addOn: false });
+    expect(store.saved()[0].settings).toMatchObject({ reentryLevels: 2, addOn: false });
     registry.stop();
     const second = makeRegistry(store);
     expect(second.restore()).toBe(1);
@@ -2463,7 +2467,7 @@ describe('re-entry and the add-on in the registry', () => {
 
     // A restart must not hand back what the forfeit gave up.
     registry.flush();
-    expect(store.load()[0].forfeitedUids).toEqual(['g']);
+    expect(store.saved()[0].forfeitedUids).toEqual(['g']);
     registry.stop();
     const second = makeRegistry(store);
     expect(second.restore()).toBe(1);

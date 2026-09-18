@@ -1,95 +1,108 @@
 // __tests__/chat-store.test.js - chat that outlives the process.
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const { createChatStore } = require('../server/chat-store');
+const { createMemoryDatabase } = require('../server/db');
 
 describe('chat store', () => {
-  let dir;
+  let db;
+  let n = 0;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-chat-store-'));
-  });
-
-  afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
+    db = createMemoryDatabase({ database: `chat-${n++}` });
+    db.reset();
   });
 
   const rooms = (text) => ({ 't_1:t1': [{ id: 'c_1', seq: 1, text, uid: 'ann', name: 'Ann' }] });
+  const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-  test('without a directory every call is a no-op', () => {
+  test('without a database every call is a no-op', async () => {
     const store = createChatStore({});
     expect(() => store.record('t_1', rooms('hi'))).not.toThrow();
-    expect(() => store.flush()).not.toThrow();
+    await expect(store.flush()).resolves.toBeUndefined();
     expect(() => store.remove('t_1')).not.toThrow();
+    // Held in memory for as long as the process lives, which is all a server
+    // with nowhere to write can offer.
     expect(store.load('t_1')).toBeNull();
-    expect(store.listIds()).toEqual([]);
   });
 
-  test('a recorded snapshot comes back', () => {
-    const store = createChatStore({ saveDir: dir });
+  test('a recorded snapshot comes back after a restart', async () => {
+    const store = createChatStore({ db });
     store.record('t_1', rooms('before the restart'));
-    store.flush();
-    const back = createChatStore({ saveDir: dir }).load('t_1');
-    expect(back['t_1:t1'][0].text).toBe('before the restart');
+    await store.flush();
+
+    const back = createChatStore({ db });
+    await back.loadAll();
+    expect(back.load('t_1')['t_1:t1'][0].text).toBe('before the restart');
   });
 
-  test('the last snapshot wins, so the file cannot grow past the ring', () => {
-    const store = createChatStore({ saveDir: dir });
+  test('the last snapshot wins, so what is kept cannot grow past the ring', async () => {
+    const store = createChatStore({ db });
     for (let i = 0; i < 50; i++) store.record('t_1', rooms('message ' + i));
-    store.flush();
-    const back = createChatStore({ saveDir: dir }).load('t_1');
-    expect(back['t_1:t1']).toHaveLength(1);
-    expect(back['t_1:t1'][0].text).toBe('message 49');
+    await store.flush();
+
+    const back = createChatStore({ db });
+    await back.loadAll();
+    const kept = back.load('t_1')['t_1:t1'];
+    expect(kept).toHaveLength(1);
+    expect(kept[0].text).toBe('message 49');
   });
 
   test('a burst of records collapses into one write, and none of it is lost', async () => {
-    const store = createChatStore({ saveDir: dir, flushDebounceMs: 5 });
+    const store = createChatStore({ db, flushDebounceMs: 5 });
     for (let i = 0; i < 40; i++) store.record('t_' + (i % 4), rooms('m' + i));
-    await new Promise((r) => setTimeout(r, 120));
-    const reader = createChatStore({ saveDir: dir });
+    await settle(120);
+
+    const reader = createChatStore({ db });
+    await reader.loadAll();
     expect(reader.listIds().sort()).toEqual(['t_0', 't_1', 't_2', 't_3']);
-    // Whichever write landed last for each id, it is a whole parseable file -
-    // which is what a half-finished write would break.
     for (const id of reader.listIds()) expect(reader.load(id)).toBeTruthy();
   });
 
-  test('a corrupt or missing file reads as absent rather than throwing', () => {
-    const store = createChatStore({ saveDir: dir });
+  test('chat nobody kept reads as absent rather than throwing', async () => {
+    const store = createChatStore({ db });
+    await store.loadAll();
     expect(store.load('never-existed')).toBeNull();
-    fs.mkdirSync(path.join(dir, 'chat'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'chat', 't_bad.json'), '{ not json');
-    expect(store.load('t_bad')).toBeNull();
-    fs.writeFileSync(path.join(dir, 'chat', 't_empty.json'), '{"version":1}');
-    expect(store.load('t_empty')).toBeNull();
   });
 
-  test('removing is idempotent, and listIds sees what is there', () => {
-    const store = createChatStore({ saveDir: dir });
+  test('removing is idempotent, and listIds sees what is there', async () => {
+    const store = createChatStore({ db });
     store.record('t_1', rooms('x'));
     store.record('t_2', rooms('y'));
-    store.flush();
+    await store.flush();
     expect(store.listIds().sort()).toEqual(['t_1', 't_2']);
     store.remove('t_1');
     expect(store.listIds()).toEqual(['t_2']);
     expect(() => store.remove('t_1')).not.toThrow();
     expect(() => store.remove('never-existed')).not.toThrow();
+
+    // And it is gone from what a restart would read, not just from here.
+    await store.flush();
+    const back = createChatStore({ db });
+    await back.loadAll();
+    expect(back.listIds()).toEqual(['t_2']);
   });
 
-  test('a pending record is dropped when its tournament is removed', () => {
-    const store = createChatStore({ saveDir: dir, flushDebounceMs: 10000 });
+  test('a pending record is dropped when its tournament is removed', async () => {
+    const store = createChatStore({ db, flushDebounceMs: 10000 });
     store.record('t_1', rooms('never wanted'));
     store.remove('t_1');
-    store.flush();
+    await store.flush();
     expect(store.listIds()).toEqual([]);
+
+    const back = createChatStore({ db });
+    expect(await back.loadAll()).toBe(0);
   });
 
-  test('an id that is not a plain filename cannot escape the directory', () => {
-    const store = createChatStore({ saveDir: dir });
+  // It used to be one file per tournament, named after the id, which is why
+  // this test existed. There is no filename any more - the id is a value in a
+  // placeholder - but an id that tries it should still be unremarkable.
+  test('an id that used to be dangerous as a filename is just an id', async () => {
+    const store = createChatStore({ db });
     store.record('../../escaped', rooms('nope'));
-    store.flush();
-    expect(fs.existsSync(path.join(dir, 'chat'))).toBe(true);
-    expect(fs.readdirSync(dir)).toEqual(['chat']);
-    expect(store.listIds()).toEqual(['../../escaped']);
+    await store.flush();
+
+    const back = createChatStore({ db });
+    await back.loadAll();
+    expect(back.listIds()).toEqual(['../../escaped']);
+    expect(back.load('../../escaped')).toBeTruthy();
   });
 });

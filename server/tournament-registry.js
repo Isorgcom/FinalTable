@@ -245,20 +245,21 @@ function createTournamentRegistry(deps = {}) {
       clearTimeout(persistTimer);
       persistTimer = null;
     }
-    // Chat has a debounce of its own, and flush means everything is on disk
-    // now - a shutdown that wrote the field but not the last thing anyone said
+    // Chat has a debounce of its own, and flush means everything is written
+    // now - a shutdown that kept the field but not the last thing anyone said
     // would be a strange thing to have built on purpose.
-    if (chatStore) chatStore.flush();
+    const waiting = [];
+    if (chatStore) waiting.push(chatStore.flush());
     if (historyStore) historyStore.flush();
-    if (!store) return;
-    const list = [...tournaments.values()]
-      .filter((e) => e.status === 'registering' || e.status === 'running')
-      .map(serialize);
-    try {
-      store.save(list);
-    } catch (_err) {
-      /* the next change tries again */
+    if (store) {
+      const list = [...tournaments.values()]
+        .filter((e) => e.status === 'registering' || e.status === 'running')
+        .map(serialize);
+      waiting.push(store.save(list));
     }
+    // Returned rather than awaited: this is called on every change as well as
+    // on the way out, and only the way out has anybody to wait for it.
+    return Promise.all(waiting).then(() => {});
   }
 
   function persist() {
@@ -2424,7 +2425,9 @@ function createTournamentRegistry(deps = {}) {
   function restore() {
     if (!store) return 0;
     let restored = 0;
-    for (const saved of store.load()) {
+    // What the store read before the server listened. Reading here would be a
+    // query in the middle of a synchronous restore.
+    for (const saved of store.saved()) {
       if (!saved || !saved.id || tournaments.has(saved.id)) continue;
       const { settings } = clampSettings({ ...saved.settings, startsAt: saved.startsAt });
       // A tournament that was already dealing keeps the table size it was dealt

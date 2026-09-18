@@ -177,6 +177,33 @@ describe('importing what the files held', () => {
     expect(await run()).toMatchObject({ accounts: 1 });
   });
 
+  test('games in progress and their chat come across', async () => {
+    write('tournaments.json', {
+      version: 1,
+      tournaments: [
+        { id: 't_1', status: 'registering', name: 'Night', code: 'ABCDE' },
+        { id: 't_2', status: 'running', name: 'Later', code: 'FGHIJ' },
+      ],
+    });
+    fs.mkdirSync(path.join(dir, 'chat'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'chat', 't_1.json'),
+      JSON.stringify({ version: 1, id: 't_1', rooms: { 't_1:lobby': [{ seq: 1, text: 'hello' }] } })
+    );
+    expect(await run()).toMatchObject({ tournaments: 2, chat: 1 });
+
+    const rows = await db.tournaments.all();
+    expect(rows.map((r) => r.id).sort()).toEqual(['t_1', 't_2']);
+    expect(rows.find((r) => r.id === 't_2').status).toBe('running');
+    expect(rows.find((r) => r.id === 't_1').data.code).toBe('ABCDE');
+
+    const chat = await db.chat.all();
+    expect(chat[0].data['t_1:lobby'][0].text).toBe('hello');
+    // The whole directory is set aside at once.
+    expect(fs.existsSync(path.join(dir, 'chat'))).toBe(false);
+    expect(fs.existsSync(path.join(dir, 'chat.imported'))).toBe(true);
+  });
+
   test('a corrupt file is skipped and left where it is', async () => {
     fs.writeFileSync(path.join(dir, 'identities.json'), '{not json');
     expect(await run()).toEqual({});

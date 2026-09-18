@@ -248,6 +248,69 @@ function createMariaDatabase(options = {}) {
       },
     },
 
+    tournaments: {
+      async all() {
+        const [rows] = await pool.query('SELECT id, status, data FROM tournaments');
+        return rows.map((r) => ({ id: r.id, status: r.status, data: unjson(r.data) }));
+      },
+
+      // The registry keeps the whole list and hands it over whole: anything
+      // not in it has been cancelled, finished or swept. Done in one
+      // transaction, so a reader never sees a moment with half a field in it.
+      async replaceAll(list) {
+        const rows = (list || []).filter((row) => row && row.id);
+        const conn = await pool.getConnection();
+        try {
+          await conn.beginTransaction();
+          const keep = rows.map((row) => row.id);
+          if (keep.length) {
+            await conn.query(
+              `DELETE FROM tournaments WHERE id NOT IN (${keep.map(() => '?').join(',')})`,
+              keep
+            );
+          } else {
+            await conn.query('DELETE FROM tournaments');
+          }
+          const at = Date.now();
+          for (const row of rows) {
+            await conn.query(
+              'INSERT INTO tournaments (id, status, updated_at, data) VALUES (?, ?, ?, ?) ' +
+                'ON DUPLICATE KEY UPDATE status = VALUES(status), ' +
+                'updated_at = VALUES(updated_at), data = VALUES(data)',
+              [row.id, row.status || 'registering', at, json(row.data)]
+            );
+          }
+          await conn.commit();
+        } catch (err) {
+          await conn.rollback();
+          throw err;
+        } finally {
+          conn.release();
+        }
+      },
+
+      async remove(id) {
+        await pool.query('DELETE FROM tournaments WHERE id = ?', [id]);
+      },
+    },
+
+    chat: {
+      async all() {
+        const [rows] = await pool.query('SELECT tournament_id, data FROM chat');
+        return rows.map((r) => ({ id: r.tournament_id, data: unjson(r.data) }));
+      },
+      async put(id, data) {
+        await pool.query(
+          'INSERT INTO chat (tournament_id, updated_at, data) VALUES (?, ?, ?) ' +
+            'ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at), data = VALUES(data)',
+          [id, Date.now(), json(data)]
+        );
+      },
+      async remove(id) {
+        await pool.query('DELETE FROM chat WHERE tournament_id = ?', [id]);
+      },
+    },
+
     accounts: {
       async all() {
         const [accountRows] = await pool.query(

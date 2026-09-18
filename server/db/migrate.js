@@ -153,6 +153,45 @@ async function migrateFromFiles(options = {}) {
     }
   }
 
+  // ── Games in progress, and what was said at them ──────────────────────────
+  const tournamentsFile = path.join(saveDir, 'tournaments.json');
+  if (fs.existsSync(tournamentsFile) && (await db.tournaments.all()).length === 0) {
+    const data = readJson(tournamentsFile);
+    const rows = data && Array.isArray(data.tournaments) ? data.tournaments : null;
+    if (rows) {
+      const keep = rows.filter((row) => row && row.id);
+      await db.tournaments.replaceAll(
+        keep.map((row) => ({ id: row.id, status: row.status || 'registering', data: row }))
+      );
+      done.tournaments = keep.length;
+      setAside(tournamentsFile, log);
+    }
+  }
+
+  // One file per tournament under chat/, which is where it lived.
+  const chatDir = path.join(saveDir, 'chat');
+  if (fs.existsSync(chatDir) && (await db.chat.all()).length === 0) {
+    let n = 0;
+    let names = [];
+    try {
+      names = fs.readdirSync(chatDir).filter((name) => name.endsWith('.json'));
+    } catch (_err) {
+      names = [];
+    }
+    for (const name of names) {
+      const parsed = readJson(path.join(chatDir, name));
+      if (!parsed || !parsed.rooms || typeof parsed.rooms !== 'object') continue;
+      const id = parsed.id || decodeURIComponent(name.slice(0, -'.json'.length));
+      await db.chat.put(id, parsed.rooms);
+      n++;
+    }
+    if (n) {
+      done.chat = n;
+      // A directory rather than a file: set the whole thing aside at once.
+      setAside(chatDir, log);
+    }
+  }
+
   if (Object.keys(done).length) {
     log({
       level: 'info',

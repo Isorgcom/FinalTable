@@ -342,16 +342,12 @@ app.post('/reset', accountLimiter, express.urlencoded({ extended: false }), (req
   );
 });
 
-const tournamentStore = createTournamentStore({
-  saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
-});
+const tournamentStore = createTournamentStore({ db, log: structuredLog });
 
 // Chat, in its own file per tournament so it never rides along with the
 // registration writes. Absent when chat is switched off, which is what stops
 // an admin who disabled it from finding files still appearing.
-const chatStore = config.chatEnabled
-  ? createChatStore({ saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data') })
-  : null;
+const chatStore = config.chatEnabled ? createChatStore({ db, log: structuredLog }) : null;
 
 // The hands a game was played with, which outlive the game. Absent when the
 // history is switched off entirely, which is what stops a server that keeps
@@ -421,8 +417,9 @@ const tournamentLayer = registerTournamentHandlers({
   reactionRatePerWindow: config.reactionRatePerWindow,
   reactionRateWindowMs: config.reactionRateWindowMs,
 });
-// Registrations survive a restart; a running tournament does not.
-const restoredTournaments = tournamentLayer.registry.restore();
+// Filled by openStores(), which is where the games are read back: restoring a
+// field is synchronous and cannot happen until everything it needs is in hand.
+let restoredTournaments = 0;
 
 // Flush both stores on the way out. Installed only when run directly, so the
 // test harness (which requires this module many times) never stacks handlers.
@@ -441,12 +438,12 @@ async function flushStores() {
     /* nothing better to do on the way out */
   }
   try {
-    tournamentLayer.registry.flush();
+    await tournamentLayer.registry.flush();
   } catch (_err) {
     /* as above */
   }
   try {
-    if (chatStore) chatStore.flush();
+    if (chatStore) await chatStore.flush();
   } catch (_err) {
     /* as above */
   }
@@ -501,9 +498,7 @@ function startServer(options = {}) {
         });
         server.listen(port, host, () => {
           if (restoredTournaments) {
-            console.log(
-              `Restored ${restoredTournaments} scheduled tournament(s) from ${tournamentStore.file}`
-            );
+            console.log(`Restored ${restoredTournaments} tournament(s) from the database`);
           }
           if (unrefServer && typeof server.unref === 'function') server.unref();
           const address = server.address();
@@ -564,6 +559,11 @@ async function openStores() {
   await settingsStore.load();
   await identity.load();
   await accounts.load();
+  await tournamentStore.load();
+  if (chatStore) await chatStore.loadAll();
+  // Everything the restore needs is now in hand, so it can stay the
+  // synchronous thing it is: a field is seated again in one go.
+  restoredTournaments = tournamentLayer.registry.restore();
   // Everything that reads a setting at boot, now that there are settings to
   // read: the GameNight pairing set from the Admin page beats the environment,
   // and it can only know that once the store has loaded.

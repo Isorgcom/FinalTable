@@ -82,6 +82,26 @@ const SCHEMA = [
      expires_at BIGINT       NOT NULL,
      KEY idx_resets_expires (expires_at)
    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  // A game in progress, or one waiting to start: its registrations, its
+  // settings and the field it recorded between hands. A document rather than
+  // columns, because that is honestly what it is - a snapshot taken between
+  // hands and read back whole - and nothing ever asks a question of its
+  // insides except the code that seats it again.
+  `CREATE TABLE IF NOT EXISTS tournaments (
+     id         VARCHAR(64) NOT NULL PRIMARY KEY,
+     status     VARCHAR(16) NOT NULL,
+     updated_at BIGINT      NOT NULL,
+     data       JSON        NOT NULL,
+     KEY idx_tournaments_status (status)
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  // Everything said at one game's tables, as the ring buffers hold it. Also a
+  // document, and for the same reason.
+  `CREATE TABLE IF NOT EXISTS chat (
+     tournament_id VARCHAR(64) NOT NULL PRIMARY KEY,
+     updated_at    BIGINT      NOT NULL,
+     data          JSON        NOT NULL
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 module.exports = { SCHEMA };

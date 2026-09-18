@@ -27,6 +27,8 @@ function tablesFor(name) {
       accounts: new Map(), // uid -> account
       pending: new Map(), // name_key -> row
       resets: new Map(), // token_hash -> row
+      tournaments: new Map(), // id -> { id, status, data }
+      chat: new Map(), // tournament_id -> data
     });
   }
   return held.get(name);
@@ -34,13 +36,15 @@ function tablesFor(name) {
 
 function createMemoryDatabase(options = {}) {
   const { database = 'finaltable' } = options;
-  const { settings, identities, accounts, pending, resets } = tablesFor(database);
+  const { settings, identities, accounts, pending, resets, tournaments, chat } =
+    tablesFor(database);
 
   return {
     driver: 'memory',
     // For a test that wants a database nobody has used.
     reset() {
-      for (const table of [settings, identities, accounts, pending, resets]) table.clear();
+      const tables = [settings, identities, accounts, pending, resets, tournaments, chat];
+      for (const table of tables) table.clear();
     },
     async connect() {
       return this;
@@ -76,6 +80,36 @@ function createMemoryDatabase(options = {}) {
       },
       async count() {
         return identities.size;
+      },
+    },
+
+    tournaments: {
+      async all() {
+        return [...tournaments.values()].map(clone);
+      },
+      // The whole list, as the registry keeps it: anything not in it is gone.
+      async replaceAll(list) {
+        tournaments.clear();
+        for (const row of list || []) {
+          if (!row || !row.id) continue;
+          tournaments.set(row.id, clone(row));
+        }
+      },
+      async remove(id) {
+        tournaments.delete(id);
+      },
+    },
+
+    chat: {
+      async all() {
+        return [...chat.entries()].map(([id, data]) => ({ id, data: clone(data) }));
+      },
+      async put(id, data) {
+        if (!id) return;
+        chat.set(id, clone(data));
+      },
+      async remove(id) {
+        chat.delete(id);
       },
     },
 
