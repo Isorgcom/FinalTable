@@ -662,6 +662,37 @@ The admin is whoever knows the server's admin password. It unlocks the
 table menu. The unlock lasts as long as the browser's connection; a reload
 asks again.
 
+### An account of your own
+
+Typing a name makes you a guest: the name is remembered in that browser and
+nowhere else, so clearing your storage or picking up your phone makes you
+somebody new. An account fixes that, and the name you already play under is
+the account - there is nothing else to remember.
+
+Under the name box, set a **password**, press **Create account**, and give an
+email address. A link goes to it; opening the link is what makes the name
+yours. Until then the name is held for you but owned by nobody, and the hold
+lapses after a day if the link is never opened - so a mistyped address costs
+you a retry rather than the name.
+
+Once it is yours, **Sign in** with the name and the password from any browser.
+Your preferences, your devices and your kept games come with you, because it
+is the same identity you already had rather than a new one.
+
+**Forgot your password?** sends a link to the address you signed up with. It
+works once and lasts an hour. The answer on screen is the same whether or not
+that name has an account, because who plays here is not a list to hand out.
+**change password** in the corner menu changes it without signing any device
+out.
+
+Nobody else is ever shown your address, and it is in one file on the server
+and nothing else.
+
+A server with no mail set up cannot confirm an address, so it offers no
+accounts at all and says so under the name box. Guests work there exactly as
+they always have, and so does the GameNight sign-in if the server is paired
+with one.
+
 ### Your games
 
 **your games** in the lobby's corner menu lists every game you have played that
@@ -755,20 +786,23 @@ game on the Admin page, reached without leaving the felt.
 These live in the server's `.env` (see `.env.example`) and take effect on a
 restart:
 
-| Setting                      | Default    | What it does                                                      |
-| ---------------------------- | ---------- | ----------------------------------------------------------------- |
-| `ADMIN_PASSWORD`             | none       | The first admin password. None means no admin surface.            |
-| `MAX_TOURNAMENTS`            | 8          | How many games the server holds at once.                          |
-| `CHAT_ENABLED`               | true       | Chat exists at all.                                               |
-| `REACTIONS_ENABLED`          | true       | The reaction strip exists at all.                                 |
-| `TOURNAMENT_FINISHED_TTL_MS` | 600000     | How long a finished game stays listed (ten minutes).              |
-| `TOURNAMENT_ZOMBIE_HOLD_MS`  | 21600000   | How long a held game waits for somebody before it is written off. |
-| `HOST_TRANSFER_GRACE_MS`     | 120000     | How long a missing host keeps the game before it passes.          |
-| `CHAT_RATE`, `REACTION_RATE` | 4, 3       | Messages and reactions allowed per ten seconds.                   |
-| `GAMENIGHT_URL` and friends  | none       | Seed the GameNight pairing on a first boot; the page wins after.  |
-| `HAND_HISTORY_MAX`           | 500        | Hands a running game keeps for the download. Zero turns it off.   |
-| `HAND_HISTORY_TTL_MS`        | 2592000000 | How long a game's hands are kept afterwards (thirty days).        |
-| `HAND_HISTORY_MAX_GAMES`     | 200        | How many games' hands the server keeps at once.                   |
+| Setting                      | Default    | What it does                                                              |
+| ---------------------------- | ---------- | ------------------------------------------------------------------------- |
+| `ADMIN_PASSWORD`             | none       | The first admin password. None means no admin surface.                    |
+| `MAX_TOURNAMENTS`            | 8          | How many games the server holds at once.                                  |
+| `CHAT_ENABLED`               | true       | Chat exists at all.                                                       |
+| `REACTIONS_ENABLED`          | true       | The reaction strip exists at all.                                         |
+| `TOURNAMENT_FINISHED_TTL_MS` | 600000     | How long a finished game stays listed (ten minutes).                      |
+| `TOURNAMENT_ZOMBIE_HOLD_MS`  | 21600000   | How long a held game waits for somebody before it is written off.         |
+| `HOST_TRANSFER_GRACE_MS`     | 120000     | How long a missing host keeps the game before it passes.                  |
+| `CHAT_RATE`, `REACTION_RATE` | 4, 3       | Messages and reactions allowed per ten seconds.                           |
+| `GAMENIGHT_URL` and friends  | none       | Seed the GameNight pairing on a first boot; the page wins after.          |
+| `HAND_HISTORY_MAX`           | 500        | Hands a running game keeps for the download. Zero turns it off.           |
+| `HAND_HISTORY_TTL_MS`        | 2592000000 | How long a game's hands are kept afterwards (thirty days).                |
+| `HAND_HISTORY_MAX_GAMES`     | 200        | How many games' hands the server keeps at once.                           |
+| `PUBLIC_URL`, `SMTP_URL`     | none       | Both needed for accounts: where a link points, and how to send it.        |
+| `MAIL_FROM`                  | none       | The address the two messages come from.                                   |
+| `MAIL_TRANSPORT`             | none       | `log` writes mail to the server log instead of sending. Development only. |
 
 ## Privacy and fairness, briefly
 

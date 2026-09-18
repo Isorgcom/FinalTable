@@ -131,6 +131,16 @@ function loadConfig() {
     handHistoryTtlMs: intFromEnv('HAND_HISTORY_TTL_MS', 2592000000, 60000, 31536000000),
     // And a count, so a busy month cannot fill a disk with poker.
     handHistoryMaxGames: intFromEnv('HAND_HISTORY_MAX_GAMES', 200, 1, 10000),
+    // An account of this server's own. Both of the first two have to be set
+    // for accounts to exist at all: a link in an email has to point somewhere,
+    // and a server that cannot send mail cannot verify an address. Without
+    // them the lobby offers guests exactly as it did before there were
+    // accounts, and says why. MAIL_TRANSPORT=log writes the mail to the server
+    // log instead of sending it, which is for development.
+    publicUrl: (process.env.PUBLIC_URL || '').trim().replace(/\/+$/, ''),
+    smtpUrl: (process.env.SMTP_URL || '').trim(),
+    mailFrom: (process.env.MAIL_FROM || '').trim(),
+    mailTransport: (process.env.MAIL_TRANSPORT || '').trim(),
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),

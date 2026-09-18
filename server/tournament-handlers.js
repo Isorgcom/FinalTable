@@ -24,6 +24,12 @@ const EXPORT_LIMIT = 6;
 const EXPORT_WINDOW_MS = 60 * 1000;
 const ADMIN_LOG_WINDOW_MS = 10 * 1000;
 const ADMIN_MAX_ATTEMPTS = 5;
+// Signing in, signing up and asking for a reset, per socket. A person does
+// each of these once or twice; a loop is somebody working through a list of
+// passwords or making the server send mail to strangers.
+const ACCOUNT_LIMIT = 8;
+const ACCOUNT_WINDOW_MS = 60 * 1000;
+const ACCOUNT_FAIL_DELAY_MS = 400;
 const ADMIN_FAIL_DELAY_MS = 400;
 
 // How often one socket may store a preference. Generous against a person
@@ -49,6 +55,10 @@ function registerTournamentHandlers(deps) {
   // What the server has done, for the Admin page's Log. Absent in tests that
   // do not ask for it, so every call is guarded the way the logger dep is.
   const adminLog = deps.adminLog || null;
+  // An account of this server's own, and the mail that verifies it. Both
+  // absent on a server that has neither, where the lobby offers guests only.
+  const accounts = deps.accounts || null;
+  const mailer = deps.mailer || { available: () => false, why: () => null };
 
   const version = typeof deps.version === 'string' ? deps.version : '';
   // The build of index.html and its scripts this server hands out. A page
@@ -62,6 +72,10 @@ function registerTournamentHandlers(deps) {
       version,
       assetVersion,
       adminAvailable: adminEnabled,
+      // Whether this server can hold an account at all: it needs somewhere for
+      // a link to point and a way to send one. The lobby offers the password
+      // box or says why it cannot.
+      accounts: !!accounts && mailer.available(),
       // The set the strip draws, or null when the surface does not exist.
       reactions: registry.reactions,
       gamenight: live
@@ -195,7 +209,14 @@ function registerTournamentHandlers(deps) {
           avatar: payload.avatar,
           userAgent: userAgentOf(socket),
         });
-        if (!ident) return fail(socket, 'Enter a name first');
+        // Not a generic error: typing the name you play under is exactly how
+        // somebody with an account arrives, and a dialog saying "taken" in
+        // front of the password box they are about to use is the wrong answer
+        // to the right thing happening.
+        if (ident && ident.error === 'name-taken') {
+          return socket.emit('identifyFailed', { provider: 'local', reason: 'name-taken' });
+        }
+        if (!ident || !ident.uid) return fail(socket, 'Enter a name first');
       }
       socket.data.uid = ident.uid;
       // Kept so this socket can be found when the device it belongs to is
@@ -306,6 +327,124 @@ function registerTournamentHandlers(deps) {
     socket.on('listMyGames', () => {
       if (!exportAllowed()) return;
       socket.emit('myGames', { games: registry.pastGamesFor(socket.data.uid) });
+    });
+
+    // ── An account of this server's own ─────────────────────────────────
+    //
+    // Signing up, signing in, forgetting it and changing it. Every one of them
+    // rate limited, and none of them ever saying whether a name has an account
+    // - the answer to a wrong password and to a name nobody has taken is the
+    // same sentence, because the difference between them is a list of who
+    // plays here.
+    //
+    // Nothing here logs an address. It is the most sensitive thing this
+    // server holds and it lives in one file.
+
+    function accountAllowed() {
+      if (!accounts || !mailer.available()) return false;
+      const at = Date.now();
+      const recent = (socket.data.accountAsks || []).filter((t) => at - t < ACCOUNT_WINDOW_MS);
+      if (recent.length >= ACCOUNT_LIMIT) {
+        socket.data.accountAsks = recent;
+        return false;
+      }
+      recent.push(at);
+      socket.data.accountAsks = recent;
+      return true;
+    }
+
+    socket.on('signUp', (payload = {}) => {
+      if (!accountAllowed()) return;
+      if (!socket.data.uid) {
+        return socket.emit('accountResult', { ok: false, error: 'Enter a name first.' });
+      }
+      const started = accounts.startSignUp({
+        uid: socket.data.uid,
+        name: payload.name,
+        email: payload.email,
+        password: payload.password,
+      });
+      if (started.error) return socket.emit('accountResult', { ok: false, error: started.error });
+      log({
+        level: 'info',
+        event: 'account_signup_started',
+        message: 'Account sign-up started',
+        data: { uid: socket.data.uid, name: started.name },
+      });
+      Promise.resolve(
+        mailer.sendVerification({ to: started.email, name: started.name, token: started.token })
+      ).then((sent) => {
+        socket.emit('accountResult', {
+          ok: true,
+          pending: true,
+          message: sent
+            ? 'Check your mail and open the link. It lasts a day, and the name is held for you until then.'
+            : 'The mail could not be sent. Ask whoever runs this server.',
+        });
+      });
+    });
+
+    // Answers with a device token and nothing else. The client then identifies
+    // with it exactly as it does on any other load, so rejoining a game in
+    // progress, the rail and everything else take the one path they always
+    // took rather than a second copy of it here.
+    socket.on('signIn', (payload = {}) => {
+      if (!accountAllowed()) return;
+      const who = accounts.signIn(payload.name, payload.password);
+      if (!who) {
+        return setTimeout(() => {
+          socket.emit('accountResult', {
+            ok: false,
+            error: 'That name and password do not go together.',
+          });
+        }, ACCOUNT_FAIL_DELAY_MS);
+      }
+      const ident = identity.signInAs({
+        uid: who.uid,
+        name: who.name,
+        avatar: payload.avatar,
+        userAgent: userAgentOf(socket),
+      });
+      if (!ident) return socket.emit('accountResult', { ok: false, error: 'That did not work.' });
+      log({
+        level: 'info',
+        event: 'account_sign_in',
+        message: 'Player signed in with an account',
+        data: { uid: ident.uid },
+      });
+      // The name comes back too: the client puts it in the name field before
+      // it identifies, or the next identify would rename the account to
+      // whatever was typed there before.
+      socket.emit('accountResult', {
+        ok: true,
+        signedIn: true,
+        token: ident.token,
+        name: ident.name,
+      });
+    });
+
+    socket.on('requestPasswordReset', (payload = {}) => {
+      if (!accountAllowed()) return;
+      const asked = accounts.startReset(payload.name);
+      const answer = () =>
+        socket.emit('accountResult', {
+          ok: true,
+          message: 'If that name has an account, a link is on its way. It works once, for an hour.',
+        });
+      if (!asked) return answer();
+      Promise.resolve(
+        mailer.sendReset({ to: asked.email, name: asked.name, token: asked.token })
+      ).then(answer);
+    });
+
+    socket.on('changeAccountPassword', (payload = {}) => {
+      if (!accountAllowed() || !socket.data.uid) return;
+      const problem = accounts.changePassword(socket.data.uid, payload.current, payload.next);
+      socket.emit('accountResult', {
+        ok: !problem,
+        error: problem || null,
+        message: problem ? null : 'Password changed. Every device you are signed in on stays so.',
+      });
     });
 
     // The devices this identity is signed in on. Answered only to the identity

@@ -92,6 +92,17 @@ function createIdentityStore(options = {}) {
         .trim()
         .slice(0, 16),
     sanitizeAvatar = (v) => String(v || '🧑').slice(0, 4),
+    // Asked of the accounts store: does an account own this name? A guest may
+    // not identify as a name somebody has taken, and the store here cannot
+    // know that on its own. Always null on a server with no accounts, which
+    // is exactly how this behaved before there were any.
+    nameOwner = () => null,
+    // How two names are compared for sameness. The server's own
+    // normalizeNameKey, so the accounts store and this one agree.
+    nameKeyOf = (v) =>
+      String(v || '')
+        .trim()
+        .toLocaleLowerCase(),
   } = options;
 
   // uid -> { uid, name, avatar, provider, gnUserId, createdAt, lastSeenAt,
@@ -165,7 +176,7 @@ function createIdentityStore(options = {}) {
       uid: fields.uid,
       name: fields.name || '',
       avatar: fields.avatar || '🧑',
-      provider: fields.provider === 'gamenight' ? 'gamenight' : 'guest',
+      provider: ['gamenight', 'local'].includes(fields.provider) ? fields.provider : 'guest',
       gnUserId: fields.gnUserId ? String(fields.gnUserId) : null,
       createdAt: fields.createdAt || at,
       lastSeenAt: fields.lastSeenAt || at,
@@ -325,6 +336,13 @@ function createIdentityStore(options = {}) {
     let rec = recordFor(token);
     let isNew = false;
     let changed = false;
+    // A name an account owns is that account's, whoever is asking. The owner
+    // comes through here every time they reconnect, so it is only somebody
+    // else who is turned away.
+    if (safeName) {
+      const owner = nameOwner(safeName);
+      if (owner && (!rec || rec.uid !== owner)) return { error: 'name-taken' };
+    }
     if (!rec) {
       if (!safeName) return null;
       token = mintToken();
@@ -348,6 +366,48 @@ function createIdentityStore(options = {}) {
     }
     scheduleFlush(isNew || changed ? 'material' : 'touch');
     return { ...publicView(token, rec), isNew };
+  }
+
+  // Is anybody other than `uid` playing under this name? Asked by the accounts
+  // store before it lets somebody claim one: a name is only free if nobody
+  // else is already answering to it.
+  function nameHolder(key, uid) {
+    for (const rec of identities.values()) {
+      if (rec.uid === uid) continue;
+      if (nameKeyOf(rec.name) === key) return true;
+    }
+    return false;
+  }
+
+  // An account signing in, which is not the same as a browser coming back: the
+  // password has already been checked by the accounts store and this is the
+  // identity that goes with it. The record is remade if the idle sweep took it
+  // while nobody was playing - an account outlives the browser that made it.
+  function signInAs({ uid, name, avatar, userAgent } = {}) {
+    if (!uid) return null;
+    const at = now();
+    let rec = identities.get(uid);
+    if (!rec) {
+      rec = newRecord(
+        {
+          uid,
+          name: sanitizeName(name) || 'Player',
+          avatar: sanitizeAvatar(avatar),
+          provider: 'local',
+        },
+        at
+      );
+      identities.set(uid, rec);
+    } else {
+      rec.provider = 'local';
+      const safeName = sanitizeName(name);
+      if (safeName) rec.name = safeName;
+      rec.lastSeenAt = at;
+    }
+    const token = mintToken();
+    attachToken(rec, token, at, userAgent);
+    scheduleFlush('material');
+    return { ...publicView(token, rec), isNew: false };
   }
 
   // A player arriving from GameNight with a verified token. The uid is the
@@ -509,6 +569,8 @@ function createIdentityStore(options = {}) {
   return {
     identify,
     identifyFromGameNight,
+    signInAs,
+    nameHolder,
     verify,
     get,
     rename,

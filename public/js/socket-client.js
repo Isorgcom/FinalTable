@@ -67,6 +67,11 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onAdminLogRows(data);
   });
   // A player's own hands, asked for by the History tab's download buttons.
+  // Signing up, signing in, forgetting a password: one answer for all of them,
+  // and it never says whether a name has an account.
+  socket.on('accountResult', (data) => {
+    if (window.Lobby) Lobby.onAccountResult(data);
+  });
   // The games this player has played that the server still keeps.
   socket.on('myGames', (data) => {
     if (window.Lobby) Lobby.onMyGames(data);

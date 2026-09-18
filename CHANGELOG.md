@@ -13,6 +13,17 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- An account of your own, on this server. Set a password against the name you
+  already play under and that name is yours: sign in from any browser and your
+  preferences, your devices and your kept games come with you. Confirming an
+  email address is what makes the name yours, and forgetting the password sends
+  a link to that address. Nobody is ever told whether a name has an account.
+  A server with no mail set up carries on as it did - guests, and the GameNight
+  sign-in if it is paired - and says so where the password box would have been.
+  Needs `PUBLIC_URL` and `SMTP_URL`.
+
 ## 0.20.0 - 2026-09-17
 
 ### Added

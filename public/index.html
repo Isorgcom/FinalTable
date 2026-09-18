@@ -91,6 +91,9 @@
         <div class="menu-dropdown" id="lobbyMenuDropdown" role="menu">
           <button class="menu-item hidden" id="btnLobbyAdmin" type="button">admin</button>
           <button class="menu-item hidden" id="btnMyGames" type="button">your games</button>
+          <button class="menu-item hidden" id="btnChangePassword" type="button">
+            change password
+          </button>
           <button class="menu-item hidden" id="btnSessions" type="button">your devices</button>
           <button class="menu-item hidden" id="btnGameNightSignOut" type="button">sign out</button>
           <div class="menu-note" id="lobbyMenuVersion"></div>
@@ -119,6 +122,40 @@
             <input type="hidden" id="playerAvatar" value="🧑" />
           </div>
           <div class="identity-status" id="identityStatus" aria-live="polite"></div>
+          <!-- An account of this server's own. Shown only when the server can
+               hold one - it needs somewhere for a link to point and a way to
+               send it - and says why when it cannot. -->
+          <div class="identity-account hidden" id="accountRow">
+            <div class="form-group">
+              <label for="accountPassword">Password</label>
+              <input
+                type="password"
+                id="accountPassword"
+                autocomplete="current-password"
+                maxlength="128"
+                placeholder="Keep this name for yourself"
+              />
+            </div>
+            <div class="form-group hidden" id="accountEmailGroup">
+              <label for="accountEmail">Email</label>
+              <input type="email" id="accountEmail" autocomplete="email" maxlength="254" />
+              <div class="seg-hint">
+                Used once to prove the name is yours, and again only if you forget the password. It
+                is never shown to anybody else.
+              </div>
+            </div>
+            <div class="identity-account-actions">
+              <button class="btn-secondary" id="btnSignIn" type="button">Sign in</button>
+              <button class="btn-secondary" id="btnCreateAccount" type="button">
+                Create account
+              </button>
+              <button class="btn-link" id="btnForgotPassword" type="button">
+                Forgot your password?
+              </button>
+            </div>
+            <div class="identity-status" id="accountStatus" aria-live="polite"></div>
+          </div>
+          <div class="identity-account-why hidden" id="accountWhy"></div>
           <!-- Shown only when this server is paired with a GameNight (serverInfo). -->
           <div class="identity-sso hidden" id="ssoRow">
             <button class="btn-secondary" id="btnGameNight" type="button">
@@ -185,6 +222,32 @@
           <div class="lobby-actions">
             <button class="btn-secondary" id="btnSessionsRefresh" type="button">Refresh</button>
             <button class="btn-secondary" id="btnSessionsBack" type="button">Back</button>
+          </div>
+        </section>
+
+        <!-- Changing the password on an account of this server's own. -->
+        <section class="lobby-view lobby-card hidden" id="lobbyPassword" aria-label="Your password">
+          <div class="lobby-title">Your password</div>
+          <p class="admin-help">
+            Changing it does not sign anything out: every device you are signed in on stays signed
+            in.
+          </p>
+          <div class="form-group">
+            <label for="pwCurrent">Current password</label>
+            <input type="password" id="pwCurrent" autocomplete="current-password" maxlength="128" />
+          </div>
+          <div class="form-group">
+            <label for="pwNext">New password</label>
+            <input type="password" id="pwNext" autocomplete="new-password" maxlength="128" />
+          </div>
+          <div class="form-group">
+            <label for="pwConfirm">New password again</label>
+            <input type="password" id="pwConfirm" autocomplete="new-password" maxlength="128" />
+          </div>
+          <div class="admin-status" id="pwStatus" aria-live="polite"></div>
+          <div class="lobby-actions">
+            <button class="btn-secondary" id="btnChangePasswordGo" type="button">Change it</button>
+            <button class="btn-secondary" id="btnPasswordBack" type="button">Back</button>
           </div>
         </section>
 

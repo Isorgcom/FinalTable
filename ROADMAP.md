@@ -20,29 +20,6 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
-### A login of its own
-
-An identity here is one of two things. A **guest** is a name and a token in one
-browser: clear the storage or pick up a different device and you are somebody
-else. Or a **GameNight account**, through the SSO bridge below, which is a real
-account and is not available to anybody running this server without a GameNight
-site to pair it with. There is nothing in between, and the in-between is what
-most people who host this will actually want.
-
-What one needs: a credential of FinalTable's own - `server/admin-credential.js`
-already hashes and checks one, so the shape is there and the mistakes are
-already made once; signing up and signing in from any browser; and a decision
-about the guest identities already on the server, which is the interesting part
-rather than the password. Recovery is the hard question, because a server
-somebody runs for their own game night has no email to send anything to, and
-"ask the admin" may be the honest answer.
-
-Three things it would immediately make better, all of which already exist and
-are today built on an identity that is really a browser: the **devices** list,
-the preferences that follow you rather than the browser, and **your games** -
-the hands are kept for thirty days, which is exactly as long as a guest
-identity lasts, so an account is what would make an archive properly somebody's.
-
 ### Games other than Hold'em
 
 The largest of these by far. The engine deals two cards and makes the best five
@@ -82,6 +59,20 @@ properly means shipping a verifier as well. Worth revisiting if this is ever
 hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
+
+A login of its own. A third kind of identity beside the guest and the GameNight
+account: one that belongs to this server. The name somebody already plays under
+is the account, so there is nothing new to remember, and a guest upgrades in
+place - same uid, so the preferences, the devices and the kept games all come
+with it. An address confirmed by a link is what makes the name theirs; a
+sign-up holds the name without owning it and lapses after a day, so a mistyped
+address costs a retry rather than a name. Forgetting the password sends a
+one-time link, and the answer on screen never says whether a name has an
+account. Recovery was the question the item named as the hard one, and email
+turned out to be the answer rather than the admin.
+
+What a server without mail loses is accounts and only accounts. It says so
+where the password box would be, and guests carry on exactly as before.
 
 Keeping them. The hands are written down as the game goes, so a restart no
 longer loses what came before it, and they outlive the game itself: a

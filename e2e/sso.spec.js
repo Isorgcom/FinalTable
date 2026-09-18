@@ -44,6 +44,16 @@ function signToken(overrides = {}) {
   return `${input}.${sig.toString('base64url')}`;
 }
 
+// The mail this server would have sent, read out of the log the way a person
+// reads it out of their inbox.
+const mails = [];
+let offMail = null;
+function lastMailLink() {
+  const text = mails.length ? mails[mails.length - 1].text : '';
+  const found = String(text).match(/https?:\/\/\S+/);
+  return found ? found[0] : null;
+}
+
 test.beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-sso-pw-'));
   process.env.SAVE_DIR = tempDir;
@@ -53,6 +63,9 @@ test.beforeAll(async () => {
   process.env.GAMENIGHT_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' });
   process.env.GAMENIGHT_AUDIENCE = AUDIENCE;
   process.env.ADMIN_PASSWORD = ADMIN_PASSWORD;
+  // Accounts need somewhere for a link to point and a way to send it. The log
+  // is the inbox here, which is what that transport is for.
+  process.env.MAIL_TRANSPORT = 'log';
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(repoRoot) && !key.includes(`${path.sep}node_modules${path.sep}`)) {
       delete require.cache[key];
@@ -61,9 +74,16 @@ test.beforeAll(async () => {
   serverModule = require('../server');
   await serverModule.startServer({ port: 0, host: '127.0.0.1', unrefServer: true });
   baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
+  // Only now is the address known, and a link that points anywhere else is a
+  // sign-up nobody can finish.
+  serverModule.mailer.setBaseUrl(baseUrl);
+  offMail = require('../server/logger').onEntry((entry) => {
+    if (entry.event === 'mail_logged') mails.push(entry);
+  });
 });
 
 test.afterAll(async () => {
+  if (offMail) offMail();
   serverModule.registry.stop();
   await new Promise((resolve) => serverModule.io.close(resolve));
   if (serverModule.server.listening) {
@@ -508,4 +528,60 @@ test('the menu shows the version, and only the version when nothing is configure
   await page.evaluate(() => document.getElementById('loginScreen').scrollTo(0, 400));
   const after = await page.locator('#lobbyMenuToggle').boundingBox();
   expect(after.y).toBe(before.y);
+});
+
+// A name on this server that is yours: set a password against it, prove the
+// address, and sign in from a browser that has never seen this server.
+test('an account is made, confirmed and signed in to', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await page.goto(baseUrl);
+  await page.fill('#playerName', 'Keeper');
+  await page.locator('#playerName').blur();
+  await expect(page.locator('#identityStatus')).toContainText('Playing as Keeper');
+
+  // The password box is offered, because this server can send the mail.
+  await expect(page.locator('#accountRow')).toBeVisible();
+  await expect(page.locator('#accountEmailGroup')).toBeHidden();
+
+  // The first press asks for an address, the second sends the link.
+  await page.fill('#accountPassword', 'correct horse battery');
+  await page.click('#btnCreateAccount');
+  await expect(page.locator('#accountEmailGroup')).toBeVisible();
+  await page.fill('#accountEmail', 'keeper@example.com');
+  await page.click('#btnCreateAccount');
+  await expect(page.locator('#accountStatus')).toContainText('Check your mail', {
+    timeout: 10000,
+  });
+
+  const link = lastMailLink();
+  expect(link).toMatch(/\/verify\?token=/);
+
+  // A browser that has never been here, opening the link out of the mail.
+  const elsewhere = await browser.newContext();
+  const other = await elsewhere.newPage();
+  await other.goto(link);
+  await expect(other.locator('h1')).toContainText('Keeper is yours');
+
+  // And signing in with it, from that same new browser.
+  await other.goto(baseUrl);
+  await other.fill('#playerName', 'Keeper');
+  await other.locator('#playerName').blur();
+  // Typing the name you play under is how somebody with an account arrives, so
+  // it is said beside the password box rather than thrown up as a dialog.
+  await expect(other.locator('#accountStatus')).toContainText('belongs to somebody here');
+  await expect(other.locator('#appDialogModal')).toBeHidden();
+  await other.fill('#accountPassword', 'correct horse battery');
+  await other.click('#btnSignIn');
+  await expect(other.locator('#identityStatus')).toContainText('Playing as Keeper', {
+    timeout: 10000,
+  });
+  // Signed in with an account, so the password box is gone and the menu has
+  // the way to change it.
+  await expect(other.locator('#accountRow')).toBeHidden();
+  await other.click('#lobbyMenuToggle');
+  await expect(other.locator('#btnChangePassword')).toBeVisible();
+
+  await elsewhere.close();
+  expect(errors).toEqual([]);
 });

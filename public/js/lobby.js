@@ -202,6 +202,7 @@
     // A guest is one browser and would see a list of one. The list is here for
     // an account whose devices are more than this one.
     $('btnSessions').classList.toggle('hidden', !linked);
+    paintAccountRow();
     // Unlike the devices list, this one is for a guest too: they have played
     // the games whether or not they have an account to hang them on.
     $('btnMyGames').classList.toggle('hidden', !identity);
@@ -309,6 +310,9 @@
   let adminLogPaged = false;
   // The games this player has played that are still kept. Null until asked for.
   let myGames = null;
+  // Whether the Create account button has been pressed once: the first press
+  // asks for the address, the second sends the link.
+  let signUpArmed = false;
 
   // ── The Admin page's tabs ───────────────────────────────────────────────
   //
@@ -997,6 +1001,148 @@
     askForSessions();
   }
 
+  // ── An account of this server's own ────────────────────────────────────
+
+  function isAccount() {
+    return !!(identity && identity.provider === 'local');
+  }
+
+  function accountsOffered() {
+    return !!(serverInfo && serverInfo.accounts);
+  }
+
+  function setAccountStatus(text, kind) {
+    const el = $('accountStatus');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('err', kind === 'err');
+  }
+
+  function paintAccountRow() {
+    const row = $('accountRow');
+    const why = $('accountWhy');
+    if (!row || !why) return;
+    const linked = isGameNight();
+    // Nothing to offer somebody already signed in with an account, or with
+    // GameNight, or on a server that cannot send the mail to verify one.
+    const offer = accountsOffered() && !linked && !isAccount();
+    row.classList.toggle('hidden', !offer);
+    // Said once, and only where a password box would have been. What is
+    // missing is the server's business rather than the player's - the reason
+    // is in the server's log, and this is what it means to whoever is trying
+    // to play.
+    const sayWhy = !!serverInfo && !serverInfo.accounts && !linked && !isAccount();
+    why.classList.toggle('hidden', !sayWhy);
+    why.textContent = sayWhy
+      ? 'This server does not keep accounts. Your name is remembered on this browser.'
+      : '';
+    $('btnChangePassword').classList.toggle('hidden', !isAccount());
+    if (!offer) {
+      signUpArmed = false;
+      $('accountEmailGroup').classList.add('hidden');
+      $('btnCreateAccount').textContent = 'Create account';
+    }
+  }
+
+  function signIn() {
+    if (!socket || !socket.connected) return;
+    const name = nameValue();
+    const password = $('accountPassword').value;
+    if (!name) return setAccountStatus('Enter your name first.', 'err');
+    if (!password) return setAccountStatus('Enter your password.', 'err');
+    setAccountStatus('Signing in…');
+    socket.emit('signIn', { name, password, avatar: $('playerAvatar').value });
+  }
+
+  // Two presses. The first asks for an address, because a name and a password
+  // alone would make an account nobody could ever get back into.
+  function createAccount() {
+    if (!socket || !socket.connected) return;
+    const name = nameValue();
+    if (!name) return setAccountStatus('Enter the name you want to keep.', 'err');
+    if (!signUpArmed) {
+      signUpArmed = true;
+      $('accountEmailGroup').classList.remove('hidden');
+      $('btnCreateAccount').textContent = 'Send the link';
+      setAccountStatus(`Set a password for ${name} and give an address to confirm it.`);
+      $('accountEmail').focus();
+      return;
+    }
+    const password = $('accountPassword').value;
+    const email = $('accountEmail').value;
+    if (!password) return setAccountStatus('Choose a password.', 'err');
+    if (!email) return setAccountStatus('An address to send the link to.', 'err');
+    setAccountStatus('Sending…');
+    socket.emit('signUp', { name, password, email });
+  }
+
+  function forgotPassword() {
+    if (!socket || !socket.connected) return;
+    const name = nameValue();
+    if (!name) return setAccountStatus('Enter the name you play under.', 'err');
+    setAccountStatus('Asking…');
+    socket.emit('requestPasswordReset', { name });
+  }
+
+  function onAccountResult(data) {
+    const info = data || {};
+    if (info.signedIn && info.token) {
+      // Identifying with the token is the same path every load takes, so
+      // rejoining a game in progress needs nothing new here. The name goes in
+      // first: identify() sends whatever is in the field, and the field may
+      // still hold whoever this browser was before.
+      setAccountStatus('');
+      $('accountPassword').value = '';
+      if (info.name) {
+        $('playerName').value = info.name;
+        store.set(NAME_KEY, info.name);
+      }
+      store.set(PROVIDER_KEY, 'local');
+      store.set(TOKEN_KEY, info.token);
+      identify();
+      return;
+    }
+    if (info.ok) {
+      signUpArmed = false;
+      $('accountEmailGroup').classList.add('hidden');
+      $('accountEmail').value = '';
+      $('accountPassword').value = '';
+      $('btnCreateAccount').textContent = 'Create account';
+      setAccountStatus(info.message || 'Done.', 'ok');
+      setPasswordStatus(info.message || 'Done.', 'ok');
+      return;
+    }
+    setAccountStatus(info.error || 'That did not work.', 'err');
+    setPasswordStatus(info.error || 'That did not work.', 'err');
+  }
+
+  function setPasswordStatus(text, kind) {
+    const el = $('pwStatus');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('err', kind === 'err');
+  }
+
+  function openPassword() {
+    closeLobbyMenu();
+    ['pwCurrent', 'pwNext', 'pwConfirm'].forEach((id) => ($(id).value = ''));
+    setPasswordStatus('');
+    showView('password');
+  }
+
+  function changePassword() {
+    if (!socket || !socket.connected) return;
+    const current = $('pwCurrent').value;
+    const next = $('pwNext').value;
+    const confirm = $('pwConfirm').value;
+    if (!current) return setPasswordStatus('Enter your current password.', 'err');
+    if (next !== confirm) return setPasswordStatus('The two new ones do not match.', 'err');
+    setPasswordStatus('Changing…');
+    socket.emit('changeAccountPassword', { current, next });
+  }
+
   function openMyGames() {
     closeLobbyMenu();
     myGames = null;
@@ -1197,6 +1343,16 @@
     store.set(PROVIDER_KEY, null);
     $('identityStatus').textContent = '';
     renderIdentityRow();
+    // Somebody with an account arrives by typing the name they play under, so
+    // this is not a failure to put in a dialog: it is said next to the
+    // password box, which is what they want anyway.
+    if (reason === 'name-taken') {
+      setAccountStatus(
+        'That name belongs to somebody here. Sign in with its password, or pick another.',
+        'err'
+      );
+      return;
+    }
     notice(FAIL_TEXT[reason] || 'GameNight sign-in failed. Try again.');
   }
 
@@ -1385,10 +1541,12 @@
 
   function showView(name) {
     view = name;
-    ['home', 'create', 'waiting', 'pending', 'admin', 'sessions', 'games'].forEach((v) => {
-      const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
-      if (node) node.classList.toggle('hidden', v !== name);
-    });
+    ['home', 'create', 'waiting', 'pending', 'admin', 'sessions', 'games', 'password'].forEach(
+      (v) => {
+        const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
+        if (node) node.classList.toggle('hidden', v !== name);
+      }
+    );
     if (name === 'waiting') renderWaiting();
     if (name === 'home') renderList();
   }
@@ -2528,6 +2686,12 @@
     $('btnGameNightSignOut').addEventListener('click', signOutOfGameNight);
     $('btnSessions').addEventListener('click', openSessions);
     $('btnMyGames').addEventListener('click', openMyGames);
+    $('btnSignIn').addEventListener('click', signIn);
+    $('btnCreateAccount').addEventListener('click', createAccount);
+    $('btnForgotPassword').addEventListener('click', forgotPassword);
+    $('btnChangePassword').addEventListener('click', openPassword);
+    $('btnChangePasswordGo').addEventListener('click', changePassword);
+    $('btnPasswordBack').addEventListener('click', () => showView('home'));
     $('btnMyGamesRefresh').addEventListener('click', askForMyGames);
     $('btnMyGamesBack').addEventListener('click', () => showView('home'));
     // Whatever the page that reloaded this one had to say.
@@ -2640,6 +2804,7 @@
     onSessionReplaced,
     onSessions,
     onMyGames,
+    onAccountResult,
     onSessionEnded,
     onList,
     onJoined,

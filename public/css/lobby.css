@@ -671,6 +671,44 @@
   gap: 10px;
   margin-bottom: 12px;
 }
+/* An account of this server's own: the password box under the name, and the
+   line that replaces it on a server that cannot send the mail to verify one. */
+.identity-account {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(92, 61, 26, 0.25);
+}
+.identity-account.hidden {
+  display: none;
+}
+.identity-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btn-link {
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  color: var(--smoke);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.btn-link:hover {
+  color: var(--gold);
+}
+.identity-account-why {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  color: var(--smoke);
+}
+.identity-account-why.hidden {
+  display: none;
+}
+
 /* The admin page, locked out again. Loud enough to be read before anything
    below it is believed. */
 .admin-locked {

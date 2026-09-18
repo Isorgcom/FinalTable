@@ -99,6 +99,7 @@ describe('GameNight sign-in over the socket', () => {
       version: require('../package.json').version,
       assetVersion: expect.stringMatching(/^[0-9a-f]{10}$/),
       reactions: require('../server/reactions').REACTIONS,
+      accounts: false,
       adminAvailable: false,
       gamenight: { connectUrl: `${ISSUER}/connect.php`, audience: AUDIENCE },
     });
