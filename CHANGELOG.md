@@ -24,6 +24,17 @@ Release on GitHub to go with it.
   sign-in if it is paired - and says so where the password box would have been.
   Needs `PUBLIC_URL` and `SMTP_URL`.
 
+### Changed
+
+- FinalTable keeps what it knows in a database of its own now - accounts,
+  identities and the devices you are signed in on - instead of files beside the
+  application. Running it needs a MariaDB alongside the server, which the
+  compose file starts; set `DB_PASSWORD` and `DB_ROOT_PASSWORD` in `.env` and it
+  refuses to start without them. The first boot imports whatever the old files
+  held and leaves them where they are, renamed. Nobody is signed out by the
+  change, and the token that signs your browser in is kept as a digest rather
+  than as itself, so a copy of the data is not a copy of everybody's session.
+
 ## 0.20.0 - 2026-09-17
 
 ### Added
