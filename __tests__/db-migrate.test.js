@@ -204,6 +204,53 @@ describe('importing what the files held', () => {
     expect(fs.existsSync(path.join(dir, 'chat.imported'))).toBe(true);
   });
 
+  test('the kept games and the admin log come across', async () => {
+    fs.mkdirSync(path.join(dir, 'history'));
+    fs.writeFileSync(
+      path.join(dir, 'history', '_index.json'),
+      JSON.stringify({
+        version: 1,
+        games: [
+          {
+            id: 't_1',
+            name: 'Tuesday',
+            startedAt: 1000,
+            endedAt: 2000,
+            hands: 2,
+            uids: ['u_ann', 'u_bob'],
+          },
+          // Named by the index and gone from the disk: skipped rather than
+          // imported as a game with no hands in it.
+          { id: 't_missing', name: 'Lost', uids: ['u_ann'] },
+        ],
+      })
+    );
+    fs.writeFileSync(
+      path.join(dir, 'history', 't_1.json'),
+      JSON.stringify({ version: 1, id: 't_1', hands: [{ hand: { handNum: 1 } }, { hand: {} }] })
+    );
+    write('admin-log.json', {
+      version: 1,
+      rows: [
+        { id: 1, at: 1000, kind: 'signin', uid: 'u_ann', name: 'Ann' },
+        { id: 2, at: 2000, kind: 'game', name: 'Tuesday', ended: 'finished' },
+      ],
+    });
+
+    expect(await run()).toMatchObject({ games: 1, adminLog: 2 });
+
+    expect((await db.games.get('t_1')).hands).toHaveLength(2);
+    expect(await db.games.get('t_missing')).toBeNull();
+    // Whose game it is comes across with it, which is the whole of the
+    // authorisation on it.
+    expect(await db.games.played('u_bob', 't_1')).toBe(true);
+    expect(await db.games.played('u_nobody', 't_1')).toBe(false);
+    expect((await db.adminLog.recent(10)).map((r) => r.kind)).toEqual(['game', 'signin']);
+
+    expect(fs.existsSync(path.join(dir, 'history.imported'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, 'admin-log.json.imported'))).toBe(true);
+  });
+
   test('a corrupt file is skipped and left where it is', async () => {
     fs.writeFileSync(path.join(dir, 'identities.json'), '{not json');
     expect(await run()).toEqual({});

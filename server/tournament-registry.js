@@ -250,7 +250,7 @@ function createTournamentRegistry(deps = {}) {
     // would be a strange thing to have built on purpose.
     const waiting = [];
     if (chatStore) waiting.push(chatStore.flush());
-    if (historyStore) historyStore.flush();
+    if (historyStore) waiting.push(historyStore.flush());
     if (store) {
       const list = [...tournaments.values()]
         .filter((e) => e.status === 'registering' || e.status === 'running')
@@ -2293,7 +2293,7 @@ function createTournamentRegistry(deps = {}) {
 
   // The games one player has played that are still kept, newest first. Names
   // games, never who else was in them.
-  function pastGamesFor(uid) {
+  async function pastGamesFor(uid) {
     return historyStore ? historyStore.listFor(uid) : [];
   }
 
@@ -2301,10 +2301,10 @@ function createTournamentRegistry(deps = {}) {
   // whole authorisation: a game somebody did not play in is refused rather
   // than redacted down to nothing, because the two are different answers and
   // only one of them is honest.
-  function pastGameFor(uid, id) {
+  async function pastGameFor(uid, id) {
     if (!historyStore || !uid || !id) return null;
-    if (!historyStore.played(uid, id)) return null;
-    const kept = historyStore.load(id);
+    if (!(await historyStore.played(uid, id))) return null;
+    const kept = await historyStore.get(id);
     if (!kept) return null;
     const meta = kept.meta || {};
     return {
@@ -2545,7 +2545,9 @@ function createTournamentRegistry(deps = {}) {
     }
     // A history file whose tournament did not come back is not an orphan, it
     // is the archive. Only age and the count take one away.
-    if (historyStore) historyStore.prune();
+    // Asked for rather than awaited: a boot should not wait on tidying, and
+    // the next one asks again.
+    if (historyStore) Promise.resolve(historyStore.prune()).catch(() => {});
     return restored;
   }
 

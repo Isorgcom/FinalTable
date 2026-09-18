@@ -311,6 +311,190 @@ function createMariaDatabase(options = {}) {
       },
     },
 
+    games: {
+      // The game and everybody who played in it, together: a row without its
+      // players is a game nobody can be given.
+      async put(meta, hands, uids) {
+        const conn = await pool.getConnection();
+        try {
+          await conn.beginTransaction();
+          await conn.query(
+            'INSERT INTO games (id, name, started_at, ended_at, touched_at, hands, data) ' +
+              'VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), ' +
+              'started_at = VALUES(started_at), ended_at = VALUES(ended_at), ' +
+              'touched_at = VALUES(touched_at), hands = VALUES(hands), data = VALUES(data)',
+            [
+              meta.id,
+              meta.name || null,
+              num(meta.startedAt),
+              num(meta.endedAt),
+              meta.touchedAt || Date.now(),
+              Array.isArray(hands) ? hands.length : 0,
+              JSON.stringify(hands || []),
+            ]
+          );
+          const list = [...new Set((uids || []).filter(Boolean))];
+          await conn.query('DELETE FROM game_players WHERE game_id = ?', [meta.id]);
+          for (const uid of list) {
+            await conn.query('INSERT INTO game_players (game_id, uid) VALUES (?, ?)', [
+              meta.id,
+              uid,
+            ]);
+          }
+          await conn.commit();
+        } catch (err) {
+          await conn.rollback();
+          throw err;
+        } finally {
+          conn.release();
+        }
+      },
+
+      async get(id) {
+        const [rows] = await pool.query(
+          'SELECT id, name, started_at, ended_at, touched_at, hands, data FROM games WHERE id = ?',
+          [id]
+        );
+        if (!rows.length) return null;
+        const r = rows[0];
+        let hands = [];
+        try {
+          hands = JSON.parse(r.data);
+        } catch (_err) {
+          hands = [];
+        }
+        return {
+          meta: {
+            id: r.id,
+            name: r.name,
+            startedAt: num(r.started_at),
+            endedAt: num(r.ended_at),
+            touchedAt: num(r.touched_at),
+            hands: Number(r.hands),
+          },
+          hands: Array.isArray(hands) ? hands : [],
+        };
+      },
+
+      // The join that this table exists for. Never selects `data`: a list of
+      // games is not a reason to read every hand on the server.
+      async listFor(uid) {
+        const [rows] = await pool.query(
+          'SELECT g.id, g.name, g.started_at, g.ended_at, g.touched_at, g.hands ' +
+            'FROM games g JOIN game_players p ON p.game_id = g.id WHERE p.uid = ? ' +
+            'ORDER BY COALESCE(g.ended_at, g.touched_at) DESC, g.id DESC',
+          [uid]
+        );
+        return rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          startedAt: num(r.started_at),
+          endedAt: num(r.ended_at),
+          touchedAt: num(r.touched_at),
+          hands: Number(r.hands),
+        }));
+      },
+
+      async played(uid, id) {
+        const [rows] = await pool.query(
+          'SELECT 1 FROM game_players WHERE uid = ? AND game_id = ? LIMIT 1',
+          [uid, id]
+        );
+        return rows.length > 0;
+      },
+
+      async ids() {
+        const [rows] = await pool.query('SELECT id FROM games');
+        return rows.map((r) => r.id);
+      },
+
+      async count() {
+        const [rows] = await pool.query('SELECT COUNT(*) AS n FROM games');
+        return Number(rows[0].n);
+      },
+
+      async remove(id) {
+        await pool.query('DELETE FROM games WHERE id = ?', [id]);
+      },
+
+      // Both bounds as queries rather than as a pass over everything held in
+      // memory, which is the reason this table is worth having.
+      async prune({ olderThan = null, keepNewest = null } = {}) {
+        let dropped = 0;
+        if (Number.isFinite(olderThan)) {
+          const [res] = await pool.query(
+            'DELETE FROM games WHERE COALESCE(ended_at, touched_at) < ?',
+            [olderThan]
+          );
+          dropped += res.affectedRows || 0;
+        }
+        if (Number.isFinite(keepNewest)) {
+          const [rows] = await pool.query(
+            'SELECT id FROM games ORDER BY COALESCE(ended_at, touched_at) DESC, id DESC ' +
+              'LIMIT ?, 18446744073709551615',
+            [keepNewest]
+          );
+          for (const r of rows) {
+            await pool.query('DELETE FROM games WHERE id = ?', [r.id]);
+            dropped++;
+          }
+        }
+        return dropped;
+      },
+    },
+
+    adminLog: {
+      async recent(limit) {
+        const [rows] = await pool.query(
+          'SELECT id, at, kind, data FROM admin_log ORDER BY at DESC, id DESC LIMIT ?',
+          [limit]
+        );
+        return rows.map((r) => ({
+          id: Number(r.id),
+          at: num(r.at),
+          kind: r.kind,
+          ...(unjson(r.data) || {}),
+        }));
+      },
+
+      async add(rows) {
+        const list = (rows || []).filter((row) => row && row.id !== undefined);
+        if (!list.length) return;
+        for (const row of list) {
+          const { id, at, kind, ...rest } = row;
+          await pool.query(
+            'INSERT INTO admin_log (id, at, kind, data) VALUES (?, ?, ?, ?) ' +
+              'ON DUPLICATE KEY UPDATE data = VALUES(data)',
+            [id, at, kind || 'server', json(rest)]
+          );
+        }
+      },
+
+      async prune({ olderThan = null, keepNewest = null } = {}) {
+        let dropped = 0;
+        if (Number.isFinite(olderThan)) {
+          const [res] = await pool.query('DELETE FROM admin_log WHERE at < ?', [olderThan]);
+          dropped += res.affectedRows || 0;
+        }
+        if (Number.isFinite(keepNewest)) {
+          const [rows] = await pool.query(
+            'SELECT id FROM admin_log ORDER BY at DESC, id DESC LIMIT ?, 18446744073709551615',
+            [keepNewest]
+          );
+          for (const r of rows) {
+            await pool.query('DELETE FROM admin_log WHERE id = ?', [r.id]);
+            dropped++;
+          }
+        }
+        return dropped;
+      },
+
+      async count() {
+        const [rows] = await pool.query('SELECT COUNT(*) AS n FROM admin_log');
+        return Number(rows[0].n);
+      },
+    },
+
     accounts: {
       async all() {
         const [accountRows] = await pool.query(

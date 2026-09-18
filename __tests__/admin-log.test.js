@@ -1,48 +1,38 @@
 // __tests__/admin-log.test.js - what the server has done, kept.
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const { createAdminLog } = require('../server/admin-log');
 const { createStructuredLogger, onEntry } = require('../server/logger');
+const { createMemoryDatabase } = require('../server/db');
 
 describe('admin log', () => {
-  let dir;
+  let db;
 
+  // Named, and emptied: a memory database is shared by name so a log made
+  // twice finds the same one, which is what a restart looks like here.
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-admin-log-'));
+    db = createMemoryDatabase({ database: 'admin-log-test' });
+    db.reset();
   });
 
-  afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
+  // What is actually written down, newest first, the way load() reads it.
+  const written = (limit = 1000) => db.adminLog.recent(limit);
 
-  const read = () => JSON.parse(fs.readFileSync(path.join(dir, 'admin-log.json'), 'utf8'));
-
-  async function until(check, timeoutMs = 3000, everyMs = 10) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (check()) return true;
-      await new Promise((resolve) => setTimeout(resolve, everyMs));
-    }
-    return false;
-  }
-
-  test('without a directory every call is a no-op', () => {
+  test('without a database every call is a no-op', async () => {
     const log = createAdminLog({});
     expect(() => log.recordServer({ level: 'warn', event: 'x', message: 'y' })).not.toThrow();
-    expect(() => log.flush()).not.toThrow();
-    expect(log.load()).toBe(0);
-    // It still holds rows in memory; it is the file that is absent.
+    await expect(log.flush()).resolves.toBeUndefined();
+    expect(await log.load()).toBe(0);
+    // It still holds rows in memory; it is the database that is absent.
+    log.recordServer({ level: 'warn', event: 'x', message: 'y' });
     expect(log.size()).toBe(1);
   });
 
-  test('a row comes back after a restart', () => {
-    const log = createAdminLog({ saveDir: dir });
+  test('a row comes back after a restart', async () => {
+    const log = createAdminLog({ db });
     log.recordGame({ id: 't_1', name: 'Tuesday', ended: 'finished', winner: 'Ann', entrants: 6 });
-    log.flush();
+    await log.flush();
 
-    const back = createAdminLog({ saveDir: dir });
-    expect(back.load()).toBe(1);
+    const back = createAdminLog({ db });
+    expect(await back.load()).toBe(1);
     const { rows } = back.list();
     expect(rows[0]).toMatchObject({
       kind: 'game',
@@ -56,71 +46,58 @@ describe('admin log', () => {
   // Two bounds rather than one: the age is what an admin thinks in, the count
   // is what stops a busy fortnight from mattering, and neither covers the
   // other's case.
-  test('the count bound drops the oldest', () => {
-    const log = createAdminLog({ saveDir: dir, maxRows: 3 });
+  test('the count bound drops the oldest', async () => {
+    const log = createAdminLog({ db, maxRows: 3 });
     for (let i = 1; i <= 6; i++) log.recordServer({ event: 'e' + i, message: 'm' + i });
     expect(log.size()).toBe(3);
     const { rows } = log.list();
     expect(rows.map((r) => r.event)).toEqual(['e6', 'e5', 'e4']);
+    // And the database is held to the same bound rather than growing behind it.
+    await log.flush();
+    expect((await written()).map((r) => r.event)).toEqual(['e6', 'e5', 'e4']);
   });
 
-  test('the age bound drops what is old, whatever the count', () => {
+  test('the age bound drops what is old, whatever the count', async () => {
     let clock = 1_000_000;
-    const log = createAdminLog({ saveDir: dir, maxAgeMs: 1000, now: () => clock });
+    const log = createAdminLog({ db, maxAgeMs: 1000, now: () => clock });
     log.recordServer({ event: 'old', message: 'a while back' });
     clock += 5000;
     log.recordServer({ event: 'fresh', message: 'just now' });
     expect(log.size()).toBe(1);
     expect(log.list().rows[0].event).toBe('fresh');
+    await log.flush();
+    expect((await written()).map((r) => r.event)).toEqual(['fresh']);
   });
 
-  test('a file that aged out while the process was down is pruned on load', () => {
+  test('a row that aged out while the process was down is pruned on load', async () => {
     let clock = 1_000_000;
-    const first = createAdminLog({ saveDir: dir, maxAgeMs: 10_000, now: () => clock });
+    const first = createAdminLog({ db, maxAgeMs: 10_000, now: () => clock });
     first.recordServer({ event: 'before', message: 'the lights went out' });
-    first.flush();
+    await first.flush();
 
     clock += 60_000;
-    const back = createAdminLog({ saveDir: dir, maxAgeMs: 10_000, now: () => clock });
-    expect(back.load()).toBe(0);
+    const back = createAdminLog({ db, maxAgeMs: 10_000, now: () => clock });
+    expect(await back.load()).toBe(0);
     expect(back.list().rows).toEqual([]);
   });
 
-  test('a corrupt file starts empty rather than throwing', () => {
-    fs.writeFileSync(path.join(dir, 'admin-log.json'), '{not json');
-    const log = createAdminLog({ saveDir: dir });
-    expect(log.load()).toBe(0);
-    expect(() => log.recordServer({ event: 'after', message: 'still works' })).not.toThrow();
-  });
-
   test('a burst collapses into one write, and none of it is lost', async () => {
-    const log = createAdminLog({ saveDir: dir, flushDebounceMs: 5 });
+    const log = createAdminLog({ db, flushDebounceMs: 5 });
     for (let i = 0; i < 20; i++) log.recordServer({ event: 'e' + i, message: 'm' + i });
-    // Waited for rather than slept through: a fixed pause races a debounce on
-    // a loaded machine, and a test that fails once a fortnight teaches people
-    // to rerun the suite instead of reading it.
-    await until(() => {
-      try {
-        return read().rows.length === 20;
-      } catch (_err) {
-        return false;
-      }
-    });
-    expect(read().rows).toHaveLength(20);
-    expect(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+    await log.flush();
+    expect(await written()).toHaveLength(20);
   });
 
-  test('flush is synchronous, so shutdown can rely on it', () => {
-    const log = createAdminLog({ saveDir: dir });
+  test('flush settles what is waiting, so shutdown can rely on it', async () => {
+    const log = createAdminLog({ db, flushDebounceMs: 10_000 });
     log.recordServer({ event: 'bye', message: 'on the way out' });
-    log.flush();
-    // No await: the file is on disk by the time flush returns.
-    expect(read().rows).toHaveLength(1);
-    expect(read().version).toBe(1);
+    expect(await written()).toHaveLength(0);
+    await log.flush();
+    expect(await written()).toHaveLength(1);
   });
 
   test('rows are paged newest first, and the cursor is stable', () => {
-    const log = createAdminLog({ saveDir: dir });
+    const log = createAdminLog({ db });
     for (let i = 1; i <= 10; i++) log.recordServer({ event: 'e' + i, message: 'm' + i });
     const first = log.list({ limit: 4 });
     expect(first.rows.map((r) => r.event)).toEqual(['e10', 'e9', 'e8', 'e7']);
@@ -132,12 +109,12 @@ describe('admin log', () => {
     expect(last.more).toBe(false);
   });
 
-  // The rule the roadmap sets, asserted against the bytes rather than the
-  // object: this is a file a browser can read, so a leak here is a leak
+  // The rule the roadmap sets, asserted against what is stored rather than the
+  // object: this is a log a browser can read, so a leak here is a leak
   // everywhere. Every row is built from an allowlist, and this is what proves
   // the allowlist is doing its job when a caller hands over more than it should.
-  test('nothing a browser must not see reaches the file', () => {
-    const log = createAdminLog({ saveDir: dir });
+  test('nothing a browser must not see is written down', async () => {
+    const log = createAdminLog({ db });
     log.recordGame({
       id: 't_1',
       name: 'Tuesday',
@@ -162,9 +139,9 @@ describe('admin log', () => {
       password: 'hunter2',
       stack: 'at secret',
     });
-    log.flush();
+    await log.flush();
 
-    const raw = fs.readFileSync(path.join(dir, 'admin-log.json'), 'utf8');
+    const raw = JSON.stringify(await written());
     for (const forbidden of ['SECRETCODE', 'device-token-here', 'hunter2', 'holeCards', 'spades']) {
       expect(`${forbidden}: ${raw.includes(forbidden) ? 'leaked' : 'absent'}`).toBe(
         `${forbidden}: absent`
@@ -182,7 +159,7 @@ describe('admin log', () => {
   describe('one row a visit, not one a hello', () => {
     test('a reload inside the window is the same visit', () => {
       let clock = 1_000_000;
-      const log = createAdminLog({ saveDir: dir, signInGapMs: 60_000, now: () => clock });
+      const log = createAdminLog({ db, signInGapMs: 60_000, now: () => clock });
       expect(log.recordSignIn({ uid: 'u1', name: 'Ann' })).toBeTruthy();
       clock += 5_000;
       expect(log.recordSignIn({ uid: 'u1', name: 'Ann' })).toBeNull();
@@ -197,7 +174,7 @@ describe('admin log', () => {
     });
 
     test('somebody else is always their own row', () => {
-      const log = createAdminLog({ saveDir: dir });
+      const log = createAdminLog({ db });
       log.recordSignIn({ uid: 'u1', name: 'Ann' });
       log.recordSignIn({ uid: 'u2', name: 'Bob' });
       expect(log.list().rows.map((r) => r.name)).toEqual(['Bob', 'Ann']);
@@ -207,28 +184,28 @@ describe('admin log', () => {
     // is going on, and a new identity has a uid of its own anyway.
     test('a brand new identity is written down whatever the window says', () => {
       let clock = 1_000_000;
-      const log = createAdminLog({ saveDir: dir, signInGapMs: 60_000, now: () => clock });
+      const log = createAdminLog({ db, signInGapMs: 60_000, now: () => clock });
       log.recordSignIn({ uid: 'u1', name: 'Ann' });
       clock += 1_000;
       expect(log.recordSignIn({ uid: 'u1', name: 'Ann', isNew: true })).toBeTruthy();
       expect(log.list().rows).toHaveLength(2);
     });
 
-    test('a restart does not restart everybody\u2019s visit', () => {
+    test('a restart does not restart everybody\u2019s visit', async () => {
       let clock = 1_000_000;
-      const first = createAdminLog({ saveDir: dir, signInGapMs: 60_000, now: () => clock });
+      const first = createAdminLog({ db, signInGapMs: 60_000, now: () => clock });
       first.recordSignIn({ uid: 'u1', name: 'Ann' });
-      first.flush();
+      await first.flush();
 
       clock += 5_000;
-      const back = createAdminLog({ saveDir: dir, signInGapMs: 60_000, now: () => clock });
-      expect(back.load()).toBe(1);
+      const back = createAdminLog({ db, signInGapMs: 60_000, now: () => clock });
+      expect(await back.load()).toBe(1);
       expect(back.recordSignIn({ uid: 'u1', name: 'Ann' })).toBeNull();
       expect(back.list().rows).toHaveLength(1);
     });
 
     test('zero keeps every one of them, for anybody who wants that', () => {
-      const log = createAdminLog({ saveDir: dir, signInGapMs: 0 });
+      const log = createAdminLog({ db, signInGapMs: 0 });
       log.recordSignIn({ uid: 'u1', name: 'Ann' });
       log.recordSignIn({ uid: 'u1', name: 'Ann' });
       expect(log.list().rows).toHaveLength(2);
@@ -236,7 +213,7 @@ describe('admin log', () => {
   });
 
   test('a long detail is cut rather than kept whole', () => {
-    const log = createAdminLog({ saveDir: dir });
+    const log = createAdminLog({ db });
     log.recordServer({ level: 'error', event: 'e', message: 'm', detail: 'x'.repeat(5000) });
     const row = log.list().rows[0];
     expect(row.detail.length).toBeLessThan(600);

@@ -102,6 +102,44 @@ const SCHEMA = [
      updated_at    BIGINT      NOT NULL,
      data          JSON        NOT NULL
    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  // A game somebody can still take away: what it was called, when it ran, and
+  // every hand it was played with. The hands are a document - they are read
+  // back whole and redacted per player - and everything a query ever asks
+  // about is a column beside them.
+  `CREATE TABLE IF NOT EXISTS games (
+     id         VARCHAR(64) NOT NULL PRIMARY KEY,
+     name       VARCHAR(64) NULL,
+     started_at BIGINT      NULL,
+     ended_at   BIGINT      NULL,
+     touched_at BIGINT      NOT NULL,
+     hands      INT         NOT NULL DEFAULT 0,
+     data       LONGTEXT    NOT NULL,
+     KEY idx_games_ended (ended_at),
+     KEY idx_games_touched (touched_at)
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  // Who played in which. This is what turns "the games I was in" from a scan
+  // of an index file into a join, and it is the whole authorisation for being
+  // handed one: no row, no game.
+  `CREATE TABLE IF NOT EXISTS game_players (
+     game_id VARCHAR(64) NOT NULL,
+     uid     VARCHAR(64) NOT NULL,
+     PRIMARY KEY (game_id, uid),
+     KEY idx_game_players_uid (uid),
+     CONSTRAINT fk_game_players_game FOREIGN KEY (game_id)
+       REFERENCES games (id) ON DELETE CASCADE
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  // What the server has done. The id is the store's own, not the database's,
+  // because paging is "older than this row" and the store hands that number
+  // out. Indexed on time, which is what both bounds and every page are about.
+  `CREATE TABLE IF NOT EXISTS admin_log (
+     id   BIGINT      NOT NULL PRIMARY KEY,
+     at   BIGINT      NOT NULL,
+     kind VARCHAR(16) NOT NULL,
+     data JSON        NOT NULL,
+     KEY idx_admin_log_at (at)
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 module.exports = { SCHEMA };

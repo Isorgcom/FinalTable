@@ -29,6 +29,8 @@ function tablesFor(name) {
       resets: new Map(), // token_hash -> row
       tournaments: new Map(), // id -> { id, status, data }
       chat: new Map(), // tournament_id -> data
+      games: new Map(), // id -> { meta, hands, uids }
+      adminLog: new Map(), // id -> row
     });
   }
   return held.get(name);
@@ -36,14 +38,24 @@ function tablesFor(name) {
 
 function createMemoryDatabase(options = {}) {
   const { database = 'finaltable' } = options;
-  const { settings, identities, accounts, pending, resets, tournaments, chat } =
+  const { settings, identities, accounts, pending, resets, tournaments, chat, games, adminLog } =
     tablesFor(database);
 
   return {
     driver: 'memory',
     // For a test that wants a database nobody has used.
     reset() {
-      const tables = [settings, identities, accounts, pending, resets, tournaments, chat];
+      const tables = [
+        settings,
+        identities,
+        accounts,
+        pending,
+        resets,
+        tournaments,
+        chat,
+        games,
+        adminLog,
+      ];
       for (const table of tables) table.clear();
     },
     async connect() {
@@ -110,6 +122,107 @@ function createMemoryDatabase(options = {}) {
       },
       async remove(id) {
         chat.delete(id);
+      },
+    },
+
+    games: {
+      async put(meta, hands, uids) {
+        if (!meta || !meta.id) return;
+        games.set(meta.id, {
+          meta: clone(meta),
+          hands: clone(hands) || [],
+          uids: [...new Set(uids || [])],
+        });
+      },
+      async get(id) {
+        const row = games.get(id);
+        return row ? { meta: clone(row.meta), hands: clone(row.hands) } : null;
+      },
+      // Only the columns, never the hands: a list of games is not a reason to
+      // read every hand on the server.
+      async listFor(uid) {
+        return [...games.values()]
+          .filter((row) => row.uids.includes(uid))
+          .map((row) => clone(row.meta))
+          .sort(
+            (a, b) =>
+              (b.endedAt || b.touchedAt || 0) - (a.endedAt || a.touchedAt || 0) ||
+              (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+          );
+      },
+      async played(uid, id) {
+        const row = games.get(id);
+        return !!row && row.uids.includes(uid);
+      },
+      async ids() {
+        return [...games.keys()];
+      },
+      async count() {
+        return games.size;
+      },
+      async remove(id) {
+        games.delete(id);
+      },
+      // The two bounds, as one pass. Returns how many went.
+      async prune({ olderThan = null, keepNewest = null } = {}) {
+        let dropped = 0;
+        const when = (row) => row.meta.endedAt || row.meta.touchedAt || 0;
+        if (Number.isFinite(olderThan)) {
+          for (const [id, row] of [...games]) {
+            if (when(row) < olderThan) {
+              games.delete(id);
+              dropped++;
+            }
+          }
+        }
+        if (Number.isFinite(keepNewest)) {
+          const order = [...games.entries()].sort(
+            (a, b) => when(b[1]) - when(a[1]) || (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0)
+          );
+          for (const [id] of order.slice(keepNewest)) {
+            games.delete(id);
+            dropped++;
+          }
+        }
+        return dropped;
+      },
+    },
+
+    adminLog: {
+      // Newest first, which is the only order anybody reads it in.
+      async recent(limit) {
+        return [...adminLog.values()]
+          .sort((a, b) => b.at - a.at || b.id - a.id)
+          .slice(0, limit)
+          .map(clone);
+      },
+      async add(rows) {
+        for (const row of rows || []) {
+          if (!row || row.id === undefined) continue;
+          adminLog.set(row.id, clone(row));
+        }
+      },
+      async prune({ olderThan = null, keepNewest = null } = {}) {
+        let dropped = 0;
+        if (Number.isFinite(olderThan)) {
+          for (const [id, row] of [...adminLog]) {
+            if (row.at < olderThan) {
+              adminLog.delete(id);
+              dropped++;
+            }
+          }
+        }
+        if (Number.isFinite(keepNewest)) {
+          const order = [...adminLog.entries()].sort((a, b) => b[1].at - a[1].at || b[0] - a[0]);
+          for (const [id] of order.slice(keepNewest)) {
+            adminLog.delete(id);
+            dropped++;
+          }
+        }
+        return dropped;
+      },
+      async count() {
+        return adminLog.size;
       },
     },
 

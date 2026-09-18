@@ -126,15 +126,30 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// What the server has done, for the Admin page's Log. Made early and loaded at
-// once, so a crash between here and listening still has somewhere to land.
+// Where everything is kept. Made here and connected in startServer, because
+// nothing may be read out of it before the server is listening and everything
+// is read out of it after.
+const db = createDatabase({
+  url: config.dbUrl,
+  host: config.dbHost,
+  port: config.dbPort,
+  user: config.dbUser,
+  password: config.dbPassword,
+  database: config.dbName,
+  log: structuredLog,
+});
+
+// What the server has done, for the Admin page's Log. Made early, so a warning
+// raised between here and listening still has somewhere to land; what is
+// already written is read in openStores, once there is a database to read it
+// from.
 const adminLog = createAdminLog({
-  saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+  db,
   maxRows: config.adminLogMaxRows,
   maxAgeMs: config.adminLogMaxAgeMs,
   signInGapMs: config.adminLogSignInGapMs,
+  log: structuredLog,
 });
-adminLog.load();
 
 // Every warning and error, wherever it is raised and whoever raises it. A sink
 // rather than a call at each site: there are five today and there will be more,
@@ -163,21 +178,6 @@ for (const skip of envSkipped || []) {
   });
 }
 
-// Who a player is: name + avatar behind a device token, persisted beside the
-// saves. See server/identity.js for the interface a login backend would fill.
-// Where everything is kept. Made here and connected in startServer, because
-// nothing may be read out of it before the server is listening and everything
-// is read out of it after.
-const db = createDatabase({
-  url: config.dbUrl,
-  host: config.dbHost,
-  port: config.dbPort,
-  user: config.dbUser,
-  password: config.dbPassword,
-  database: config.dbName,
-  log: structuredLog,
-});
-
 // The two know one thing about each other and are made in this order because
 // of it: identity asks accounts whether a name is spoken for, and accounts
 // asks identity whether anybody else is playing under it. Late-bound through
@@ -185,6 +185,8 @@ const db = createDatabase({
 // would not exist yet.
 let accounts = null;
 
+// Who a player is: name + avatar behind a device token, persisted beside the
+// saves. See server/identity.js for the interface a login backend would fill.
 const identity = createIdentityStore({
   db,
   log: structuredLog,
@@ -355,9 +357,10 @@ const chatStore = config.chatEnabled ? createChatStore({ db, log: structuredLog 
 const handHistoryStore =
   config.handHistoryMax > 0
     ? createHandHistoryStore({
-        saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+        db,
         ttlMs: config.handHistoryTtlMs,
         maxGames: config.handHistoryMaxGames,
+        log: structuredLog,
       })
     : null;
 
@@ -428,7 +431,7 @@ let restoredTournaments = 0;
 // whoever is shutting down waits for it rather than hoping.
 async function flushStores() {
   try {
-    adminLog.flush();
+    await adminLog.flush();
   } catch (_err) {
     /* nothing better to do on the way out */
   }
@@ -448,7 +451,7 @@ async function flushStores() {
     /* as above */
   }
   try {
-    if (handHistoryStore) handHistoryStore.flush();
+    if (handHistoryStore) await handHistoryStore.flush();
   } catch (_err) {
     /* as above */
   }
@@ -489,11 +492,9 @@ function startServer(options = {}) {
             message: 'The server could not start',
             data: { error: err.message },
           });
-          try {
-            adminLog.flush();
-          } catch (_err) {
-            /* the row is already in memory; the disk is best effort here */
-          }
+          adminLog.flush().catch(() => {
+            /* the row is already in memory; writing it is best effort here */
+          });
           reject(err);
         });
         server.listen(port, host, () => {
@@ -561,6 +562,13 @@ async function openStores() {
   await accounts.load();
   await tournamentStore.load();
   if (chatStore) await chatStore.loadAll();
+  await adminLog.load();
+  // The hands of the games about to be seated again, and only those: the
+  // restore reads them synchronously, so they have to be in hand before it
+  // runs. Every other game is read when somebody asks for it.
+  if (handHistoryStore) {
+    await handHistoryStore.primeFor(tournamentStore.saved().map((t) => t && t.id));
+  }
   // Everything the restore needs is now in hand, so it can stay the
   // synchronous thing it is: a field is seated again in one go.
   restoredTournaments = tournamentLayer.registry.restore();

@@ -319,20 +319,22 @@ function registerTournamentHandlers(deps) {
     // played now. A game somebody did not play in is refused rather than
     // redacted down to nothing: the two are different answers and only one of
     // them is honest.
-    socket.on('exportHandHistory', (payload = {}) => {
+    socket.on('exportHandHistory', async (payload = {}) => {
       if (!exportAllowed()) return;
       const id = payload && payload.id ? String(payload.id) : null;
+      // A game that has been kept is read when it is asked for; the one being
+      // played is in memory already.
       const game = id
-        ? registry.pastGameFor(socket.data.uid, id)
+        ? await registry.pastGameFor(socket.data.uid, id)
         : registry.handHistoryFor(socket.data.uid);
       socket.emit('handHistoryExport', game || { hands: [] });
     });
 
     // The games this player has played that are still kept. Names games,
     // never who else was in them.
-    socket.on('listMyGames', () => {
+    socket.on('listMyGames', async () => {
       if (!exportAllowed()) return;
-      socket.emit('myGames', { games: registry.pastGamesFor(socket.data.uid) });
+      socket.emit('myGames', { games: await registry.pastGamesFor(socket.data.uid) });
     });
 
     // ── An account of this server's own ─────────────────────────────────

@@ -26,8 +26,9 @@ Release on GitHub to go with it.
 
 ### Changed
 
-- FinalTable keeps what it knows in a database of its own now - accounts,
-  identities and the devices you are signed in on - instead of files beside the
+- FinalTable keeps everything it knows in a database of its own now - accounts,
+  identities and the devices you are signed in on, the games in progress, the
+  chat, the hands it keeps and the admin log - instead of files beside the
   application. Running it needs a MariaDB alongside the server, which the
   compose file starts; set `DB_PASSWORD` and `DB_ROOT_PASSWORD` in `.env` and it
   refuses to start without them. The first boot imports whatever the old files

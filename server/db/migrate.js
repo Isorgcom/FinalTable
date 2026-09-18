@@ -192,6 +192,55 @@ async function migrateFromFiles(options = {}) {
     }
   }
 
+  // ── The kept games ──────────────────────────────────────────────────────
+  //
+  // An index file naming every game and who was in it, and one file per game
+  // holding the hands. The index is what says whose game it is, so a game
+  // whose own file has gone is skipped rather than imported empty.
+  const historyDir = path.join(saveDir, 'history');
+  const indexFile = path.join(historyDir, '_index.json');
+  if (fs.existsSync(indexFile) && (await db.games.count()) === 0) {
+    const index = readJson(indexFile);
+    const rows = index && Array.isArray(index.games) ? index.games : null;
+    let n = 0;
+    for (const row of rows || []) {
+      if (!row || !row.id) continue;
+      const kept = readJson(path.join(historyDir, `${row.id}.json`));
+      if (!kept || !Array.isArray(kept.hands)) continue;
+      const meta = {
+        id: row.id,
+        name: row.name || null,
+        startedAt: row.startedAt || null,
+        endedAt: row.endedAt || null,
+        touchedAt: row.touchedAt || row.endedAt || Date.now(),
+        hands: kept.hands.length,
+      };
+      await db.games.put(meta, kept.hands, Array.isArray(row.uids) ? row.uids : []);
+      n++;
+    }
+    if (n) {
+      done.games = n;
+      // A directory rather than a file, as chat is: the whole of it at once.
+      setAside(historyDir, log);
+    }
+  }
+
+  // ── The admin log ───────────────────────────────────────────────────────
+  //
+  // A ring of rows, oldest first, each already built from an allowlist. What
+  // is stored is what was stored; only where it lives changes.
+  const adminLogFile = path.join(saveDir, 'admin-log.json');
+  if (fs.existsSync(adminLogFile) && (await db.adminLog.count()) === 0) {
+    const data = readJson(adminLogFile);
+    const rows = data && Array.isArray(data.rows) ? data.rows : null;
+    const keep = (rows || []).filter((row) => row && row.id !== undefined && row.at);
+    if (keep.length) {
+      await db.adminLog.add(keep);
+      done.adminLog = keep.length;
+      setAside(adminLogFile, log);
+    }
+  }
+
   if (Object.keys(done).length) {
     log({
       level: 'info',
