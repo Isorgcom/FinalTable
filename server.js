@@ -15,6 +15,7 @@ const { createSettingsStore } = require('./server/settings-store');
 const { createAdminCredential } = require('./server/admin-credential');
 const { createAccounts } = require('./server/accounts');
 const { createDatabase } = require('./server/db');
+const { migrateFromFiles } = require('./server/db/migrate');
 const { createMailer } = require('./server/mailer');
 const { createSsoRuntime } = require('./server/gamenight-pairing');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
@@ -552,6 +553,14 @@ async function openStores() {
   storesOpen = true;
   await db.connect();
   await db.apply();
+  // Before anything loads: whatever the files held is read in once, on the
+  // first boot that finds the tables empty.
+  await migrateFromFiles({
+    db,
+    saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+    nameKey: normalizeNameKey,
+    log: structuredLog,
+  });
   await settingsStore.load();
   await identity.load();
   await accounts.load();
