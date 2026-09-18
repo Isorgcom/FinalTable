@@ -16,6 +16,7 @@ const { createAdminCredential } = require('./server/admin-credential');
 const { createAccounts } = require('./server/accounts');
 const { createDatabase } = require('./server/db');
 const { migrateFromFiles } = require('./server/db/migrate');
+const { runMigrations } = require('./server/db/migrations');
 const { createMailer } = require('./server/mailer');
 const { createSsoRuntime } = require('./server/gamenight-pairing');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
@@ -549,6 +550,9 @@ async function openStores() {
   storesOpen = true;
   await db.connect();
   await db.apply();
+  // The tables exist; now any shape change that has not been applied to this
+  // one yet. Before anything reads, because what reads expects the new shape.
+  await runMigrations({ db, log: structuredLog });
   // Before anything loads: whatever the files held is read in once, on the
   // first boot that finds the tables empty.
   await migrateFromFiles({

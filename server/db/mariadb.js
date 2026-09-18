@@ -118,6 +118,27 @@ function createMariaDatabase(options = {}) {
     close,
     ping,
 
+    // The ledger, and the one place SQL is handed in from outside this file.
+    // A migration is a shape change, and a shape change is SQL; keeping it
+    // scoped here rather than on the general interface is what stops the rest
+    // of the server from having any.
+    migrations: {
+      async applied() {
+        const [rows] = await pool.query('SELECT name FROM migrations');
+        return rows.map((r) => r.name);
+      },
+      async record(name) {
+        await pool.query(
+          'INSERT INTO migrations (name, applied_at) VALUES (?, ?) ' +
+            'ON DUPLICATE KEY UPDATE applied_at = applied_at',
+          [name, Date.now()]
+        );
+      },
+      async exec(statements) {
+        for (const sql of statements || []) await pool.query(sql);
+      },
+    },
+
     settings: {
       async all() {
         const [rows] = await pool.query('SELECT k, v, updated_at FROM settings');

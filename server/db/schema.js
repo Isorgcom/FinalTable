@@ -4,11 +4,21 @@
 // database becomes a working one and an existing database stays untouched.
 // Nothing here drops or alters anything: a change to a table that already
 // holds somebody's account is a migration of its own, written when it is
-// needed and never as a side effect of starting the server.
+// needed and never as a side effect of starting the server. Those live in
+// migrations.js, and run once each against the ledger below.
 //
 // utf8mb4 throughout, because an avatar is an emoji and a name may be one too.
 
 const SCHEMA = [
+  // Which shape changes have been applied. The tables below are made once and
+  // never altered; anything that has to change a table somebody's account is
+  // already in goes through server/db/migrations.js, and this is where it
+  // records that it has.
+  `CREATE TABLE IF NOT EXISTS migrations (
+     name       VARCHAR(128) NOT NULL PRIMARY KEY,
+     applied_at BIGINT       NOT NULL
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
   `CREATE TABLE IF NOT EXISTS settings (
      k           VARCHAR(64)  NOT NULL PRIMARY KEY,
      v           JSON         NOT NULL,

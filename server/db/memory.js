@@ -31,6 +31,7 @@ function tablesFor(name) {
       chat: new Map(), // tournament_id -> data
       games: new Map(), // id -> { meta, hands, uids }
       adminLog: new Map(), // id -> row
+      migrations: new Map(), // name -> applied_at
     });
   }
   return held.get(name);
@@ -38,8 +39,18 @@ function tablesFor(name) {
 
 function createMemoryDatabase(options = {}) {
   const { database = 'finaltable' } = options;
-  const { settings, identities, accounts, pending, resets, tournaments, chat, games, adminLog } =
-    tablesFor(database);
+  const {
+    settings,
+    identities,
+    accounts,
+    pending,
+    resets,
+    tournaments,
+    chat,
+    games,
+    adminLog,
+    migrations,
+  } = tablesFor(database);
 
   return {
     driver: 'memory',
@@ -55,6 +66,7 @@ function createMemoryDatabase(options = {}) {
         chat,
         games,
         adminLog,
+        migrations,
       ];
       for (const table of tables) table.clear();
     },
@@ -65,6 +77,19 @@ function createMemoryDatabase(options = {}) {
     async apply() {},
     async ping() {
       return true;
+    },
+
+    // The ledger. A step's SQL is the real driver's business - there is no
+    // schema here to alter - but which steps have run is not, or a test would
+    // apply the same one on every boot.
+    migrations: {
+      async applied() {
+        return [...migrations.keys()];
+      },
+      async record(name) {
+        if (name) migrations.set(name, Date.now());
+      },
+      async exec() {},
     },
 
     settings: {
