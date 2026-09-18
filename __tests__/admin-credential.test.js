@@ -25,52 +25,52 @@ describe('admin password', () => {
     return { settings: { adminPassword: row ? row.v : null } };
   };
 
-  test('no password anywhere means no admin surface', () => {
+  test('no password anywhere means no admin surface', async () => {
     const cred = createAdminCredential({ settingsStore: store });
     expect(cred.isEnabled()).toBe(false);
-    expect(cred.verify('')).toBe(false);
-    expect(cred.verify('anything')).toBe(false);
+    expect(await cred.verify('')).toBe(false);
+    expect(await cred.verify('anything')).toBe(false);
     expect(cred.status()).toMatchObject({ enabled: false, source: null });
     // With no way in, there is no way to set one either.
-    expect(cred.change('', 'a-good-password')).toMatch(/no admin password/i);
+    expect(await cred.change('', 'a-good-password')).toMatch(/no admin password/i);
   });
 
-  test('an empty or whitespace environment password is not a password', () => {
+  test('an empty or whitespace environment password is not a password', async () => {
     for (const value of ['', '   ', undefined]) {
       const cred = createAdminCredential({ settingsStore: store, envPassword: value });
       expect(cred.isEnabled()).toBe(false);
-      expect(cred.verify('')).toBe(false);
-      expect(cred.verify('   ')).toBe(false);
+      expect(await cred.verify('')).toBe(false);
+      expect(await cred.verify('   ')).toBe(false);
     }
   });
 
-  test('the environment supplies the first one', () => {
+  test('the environment supplies the first one', async () => {
     const cred = createAdminCredential({ settingsStore: store, envPassword: 'from-the-env' });
     expect(cred.isEnabled()).toBe(true);
-    expect(cred.verify('from-the-env')).toBe(true);
-    expect(cred.verify('from-the-emv')).toBe(false);
+    expect(await cred.verify('from-the-env')).toBe(true);
+    expect(await cred.verify('from-the-emv')).toBe(false);
     expect(cred.status()).toMatchObject({ source: 'env', updatedAt: null });
   });
 
-  test('changing it needs the current one, and a new one worth having', () => {
+  test('changing it needs the current one, and a new one worth having', async () => {
     const cred = createAdminCredential({ settingsStore: store, envPassword: 'first-password' });
-    expect(cred.change('wrong', 'a-good-password')).toMatch(/not the current password/i);
-    expect(cred.change('first-password', 'short')).toMatch(
+    expect(await cred.change('wrong', 'a-good-password')).toMatch(/not the current password/i);
+    expect(await cred.change('first-password', 'short')).toMatch(
       new RegExp(`at least ${MIN_LENGTH} characters`)
     );
-    expect(cred.change('first-password', '')).toMatch(/enter a new password/i);
-    expect(cred.change('first-password', 'x'.repeat(200))).toMatch(/at most/i);
-    expect(cred.change('first-password', 'first-password')).toMatch(/already the password/i);
+    expect(await cred.change('first-password', '')).toMatch(/enter a new password/i);
+    expect(await cred.change('first-password', 'x'.repeat(200))).toMatch(/at most/i);
+    expect(await cred.change('first-password', 'first-password')).toMatch(/already the password/i);
     // None of that should have changed anything.
-    expect(cred.verify('first-password')).toBe(true);
+    expect(await cred.verify('first-password')).toBe(true);
     expect(store.get('adminPassword')).toBeNull();
   });
 
   test('a change is stored hashed, and beats the environment from then on', async () => {
     const cred = createAdminCredential({ settingsStore: store, envPassword: 'first-password' });
-    expect(cred.change('first-password', 'second-password')).toBeNull();
-    expect(cred.verify('second-password')).toBe(true);
-    expect(cred.verify('first-password')).toBe(false);
+    expect(await cred.change('first-password', 'second-password')).toBeNull();
+    expect(await cred.verify('second-password')).toBe(true);
+    expect(await cred.verify('first-password')).toBe(false);
     expect(cred.status()).toMatchObject({ source: 'saved' });
     expect(cred.status().updatedAt).toEqual(expect.any(Number));
 
@@ -86,13 +86,13 @@ describe('admin password', () => {
       settingsStore: reopened,
       envPassword: 'first-password',
     });
-    expect(next.verify('second-password')).toBe(true);
-    expect(next.verify('first-password')).toBe(false);
+    expect(await next.verify('second-password')).toBe(true);
+    expect(await next.verify('first-password')).toBe(false);
   });
 
   test('two servers with the same password do not share a hash', async () => {
     const a = createAdminCredential({ settingsStore: store, envPassword: 'seed-password' });
-    a.change('seed-password', 'same-password');
+    await a.change('seed-password', 'same-password');
     const otherDb = createMemoryDatabase({ database: 'admin-credential-other' });
     otherDb.reset();
     {
@@ -100,7 +100,7 @@ describe('admin password', () => {
         settingsStore: createSettingsStore({ db: otherDb }),
         envPassword: 'seed-password',
       });
-      b.change('seed-password', 'same-password');
+      await b.change('seed-password', 'same-password');
       const one = (await saved()).settings.adminPassword;
       await Promise.resolve();
       const two = (await otherDb.settings.all()).find((r) => r.k === 'adminPassword').v;
@@ -111,7 +111,7 @@ describe('admin password', () => {
 
   test('removing the stored record falls back to the environment', async () => {
     const cred = createAdminCredential({ settingsStore: store, envPassword: 'first-password' });
-    cred.change('first-password', 'second-password');
+    await cred.change('first-password', 'second-password');
     store.set('adminPassword', null);
     await Promise.resolve();
     const reopened = createSettingsStore({ db });
@@ -120,23 +120,23 @@ describe('admin password', () => {
       settingsStore: reopened,
       envPassword: 'first-password',
     });
-    expect(recovered.verify('first-password')).toBe(true);
+    expect(await recovered.verify('first-password')).toBe(true);
     expect(recovered.status()).toMatchObject({ source: 'env' });
   });
 
-  test('a corrupt stored record is ignored rather than locking everybody out', () => {
+  test('a corrupt stored record is ignored rather than locking everybody out', async () => {
     store.set('adminPassword', { algo: 'nonsense', hash: 'x' });
     const cred = createAdminCredential({
       settingsStore: store,
       envPassword: 'first-password',
     });
-    expect(cred.verify('first-password')).toBe(true);
+    expect(await cred.verify('first-password')).toBe(true);
     expect(cred.status()).toMatchObject({ source: 'env' });
   });
 
-  test('without a settings store it still works, just not across a restart', () => {
+  test('without a settings store it still works, just not across a restart', async () => {
     const cred = createAdminCredential({ envPassword: 'first-password' });
-    expect(cred.change('first-password', 'second-password')).toBeNull();
-    expect(cred.verify('second-password')).toBe(true);
+    expect(await cred.change('first-password', 'second-password')).toBeNull();
+    expect(await cred.verify('second-password')).toBe(true);
   });
 });

@@ -361,12 +361,12 @@ function registerTournamentHandlers(deps) {
       return true;
     }
 
-    socket.on('signUp', (payload = {}) => {
+    socket.on('signUp', async (payload = {}) => {
       if (!accountAllowed()) return;
       if (!socket.data.uid) {
         return socket.emit('accountResult', { ok: false, error: 'Enter a name first.' });
       }
-      const started = accounts.startSignUp({
+      const started = await accounts.startSignUp({
         uid: socket.data.uid,
         name: payload.name,
         email: payload.email,
@@ -396,9 +396,9 @@ function registerTournamentHandlers(deps) {
     // with it exactly as it does on any other load, so rejoining a game in
     // progress, the rail and everything else take the one path they always
     // took rather than a second copy of it here.
-    socket.on('signIn', (payload = {}) => {
+    socket.on('signIn', async (payload = {}) => {
       if (!accountAllowed()) return;
-      const who = accounts.signIn(payload.name, payload.password);
+      const who = await accounts.signIn(payload.name, payload.password);
       if (!who) {
         return setTimeout(() => {
           socket.emit('accountResult', {
@@ -445,9 +445,9 @@ function registerTournamentHandlers(deps) {
       ).then(answer);
     });
 
-    socket.on('changeAccountPassword', (payload = {}) => {
+    socket.on('changeAccountPassword', async (payload = {}) => {
       if (!accountAllowed() || !socket.data.uid) return;
-      const problem = accounts.changePassword(socket.data.uid, payload.current, payload.next);
+      const problem = await accounts.changePassword(socket.data.uid, payload.current, payload.next);
       socket.emit('accountResult', {
         ok: !problem,
         error: problem || null,
@@ -831,13 +831,13 @@ function registerTournamentHandlers(deps) {
     // HTTP on a LAN, so the password crosses the wire in the clear. It is a
     // guard against the other people at the table, not against somebody who
     // can watch the network.
-    socket.on('adminLogin', (payload = {}) => {
+    socket.on('adminLogin', async (payload = {}) => {
       if (!adminEnabled) return socket.emit('adminStatus', { ok: false, available: false });
       socket.data.adminAttempts = socket.data.adminAttempts || 0;
       if (socket.data.adminAttempts >= ADMIN_MAX_ATTEMPTS) {
         return socket.emit('adminStatus', { ok: false, available: true, lockedOut: true });
       }
-      const ok = adminCredential.verify(String(payload.password || ''));
+      const ok = await adminCredential.verify(String(payload.password || ''));
       if (ok) {
         socket.data.isAdmin = true;
         socket.data.adminAttempts = 0;
@@ -859,9 +859,9 @@ function registerTournamentHandlers(deps) {
     // left open is not proof that the person at it knows the password. A
     // change signs out every other admin session, because whoever is being
     // locked out is the reason to change it.
-    socket.on('adminSetPassword', (payload = {}) => {
+    socket.on('adminSetPassword', async (payload = {}) => {
       if (!adminEnabled || !socket.data.isAdmin) return;
-      const error = adminCredential.change(
+      const error = await adminCredential.change(
         String(payload.current || ''),
         String(payload.next || '')
       );

@@ -36,6 +36,13 @@ Release on GitHub to go with it.
   change, and the token that signs your browser in is kept as a digest rather
   than as itself, so a copy of the data is not a copy of everybody's session.
 
+### Fixed
+
+- Checking a password no longer holds up every table on the server. Hashing one
+  takes a tenth of a second of solid work, and it was being done on the thread
+  that deals: a few people signing in together was a visible stutter at the
+  felt for everybody else.
+
 ## 0.20.0 - 2026-09-17
 
 ### Added

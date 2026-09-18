@@ -9,16 +9,25 @@
 //
 // What is stored is the hash and its salt. The password itself is never
 // written anywhere, and never logged.
+//
+// Hashing is asynchronous, and has to be. scrypt at N=16384 is about a tenth
+// of a second of solid CPU, and since an account became the only way in, every
+// player pays it on the way through the door: a table's worth of people
+// arriving together would be two seconds during which this server dealt no
+// cards to anybody. crypto.scrypt does the same work on the thread pool.
 
 const crypto = require('crypto');
+const { promisify } = require('util');
+
+const scrypt = promisify(crypto.scrypt);
 
 const MIN_LENGTH = 8;
 const MAX_LENGTH = 128;
 const KEY_LENGTH = 64;
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 };
 
-function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  const derived = crypto.scryptSync(password, salt, KEY_LENGTH, { ...SCRYPT_PARAMS });
+async function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const derived = await scrypt(password, salt, KEY_LENGTH, { ...SCRYPT_PARAMS });
   return {
     algo: 'scrypt',
     salt,
@@ -37,12 +46,12 @@ function sameString(a, b) {
   return crypto.timingSafeEqual(x, y);
 }
 
-function matchesRecord(password, record) {
+async function matchesRecord(password, record) {
   if (!record || record.algo !== 'scrypt' || !record.salt || !record.hash) return false;
   const params = { ...SCRYPT_PARAMS, ...(record.params || {}) };
   let derived;
   try {
-    derived = crypto.scryptSync(password, record.salt, record.hash.length / 2, params);
+    derived = await scrypt(password, record.salt, record.hash.length / 2, params);
   } catch (_err) {
     return false;
   }

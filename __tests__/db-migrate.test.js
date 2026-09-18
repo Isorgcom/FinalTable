@@ -115,7 +115,7 @@ describe('importing what the files held', () => {
           key: 'ann',
           name: 'Ann',
           email: 'ann@example.com',
-          password: hashPassword('correct horse'),
+          password: await hashPassword('correct horse'),
           createdAt: 1,
           verifiedAt: 2,
         },
@@ -132,7 +132,7 @@ describe('importing what the files held', () => {
     const accounts = createAccounts({ db });
     await accounts.load();
     expect(accounts.ownerOf('Ann')).toBe('u_ann');
-    expect(accounts.signIn('Ann', 'correct horse')).toMatchObject({ uid: 'u_ann' });
+    expect(await accounts.signIn('Ann', 'correct horse')).toMatchObject({ uid: 'u_ann' });
   });
 
   // Never deleted: the first run of this against real data is the run where
@@ -169,7 +169,7 @@ describe('importing what the files held', () => {
           key: 'bob',
           name: 'Bob',
           email: 'b@e.com',
-          password: hashPassword('a good password'),
+          password: await hashPassword('a good password'),
           createdAt: 1,
         },
       ],

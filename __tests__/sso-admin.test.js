@@ -186,7 +186,7 @@ describe('pairing with GameNight from the Admin page', () => {
       expect(r.ok).toBe(false);
       expect(r.error).toMatch(expected);
     }
-    expect(serverModule.adminCredential.verify(PASSWORD)).toBe(true);
+    expect(await serverModule.adminCredential.verify(PASSWORD)).toBe(true);
 
     // A second admin session, which the change should sign out.
     const { s: other } = await connect();
@@ -245,7 +245,7 @@ describe('pairing with GameNight from the Admin page', () => {
     s.emit('adminSetPassword', { current: PASSWORD, next: 'sneaky-password' });
     await new Promise((r) => setTimeout(r, 300));
     expect(answered).toBe(false);
-    expect(serverModule.adminCredential.verify(PASSWORD)).toBe(true);
+    expect(await serverModule.adminCredential.verify(PASSWORD)).toBe(true);
   });
 
   test('refresh answers, and unpair takes the button away for everyone', async () => {

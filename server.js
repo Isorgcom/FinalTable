@@ -322,7 +322,7 @@ app.get('/reset', accountLimiter, (req, res) => {
   );
 });
 
-app.post('/reset', accountLimiter, express.urlencoded({ extended: false }), (req, res) => {
+app.post('/reset', accountLimiter, express.urlencoded({ extended: false }), async (req, res) => {
   const body = req.body || {};
   if (!body.password || body.password !== body.confirm) {
     return res.status(400).send(
@@ -333,7 +333,7 @@ app.post('/reset', accountLimiter, express.urlencoded({ extended: false }), (req
       })
     );
   }
-  const done = accounts.completeReset(body.token, body.password);
+  const done = await accounts.completeReset(body.token, body.password);
   const ok = !done.error;
   res.status(ok ? 200 : 400).send(
     accountPage({

@@ -49,20 +49,20 @@ function createAdminCredential({ settingsStore = null, envPassword = '', log = (
     return !!stored() || fromEnv.length > 0;
   }
 
-  function verify(password) {
+  async function verify(password) {
     if (typeof password !== 'string' || !isEnabled()) return false;
     const saved = stored();
     return saved ? matchesRecord(password, saved) : sameString(password, fromEnv);
   }
 
   // Returns null on success, or a sentence to show the admin.
-  function change(current, next) {
+  async function change(current, next) {
     if (!isEnabled()) return 'There is no admin password on this server.';
-    if (!verify(current)) return 'That is not the current password.';
+    if (!(await verify(current))) return 'That is not the current password.';
     const problem = passwordProblem(next);
     if (problem) return problem;
-    if (verify(next)) return 'That is already the password.';
-    const record = hashPassword(next);
+    if (await verify(next)) return 'That is already the password.';
+    const record = await hashPassword(next);
     if (settingsStore) settingsStore.set('adminPassword', record);
     else unstored = record;
     log({

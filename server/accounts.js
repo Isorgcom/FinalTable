@@ -139,7 +139,7 @@ function createAccounts(options = {}) {
 
   // ── Signing up ──────────────────────────────────────────────────────────
 
-  function startSignUp({ uid, name, email, password } = {}) {
+  async function startSignUp({ uid, name, email, password } = {}) {
     const at = now();
     if (!uid) return { error: 'Tell the table who you are first.' };
     const safeName = sanitizeName(name);
@@ -169,7 +169,7 @@ function createAccounts(options = {}) {
       uid,
       name: safeName,
       email: address,
-      password: hashPassword(password),
+      password: await hashPassword(password),
       tokenHash: digestToken(token),
       createdAt: at,
       expiresAt: at + verifyTtlMs,
@@ -217,20 +217,22 @@ function createAccounts(options = {}) {
 
   // Null for a name with no account and for a wrong password alike: the answer
   // must not say which, or it says which names exist.
-  function signIn(name, password) {
+  async function signIn(name, password) {
     const account = byKey.get(nameKey(name));
     if (!account || typeof password !== 'string') return null;
-    if (!matchesRecord(password, account.password)) return null;
+    if (!(await matchesRecord(password, account.password))) return null;
     return { uid: account.uid, name: account.name };
   }
 
-  function changePassword(uid, current, next) {
+  async function changePassword(uid, current, next) {
     const account = byUid(uid);
     if (!account) return 'There is no account on this name.';
-    if (!matchesRecord(current, account.password)) return 'That is not your current password.';
+    if (!(await matchesRecord(current, account.password))) {
+      return 'That is not your current password.';
+    }
     const problem = passwordProblem(next);
     if (problem) return problem;
-    account.password = hashPassword(next);
+    account.password = await hashPassword(next);
     write(() => db.accounts.put(account));
     return null;
   }
@@ -265,7 +267,7 @@ function createAccounts(options = {}) {
     return null;
   }
 
-  function completeReset(token, password) {
+  async function completeReset(token, password) {
     const hash = digestToken(token);
     if (!hash) return { error: 'That link is not one of ours.' };
     for (const [stored, row] of [...resets]) {
@@ -279,7 +281,7 @@ function createAccounts(options = {}) {
       if (!account) return { error: 'That account is gone.' };
       const problem = passwordProblem(password);
       if (problem) return { error: problem };
-      account.password = hashPassword(password);
+      account.password = await hashPassword(password);
       write(() => db.accounts.put(account));
       return { uid: account.uid, name: account.name };
     }
