@@ -307,6 +307,18 @@
             </button>
             <button
               class="side-tab"
+              id="tabAdminUsers"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="adminPageUsers"
+              tabindex="-1"
+              data-admin-tab="users"
+            >
+              Users
+            </button>
+            <button
+              class="side-tab"
               id="tabAdminLog"
               type="button"
               role="tab"
@@ -378,6 +390,61 @@
                 Refresh key
               </button>
               <button class="btn-secondary hidden" id="btnAdminUnpair" type="button">Unpair</button>
+            </div>
+          </section>
+          <section
+            class="admin-page hidden"
+            id="adminPageUsers"
+            role="tabpanel"
+            tabindex="0"
+            aria-labelledby="tabAdminUsers"
+          >
+            <div class="admin-heading">Who plays here</div>
+            <p class="admin-help">
+              Every account on this server. An address is shown only when you open one, and the Log
+              says every time one was looked at.
+            </p>
+            <div class="admin-status" id="adminUsersStatus" aria-live="polite"></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="adminUserSearch">Search</label>
+                <input type="text" id="adminUserSearch" maxlength="64" placeholder="A name" />
+              </div>
+              <div class="form-group">
+                <label for="adminUserFilter">Show</label>
+                <select id="adminUserFilter">
+                  <option value="all">Everybody</option>
+                  <option value="admin">Administrators</option>
+                  <option value="disabled">Suspended</option>
+                </select>
+              </div>
+            </div>
+            <div class="session-list" id="adminUsersList"></div>
+            <div class="lobby-actions">
+              <button class="btn-secondary" id="btnAdminUsersMore" type="button">Show more</button>
+            </div>
+            <!-- Making one. The password is never chosen here: a link goes to
+                 the address and whoever opens it picks their own, so the
+                 administrator handing an account over never knows it. -->
+            <div class="admin-heading">Make an account</div>
+            <p class="admin-help">
+              A link goes to the address and whoever opens it chooses the password, so you never
+              know it.
+            </p>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="adminNewUserName">Name</label>
+                <input type="text" id="adminNewUserName" maxlength="16" />
+              </div>
+              <div class="form-group">
+                <label for="adminNewUserEmail">Email</label>
+                <input type="email" id="adminNewUserEmail" maxlength="254" />
+              </div>
+            </div>
+            <div class="lobby-actions">
+              <button class="btn-enter" id="btnAdminCreateUser" type="button">
+                Make the account
+              </button>
             </div>
           </section>
           <section

@@ -113,6 +113,24 @@ function registerTournamentHandlers(deps) {
     return found;
   }
 
+  // Every socket one person has open. What signing somebody out everywhere,
+  // disabling them and deleting them all need: a token already in a browser
+  // keeps working until the browser is told otherwise.
+  function socketsForUid(uid) {
+    const found = [];
+    if (!uid) return found;
+    const live =
+      typeof deps.connectedSockets === 'function'
+        ? deps.connectedSockets()
+        : io && io.sockets
+          ? io.sockets.sockets.values()
+          : [];
+    for (const s of live) {
+      if (s && s.data && s.data.uid === uid) found.push(s);
+    }
+    return found;
+  }
+
   function fail(socket, error) {
     socket.emit('error', { message: error });
   }
@@ -907,6 +925,238 @@ function registerTournamentHandlers(deps) {
     function announcePairing() {
       io.emit('serverInfo', serverInfo());
     }
+    // ── The people who play here ──────────────────────────────────────
+    //
+    // The list is the identity map, which is in memory already, so none of
+    // this is a query. Searched, filtered and paged on the server all the
+    // same: the page polls every three seconds, and a server with a thousand
+    // players should not send a thousand rows to show twenty-five.
+    //
+    // Every write answers adminUserResult and then a fresh list, so the page
+    // never has to guess what it now looks like.
+
+    function usersResult(error, extra = {}) {
+      socket.emit('adminUserResult', { ok: !error, error: error || null, ...extra });
+      if (!error) socket.emit('adminUsers', identity.list(socket.data.adminUserQuery || {}));
+    }
+
+    // Somebody the administrator is acting on. Answers the record, or the
+    // sentence to show them instead.
+    function subjectFor(uid) {
+      const who = identity.get(uid);
+      if (!who) return { error: 'There is nobody here by that name.' };
+      return { who };
+    }
+
+    socket.on('adminListUsers', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      const query = {
+        q: String(payload.q || '').slice(0, 64),
+        filter: ['admin', 'disabled'].includes(payload.filter) ? payload.filter : 'all',
+        limit: payload.limit,
+        offset: payload.offset,
+      };
+      // Kept so a write can answer with the page they were looking at rather
+      // than the first one.
+      socket.data.adminUserQuery = query;
+      socket.emit('adminUsers', identity.list(query));
+    });
+
+    // One person, with the things the list deliberately leaves out. The
+    // address is the reason this is its own event: it is the most sensitive
+    // thing the server holds about somebody, the list is polled, and a page
+    // that put every address in every poll would be a mailing list waiting to
+    // leak. Looking at one is written down.
+    socket.on('adminGetUser', async (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      const uid = String(payload.uid || '');
+      const found = subjectFor(uid);
+      if (found.error) return socket.emit('adminUser', { error: found.error });
+      const account = accounts ? accounts.byUid(uid) : null;
+      const row = identity.list({ q: '', limit: 50 }).rows.find((r) => r.uid === uid) || null;
+      let games = 0;
+      try {
+        games = (await registry.pastGamesFor(uid)).length;
+      } catch (_err) {
+        games = 0;
+      }
+      if (account && account.email && adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: 'admin_read_address',
+          message: `An administrator looked at ${found.who.name}'s address`,
+        });
+      }
+      socket.emit('adminUser', {
+        user: {
+          ...(row || {}),
+          uid,
+          name: found.who.name,
+          provider: found.who.provider,
+          email: account ? account.email : null,
+          verifiedAt: account ? account.verifiedAt : null,
+          hasAccount: !!account,
+          games,
+          sessions: identity.sessions(uid).map((d) => ({ ...d, current: undefined })),
+          online: socketsForUid(uid).length,
+        },
+      });
+    });
+
+    // An account an administrator made, for somebody to take over. No
+    // password is set here: a reset link goes out, and choosing one from that
+    // link is what makes it usable - so the administrator never knows it,
+    // which is the only sensible way to hand one over.
+    socket.on('adminCreateUser', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      if (!accounts) return usersResult('This server keeps no accounts.');
+      if (!mailer.available()) {
+        return usersResult('This server cannot send the mail that hands an account over.');
+      }
+      const made = accounts.createVerified({ name: payload.name, email: payload.email });
+      if (made.error) return usersResult(made.error);
+      // A person as well as an account, so the page that just made them can
+      // see them. They have no devices, which is what somebody who has never
+      // signed in looks like.
+      identity.create({ uid: made.uid, name: made.name });
+      const asked = accounts.startReset(made.name);
+      if (asked) {
+        Promise.resolve(
+          mailer.sendReset({ to: asked.email, name: asked.name, token: asked.token })
+        ).catch(() => {});
+      }
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: 'admin_made_account',
+          message: `An administrator made an account for ${made.name}`,
+        });
+      }
+      usersResult(null, { made: made.name });
+    });
+
+    socket.on('adminSetUserRole', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      const uid = String(payload.uid || '');
+      const found = subjectFor(uid);
+      if (found.error) return usersResult(found.error);
+      const admin = payload.role === 'admin';
+      // Standing down is allowed; leaving the server with nobody to run it is
+      // not. The same question guards demote, disable and delete.
+      if (!admin && identity.wouldOrphan(uid)) {
+        return usersResult('Somebody has to administer this server.');
+      }
+      if (admin && identity.isDisabled(uid)) {
+        return usersResult('That account is suspended. Let them back in first.');
+      }
+      identity.setRole(uid, admin ? 'admin' : 'player');
+      // Whoever it was needs to hear it, including on the tab they are
+      // reading the Admin page in.
+      for (const other of socketsForUid(uid)) {
+        other.data.isAdmin = admin;
+        if (!admin) other.emit('adminStatus', { ok: false, revoked: true });
+      }
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: admin ? 'admin_granted' : 'admin_revoked',
+          message: `${found.who.name} ${admin ? 'is now' : 'is no longer'} an administrator`,
+        });
+      }
+      usersResult(null);
+    });
+
+    socket.on('adminSetUserDisabled', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      const uid = String(payload.uid || '');
+      const found = subjectFor(uid);
+      if (found.error) return usersResult(found.error);
+      const off = payload.disabled !== false;
+      if (off && uid === socket.data.uid) return usersResult('You cannot suspend yourself.');
+      if (off && identity.wouldOrphan(uid)) {
+        return usersResult('Somebody has to administer this server.');
+      }
+      identity.setDisabled(uid, off ? Date.now() : null);
+      if (off) endEveryDevice(uid);
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: off ? 'admin_suspended' : 'admin_unsuspended',
+          message: `${found.who.name} ${off ? 'was suspended' : 'was let back in'}`,
+        });
+      }
+      usersResult(null);
+    });
+
+    socket.on('adminSignOutUser', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      const uid = String(payload.uid || '');
+      const found = subjectFor(uid);
+      if (found.error) return usersResult(found.error);
+      endEveryDevice(uid);
+      usersResult(null);
+    });
+
+    // Somebody forgot theirs. A link rather than a password the administrator
+    // chooses and then knows.
+    socket.on('adminResetUserPassword', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      const uid = String(payload.uid || '');
+      const found = subjectFor(uid);
+      if (found.error) return usersResult(found.error);
+      if (found.who.provider === 'gamenight') {
+        return usersResult('That password is GameNight’s. It is reset there.');
+      }
+      if (!accounts || !mailer.available()) {
+        return usersResult('This server cannot send mail.');
+      }
+      const asked = accounts.startReset(found.who.name);
+      if (!asked) return usersResult('That account has nothing to reset.');
+      Promise.resolve(
+        mailer.sendReset({ to: asked.email, name: asked.name, token: asked.token })
+      ).catch(() => {});
+      usersResult(null, { sent: found.who.name });
+    });
+
+    socket.on('adminDeleteUser', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      const uid = String(payload.uid || '');
+      const found = subjectFor(uid);
+      if (found.error) return usersResult(found.error);
+      if (uid === socket.data.uid) return usersResult('You cannot delete yourself.');
+      if (identity.wouldOrphan(uid)) return usersResult('Somebody has to administer this server.');
+      // A GameNight account is not this server's to delete: the uid comes
+      // from their id there, so the next sign-in would put it straight back -
+      // and it would come back without the suspension, which is worse than
+      // not deleting it at all.
+      if (found.who.provider === 'gamenight') {
+        return usersResult('A GameNight account comes back on its next sign-in. Suspend it.');
+      }
+      endEveryDevice(uid);
+      if (accounts) accounts.remove(uid);
+      identity.remove(uid);
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: 'admin_deleted_account',
+          message: `An administrator deleted the account ${found.who.name}`,
+        });
+      }
+      usersResult(null);
+    });
+
+    // Every token that person is holding, and every browser told. Used by
+    // signing out, by suspending and by deleting.
+    function endEveryDevice(uid) {
+      identity.revokeAll(uid);
+      for (const other of socketsForUid(uid)) {
+        other.data.uid = null;
+        other.data.token = null;
+        other.data.isAdmin = false;
+        other.emit('sessionEnded', { mine: false });
+      }
+    }
+
     socket.on('adminGetGameNight', () => {
       if (!socket.data.isAdmin) return;
       sendPairing();

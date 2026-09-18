@@ -59,6 +59,18 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onAdminGameNight(data);
   });
   // Every game on the server, for the Admin page; the same unlock.
+  socket.on('adminUsers', (data) => {
+    if (window.Lobby) Lobby.onAdminUsers(data);
+  });
+
+  socket.on('adminUser', (data) => {
+    if (window.Lobby) Lobby.onAdminUser(data);
+  });
+
+  socket.on('adminUserResult', (data) => {
+    if (window.Lobby) Lobby.onAdminUserResult(data);
+  });
+
   socket.on('adminTournaments', (data) => {
     if (window.Lobby) Lobby.onAdminTournaments(data);
   });

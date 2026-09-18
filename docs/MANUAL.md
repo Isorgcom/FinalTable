@@ -714,9 +714,9 @@ for thirty days (`HAND_HISTORY_TTL_MS`) and the server keeps the most recent
 
 ### The Admin page
 
-Three pages behind one strip of tabs: **Games**, **Sign-in** and **Log**. One
-shows at a time, it opens on Games, and **Back to the lobby** is below all of
-them. The arrow keys walk the tabs.
+Four pages behind one strip of tabs: **Games**, **Sign-in**, **Users** and
+**Log**. One shows at a time, it opens on Games, and **Back to the lobby** is
+below all of them. The arrow keys walk the tabs.
 
 **Games on this server** is the page it opens on: every game the server holds,
 listed or
@@ -751,6 +751,35 @@ can sign in with their account there. Register the server on GameNight first
 slug here; the signing key is fetched, nothing is pasted. **Refresh key** if
 GameNight regenerates its key; **Unpair** takes the button away. The full
 procedure is in [DEPLOYMENT.md](./DEPLOYMENT.md#pairing-with-gamenight).
+
+**Users** is everybody with an account here. Search by name, or show only
+administrators or only suspended accounts. A row says how many devices they
+are signed in on and when they were last here, and carries what can be done
+about them:
+
+- **Open** shows the one thing the list leaves out - their email address -
+  along with how many games of theirs are kept and how many browsers they have
+  open. The Log records every time an address was looked at, because an
+  address is the most sensitive thing this server holds about somebody.
+- **Make admin** and **Stand down** hand the server's controls over, or take
+  them back. Somebody standing down is fine; leaving the server with no
+  administrator at all is not, so the last one cannot be stood down, suspended
+  or deleted.
+- **Suspend** signs them out everywhere and refuses them at every door until
+  **Let back in**. This is what to do about somebody who is a problem mid-game.
+- **Sign out** ends every browser they are signed in on without touching the
+  account - the thing to do about a laptop left in a hotel.
+- **Reset password** sends them the same link **Forgot your password?** would.
+  A GameNight account has no password here, so it is not offered one.
+- **Delete** takes the account and every device with it. The games they played
+  are kept, with their name still on them. A GameNight account cannot be
+  deleted - its id belongs to GameNight, so it would come back on the next
+  sign-in, and without the suspension - so suspend one instead.
+
+**Make an account** below the list creates one for somebody by name and
+address. No password is set: a link goes to them and they choose their own, so
+whoever made the account never knows it. It needs mail set up, like every
+other account on the server.
 
 **Log** is what this server has done, newest first. A row for every game and
 how it ended - a winner, cancelled by the host or the admin, or written off

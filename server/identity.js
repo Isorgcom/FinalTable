@@ -789,6 +789,24 @@ function createIdentityStore(options = {}) {
     return isAdmin(uid) && admins.size <= 1;
   }
 
+  // Somebody who has an account but has never signed in on anything: what an
+  // administrator making one for somebody else leaves behind. A person with no
+  // devices, which is an ordinary thing to be since signing out everywhere
+  // leaves exactly that.
+  //
+  // Without this they would be an account with nobody attached, invisible to
+  // the Users page that had just made them.
+  function create({ uid, name, avatar, provider = 'local' } = {}) {
+    if (!uid || identities.has(uid)) return null;
+    const safeName = sanitizeName(name);
+    if (!safeName || nameHeldBy(safeName, uid)) return null;
+    const rec = newRecord({ uid, name: safeName, avatar: sanitizeAvatar(avatar), provider }, now());
+    hold(rec);
+    mark(uid);
+    scheduleFlush('material');
+    return { uid: rec.uid, name: rec.name, avatar: rec.avatar, provider: rec.provider };
+  }
+
   // Named in the environment, applied at boot. The answer to "a stranger
   // signed up first" and to "the only administrator is lost", and the only
   // way back into a server whose keys have gone.
@@ -903,6 +921,7 @@ function createIdentityStore(options = {}) {
     expireDevices,
     isAdmin,
     isDisabled,
+    create,
     setRole,
     promoteByName,
     setDisabled,

@@ -337,6 +337,7 @@
   const ADMIN_PAGES = [
     { name: 'games', cap: 'Games', onShow: () => askForAdminGames() },
     { name: 'gamenight', cap: 'GameNight', onShow: null },
+    { name: 'users', cap: 'Users', onShow: () => askForUsers({ fresh: true }) },
     { name: 'log', cap: 'Log', onShow: () => askForAdminLog({ fresh: true }) },
   ];
   // Session only, and back to Games every time the page opens. Deliberately
@@ -525,6 +526,217 @@
   // The unlock is gone. Said here, on the page, because every admin request is
   // answered with silence when a socket is not unlocked - which is right
   // against somebody probing the server, and unreadable from inside the page.
+
+  // ── Users ────────────────────────────────────────────────────────────────
+  //
+  // Everything here is done to somebody, so every button that cannot be undone
+  // asks first and says what it will do. The list is redrawn under a signature
+  // like the Games page's, so the three-second poll cannot pull a button out
+  // from under the cursor.
+
+  // A page of accounts, and how many more one press asks for.
+  const PAGE_USERS = 25;
+  let users = null;
+  let usersShown = PAGE_USERS;
+  let _drawnUsersSig = null;
+
+  // The dialog helpers come from app-init.js, which runs after this module
+  // does; a page with no dialogs at all should still not do the irreversible
+  // thing silently, so no answer means no.
+  async function confirmThat(options) {
+    if (typeof window.showConfirmDialog !== 'function') return false;
+    return window.showConfirmDialog({ cancelLabel: 'Leave it', ...options });
+  }
+
+  function setUsersStatus(text, kind) {
+    const el = $('adminUsersStatus');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('err', kind === 'err');
+  }
+
+  function usersQuery() {
+    return {
+      q: $('adminUserSearch').value.trim(),
+      filter: $('adminUserFilter').value,
+      limit: usersShown,
+    };
+  }
+
+  function askForUsers({ fresh = false, quiet = false } = {}) {
+    if (!socket || !socket.connected) return;
+    if (fresh) usersShown = PAGE_USERS;
+    if (!quiet && !users) setUsersStatus('Loading…');
+    socket.emit('adminListUsers', usersQuery());
+  }
+
+  function onAdminUsers(data) {
+    users = data && Array.isArray(data.rows) ? data : { rows: [], total: 0 };
+    renderUsers();
+  }
+
+  function onAdminUserResult(data) {
+    if (data && data.ok) {
+      if (data.made) {
+        setUsersStatus(`${data.made} has an account, and a link is on its way.`, 'ok');
+        $('adminNewUserName').value = '';
+        $('adminNewUserEmail').value = '';
+      } else if (data.sent) {
+        setUsersStatus(`A link is on its way to ${data.sent}.`, 'ok');
+      } else {
+        setUsersStatus('Done.', 'ok');
+      }
+      return;
+    }
+    setUsersStatus((data && data.error) || 'That did not work.', 'err');
+  }
+
+  function whenSeen(at) {
+    if (!at) return 'never';
+    const mins = Math.max(0, Math.round((Date.now() - at) / 60000));
+    if (mins < 2) return 'just now';
+    if (mins < 60) return `${mins} minutes ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return `${hours} hours ago`;
+    return `${Math.round(hours / 24)} days ago`;
+  }
+
+  function userRow(row) {
+    const wrap = document.createElement('div');
+    wrap.className = 'session-row';
+    const what = document.createElement('div');
+    what.className = 'session-what';
+
+    const name = document.createElement('div');
+    name.className = 'session-name';
+    name.textContent = `${row.avatar || '🧑'} ${row.name}`;
+    what.appendChild(name);
+
+    const tags = [];
+    if (row.role === 'admin') tags.push('administrator');
+    if (row.disabled) tags.push('suspended');
+    if (row.provider === 'gamenight') tags.push('GameNight');
+    for (const tag of tags) {
+      const mark = document.createElement('span');
+      mark.className = 'session-here';
+      mark.textContent = tag;
+      what.appendChild(mark);
+    }
+
+    const when = document.createElement('div');
+    when.className = 'session-when';
+    const devices = row.devices === 1 ? '1 device' : `${row.devices} devices`;
+    when.textContent = `${devices} · last here ${whenSeen(row.lastSeenAt)}`;
+    what.appendChild(when);
+    wrap.appendChild(what);
+
+    const actions = document.createElement('div');
+    actions.className = 'admin-card-actions';
+    const button = (label, kind, onClick) => {
+      const b = document.createElement('button');
+      b.className = kind;
+      b.type = 'button';
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      actions.appendChild(b);
+      return b;
+    };
+
+    button('Open', 'btn-secondary', () => socket.emit('adminGetUser', { uid: row.uid }));
+    button(row.role === 'admin' ? 'Stand down' : 'Make admin', 'btn-secondary', () =>
+      socket.emit('adminSetUserRole', {
+        uid: row.uid,
+        role: row.role === 'admin' ? 'player' : 'admin',
+      })
+    );
+    button(row.disabled ? 'Let back in' : 'Suspend', 'btn-secondary', async () => {
+      if (!row.disabled) {
+        const ok = await confirmThat({
+          title: `Suspend ${row.name}?`,
+          message: 'They are signed out everywhere and cannot sign in again until you lift it.',
+          confirmLabel: 'Suspend',
+        });
+        if (!ok) return;
+      }
+      socket.emit('adminSetUserDisabled', { uid: row.uid, disabled: !row.disabled });
+    });
+    button('Sign out', 'btn-secondary', async () => {
+      const ok = await confirmThat({
+        title: `Sign ${row.name} out everywhere?`,
+        message: 'Every browser they are signed in on is signed out. The account stays.',
+        confirmLabel: 'Sign out',
+      });
+      if (ok) socket.emit('adminSignOutUser', { uid: row.uid });
+    });
+    if (row.provider !== 'gamenight') {
+      button('Reset password', 'btn-secondary', () =>
+        socket.emit('adminResetUserPassword', { uid: row.uid })
+      );
+      button('Delete', 'btn-danger', async () => {
+        const ok = await confirmThat({
+          title: `Delete ${row.name}?`,
+          message:
+            'The account and every device go. The games they played are kept, with their name still on them.',
+          confirmLabel: 'Delete',
+        });
+        if (ok) socket.emit('adminDeleteUser', { uid: row.uid });
+      });
+    }
+    wrap.appendChild(actions);
+    return wrap;
+  }
+
+  function renderUsers() {
+    const list = $('adminUsersList');
+    if (!list || !users) return;
+    const sig = JSON.stringify(users);
+    if (sig === _drawnUsersSig) return;
+    _drawnUsersSig = sig;
+    list.innerHTML = '';
+    if (!users.rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'admin-games-empty';
+      empty.textContent = 'Nobody here by that name.';
+      list.appendChild(empty);
+    } else {
+      for (const row of users.rows) list.appendChild(userRow(row));
+    }
+    const more = users.total > users.rows.length;
+    $('btnAdminUsersMore').classList.toggle('hidden', !more);
+    setUsersStatus(
+      users.total === 1 ? '1 account' : `${users.rows.length} of ${users.total} accounts`
+    );
+  }
+
+  // One person, with the things the list leaves out. A dialog rather than a
+  // page of its own: it is read and closed.
+  function onAdminUser(data) {
+    if (!data || data.error) return setUsersStatus((data && data.error) || 'Nobody there.', 'err');
+    const u = data.user;
+    const lines = [
+      `${u.provider === 'gamenight' ? 'A GameNight account' : 'An account here'}${
+        u.role === 'admin' ? ', and an administrator' : ''
+      }${u.disabled ? ', suspended' : ''}.`,
+      u.email ? `Address: ${u.email}` : 'No address on file.',
+      `Signed in on ${u.devices || 0} device(s), ${u.online || 0} of them open now.`,
+      `${u.games || 0} game(s) kept.`,
+      `Last here ${whenSeen(u.lastSeenAt)}.`,
+    ];
+    if (window.showNoticeDialog) {
+      window.showNoticeDialog({ title: u.name, message: lines.join('\n') });
+    }
+  }
+
+  function createUser() {
+    if (!socket) return;
+    const name = $('adminNewUserName').value.trim();
+    const email = $('adminNewUserEmail').value.trim();
+    if (!name) return setUsersStatus('Pick a name for them.', 'err');
+    if (!email) return setUsersStatus('An address to send the link to.', 'err');
+    setUsersStatus('Making it…');
+    socket.emit('adminCreateUser', { name, email });
+  }
 
   function setPairingStatus(text, kind) {
     const el = $('adminGnStatus');
@@ -2700,6 +2912,18 @@
     );
     const adminStrip = document.querySelector('#lobbyAdmin .admin-tabs');
     if (adminStrip) adminStrip.addEventListener('keydown', onAdminTabKey);
+    $('btnAdminCreateUser').addEventListener('click', createUser);
+    $('btnAdminUsersMore').addEventListener('click', () => {
+      usersShown += PAGE_USERS;
+      askForUsers();
+    });
+    let userSearchTimer = null;
+    const searchAgain = () => {
+      clearTimeout(userSearchTimer);
+      userSearchTimer = setTimeout(() => askForUsers({ fresh: true }), 200);
+    };
+    $('adminUserSearch').addEventListener('input', searchAgain);
+    $('adminUserFilter').addEventListener('change', () => askForUsers({ fresh: true }));
     $('adminGnUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -2744,6 +2968,7 @@
     setInterval(() => {
       if (view !== 'admin') return;
       if (adminTab === 'games') askForAdminGames();
+      else if (adminTab === 'users') askForUsers({ quiet: true });
       // The Log follows the newest page only, and only while the reader has
       // not paged back into older rows.
       else if (adminTab === 'log' && !adminLogPaged) askForAdminLog({ fresh: true, quiet: true });
@@ -2761,6 +2986,9 @@
     onServerInfo,
     onAdminStatus,
     onAdminGameNight,
+    onAdminUsers,
+    onAdminUser,
+    onAdminUserResult,
     onAdminTournaments,
     onAdminLogRows,
     onIdentified,

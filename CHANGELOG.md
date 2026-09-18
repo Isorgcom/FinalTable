@@ -53,6 +53,20 @@ Release on GitHub to go with it.
 
 ### Added
 
+- **A Users page on the Admin panel.** Every account on the server, searchable,
+  filterable by administrator or suspended, showing how many devices each is
+  signed in on and when they were last here. From a row: make somebody an
+  administrator or stand them down, suspend them and let them back in, sign
+  them out of every browser at once, send them a password reset, or delete the
+  account. **Open** shows the one thing the list deliberately leaves out - the
+  email address - and the Log records every time one was looked at.
+  **Make an account** hands one over by name and address: the link goes to
+  them and they choose the password, so whoever made it never knows it.
+  Nobody can delete or suspend themselves, and the last administrator cannot
+  be deleted, suspended or stood down, because a server nobody administers is
+  a server nobody can fix. A GameNight account is suspended rather than
+  deleted - its id comes from GameNight, so deleting it only forgets it until
+  the next sign-in.
 - `ADMIN_PROMOTE`, naming an account to make an administrator at boot. The way
   back in when a server has nobody running it: a stranger signed up first, or
   the only administrator lost their password and the address it resets to.

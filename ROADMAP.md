@@ -60,6 +60,16 @@ hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
 
+Everybody has an account, and the admin surface is one. The name box is gone:
+a player signs in with an account of this server's own or with GameNight, one
+name belongs to one person server-wide, and the lobby is not drawn for anybody
+who has not come through the door. The admin controls stopped being a shared
+password and became a role on an account - derived once at sign-in, surviving
+a reconnect, and revocable in a way a password never was. The first account on
+a fresh server administers it; `ADMIN_PROMOTE` is the way back in when that is
+not the answer. The Admin page gained **Users**: who plays here, and what can
+be done about them.
+
 A database of its own. Everything this server keeps - accounts, identities and
 the devices they are signed in on, the games in progress, the chat, the hands
 it keeps and the admin log - lives in a MariaDB beside the server rather than
@@ -264,8 +274,8 @@ action bubble that used to outlive its street. See the CHANGELOG.
 Not the game, and not the split below: what the person who hosts it needs.
 
 **The admin panel is done** - see Done above. What stays ruled out is a
-dashboard for its own sake, and the controls over a running game, which live
-in the table menu behind the same password.
+dashboard for its own sake. The controls over a running game live in the table
+menu, offered to an administrator and to nobody else.
 
 ## Architecture
 
@@ -388,6 +398,6 @@ scrolls away.
   should not grow into. They were never two things: the panel is called
   Admin to a person and admin to the code, and ruling out one while keeping
   the other was ruling out nothing. It moved onto the path, and it is done -
-  see Done. What stays ruled out is a dashboard for its own sake, and the
-  controls over a running game, which live in the table menu behind the same
-  password.
+  see Done. What stays ruled out is a dashboard for its own sake. The controls
+  over a running game live in the table menu, offered to an administrator and
+  to nobody else.

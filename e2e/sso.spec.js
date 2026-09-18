@@ -298,11 +298,11 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
   await expect(page.locator('#lobbyAdmin')).toBeVisible();
 
   const tabs = page.locator('#lobbyAdmin .admin-tabs .side-tab');
-  // Three: the Password page went with the password.
-  await expect(tabs).toHaveCount(3);
+  // Four: the Password page went with the password, and Users arrived.
+  await expect(tabs).toHaveCount(4);
   // It opens on Games, and exactly one page is showing.
   await expect(page.locator('#adminPageGames')).toBeVisible();
-  for (const id of ['#adminPageGameNight', '#adminPageLog']) {
+  for (const id of ['#adminPageGameNight', '#adminPageUsers', '#adminPageLog']) {
     await expect(page.locator(id)).toBeHidden();
   }
   await expect(page.locator('#tabAdminGames')).toHaveAttribute('aria-selected', 'true');
@@ -316,6 +316,8 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
 
   // The arrows walk the strip, and Home goes back to the first.
   await page.locator('#tabAdminGameNight').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#adminPageUsers')).toBeVisible();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#adminPageLog')).toBeVisible();
   // The page asks as it opens, and this server has at least started once.
@@ -333,6 +335,49 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
   await expect(page.locator('#adminPageGames')).toBeVisible();
+});
+
+// The Users page: who plays here, and what can be done about them. The
+// destructive half asks first; this covers the whole of one round trip.
+test('the Users page lists accounts, makes one, and suspends another', async ({
+  browser,
+  page,
+}) => {
+  await helpers.signInAs(page, 'Governor', { admin: true });
+  // Somebody to act on, signed in on a browser of their own.
+  const theirs = await browser.newContext();
+  const them = await theirs.newPage();
+  await helpers.signInAs(them, 'Subject');
+
+  await openLobbyMenu(page);
+  await page.click('#btnLobbyAdmin');
+  await page.click('#tabAdminUsers');
+  const row = page.locator('#adminUsersList .session-row', { hasText: 'Subject' });
+  await expect(row).toBeVisible();
+  // The list never carries an address, because it is polled.
+  await expect(page.locator('#adminUsersList')).not.toContainText('@');
+
+  // Searching narrows it where the rows are.
+  await page.fill('#adminUserSearch', 'subject');
+  await expect(page.locator('#adminUsersList .session-row')).toHaveCount(1);
+  await page.fill('#adminUserSearch', '');
+  await expect(row).toBeVisible();
+
+  // Making one: a link goes out, and no password is chosen here.
+  await page.fill('#adminNewUserName', 'Newcomer');
+  await page.fill('#adminNewUserEmail', 'newcomer@example.com');
+  await page.click('#btnAdminCreateUser');
+  await expect(page.locator('#adminUsersStatus')).toContainText('link is on its way');
+  await expect(page.locator('#adminUsersList')).toContainText('Newcomer');
+
+  // Suspending asks first, then reaches the browser they are holding.
+  await row.locator('button', { hasText: 'Suspend' }).click();
+  await page.click('#btnAppDialogConfirm');
+  await expect(row).toContainText('suspended');
+  await expect(them.locator('#accountRow')).toBeVisible({ timeout: 10000 });
+  await expect(them.locator('#lobbyHome')).toBeHidden();
+
+  await theirs.close();
 });
 
 // What the server has done, which used to be answerable only with a shell on
