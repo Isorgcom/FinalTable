@@ -1,5 +1,5 @@
 // __tests__/sso-admin.test.js - pairing with GameNight from the Admin page,
-// over the socket: gated on the admin unlock, announced to every socket, and
+// over the socket: gated on being an administrator, announced to every socket, and
 // kept across a restart.
 const crypto = require('crypto');
 const fs = require('fs');
@@ -10,7 +10,6 @@ const { io: Client } = require('socket.io-client');
 
 jest.setTimeout(20000);
 
-const PASSWORD = 'admin-secret';
 const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PEM = publicKey.export({ type: 'spki', format: 'pem' }).trim();
 
@@ -39,6 +38,8 @@ function tokenFor(iss, sub = '42') {
   return `${input}.${sig.toString('base64url')}`;
 }
 
+const { accountFor } = require('./helpers/account');
+
 describe('pairing with GameNight from the Admin page', () => {
   const originalEnv = { ...process.env };
   const sockets = [];
@@ -63,7 +64,6 @@ describe('pairing with GameNight from the Admin page', () => {
     process.env.SAVE_DIR = tempDir;
     process.env.HOST = '127.0.0.1';
     process.env.HTTP_RATE_LIMIT = '1000';
-    process.env.ADMIN_PASSWORD = PASSWORD;
     delete process.env.GAMENIGHT_URL;
     delete process.env.GAMENIGHT_PUBLIC_KEY;
     gn = await new Promise((resolve) => {
@@ -110,11 +110,20 @@ describe('pairing with GameNight from the Admin page', () => {
     });
   }
 
+  // Signing in as somebody whose account runs the server. There is no unlock
+  // any more - the admin surface belongs to the account rather than to
+  // whoever knows a password - so this is the whole of becoming one.
+  let admins = 0;
   function unlock(s) {
-    return ask(s, 'adminLogin', { password: PASSWORD }, 'adminStatus');
+    return ask(
+      s,
+      'identify',
+      { token: accountFor(serverModule, `Boss${admins++}`, { role: 'admin' }).token },
+      'identified'
+    );
   }
 
-  test('without the unlock, the pairing events answer nothing', async () => {
+  test('to a socket that is not an administrator, the pairing events say nothing', async () => {
     const { s } = await connect();
     let answered = false;
     s.on('adminGameNight', () => (answered = true));
@@ -132,7 +141,7 @@ describe('pairing with GameNight from the Admin page', () => {
     const heard = new Promise((r) => bystander.once('serverInfo', r));
 
     const { s } = await connect();
-    expect((await unlock(s)).ok).toBe(true);
+    expect((await unlock(s)).isAdmin).toBe(true);
     expect(await ask(s, 'adminGetGameNight')).toMatchObject({ paired: false, envPresent: false });
 
     const bad = await ask(s, 'adminPairGameNight', {
@@ -169,83 +178,6 @@ describe('pairing with GameNight from the Admin page', () => {
       connectUrl: `${gn.url}/connect.php`,
       audience: 'finaltable',
     });
-  });
-
-  test('the admin password can be changed, and the change outlives a restart', async () => {
-    const { s } = await connect();
-    await unlock(s);
-
-    // The current password is asked for again, and a new one has to be worth
-    // having. None of these should change anything.
-    for (const [payload, expected] of [
-      [{ current: 'wrong', next: 'a-good-password' }, /not the current password/i],
-      [{ current: PASSWORD, next: 'short' }, /at least 8/i],
-      [{ current: PASSWORD, next: PASSWORD }, /already the password/i],
-    ]) {
-      const r = await ask(s, 'adminSetPassword', payload, 'adminPasswordResult');
-      expect(r.ok).toBe(false);
-      expect(r.error).toMatch(expected);
-    }
-    expect(await serverModule.adminCredential.verify(PASSWORD)).toBe(true);
-
-    // A second admin session, which the change should sign out.
-    const { s: other } = await connect();
-    expect((await unlock(other)).ok).toBe(true);
-    const signedOut = new Promise((r) => other.once('adminStatus', r));
-
-    const done = await ask(
-      s,
-      'adminSetPassword',
-      { current: PASSWORD, next: 'a-longer-password' },
-      'adminPasswordResult'
-    );
-    expect(done).toEqual({ ok: true });
-    expect(await signedOut).toMatchObject({ ok: false, available: true, signedOut: true });
-
-    // The old one is dead, the new one works, and nothing was stored in clear.
-    const { s: third } = await connect();
-    expect((await ask(third, 'adminLogin', { password: PASSWORD }, 'adminStatus')).ok).toBe(false);
-    expect(
-      (await ask(third, 'adminLogin', { password: 'a-longer-password' }, 'adminStatus')).ok
-    ).toBe(true);
-    // What is kept is the hash and never the password itself.
-    const stored = serverModule.settingsStore.get('adminPassword');
-    expect(stored).toMatchObject({ algo: 'scrypt' });
-    expect(JSON.stringify(stored)).not.toContain('a-longer-password');
-
-    // And it survives the process, with the environment still holding the old one.
-    await shutdown();
-    await boot();
-    const { s: afterRestart } = await connect();
-    expect((await ask(afterRestart, 'adminLogin', { password: PASSWORD }, 'adminStatus')).ok).toBe(
-      false
-    );
-    const back = await ask(
-      afterRestart,
-      'adminLogin',
-      { password: 'a-longer-password' },
-      'adminStatus'
-    );
-    expect(back.ok).toBe(true);
-    // Put it back, so the rest of the suite has the password it expects.
-    expect(
-      await ask(
-        afterRestart,
-        'adminSetPassword',
-        { current: 'a-longer-password', next: PASSWORD },
-        'adminPasswordResult'
-      )
-    ).toEqual({ ok: true });
-  });
-
-  test('a socket that has not unlocked cannot change the password', async () => {
-    const { s } = await connect();
-    let answered = false;
-    s.on('adminPasswordResult', () => (answered = true));
-    s.emit('adminSetPassword', { current: PASSWORD, next: 'sneaky-password' });
-    await new Promise((r) => setTimeout(r, 300));
-    expect(answered).toBe(false);
-    expect(await serverModule.adminCredential.verify(PASSWORD)).toBe(true);
   });
 
   test('refresh answers, and unpair takes the button away for everyone', async () => {

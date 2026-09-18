@@ -129,25 +129,32 @@ The clone is the deployment. `docker-compose.prod.yml` is committed and carries
 this host's specifics: the bind mount, the proxy network, `TRUST_PROXY`, and
 memory sized for a box that has other tenants.
 
-### The admin password
+### Who administers the server
 
-`ADMIN_PASSWORD` in the host's `.env` is how a server gets its first one: with
-no password there is no admin surface, and so no way in to set one. After
-that it is changed from the **admin** page, reached from the menu in the
-lobby's top corner, and the new one is
-kept as a scrypt hash in `data/settings.json` and wins over the environment
-from then on - a password somebody typed into a browser should not be undone
-by a stale line in a compose file.
+Nobody, at first - and then whoever makes the first account on it. There is no
+admin password: the Admin page and ending a running tournament from the table
+menu belong to an account carrying the administrator role, and on a fresh
+server the first account through the door gets it. The boot log says
+`admin_claimed` when that happens.
 
-Forgotten it, remove `adminPassword` from that file and the environment's works
-again:
+Two cases where that is not the answer, and one variable for both. A server
+left reachable before its owner got to it has handed the keys to a stranger;
+and an administrator can lose their password and the address it would be reset
+to. Either way, put the account's name in `ADMIN_PROMOTE` and restart:
 
 ```bash
-docker exec finaltable node -e 'const f="/app/data/settings.json",fs=require("fs");
-const d=JSON.parse(fs.readFileSync(f));delete d.settings.adminPassword;
-fs.writeFileSync(f,JSON.stringify(d,null,2))'
-docker compose -f docker-compose.yml -f docker-compose.prod.yml restart
+echo 'ADMIN_PROMOTE=Bryce' >> /opt/finaltable/.env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+It is applied on every boot and never takes the role away, so it can be left
+where it is. A name no account here has logs an error and changes nothing.
+Taking the role off the stranger is then done from the Users page.
+
+A server upgrading from a version that had `ADMIN_PASSWORD` promotes nobody -
+it has accounts already, and handing it to whoever signs in next would be
+arbitrary. It says `admin_unclaimed` at boot until `ADMIN_PROMOTE` names one.
+The old variable is ignored, and says so.
 
 ### Pairing with GameNight
 
@@ -161,7 +168,7 @@ browser:
    reach it. The URL must match exactly, scheme, host and port: it is the only
    place GameNight will ever send a token.
 2. In this server's lobby, open the menu in the top corner and pick
-   **admin** (it needs `ADMIN_PASSWORD` set), then enter the GameNight
+   **admin** (it is only there for an administrator), then enter the GameNight
    address and the slug.
    The signing key is fetched from GameNight, checked, and saved to
    `data/settings.json`; the button appears for everyone at once.

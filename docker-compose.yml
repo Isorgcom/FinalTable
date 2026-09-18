@@ -79,8 +79,10 @@ services:
       # have room. Raise this and mem_limit together — the heap has to fit
       # inside the limit with the rest of the process beside it.
       - NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_MB:-384}
-      # Unset by default: no admin password means no admin controls.
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      # The account that runs this server, by name. Unset is the ordinary case:
+      # the first account made on a fresh server is the administrator. This is
+      # the way back in when that is not the answer.
+      - ADMIN_PROMOTE=${ADMIN_PROMOTE:-}
       # Sign in with GameNight, all three from .env (see .env.example). Unset
       # means the button does not exist.
       - GAMENIGHT_URL=${GAMENIGHT_URL:-}

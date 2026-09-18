@@ -18,7 +18,6 @@ const repoRoot = path.join(__dirname, '..');
 
 const ISSUER = 'http://gamenight.test:8080';
 const AUDIENCE = 'finaltable';
-const ADMIN_PASSWORD = 'admin-secret';
 const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 
 let seq = 0;
@@ -66,7 +65,6 @@ test.beforeAll(async () => {
   process.env.GAMENIGHT_URL = ISSUER;
   process.env.GAMENIGHT_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' });
   process.env.GAMENIGHT_AUDIENCE = AUDIENCE;
-  process.env.ADMIN_PASSWORD = ADMIN_PASSWORD;
   // Accounts need somewhere for a link to point and a way to send it. The log
   // is the inbox here, which is what that transport is for.
   process.env.MAIL_TRANSPORT = 'log';
@@ -264,11 +262,9 @@ test('the admin sees every game, listed or not, and can end one', async ({ brows
   await expect(host.locator('#lobbyWaiting')).toBeVisible();
   const code = (await host.locator('#wrCode').textContent()).trim();
 
-  await helpers.signInAs(page, 'AdminOne');
+  await helpers.signInAs(page, 'AdminOne', { admin: true });
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
-  await page.fill('#appDialogInput', ADMIN_PASSWORD);
-  await page.click('#btnAppDialogConfirm');
   await expect(page.locator('#lobbyAdmin')).toBeVisible();
   const card = page.locator('#adminGamesList .t-card', { hasText: 'Back Room' });
   await expect(card).toBeVisible();
@@ -296,31 +292,30 @@ test('the admin sees every game, listed or not, and can end one', async ({ brows
 // The page is four pages behind one strip now, so that a fifth can join
 // without making it a longer scroll. This is the shape, not the contents.
 test('the Admin page is tabs, opening on Games, with one page showing', async ({ page }) => {
-  await helpers.signInAs(page, 'AdminTwo');
+  await helpers.signInAs(page, 'AdminTwo', { admin: true });
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
-  await page.fill('#appDialogInput', ADMIN_PASSWORD);
-  await page.click('#btnAppDialogConfirm');
   await expect(page.locator('#lobbyAdmin')).toBeVisible();
 
   const tabs = page.locator('#lobbyAdmin .admin-tabs .side-tab');
-  await expect(tabs).toHaveCount(4);
+  // Three: the Password page went with the password.
+  await expect(tabs).toHaveCount(3);
   // It opens on Games, and exactly one page is showing.
   await expect(page.locator('#adminPageGames')).toBeVisible();
-  for (const id of ['#adminPageGameNight', '#adminPagePassword', '#adminPageLog']) {
+  for (const id of ['#adminPageGameNight', '#adminPageLog']) {
     await expect(page.locator(id)).toBeHidden();
   }
   await expect(page.locator('#tabAdminGames')).toHaveAttribute('aria-selected', 'true');
 
   // Picking one swaps which page is up and moves the selection with it.
-  await page.click('#tabAdminPassword');
-  await expect(page.locator('#adminPagePassword')).toBeVisible();
+  await page.click('#tabAdminGameNight');
+  await expect(page.locator('#adminPageGameNight')).toBeVisible();
   await expect(page.locator('#adminPageGames')).toBeHidden();
-  await expect(page.locator('#tabAdminPassword')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#tabAdminGameNight')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#tabAdminGames')).toHaveAttribute('aria-selected', 'false');
 
   // The arrows walk the strip, and Home goes back to the first.
-  await page.locator('#tabAdminPassword').focus();
+  await page.locator('#tabAdminGameNight').focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#adminPageLog')).toBeVisible();
   // The page asks as it opens, and this server has at least started once.
@@ -342,15 +337,13 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
 
 // What the server has done, which used to be answerable only with a shell on
 // the box and a container that had not been recreated.
-test('the Log holds what the server has done, behind the same password', async ({ page }) => {
+test('the Log holds what the server has done, behind an administrator', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await helpers.signInAs(page, 'LogReader');
+  await helpers.signInAs(page, 'LogReader', { admin: true });
 
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
-  await page.fill('#appDialogInput', ADMIN_PASSWORD);
-  await page.click('#btnAppDialogConfirm');
   await expect(page.locator('#lobbyAdmin')).toBeVisible();
 
   await page.click('#tabAdminLog');
@@ -366,7 +359,7 @@ test('the Log holds what the server has done, behind the same password', async (
 
   // Nothing a browser must not have, on the page itself.
   const shown = await page.locator('#adminLogList').textContent();
-  expect(shown).not.toContain(ADMIN_PASSWORD);
+  expect(shown).not.toContain('token');
 
   expect(errors).toEqual([]);
 });
@@ -375,17 +368,17 @@ test('the Log holds what the server has done, behind the same password', async (
 // server restart takes it and every admin request is then answered with
 // silence. From inside the page that used to be indistinguishable from a page
 // that had stopped working - the Log simply sat on "Loading...".
-test('the Log follows the server, and says so when the unlock goes', async ({ browser, page }) => {
+test('the Log follows the server, and comes back on its own after a drop', async ({
+  browser,
+  page,
+}) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await helpers.signInAs(page, 'Watcher');
+  await helpers.signInAs(page, 'Watcher', { admin: true });
 
   await openLobbyMenu(page);
   await page.click('#btnLobbyAdmin');
-  await page.fill('#appDialogInput', ADMIN_PASSWORD);
-  await page.click('#btnAppDialogConfirm');
   await expect(page.locator('#lobbyAdmin')).toBeVisible();
-  await expect(page.locator('#adminLocked')).toBeHidden();
 
   await page.click('#tabAdminLog');
   await expect(page.locator('#adminLogList .admin-log-row').first()).toBeVisible({ timeout: 5000 });
@@ -401,16 +394,13 @@ test('the Log follows the server, and says so when the unlock goes', async ({ br
 
   // The transport drops the way a server restart drops it. The socket comes
   // back; the unlock does not, because nothing keeps the password.
+  // The socket comes back, identifies again, and the surface comes back with
+  // it: there is no password to have forgotten, so there is nothing to ask
+  // for and nothing to say.
   await page.evaluate(() => socket.io.engine.close());
-  await expect(page.locator('#adminLocked')).toBeVisible({ timeout: 10000 });
-  await expect(page.locator('#adminLocked')).toContainText('locked again');
-
-  // And the way back in is on the banner, landing where the reader was rather
-  // than starting again at Games.
-  await page.click('#btnAdminUnlock');
-  await page.fill('#appDialogInput', ADMIN_PASSWORD);
-  await page.click('#btnAppDialogConfirm');
-  await expect(page.locator('#adminLocked')).toBeHidden({ timeout: 10000 });
+  await expect(page.locator('#adminLogList .admin-log-row').first()).toBeVisible({
+    timeout: 15000,
+  });
   await expect(page.locator('#tabAdminLog')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#adminLogList .admin-log-row').first()).toBeVisible();
 
@@ -441,14 +431,12 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
     s.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${s.address().port}`, s }));
   });
   try {
-    await helpers.signInAs(page, 'Repairer');
+    await helpers.signInAs(page, 'Repairer', { admin: true });
     await openLobbyMenu(page);
     await expect(page.locator('#btnLobbyAdmin')).toBeVisible();
     await page.click('#btnLobbyAdmin');
     // Picking something closes the menu behind it.
     await expect(page.locator('#lobbyMenuDropdown')).not.toHaveClass(/open/);
-    await page.fill('#appDialogInput', ADMIN_PASSWORD);
-    await page.click('#btnAppDialogConfirm');
     await expect(page.locator('#lobbyAdmin')).toBeVisible();
     // The page opens on Games; the pairing lives on its own tab now.
     await page.click('#tabAdminGameNight');
@@ -479,35 +467,11 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
     await page.click('#btnAdminPair');
     await expect(page.locator('#adminGnStatus')).toContainText('Could not reach');
 
-    // The admin password, changed from the same page, one tab along.
-    await page.click('#tabAdminPassword');
-    await page.fill('#adminPwNext', 'a-longer-password');
-    await page.fill('#adminPwConfirm', 'a-longer-password');
-    await page.click('#btnAdminSetPassword');
-    await expect(page.locator('#adminPwStatus')).toContainText('Enter the current password');
-
-    await page.fill('#adminPwCurrent', ADMIN_PASSWORD);
-    await page.fill('#adminPwConfirm', 'mistyped-the-second-time');
-    await page.click('#btnAdminSetPassword');
-    await expect(page.locator('#adminPwStatus')).toContainText('do not match');
-
-    await page.fill('#adminPwConfirm', 'a-longer-password');
-    await page.click('#btnAdminSetPassword');
-    await expect(page.locator('#adminPwStatus')).toContainText('Password changed');
-    await expect(page.locator('#adminPwCurrent')).toHaveValue('');
-
-    // The new one is what unlocks now. Reload for a fresh socket and prove it.
+    // And the page is still there after a reload, with nothing to type: the
+    // surface belongs to the account, so it comes back with the sign-in.
     await page.reload();
     await openLobbyMenu(page);
     await page.click('#btnLobbyAdmin');
-    await page.fill('#appDialogInput', ADMIN_PASSWORD);
-    await page.click('#btnAppDialogConfirm');
-    await expect(page.locator('#appDialogBody')).toContainText('Wrong password');
-    await page.click('#btnAppDialogConfirm');
-    await openLobbyMenu(page);
-    await page.click('#btnLobbyAdmin');
-    await page.fill('#appDialogInput', 'a-longer-password');
-    await page.click('#btnAppDialogConfirm');
     await expect(page.locator('#lobbyAdmin')).toBeVisible();
   } finally {
     await new Promise((r) => fakeGn.s.close(r));
@@ -517,7 +481,7 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
 test('the menu shows the version, and only the version when nothing is configured', async ({
   page,
 }) => {
-  await helpers.signInAs(page, 'AdminThree');
+  await helpers.signInAs(page, 'AdminThree', { admin: true });
   await openLobbyMenu(page);
   await expect(page.locator('#lobbyMenuVersion')).toHaveText(
     `FinalTable v${require('../package.json').version}`

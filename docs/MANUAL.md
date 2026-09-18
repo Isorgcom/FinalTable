@@ -669,10 +669,16 @@ your seat.
 
 ## For the admin
 
-The admin is whoever knows the server's admin password. It unlocks the
-**admin** item in the lobby's corner menu and the **admin** item in the
-table menu. The unlock lasts as long as the browser's connection; a reload
-asks again.
+The admin is an account. On a fresh server it is whoever makes the first one;
+after that, an administrator makes another from the Users page. There is
+nothing to type and nothing to unlock: the **admin** item in the lobby's
+corner menu is there for an administrator and nowhere else, and it stays
+there across a reload, a reconnect and a restart.
+
+If a server ends up with nobody administering it - a stranger signed up first,
+or the only administrator lost their password and their address - whoever runs
+the box names an account in `ADMIN_PROMOTE` and restarts it. That is written
+down in [DEPLOYMENT.md](./DEPLOYMENT.md#who-administers-the-server).
 
 ### An account of your own
 
@@ -708,9 +714,9 @@ for thirty days (`HAND_HISTORY_TTL_MS`) and the server keeps the most recent
 
 ### The Admin page
 
-Four pages behind one strip of tabs: **Games**, **Sign-in**, **Password** and
-**Log**. One shows at a time, it opens on Games, and **Back to the lobby** is
-below all of them. The arrow keys walk the tabs.
+Three pages behind one strip of tabs: **Games**, **Sign-in** and **Log**. One
+shows at a time, it opens on Games, and **Back to the lobby** is below all of
+them. The arrow keys walk the tabs.
 
 **Games on this server** is the page it opens on: every game the server holds,
 listed or
@@ -733,10 +739,8 @@ lobby with a note saying the admin ended it. The page keeps itself up to date
 while it is open, and follows the server as games come and go; **Refresh**
 asks again at once.
 
-The unlock belongs to the connection, not to the browser. A server restart, or
-a laptop waking up, ends it - the page says so across the top and offers
-**Unlock**, which puts you back on the page you were reading. Changing the
-password from here signs out every other admin session the same way.
+The page follows the account rather than the connection: a server restart or a
+laptop waking up reconnects, signs back in, and the page is still there.
 
 This is the one place an unlisted game and its code are shown to somebody
 who is not in it. Hand codes out with care.
@@ -748,12 +752,6 @@ slug here; the signing key is fetched, nothing is pasted. **Refresh key** if
 GameNight regenerates its key; **Unpair** takes the button away. The full
 procedure is in [DEPLOYMENT.md](./DEPLOYMENT.md#pairing-with-gamenight).
 
-**Password** changes the admin password. The current one is asked for
-again, and the change signs out every other admin session. The first
-password comes from the server's environment (`ADMIN_PASSWORD`); after a
-change the new one wins, and a forgotten one is reset as described in
-[DEPLOYMENT.md](./DEPLOYMENT.md#the-admin-password).
-
 **Log** is what this server has done, newest first. A row for every game and
 how it ended - a winner, cancelled by the host or the admin, or written off
 after everybody walked away - with the entrants, the level it reached and who
@@ -764,8 +762,8 @@ one every time). A row for every restart, which is what
 answers "has this thing been coming up over and over". And a row for anything
 that logged a warning or an error, which is the half that says why.
 
-It is kept in a file beside the other saves, so it survives a restart, and
-entries drop off both by age and by count so the file cannot grow without end
+It is kept in the database, so it survives a restart, and entries drop off
+both by age and by count so it cannot grow without end
 (`ADMIN_LOG_MAX_AGE_MS` and `ADMIN_LOG_MAX_ROWS`). New entries appear while
 the page is open, without touching anything. **Show older** pages back
 through it, and once you have, the page stops following so nothing moves under
@@ -778,9 +776,9 @@ anything else does.
 
 ### From the table
 
-The table menu's **admin** item takes the same password and then offers
-**cancel tournament** for the game at that table. It is the same thing as End
-game on the Admin page, reached without leaving the felt.
+The table menu offers **cancel tournament** for the game at that table, to an
+administrator and to nobody else. It is the same thing as End game on the
+Admin page, reached without leaving the felt.
 
 ### Server settings
 
@@ -789,7 +787,7 @@ restart:
 
 | Setting                      | Default    | What it does                                                              |
 | ---------------------------- | ---------- | ------------------------------------------------------------------------- |
-| `ADMIN_PASSWORD`             | none       | The first admin password. None means no admin surface.                    |
+| `ADMIN_PROMOTE`              | none       | An account to make an administrator at boot, by name.                     |
 | `MAX_TOURNAMENTS`            | 8          | How many games the server holds at once.                                  |
 | `CHAT_ENABLED`               | true       | Chat exists at all.                                                       |
 | `REACTIONS_ENABLED`          | true       | The reaction strip exists at all.                                         |

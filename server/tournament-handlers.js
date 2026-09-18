@@ -23,14 +23,12 @@ const ADMIN_LOG_LIMIT = 30;
 const EXPORT_LIMIT = 6;
 const EXPORT_WINDOW_MS = 60 * 1000;
 const ADMIN_LOG_WINDOW_MS = 10 * 1000;
-const ADMIN_MAX_ATTEMPTS = 5;
 // Signing in, signing up and asking for a reset, per socket. A person does
 // each of these once or twice; a loop is somebody working through a list of
 // passwords or making the server send mail to strangers.
 const ACCOUNT_LIMIT = 8;
 const ACCOUNT_WINDOW_MS = 60 * 1000;
 const ACCOUNT_FAIL_DELAY_MS = 400;
-const ADMIN_FAIL_DELAY_MS = 400;
 
 // How often one socket may store a preference. Generous against a person
 // pressing things and mean against a loop, because every save can put the
@@ -41,12 +39,6 @@ const PREF_SAVE_WINDOW_MS = 10 * 1000;
 function registerTournamentHandlers(deps) {
   const { io, identity } = deps;
   const registry = createTournamentRegistry(deps);
-  // The admin password: the environment's, or one an admin has since set
-  // from the Admin page. No password at all means the admin surface does
-  // not exist, rather than existing with a default. It is never sent to a
-  // client, logged, or put in state. See server/admin-credential.js.
-  const adminCredential = deps.adminCredential || { isEnabled: () => false, verify: () => false };
-  const adminEnabled = adminCredential.isEnabled();
   // The GameNight sign-in bridge. Read live on every use: the admin can
   // pair, refresh or unpair while the server runs. Unpaired, a GameNight
   // token is simply not a way in.
@@ -71,11 +63,15 @@ function registerTournamentHandlers(deps) {
     return {
       version,
       assetVersion,
-      adminAvailable: adminEnabled,
-      // Whether this server can hold an account at all: it needs somewhere for
-      // a link to point and a way to send one. The lobby offers the password
-      // box or says why it cannot.
+      // Whether this server can make an account at all: it needs somewhere for
+      // a link to point and a way to send one. The sign-in screen offers the
+      // way to make one, or says why it cannot.
       accounts: !!accounts && mailer.available(),
+      // Nobody administers this server yet, so the first account made here
+      // will. Said out loud on the way in, because a server that has been
+      // reachable for five minutes with this true has handed itself to
+      // whoever got there first.
+      unclaimed: identity.adminCount() === 0,
       // The set the strip draws, or null when the surface does not exist.
       reactions: registry.reactions,
       gamenight: live
@@ -136,6 +132,12 @@ function registerTournamentHandlers(deps) {
   }
 
   io.on('connection', (socket) => {
+    // Cleared before anything else, because socket.io's connection recovery
+    // restores socket.data wholesale for two minutes after a drop - which
+    // would carry an administrator's grant straight through having it taken
+    // away. identify() settles it again a moment from now, from the role on
+    // the account, which is the only thing entitled to decide it.
+    socket.data.isAdmin = false;
     // socket.io recovered this connection (same id, same data) after a short
     // drop: rebind the seat the disconnect handler released.
     if (socket.recovered && socket.data.tournamentId && socket.data.tournamentUid) {
@@ -225,6 +227,10 @@ function registerTournamentHandlers(deps) {
         }
       }
       socket.data.uid = ident.uid;
+      // Where the admin surface comes from now: the role on the account that
+      // just identified. Settled here and nowhere else, so every guard below
+      // is one line and there is one place to get it wrong.
+      socket.data.isAdmin = identity.isAdmin(ident.uid);
       // Kept so this socket can be found when the device it belongs to is
       // signed out from somewhere else, and so the sessions list can say
       // which row is the one asking.
@@ -260,10 +266,10 @@ function registerTournamentHandlers(deps) {
           isNew: ident.isNew,
         });
       }
-      // Whether the admin surface exists at all, so a client can decide
-      // whether to offer it. Never the password, and never whether this socket
-      // has already authenticated — that lives on the server.
-      socket.emit('identified', { ...ident, resume, pending, adminAvailable: adminEnabled });
+      // Whether this person runs the server, which is what decides whether the
+      // menu offers the Admin page. A fact about them rather than about the
+      // server, so it could not be said before now.
+      socket.emit('identified', { ...ident, resume, pending, isAdmin: !!socket.data.isAdmin });
       // The list this socket got on connect was built before it had a uid, so
       // none of its cards knew they were this player's. Send it again.
       socket.emit('tournamentList', registry.listFor(ident.uid));
@@ -836,59 +842,21 @@ function registerTournamentHandlers(deps) {
 
     // ── Admin controls ────────────────────────────────────────────────
     //
-    // Caution worth stating: this server is meant to be reachable over plain
-    // HTTP on a LAN, so the password crosses the wire in the clear. It is a
-    // guard against the other people at the table, not against somebody who
-    // can watch the network.
-    socket.on('adminLogin', async (payload = {}) => {
-      if (!adminEnabled) return socket.emit('adminStatus', { ok: false, available: false });
-      socket.data.adminAttempts = socket.data.adminAttempts || 0;
-      if (socket.data.adminAttempts >= ADMIN_MAX_ATTEMPTS) {
-        return socket.emit('adminStatus', { ok: false, available: true, lockedOut: true });
-      }
-      const ok = await adminCredential.verify(String(payload.password || ''));
-      if (ok) {
-        socket.data.isAdmin = true;
-        socket.data.adminAttempts = 0;
-        return socket.emit('adminStatus', { ok: true, available: true });
-      }
-      socket.data.adminAttempts += 1;
-      // A wrong answer costs a moment, so guessing is not free.
-      setTimeout(() => {
-        socket.emit('adminStatus', {
-          ok: false,
-          available: true,
-          attemptsLeft: Math.max(0, ADMIN_MAX_ATTEMPTS - socket.data.adminAttempts),
-        });
-      }, ADMIN_FAIL_DELAY_MS);
-    });
-
-    // Change the admin password. Behind the unlock, and the current password
-    // is asked for again: the unlock lives as long as the socket, and a tab
-    // left open is not proof that the person at it knows the password. A
-    // change signs out every other admin session, because whoever is being
-    // locked out is the reason to change it.
-    socket.on('adminSetPassword', async (payload = {}) => {
-      if (!adminEnabled || !socket.data.isAdmin) return;
-      const error = await adminCredential.change(
-        String(payload.current || ''),
-        String(payload.next || '')
-      );
-      if (error) return socket.emit('adminPasswordResult', { ok: false, error });
-      for (const [id, other] of io.sockets.sockets) {
-        if (id === socket.id || !other.data.isAdmin) continue;
-        other.data.isAdmin = false;
-        other.emit('adminStatus', { ok: false, available: true, signedOut: true });
-      }
-      socket.emit('adminPasswordResult', { ok: true });
-    });
+    // There is no unlock here any more, and no password to send: the admin
+    // surface belongs to an account, and socket.data.isAdmin was settled at
+    // identify from the role on that account. Every handler below keeps the
+    // same one-line guard it always had.
+    //
+    // What that bought, besides one fewer secret: it survives a reconnect, it
+    // cannot be guessed, it is per person rather than per server, and taking
+    // it away from somebody reaches the browser they are holding.
 
     // End a tournament that is already running. The host control for this only
     // exists in the waiting room, and the host of a running field may be a seat
     // that busted an hour ago, so without this there is no way to stop one
     // short of shell access.
     socket.on('adminCancelTournament', (payload = {}) => {
-      if (!adminEnabled || !socket.data.isAdmin) return;
+      if (!socket.data.isAdmin) return;
       const entry =
         (payload.id && registry.tournaments.get(payload.id)) || entryFor(socket) || null;
       if (!entry) return fail(socket, 'No tournament to cancel');
@@ -900,7 +868,7 @@ function registerTournamentHandlers(deps) {
     // rate limit as well: this one reads a file of its own and an admin paging
     // through it is a handful of asks, not a loop.
     socket.on('adminLog', (payload = {}) => {
-      if (!adminEnabled || !socket.data.isAdmin) return;
+      if (!socket.data.isAdmin) return;
       if (!adminLog) return socket.emit('adminLogRows', { rows: [], more: false });
       const at = Date.now();
       const recent = (socket.data.adminLogAsks || []).filter((t) => at - t < ADMIN_LOG_WINDOW_MS);
@@ -925,7 +893,7 @@ function registerTournamentHandlers(deps) {
     // page's list. Answered only to a socket that has unlocked the controls,
     // like the pairing below; anyone else gets silence.
     socket.on('adminListTournaments', () => {
-      if (!adminEnabled || !socket.data.isAdmin) return;
+      if (!socket.data.isAdmin) return;
       socket.emit('adminTournaments', { list: registry.adminList() });
     });
 
@@ -940,11 +908,11 @@ function registerTournamentHandlers(deps) {
       io.emit('serverInfo', serverInfo());
     }
     socket.on('adminGetGameNight', () => {
-      if (!adminEnabled || !socket.data.isAdmin) return;
+      if (!socket.data.isAdmin) return;
       sendPairing();
     });
     socket.on('adminPairGameNight', async (payload = {}) => {
-      if (!adminEnabled || !socket.data.isAdmin) return;
+      if (!socket.data.isAdmin) return;
       try {
         await sso.pair(payload.url, payload.audience);
         announcePairing();
@@ -954,7 +922,7 @@ function registerTournamentHandlers(deps) {
       }
     });
     socket.on('adminRefreshGameNight', async () => {
-      if (!adminEnabled || !socket.data.isAdmin) return;
+      if (!socket.data.isAdmin) return;
       try {
         await sso.refresh();
         announcePairing();
@@ -964,7 +932,7 @@ function registerTournamentHandlers(deps) {
       }
     });
     socket.on('adminUnpairGameNight', () => {
-      if (!adminEnabled || !socket.data.isAdmin) return;
+      if (!socket.data.isAdmin) return;
       sso.unpair();
       announcePairing();
       sendPairing({ ok: true });

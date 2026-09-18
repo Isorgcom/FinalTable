@@ -12,12 +12,16 @@ function boolFromEnv(name, fallback = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
 }
 
-// The admin's password for the admin controls, straight from the
-// environment and never written anywhere else. Empty or unset disables the
-// admin surface completely rather than falling back to a default, because a
-// default password on a self-hosted box is worse than no password at all.
-function adminPasswordFromEnv() {
-  const raw = process.env.ADMIN_PASSWORD;
+// An account to make an administrator at boot, by name. There is no admin
+// password any more - the admin surface belongs to an account - and this is
+// how a server gets its first one when the first-account rule is not the
+// answer: a stranger signed up before the owner did, or the only
+// administrator has lost their password and their address.
+//
+// Applied on every boot and never taken away, so leaving it set is harmless
+// and forgetting to unset it does nothing surprising.
+function adminPromoteFromEnv() {
+  const raw = process.env.ADMIN_PROMOTE;
   return typeof raw === 'string' ? raw.trim() : '';
 }
 
@@ -89,7 +93,7 @@ function loadConfig() {
           .filter(Boolean);
 
   return {
-    adminPassword: adminPasswordFromEnv(),
+    adminPromote: adminPromoteFromEnv(),
     gamenight: gamenightFromEnv(),
     port: process.env.PORT || 2026,
     host: process.env.HOST || '0.0.0.0',

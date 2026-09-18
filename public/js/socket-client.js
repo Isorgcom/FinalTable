@@ -79,9 +79,6 @@ function ensureSocket() {
   socket.on('handHistoryExport', (data) => {
     if (typeof onHandHistoryExport === 'function') onHandHistoryExport(data);
   });
-  socket.on('adminPasswordResult', (data) => {
-    if (window.Lobby) Lobby.onAdminPasswordResult(data);
-  });
 
   // What the server offers, sent before identify: whether an admin surface
   // exists and whether a GameNight sign-in does. Nothing about this socket.

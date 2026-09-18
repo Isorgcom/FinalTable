@@ -12,7 +12,6 @@ const { loadConfig } = require('./server/config');
 const { applySecurityHeaders, createRateLimiter } = require('./server/http-middleware');
 const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
-const { createAdminCredential } = require('./server/admin-credential');
 const { createAccounts } = require('./server/accounts');
 const { createDatabase } = require('./server/db');
 const { migrateFromFiles } = require('./server/db/migrate');
@@ -384,14 +383,6 @@ const settingsStore = createSettingsStore({ db, log: structuredLog });
 // startServer can be called more than once in a test run; the stores open once.
 let storesOpen = false;
 
-// The admin password: the environment's until somebody changes it from the
-// Admin page, after which the stored one wins.
-const adminCredential = createAdminCredential({
-  settingsStore,
-  envPassword: config.adminPassword,
-  log: structuredLog,
-});
-
 // The GameNight sign-in bridge. Paired from the Admin page, or seeded from
 // the environment on a first boot; unpaired, the lobby never offers the button.
 const sso = createSsoRuntime({ settingsStore, envConfig: config.gamenight, log: structuredLog });
@@ -423,7 +414,6 @@ const tournamentLayer = registerTournamentHandlers({
   handPauseMs: config.handPauseMs,
   historyMax: config.handHistoryMax,
   historyStore: handHistoryStore,
-  adminCredential,
   tableOptions: { streetPauseMs: config.streetPauseMs, showWindowMs: config.showWindowMs },
   chatStore,
   chatEnabled: config.chatEnabled,
@@ -594,6 +584,54 @@ async function openStores() {
   // read: the GameNight pairing set from the Admin page beats the environment,
   // and it can only know that once the store has loaded.
   sso.init();
+
+  // An account named in the environment, made an administrator. This is how a
+  // server gets its first one when the first-account rule is not the answer -
+  // a stranger signed up before the owner did, or the only administrator has
+  // lost both their password and their address. Applied every boot and never
+  // taken away, so leaving it set does nothing surprising.
+  if (config.adminPromote) {
+    const promoted = identity.promoteByName(config.adminPromote);
+    structuredLog({
+      level: promoted ? 'info' : 'error',
+      event: promoted ? 'admin_promoted' : 'admin_promote_missed',
+      message: promoted
+        ? 'An account was made an administrator from the environment'
+        : 'ADMIN_PROMOTE names nobody here',
+      data: { name: config.adminPromote, uid: promoted || undefined },
+    });
+  }
+
+  // A database that already held people when this arrived promotes nobody -
+  // the first-account rule is about a fresh server, and applying it to an
+  // existing one would hand the keys to whoever signed in next.
+  if (identity.size && !identity.adminCount()) {
+    structuredLog({
+      level: 'warn',
+      event: 'admin_unclaimed',
+      message: 'Nobody administers this server',
+      data: {
+        detail: 'Set ADMIN_PROMOTE to the name of an account here and start the server again.',
+      },
+    });
+  }
+
+  // The password this replaced. Said once, because a line left in a compose
+  // file that quietly does nothing is worse than one that says so.
+  if (process.env.ADMIN_PASSWORD) {
+    structuredLog({
+      level: 'warn',
+      event: 'admin_password_ignored',
+      message: 'ADMIN_PASSWORD does nothing now',
+      data: {
+        detail: 'The admin surface belongs to an account. Use ADMIN_PROMOTE to name one.',
+      },
+    });
+    // And the one somebody set from the old Admin page, which would otherwise
+    // sit in the settings table for ever meaning nothing.
+    if (settingsStore.get('adminPassword')) settingsStore.set('adminPassword', null);
+  }
+
   // Now that the pairing is known, the one thing worth stopping to say. An
   // account is the only way in; a server that can send no mail and is paired
   // with no GameNight has no way for anybody to become anybody, including
@@ -635,7 +673,6 @@ module.exports = {
   handHistoryStore,
   accounts,
   mailer,
-  adminCredential,
   flushStores,
   startServer,
   config,

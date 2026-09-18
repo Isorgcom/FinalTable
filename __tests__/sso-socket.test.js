@@ -102,7 +102,7 @@ describe('GameNight sign-in over the socket', () => {
       assetVersion: expect.stringMatching(/^[0-9a-f]{10}$/),
       reactions: require('../server/reactions').REACTIONS,
       accounts: false,
-      adminAvailable: false,
+      unclaimed: expect.any(Boolean),
       gamenight: { connectUrl: `${ISSUER}/connect.php`, audience: AUDIENCE },
     });
     const r = await identify(s, { gnToken: token(), avatar: '🦊' });

@@ -45,8 +45,12 @@ function urlFor({ join = null, watch = null } = {}) {
 // -by-link case: the client holds the code, identifies, and lands in the game
 // rather than the lobby. The caller asserts where it landed, because that is
 // what those tests are about.
-async function signInAs(page, name, { join = null, watch = null, avatar = '🧑' } = {}) {
-  const ident = accountFor(name, { avatar });
+async function signInAs(
+  page,
+  name,
+  { join = null, watch = null, avatar = '🧑', admin = false } = {}
+) {
+  const ident = accountFor(name, { avatar, admin });
   await page.addInitScript(
     ([token, who]) => {
       try {
@@ -69,7 +73,7 @@ async function signInAs(page, name, { join = null, watch = null, avatar = '🧑'
 // An account on the running server, made the way the admin portal makes one.
 // Asked for twice with the same name, it answers with the same person on a
 // second device.
-function accountFor(name, { avatar = '🧑' } = {}) {
+function accountFor(name, { avatar = '🧑', admin = false } = {}) {
   const { accounts, identity } = serverModule;
   let uid = accounts.ownerOf(name);
   if (!uid) {
@@ -81,6 +85,10 @@ function accountFor(name, { avatar = '🧑' } = {}) {
   if (!ident || ident.error) {
     throw new Error(`could not sign in as ${name}: ${(ident && ident.error) || 'no identity'}`);
   }
+  // Somebody who runs the server, for the tests about the Admin page. The
+  // first account on a fresh server gets this on its own; this is for the
+  // ones that are not first.
+  identity.setRole(ident.uid, admin ? 'admin' : 'player');
   return ident;
 }
 

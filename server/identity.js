@@ -164,7 +164,22 @@ function createIdentityStore(options = {}) {
   }
 
   // And the one place a record joins or leaves the map, for the same reason.
+  //
+  // It is also where the first account here becomes the administrator. A
+  // server with nobody running it is a server nobody can run, and there is no
+  // password to fall back on any more - so the first person through the door
+  // gets the keys, whichever door they came through. Both creation paths go
+  // through here, which is what stops that being two rules.
   function hold(rec) {
+    if (!admins.size && rec.role !== 'admin') {
+      rec.role = 'admin';
+      log({
+        level: 'info',
+        event: 'admin_claimed',
+        message: 'The first account here is the administrator',
+        data: { uid: rec.uid, name: rec.name },
+      });
+    }
     identities.set(rec.uid, rec);
     const key = nameKeyOf(rec.name);
     if (key) byNameKey.set(key, rec.uid);
@@ -309,7 +324,13 @@ function createIdentityStore(options = {}) {
       // here. It is somebody now: signing out everywhere leaves one, and so
       // does an account whose owner has not been back since their last device
       // aged out. Their password and their name are still theirs.
-      hold(rec);
+      // Not hold(): loading is not creating, and the first-account rule must
+      // not fire for a database that already holds people. A server upgrading
+      // into this with nobody marked is told to name one.
+      identities.set(rec.uid, rec);
+      const key = nameKeyOf(rec.name);
+      if (key) byNameKey.set(key, rec.uid);
+      if (rec.role === 'admin') admins.add(rec.uid);
     }
     return identities.size;
   }
@@ -768,6 +789,16 @@ function createIdentityStore(options = {}) {
     return isAdmin(uid) && admins.size <= 1;
   }
 
+  // Named in the environment, applied at boot. The answer to "a stranger
+  // signed up first" and to "the only administrator is lost", and the only
+  // way back into a server whose keys have gone.
+  function promoteByName(name) {
+    const uid = byNameKey.get(nameKeyOf(name));
+    if (!uid) return null;
+    setRole(uid, 'admin');
+    return uid;
+  }
+
   function setRole(uid, role) {
     const rec = uid ? identities.get(uid) : null;
     if (!rec) return false;
@@ -873,6 +904,7 @@ function createIdentityStore(options = {}) {
     isAdmin,
     isDisabled,
     setRole,
+    promoteByName,
     setDisabled,
     adminCount,
     wouldOrphan,

@@ -208,6 +208,10 @@
     $('btnSessions').classList.toggle('hidden', !signedIn);
     paintAccountRow();
     $('btnMyGames').classList.toggle('hidden', !signedIn);
+    // Whether this person runs the server, rather than whether the server has
+    // a password. Nobody who is not an administrator is offered the page, and
+    // nobody who is has anything to type.
+    $('btnLobbyAdmin').classList.toggle('hidden', !(identity && identity.isAdmin));
     $('playerName').classList.remove('input-invalid');
     // Drawn again with the answer to "is anybody through the door" now known.
     showView(view);
@@ -217,7 +221,6 @@
     serverInfo = info || null;
     window.__serverInfo = serverInfo;
     renderIdentityRow();
-    $('btnLobbyAdmin').classList.toggle('hidden', !(serverInfo && serverInfo.adminAvailable));
     const version = serverInfo && serverInfo.version;
     $('lobbyMenuVersion').textContent = version ? `FinalTable v${version}` : 'FinalTable';
     if (window.Reactions) Reactions.configure(serverInfo ? serverInfo.reactions : null);
@@ -303,16 +306,12 @@
   // password as the table's admin controls. The page holds no privilege: the
   // unlock is per socket and every request is checked on the server.
 
-  let adminPending = false; // opening the page once the unlock answers
   let pairing = null;
   let adminGames = null; // every game on the server, once asked for
   let adminLogRows = null; // what the server has done, a page at a time
   let adminLogMore = false;
   let _drawnLogSig = null;
   let _drawnGamesSig = null;
-  // Why the admin page is locked, when it is. Admin.isAuthed() is the truth of
-  // whether it is; this is only what to say about it.
-  let adminLockReason = null;
   // Whether the reader has paged back into older rows. They are reading, and
   // pulling the page out from under them to add a line at the top is worse
   // than the line arriving late.
@@ -338,7 +337,6 @@
   const ADMIN_PAGES = [
     { name: 'games', cap: 'Games', onShow: () => askForAdminGames() },
     { name: 'gamenight', cap: 'GameNight', onShow: null },
-    { name: 'password', cap: 'Password', onShow: () => setPwStatus('') },
     { name: 'log', cap: 'Log', onShow: () => askForAdminLog({ fresh: true }) },
   ];
   // Session only, and back to Games every time the page opens. Deliberately
@@ -496,75 +494,37 @@
     if (more) more.classList.toggle('hidden', !adminLogMore);
   }
 
-  async function openAdmin() {
+  // No password, and nothing to unlock: the menu item is only there for
+  // somebody whose account runs this server, and the server settled that when
+  // they identified.
+  function openAdmin() {
     closeLobbyMenu();
-    // Already here and unlocking again after a drop: stay on the page being
-    // read rather than starting over at Games.
+    if (!identity || !identity.isAdmin) return;
+    // Already here and coming back: stay on the page being read rather than
+    // starting over at Games.
     const reopening = view === 'admin';
-    if (window.Admin && Admin.isAuthed()) {
-      setPwStatus('');
-      adminLockReason = null;
-      showView('admin');
-      paintAdminLock();
-      renderAdminGames();
-      // Back to the first page each time, and selecting it asks for the list.
-      selectAdminTab(reopening ? adminTab : 'games');
-      // Asked for whatever tab is showing: the pairing decides whether the
-      // sign-in button exists at all, which is not only this page's business.
-      if (socket) socket.emit('adminGetGameNight');
-      return;
-    }
-    if (typeof window.showTextPromptDialog !== 'function' || !socket) return;
-    const password = await window.showTextPromptDialog({
-      title: 'Admin login',
-      message: 'Password for the admin controls.',
-      hint: 'Sent over this connection as typed; the server is plain HTTP on your network.',
-      confirmLabel: 'Unlock',
-      placeholder: 'password',
-      maxLength: 128,
-      masked: true,
-    });
-    if (!password) return;
-    adminPending = true;
-    window.__adminPending = true;
-    socket.emit('adminLogin', { password });
+    showView('admin');
+    renderAdminGames();
+    selectAdminTab(reopening ? adminTab : 'games');
+    // Asked for whatever tab is showing: the pairing decides whether the
+    // sign-in button exists at all, which is not only this page's business.
+    if (socket) socket.emit('adminGetGameNight');
   }
 
+  // The one thing that can still change this between identifies: an
+  // administrator standing down, or being stood down, while looking at the
+  // page. Back to the lobby, with a word about why.
   function onAdminStatus(st) {
-    // A password changed elsewhere signs every other admin session out. The
-    // page has to say so for the same reason a drop does.
-    if (st && !st.ok && st.signedOut) onAdminLocked('password');
-    if (st && st.ok) {
-      adminLockReason = null;
-      paintAdminLock();
-    }
-    if (!adminPending) return;
-    adminPending = false;
-    window.__adminPending = false;
-    if (st && st.ok) openAdmin();
+    if (!st || !st.revoked) return;
+    if (identity) identity.isAdmin = false;
+    $('btnLobbyAdmin').classList.add('hidden');
+    if (view === 'admin') showView('home');
+    notice('You are no longer an administrator of this server.');
   }
 
   // The unlock is gone. Said here, on the page, because every admin request is
   // answered with silence when a socket is not unlocked - which is right
   // against somebody probing the server, and unreadable from inside the page.
-  function onAdminLocked(reason) {
-    adminLockReason = reason || 'dropped';
-    paintAdminLock();
-  }
-
-  const LOCK_WORDS = {
-    dropped: 'The connection dropped, so the admin controls locked again.',
-    password: 'The admin password was changed, so this session was signed out.',
-  };
-
-  function paintAdminLock() {
-    const banner = $('adminLocked');
-    const text = $('adminLockedText');
-    if (!banner) return;
-    const locked = !(window.Admin && Admin.isAuthed());
-    banner.classList.toggle('hidden', !locked);
-    if (locked && text) text.textContent = LOCK_WORDS[adminLockReason] || LOCK_WORDS.dropped;
-  }
 
   function setPairingStatus(text, kind) {
     const el = $('adminGnStatus');
@@ -825,43 +785,6 @@
     }
     renderPairing();
     setPairingBusy(false);
-  }
-
-  function setPwStatus(text, kind) {
-    const el = $('adminPwStatus');
-    el.textContent = text || '';
-    el.classList.toggle('ok', kind === 'ok');
-    el.classList.toggle('err', kind === 'err');
-  }
-
-  function setAdminPassword() {
-    if (!socket) return;
-    const current = $('adminPwCurrent').value;
-    const next = $('adminPwNext').value;
-    const confirm = $('adminPwConfirm').value;
-    if (!current) {
-      setPwStatus('Enter the current password.', 'err');
-      $('adminPwCurrent').focus();
-      return;
-    }
-    if (next !== confirm) {
-      setPwStatus('The two new passwords do not match.', 'err');
-      $('adminPwConfirm').focus();
-      return;
-    }
-    $('btnAdminSetPassword').disabled = true;
-    setPwStatus('Changing…');
-    socket.emit('adminSetPassword', { current, next });
-  }
-
-  function onAdminPasswordResult(data) {
-    $('btnAdminSetPassword').disabled = false;
-    if (data && data.ok) {
-      ['adminPwCurrent', 'adminPwNext', 'adminPwConfirm'].forEach((id) => ($(id).value = ''));
-      setPwStatus('Password changed. Any other admin session has been signed out.', 'ok');
-      return;
-    }
-    setPwStatus((data && data.error) || 'That did not work.', 'err');
   }
 
   function setPairingBusy(busy) {
@@ -2765,7 +2688,6 @@
       closeLobbyMenu();
     });
     $('btnLobbyAdmin').addEventListener('click', openAdmin);
-    $('btnAdminUnlock').addEventListener('click', openAdmin);
     $('btnAdminPair').addEventListener('click', pairGameNight);
     $('btnAdminRefresh').addEventListener('click', refreshGameNightKey);
     $('btnAdminUnpair').addEventListener('click', unpairGameNight);
@@ -2778,13 +2700,6 @@
     );
     const adminStrip = document.querySelector('#lobbyAdmin .admin-tabs');
     if (adminStrip) adminStrip.addEventListener('keydown', onAdminTabKey);
-    $('btnAdminSetPassword').addEventListener('click', setAdminPassword);
-    $('adminPwConfirm').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        setAdminPassword();
-      }
-    });
     $('adminGnUrl').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -2845,11 +2760,9 @@
     closeLobbyMenu,
     onServerInfo,
     onAdminStatus,
-    onAdminLocked,
     onAdminGameNight,
     onAdminTournaments,
     onAdminLogRows,
-    onAdminPasswordResult,
     onIdentified,
     onIdentifyFailed,
     onSessionReplaced,

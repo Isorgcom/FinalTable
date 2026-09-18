@@ -1,11 +1,14 @@
 // password.js - hashing one, and checking it.
 //
-// Lifted out of admin-credential.js when accounts arrived, because a second
-// copy of this is a second thing to get wrong and the first copy had already
-// been got right: scrypt, a salt of its own per record, a comparison that
-// takes the same time whatever the answer, and a stored record that carries
-// the parameters it was made with so they can be raised later without
+// One implementation, because a second copy of this is a second thing to get
+// wrong: scrypt, a salt of its own per record, a comparison that takes the
+// same time whatever the answer, and a stored record that carries the
+// parameters it was made with so they can be raised later without
 // invalidating everybody.
+//
+// It started life inside the admin password and outlived it - there is no
+// admin password any more, only accounts, and an administrator's is one of
+// those.
 //
 // What is stored is the hash and its salt. The password itself is never
 // written anywhere, and never logged.

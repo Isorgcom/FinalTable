@@ -405,13 +405,12 @@ describe('identity store', () => {
   test('a role is remembered, and the last administrator is protected', async () => {
     const db = freshDb('roles');
     const store = createIdentityStore({ db });
+    // The first account on a server nobody runs gets the keys; everybody
+    // after is an ordinary player.
     const ann = signIn(store, 'Ann');
     const bob = signIn(store, 'Bob');
-    expect(store.isAdmin(ann.uid)).toBe(false);
-    expect(store.adminCount()).toBe(0);
-
-    store.setRole(ann.uid, 'admin');
     expect(store.isAdmin(ann.uid)).toBe(true);
+    expect(store.isAdmin(bob.uid)).toBe(false);
     expect(store.adminCount()).toBe(1);
     // The only one there is, so taking it away would leave nobody.
     expect(store.wouldOrphan(ann.uid)).toBe(true);
@@ -419,6 +418,9 @@ describe('identity store', () => {
 
     store.setRole(bob.uid, 'admin');
     expect(store.adminCount()).toBe(2);
+    // Named in the environment, which is the way back into a server whose
+    // administrator is lost.
+    expect(store.promoteByName('nobody at all')).toBeNull();
     expect(store.wouldOrphan(ann.uid)).toBe(false);
     // Standing down is allowed while somebody else is there.
     store.setRole(ann.uid, 'player');
@@ -431,6 +433,43 @@ describe('identity store', () => {
     expect(reopened.isAdmin(bob.uid)).toBe(true);
     expect(reopened.isAdmin(ann.uid)).toBe(false);
     expect(reopened.adminCount()).toBe(1);
+  });
+
+  // A server with nobody running it is a server nobody can run, and there is
+  // no password to fall back on. Whichever door the first person comes
+  // through, they get the keys.
+  test('the first account here is the administrator, whichever door it came through', () => {
+    const local = createIdentityStore();
+    expect(signIn(local, 'First').uid).toBe('u_first');
+    expect(local.isAdmin('u_first')).toBe(true);
+    expect(local.isAdmin(signIn(local, 'Second').uid)).toBe(false);
+
+    const viaGameNight = createIdentityStore();
+    const gn = viaGameNight.identifyFromGameNight({ sub: '1', name: 'Member' });
+    expect(viaGameNight.isAdmin(gn.uid)).toBe(true);
+  });
+
+  // An existing server upgrading into this has people already, and handing it
+  // to whoever signs in next would be arbitrary. Nobody is promoted on load;
+  // the environment names one instead.
+  test('a database that already holds people promotes nobody on load', async () => {
+    const db = freshDb('unclaimed');
+    {
+      const store = createIdentityStore({ db });
+      signIn(store, 'Ann');
+      signIn(store, 'Bob');
+      // As an upgrading database looks: people, and nobody marked.
+      store.setRole('u_ann', 'player');
+      await store.flush();
+    }
+    const reopened = createIdentityStore({ db });
+    expect(await reopened.load()).toBe(2);
+    expect(reopened.adminCount()).toBe(0);
+
+    // Named in the environment, applied at boot.
+    expect(reopened.promoteByName('BOB')).toBe('u_bob');
+    expect(reopened.isAdmin('u_bob')).toBe(true);
+    expect(reopened.promoteByName('nobody here')).toBeNull();
   });
 
   test('a disabled account cannot get in by any door', async () => {
@@ -495,6 +534,9 @@ describe('identity store', () => {
       clock += 1000;
       signIn(store, name);
     }
+    // Ann came first and so runs the server; Bob is the one this test wants
+    // marked, so Ann stands down.
+    store.setRole('u_ann', 'player');
     store.setRole('u_bob', 'admin');
     store.setDisabled('u_carol', clock);
 

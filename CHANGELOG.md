@@ -31,14 +31,31 @@ Release on GitHub to go with it.
   Both the lobby's list and `GET /api/tournaments` need somebody signed in;
   the HTTP one takes the device token as a bearer header.
 
+- **The admin controls are behind an administrator's account**, not a shared
+  password. Whoever makes the first account on a fresh server administers it;
+  after that an administrator can make another. The **admin** item in the
+  corner menu is there for them and nobody else, there is nothing to type, and
+  it stays put across a reload, a reconnect and a restart instead of asking
+  again. The Admin page has three tabs now rather than four - there is no
+  password left to change - and the table menu offers **cancel tournament** to
+  an administrator directly.
+
 ### Removed
 
+- `ADMIN_PASSWORD`, and with it the unlock dialog, the five-attempt lockout and
+  the Admin page's Password tab. A server that still sets it is told at boot
+  that it does nothing. **Upgrading**: a server that already has accounts
+  promotes nobody, and says so at boot - put the name of an account in the new
+  `ADMIN_PROMOTE` and restart it once.
 - Guests. There is no longer a way to play without an account, and the guest
   identities a server was holding are deleted when it upgrades. Their kept
   games stay where they are.
 
 ### Added
 
+- `ADMIN_PROMOTE`, naming an account to make an administrator at boot. The way
+  back in when a server has nobody running it: a stranger signed up first, or
+  the only administrator lost their password and the address it resets to.
 - An account of your own, on this server. Set a password against the name you
   already play under and that name is yours: sign in from any browser and your
   preferences, your devices and your kept games come with you. Confirming an

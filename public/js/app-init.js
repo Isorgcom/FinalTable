@@ -429,80 +429,36 @@ function init() {
   // cancel item stays hidden until this socket has actually authenticated. The
   // page holds no password and no privilege: every check is on the server, and
   // showing the item early would only reveal a control that refuses.
+  // The table menu's admin item. One boolean now rather than two: there is no
+  // unlock to be halfway through, only whether the account that identified
+  // runs this server. It survives a reconnect on its own, because the next
+  // identify says so again.
   window.Admin = (() => {
-    let available = false;
     let authed = false;
-    const btnAdmin = () => document.getElementById('btnAdmin');
     const btnCancel = () => document.getElementById('btnAdminCancel');
     function paint() {
-      const a = btnAdmin();
       const c = btnCancel();
-      if (a) a.classList.toggle('hidden', !available || authed);
       if (c) c.classList.toggle('hidden', !authed);
     }
     return {
       onIdentified(ident) {
-        available = !!(ident && ident.adminAvailable);
+        authed = !!(ident && ident.isAdmin);
         paint();
       },
+      // Taken away while they were looking at it, which is the only thing
+      // left that can change this between identifies.
       onStatus(st) {
-        if (!st) return;
-        available = st.available !== false;
-        authed = !!st.ok;
-        paint();
-        if (st.ok) {
-          // The lobby's Admin page unlocks the same way and then opens
-          // itself; a notice on top of that would be one dialog too many.
-          if (window.__adminPending) return;
-          window.showNoticeDialog &&
-            window.showNoticeDialog({ title: 'Admin', message: 'Admin controls unlocked.' });
-          return;
-        }
-        if (st.lockedOut) {
-          window.showNoticeDialog &&
-            window.showNoticeDialog({
-              title: 'Admin',
-              message: 'Too many attempts on this connection. Reload to try again.',
-            });
-          return;
-        }
-        if (st.available === false) return;
-        window.showNoticeDialog &&
-          window.showNoticeDialog({
-            title: 'Admin',
-            message:
-              typeof st.attemptsLeft === 'number'
-                ? `Wrong password. ${st.attemptsLeft} attempt(s) left.`
-                : 'Wrong password.',
-          });
-      },
-      // The socket carried the unlock and the socket has gone. Nothing is
-      // re-sent - the password is not kept anywhere - so this is a real
-      // sign-out and the corner menu offers the way back in again.
-      onDisconnected() {
-        if (!authed) return;
+        if (!st || !st.revoked) return;
         authed = false;
         paint();
-        if (window.Lobby) Lobby.onAdminLocked('dropped');
+      },
+      onDisconnected() {
+        authed = false;
+        paint();
       },
       isAuthed: () => authed,
     };
   })();
-
-  document.getElementById('btnAdmin').addEventListener('click', async () => {
-    closeMenu();
-    if (!window.showTextPromptDialog) return;
-    const password = await window.showTextPromptDialog({
-      title: 'Admin login',
-      message: 'Password for the admin controls.',
-      hint: 'Sent over this connection as typed; the server is plain HTTP on your network.',
-      confirmLabel: 'Unlock',
-      placeholder: 'password',
-      maxLength: 128,
-      masked: true,
-    });
-    if (password && socket) socket.emit('adminLogin', { password });
-  });
 
   document.getElementById('btnAdminCancel').addEventListener('click', async () => {
     closeMenu();

@@ -1,13 +1,12 @@
 // __tests__/admin-log-socket.test.js - the Log as an admin actually reaches it:
-// behind the unlock, over the socket, holding what the server has done.
+// behind an administrator's account, over the socket, holding what the server
+// has done.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { io: Client } = require('socket.io-client');
 
 jest.setTimeout(20000);
-
-const PASSWORD = 'admin-secret';
 
 const { tokenFor } = require('./helpers/account');
 
@@ -21,7 +20,6 @@ describe('the admin log over the socket', () => {
     process.env.SAVE_DIR = tempDir;
     process.env.HOST = '127.0.0.1';
     process.env.HTTP_RATE_LIMIT = '1000';
-    process.env.ADMIN_PASSWORD = PASSWORD;
     jest.resetModules();
     serverModule = require('../server');
     await serverModule.startServer({ port: 0, host: '127.0.0.1', unrefServer: true });
@@ -52,7 +50,16 @@ describe('the admin log over the socket', () => {
     });
   }
 
-  const unlock = (s) => ask(s, 'adminLogin', { password: PASSWORD }, 'adminStatus');
+  // Signing in as somebody whose account runs the server, which is the whole
+  // of what an unlock used to be.
+  let admins = 0;
+  const unlock = (s) =>
+    ask(
+      s,
+      'identify',
+      { token: tokenFor(serverModule, `Boss${admins++}`, { role: 'admin' }) },
+      'identified'
+    );
   // An account, then the token it hands back: the only way anybody arrives.
   const identify = (s, name) =>
     ask(s, 'identify', { token: tokenFor(serverModule, name) }, 'identified');

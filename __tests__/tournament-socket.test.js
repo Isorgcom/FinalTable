@@ -26,7 +26,6 @@ describe('Tournament socket layer', () => {
     process.env.TOURNAMENT_SWEEP_MS = '40';
     process.env.HOST_TRANSFER_GRACE_MS = '300';
     process.env.AUTO_TURN_DELAY_MS = '5';
-    process.env.ADMIN_PASSWORD = 'correct horse battery staple';
     jest.resetModules();
     serverModule = require('../server');
     await serverModule.startServer({
@@ -1040,9 +1039,11 @@ describe('Tournament socket layer', () => {
     await startAndDeal(host, guest);
     expect(serverModule.tournaments.get(created.id).status).toBe('running');
 
-    const unlocked = waitFor(host, 'adminStatus', (st) => st.ok === true);
-    host.emit('adminLogin', { password: 'correct horse battery staple' });
-    expect((await unlocked).ok).toBe(true);
+    // The host of this game is also the administrator of the server, which is
+    // one account rather than a password anybody could type.
+    serverModule.identity.setRole(host.__identity.uid, 'admin');
+    const again = await identify(host, { token: host.__identity.token });
+    expect(again.isAdmin).toBe(true);
 
     const cancelled = waitFor(guest, 'tournamentCancelled');
     host.emit('adminCancelTournament');
@@ -1075,8 +1076,7 @@ describe('Tournament socket layer', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(answered).toBe(false);
 
-    const unlocked = waitFor(op, 'adminStatus', (st) => st.ok === true);
-    op.emit('adminLogin', { password: 'correct horse battery staple' });
+    const unlocked = identify(op, { name: 'Operator', role: 'admin' });
     await unlocked;
     const listed = waitFor(op, 'adminTournaments');
     op.emit('adminListTournaments');
@@ -1115,8 +1115,7 @@ describe('Tournament socket layer', () => {
     const { created, guest } = await createTournamentWithGuest(host);
 
     const op = await connectClient();
-    const unlocked = waitFor(op, 'adminStatus', (st) => st.ok === true);
-    op.emit('adminLogin', { password: 'correct horse battery staple' });
+    const unlocked = identify(op, { name: 'Operator', role: 'admin' });
     await unlocked;
 
     // Before the start there is nothing to say, and the row does not invent it.
@@ -1145,25 +1144,6 @@ describe('Tournament socket layer', () => {
     await gone;
   });
 
-  test('a wrong password unlocks nothing and the tournament survives', async () => {
-    const host = await connectClient();
-    const { created, guest } = await createTournamentWithGuest(host);
-    await startAndDeal(host, guest);
-
-    const refused = waitFor(host, 'adminStatus', (st) => st.ok === false);
-    host.emit('adminLogin', { password: 'hunter2' });
-    const st = await refused;
-    expect(st.ok).toBe(false);
-    expect(st.available).toBe(true);
-    // The answer never carries the password or anything derived from it.
-    expect(JSON.stringify(st)).not.toContain('correct horse');
-
-    host.emit('adminCancelTournament');
-    await new Promise((r) => setTimeout(r, 200));
-    expect(serverModule.tournaments.has(created.id)).toBe(true);
-    expect(serverModule.tournaments.get(created.id).status).toBe('running');
-  });
-
   test('cancelling is refused to a socket that never logged in', async () => {
     const host = await connectClient();
     const { created, guest } = await createTournamentWithGuest(host);
@@ -1177,36 +1157,34 @@ describe('Tournament socket layer', () => {
     expect(serverModule.tournaments.get(created.id).status).toBe('running');
   });
 
-  test('guessing is capped, and a locked-out socket stays locked out', async () => {
-    const host = await connectClient();
-    await identify(host, { name: 'Host' });
-
-    let last = null;
-    for (let i = 0; i < 6; i++) {
-      const reply = waitFor(host, 'adminStatus');
-      host.emit('adminLogin', { password: `guess-${i}` });
-      last = await reply;
-    }
-    expect(last.ok).toBe(false);
-    expect(last.lockedOut).toBe(true);
-
-    // Even the right password is refused now: the cap is on the connection.
-    const afterLock = waitFor(host, 'adminStatus');
-    host.emit('adminLogin', { password: 'correct horse battery staple' });
-    const st = await afterLock;
-    expect(st.ok).toBe(false);
-    expect(st.lockedOut).toBe(true);
-  });
-
-  test('the identify reply says the surface exists but never what the password is', async () => {
+  // Somebody who does not run the server is told so, and is told nothing else
+  // about who does.
+  test('the identify reply says whether you are an administrator, and nothing more', async () => {
     const socket = await connectClient();
     const ident = await identify(socket, { name: 'Nosy' });
-    expect(ident.adminAvailable).toBe(true);
-    const blob = JSON.stringify(ident);
-    expect(blob).not.toContain('correct horse');
-    expect(blob).not.toContain('adminPassword');
-    // And it does not leak whether this socket is privileged.
-    expect(blob).not.toContain('isAdmin');
+    expect(ident.isAdmin).toBe(false);
+
+    const boss = await connectClient();
+    expect((await identify(boss, { name: 'Boss', role: 'admin' })).isAdmin).toBe(true);
+    // And an ordinary player asking again is still told no.
+    expect((await identify(socket, { token: ident.token })).isAdmin).toBe(false);
+  });
+
+  // The whole of the guard, and the reason it is worth one line in every
+  // handler: the surface is a fact about the account, so nothing a socket can
+  // send changes it.
+  test('a socket that is not an administrator is answered with silence', async () => {
+    const socket = await connectClient();
+    await identify(socket, { name: 'Ordinary' });
+    let answered = false;
+    for (const event of ['adminTournaments', 'adminLogRows', 'adminGameNight']) {
+      socket.on(event, () => (answered = true));
+    }
+    socket.emit('adminListTournaments');
+    socket.emit('adminLog', {});
+    socket.emit('adminGetGameNight');
+    await new Promise((r) => setTimeout(r, 250));
+    expect(answered).toBe(false);
   });
 
   test('a custom structure goes up with the create and comes back in the full state', async () => {

@@ -275,18 +275,9 @@
           </div>
         </section>
 
-        <!-- Admin: server settings, behind the admin password -->
+        <!-- Admin: server settings, for an account that runs this server -->
         <section class="lobby-view lobby-card hidden" id="lobbyAdmin" aria-label="Admin">
           <div class="lobby-title">Admin</div>
-          <!-- The unlock lives on the socket, so anything that drops the
-               connection - a server restart, a laptop waking up - takes it
-               with it. Every admin request is then answered with silence, on
-               purpose, which from in here is indistinguishable from a page
-               that has stopped working. So it says so. -->
-          <div class="admin-locked hidden" id="adminLocked" role="status">
-            <span id="adminLockedText"></span>
-            <button class="btn-secondary" id="btnAdminUnlock" type="button">Unlock</button>
-          </div>
           <!-- One page at a time. The tab look is the side panel's, shared rather than
                forked a third time; the strip around it is all that is new here. A page is
                one entry in ADMIN_PAGES, one button here, and one section below. -->
@@ -313,18 +304,6 @@
               data-admin-tab="gamenight"
             >
               Sign-in
-            </button>
-            <button
-              class="side-tab"
-              id="tabAdminPassword"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="adminPagePassword"
-              tabindex="-1"
-              data-admin-tab="password"
-            >
-              Password
             </button>
             <button
               class="side-tab"
@@ -399,54 +378,6 @@
                 Refresh key
               </button>
               <button class="btn-secondary hidden" id="btnAdminUnpair" type="button">Unpair</button>
-            </div>
-          </section>
-          <section
-            class="admin-page hidden"
-            id="adminPagePassword"
-            role="tabpanel"
-            tabindex="0"
-            aria-labelledby="tabAdminPassword"
-          >
-            <div class="admin-heading">Admin password</div>
-            <p class="admin-help">
-              The password for this page and for ending a tournament from the table menu. Changing
-              it signs out any other admin session.
-            </p>
-            <div class="admin-status" id="adminPwStatus" aria-live="polite"></div>
-            <div class="form-group">
-              <label for="adminPwCurrent">Current password</label>
-              <input
-                type="password"
-                id="adminPwCurrent"
-                autocomplete="current-password"
-                maxlength="128"
-              />
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="adminPwNext">New password</label>
-                <input
-                  type="password"
-                  id="adminPwNext"
-                  autocomplete="new-password"
-                  maxlength="128"
-                />
-              </div>
-              <div class="form-group">
-                <label for="adminPwConfirm">New password again</label>
-                <input
-                  type="password"
-                  id="adminPwConfirm"
-                  autocomplete="new-password"
-                  maxlength="128"
-                />
-              </div>
-            </div>
-            <div class="lobby-actions">
-              <button class="btn-enter" id="btnAdminSetPassword" type="button">
-                Change password
-              </button>
             </div>
           </section>
           <section
@@ -755,7 +686,6 @@
               <button class="menu-item" id="btnHint">hands</button>
               <button class="menu-item" id="btnCards">cards</button>
               <button class="menu-item" id="btnMute">mute sound</button>
-              <button class="menu-item hidden" id="btnAdmin">admin</button>
               <button class="menu-item menu-item-danger hidden" id="btnAdminCancel">
                 cancel tournament
               </button>
