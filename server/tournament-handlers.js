@@ -94,9 +94,13 @@ function registerTournamentHandlers(deps) {
 
   // Every socket this identity has open on this server. Signing a device out
   // has to reach the tab holding it, which may not be the one that pressed.
-  function socketsForToken(token) {
+  // Found by the digest of the token, because that is what the identity store
+  // deals in now. A socket holds the token itself, so each is hashed to
+  // compare - there are a handful of sockets and this runs when somebody signs
+  // a device out.
+  function socketsForTokenHash(tokenHash) {
     const found = [];
-    if (!token) return found;
+    if (!tokenHash) return found;
     // The registry takes an injectable version of this for its tests; here the
     // real server is always the one asking.
     const live =
@@ -106,7 +110,9 @@ function registerTournamentHandlers(deps) {
           ? io.sockets.sockets.values()
           : [];
     for (const s of live) {
-      if (s && s.data && s.data.token === token) found.push(s);
+      if (s && s.data && s.data.token && identity.hashToken(s.data.token) === tokenHash) {
+        found.push(s);
+      }
     }
     return found;
   }
@@ -465,12 +471,15 @@ function registerTournamentHandlers(deps) {
       if (!dropped) return socket.emit('sessions', identity.sessions(uid, socket.data.token));
       // Whoever was holding that token is told, wherever they are. Their own
       // socket included, when somebody signs out the device in their hand.
-      for (const other of socketsForToken(dropped)) {
+      for (const other of socketsForTokenHash(dropped)) {
         other.data.uid = null;
         other.data.token = null;
         other.emit('sessionEnded', { mine: other.id === socket.id });
       }
-      if (dropped !== socket.data.token) {
+      // `dropped` is the digest of the token that went; this socket holds the
+      // token itself. Compared as digests, because the store never hands one
+      // of those back.
+      if (dropped !== identity.hashToken(socket.data.token)) {
         socket.emit('sessions', identity.sessions(uid, socket.data.token));
       }
     });

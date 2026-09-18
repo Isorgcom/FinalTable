@@ -1,17 +1,15 @@
 // __tests__/identity.test.js - the identity store: tokens, uids, persistence
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const { createIdentityStore } = require('../server/identity');
+const { createMemoryDatabase } = require('../server/db');
 
 describe('identity store', () => {
-  let dir;
-  beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'finaltable-identity-'));
-  });
-  afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
+  // A database is shared by name, so that a server restarting into the same
+  // one finds it there. A test that wants an empty one says which.
+  const freshDb = (name) => {
+    const db = createMemoryDatabase({ database: `identity-${name}` });
+    db.reset();
+    return db;
+  };
 
   test('identify mints a token that is not the uid and reidentifies the same uid', () => {
     const store = createIdentityStore();
@@ -63,74 +61,103 @@ describe('identity store', () => {
     expect(store.verify(b.token)).not.toBeNull();
   });
 
-  test('identities persist to the save dir and survive a new store', () => {
-    const store = createIdentityStore({ saveDir: dir });
+  test('identities are written down and survive a new store', async () => {
+    const db = freshDb('persist');
+    const store = createIdentityStore({ db });
     const me = store.identify({ name: 'Bryce', avatar: '🦊' });
-    store.flush();
-    const reopened = createIdentityStore({ saveDir: dir });
+    await store.flush();
+
+    const reopened = createIdentityStore({ db });
+    expect(await reopened.load()).toBe(1);
     expect(reopened.size).toBe(1);
     expect(reopened.verify(me.token)).toMatchObject({ uid: me.uid, name: 'Bryce' });
   });
 
-  test('a corrupt file starts the store empty', () => {
-    fs.writeFileSync(path.join(dir, 'identities.json'), '{not json');
-    const store = createIdentityStore({ saveDir: dir });
-    expect(store.size).toBe(0);
+  // The token is a bearer thing: whoever holds it is signed in. So what is
+  // written down is a digest of it, and a copy of the database is not a set of
+  // live sessions.
+  test('the token itself is never written down', async () => {
+    const db = freshDb('digests');
+    const store = createIdentityStore({ db });
+    const me = store.identify({ name: 'Bryce' });
+    await store.flush();
+
+    const written = JSON.stringify(await db.identities.all());
+    expect(`token: ${written.includes(me.token) ? 'leaked' : 'absent'}`).toBe('token: absent');
+    // And the digest that is there is enough to sign the same browser back in.
+    const reopened = createIdentityStore({ db });
+    await reopened.load();
+    expect(reopened.verify(me.token)).toMatchObject({ uid: me.uid });
   });
 
-  // Reading the file back rather than reaching for internals: what matters is
-  // whether the disk was touched, not how the store decided to touch it.
+  test('a store with nowhere to write still works, just not across a restart', async () => {
+    const store = createIdentityStore();
+    const me = store.identify({ name: 'Nowhere' });
+    expect(store.verify(me.token)).toMatchObject({ uid: me.uid });
+    await store.flush();
+    expect(store.size).toBe(1);
+  });
+
+  // Reading back what was stored rather than reaching for internals: what
+  // matters is whether anything was written, not how the store decided to.
   const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const identFile = () => path.join(dir, 'identities.json');
-  const readIdentities = () => JSON.parse(fs.readFileSync(identFile(), 'utf8')).identities;
 
   test('a reconnect does not write; a mint and a rename do', async () => {
     // A material flush is near-instant here so the test can watch for it; the
     // touch tier is parked far out of reach so a touch cannot masquerade as one.
-    const store = createIdentityStore({ saveDir: dir, flushDebounceMs: 5, touchFlushMs: 60000 });
+    const db = freshDb('writes');
+    let writes = 0;
+    const counted = { ...db, identities: { ...db.identities } };
+    counted.identities.put = (row) => {
+      writes++;
+      return db.identities.put(row);
+    };
+    const store = createIdentityStore({ db: counted, flushDebounceMs: 5, touchFlushMs: 60000 });
     const me = store.identify({ name: 'Bryce', avatar: '🦊' });
     await settle(40);
-    expect(readIdentities()).toHaveLength(1);
+    expect(writes).toBe(1);
 
     // The ordinary reconnect: same token, same name, same avatar. This is the
-    // hot path - it runs on every connect - and it must not reach the disk.
-    fs.rmSync(identFile());
+    // hot path - it runs on every connect - and it must not be written.
     store.identify({ token: me.token, name: 'Bryce', avatar: '🦊' });
     await settle(40);
-    expect(fs.existsSync(identFile())).toBe(false);
+    expect(writes).toBe(1);
 
     // A name that actually moves is a different matter.
     store.identify({ token: me.token, name: 'Bee', avatar: '🦊' });
     await settle(40);
-    expect(readIdentities()[0]).toMatchObject({ name: 'Bee' });
+    expect(writes).toBe(2);
+    expect((await db.identities.all())[0]).toMatchObject({ name: 'Bee' });
   });
 
-  test('a touched lastSeenAt still reaches the disk on the slow tier', async () => {
-    const store = createIdentityStore({ saveDir: dir, flushDebounceMs: 5, touchFlushMs: 10 });
+  test('a touched lastSeenAt still reaches the store on the slow tier', async () => {
+    const db = freshDb('touch');
+    const store = createIdentityStore({ db, flushDebounceMs: 5, touchFlushMs: 10 });
     const me = store.identify({ name: 'Ann' });
     await settle(40);
-    const before = readIdentities()[0].lastSeenAt;
+    const before = (await db.identities.all())[0].lastSeenAt;
     store.verify(me.token);
     await settle(60);
-    expect(readIdentities()[0].lastSeenAt).toBeGreaterThanOrEqual(before);
-    expect(readIdentities()).toHaveLength(1);
+    const rows = await db.identities.all();
+    expect(rows[0].lastSeenAt).toBeGreaterThanOrEqual(before);
+    expect(rows).toHaveLength(1);
   });
 
-  test('overlapping writes leave one whole file and no tmp litter', async () => {
-    const store = createIdentityStore({ saveDir: dir, flushDebounceMs: 1, touchFlushMs: 1 });
+  test('a burst of writes settles with everybody in it', async () => {
+    const db = freshDb('burst');
+    const store = createIdentityStore({ db, flushDebounceMs: 1, touchFlushMs: 1 });
     for (let i = 0; i < 40; i++) store.identify({ name: `P${i}` });
-    await settle(120);
-    expect(readIdentities()).toHaveLength(40);
-    expect(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+    await settle(150);
+    expect(await db.identities.all()).toHaveLength(40);
   });
 
-  test('flush is synchronous, so shutdown can rely on it', () => {
-    const store = createIdentityStore({ saveDir: dir, flushDebounceMs: 60000 });
+  test('flush resolves when everything is written, so shutdown can wait on it', async () => {
+    const db = freshDb('flush');
+    const store = createIdentityStore({ db, flushDebounceMs: 60000 });
     store.identify({ name: 'Zed' });
-    expect(fs.existsSync(identFile())).toBe(false);
-    store.flush();
-    // No await: the file is on disk by the time flush returns.
-    expect(readIdentities()).toHaveLength(1);
+    expect(await db.identities.all()).toHaveLength(0);
+    await store.flush();
+    expect(await db.identities.all()).toHaveLength(1);
   });
 
   // ── GameNight identities ──────────────────────────────────────────────────
@@ -195,28 +222,17 @@ describe('identity store', () => {
     expect(store.get('gn_9')).toBeNull();
   });
 
-  test('provider and GameNight id persist, and a version 1 file still loads', () => {
-    const store = createIdentityStore({ saveDir: dir });
+  test('provider and GameNight id survive a restart', async () => {
+    const db = freshDb('provider');
+    const store = createIdentityStore({ db });
     const gn = store.identifyFromGameNight({ sub: '3', name: 'three' });
     const guest = store.identify({ name: 'Ann' });
-    store.flush();
-    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'identities.json'), 'utf8'));
-    expect(raw.version).toBe(2);
-    const reopened = createIdentityStore({ saveDir: dir });
+    await store.flush();
+
+    const reopened = createIdentityStore({ db });
+    await reopened.load();
     expect(reopened.verify(gn.token)).toMatchObject({ uid: 'gn_3', provider: 'gamenight' });
     expect(reopened.verify(guest.token)).toMatchObject({ uid: guest.uid, provider: 'guest' });
-
-    fs.writeFileSync(
-      path.join(dir, 'identities.json'),
-      JSON.stringify({
-        version: 1,
-        identities: [
-          { token: 'oldtok', uid: 'u_old', name: 'Old', avatar: '🧑', createdAt: 1, lastSeenAt: 1 },
-        ],
-      })
-    );
-    const legacy = createIdentityStore({ saveDir: dir });
-    expect(legacy.verify('oldtok')).toMatchObject({ uid: 'u_old', name: 'Old', provider: 'guest' });
   });
 
   // Preferences belong to the person, so they hang off the identity and not
@@ -290,37 +306,35 @@ describe('identity store', () => {
     expect(store.verify(me.token).prefs).toEqual({ muted: true, seat: 2 });
   });
 
-  test('preferences survive a restart, and an old file simply has none', () => {
-    const store = createIdentityStore({ saveDir: dir });
+  test('preferences survive a restart', async () => {
+    const db = freshDb('prefs');
+    const store = createIdentityStore({ db });
     const me = store.identify({ name: 'Bryce' });
     store.setPrefs(me.uid, { muted: true, seat: 5, panelTab: 'history' });
-    store.flush();
+    await store.flush();
 
-    const reopened = createIdentityStore({ saveDir: dir });
+    const reopened = createIdentityStore({ db });
+    await reopened.load();
     expect(reopened.verify(me.token).prefs).toEqual({
       muted: true,
       seat: 5,
       panelTab: 'history',
     });
+  });
 
-    fs.writeFileSync(
-      path.join(dir, 'identities.json'),
-      JSON.stringify({
-        version: 2,
-        identities: [
-          {
-            uid: 'u_noprefs',
-            name: 'Old',
-            avatar: '🧑',
-            createdAt: 1,
-            lastSeenAt: 1,
-            tokens: [{ token: 'tok_noprefs', createdAt: 1, lastSeenAt: 1 }],
-          },
-        ],
-      })
-    );
-    const older = createIdentityStore({ saveDir: dir });
-    expect(older.verify('tok_noprefs').prefs).toEqual({});
+  test('an identity stored with no preferences comes back with none', async () => {
+    const db = freshDb('noprefs');
+    const store = createIdentityStore({ db });
+    const me = store.identify({ name: 'Old' });
+    await store.flush();
+    // As a record written before there were any preferences would look.
+    const row = (await db.identities.all())[0];
+    delete row.prefs;
+    await db.identities.put(row);
+
+    const older = createIdentityStore({ db });
+    await older.load();
+    expect(older.verify(me.token).prefs).toEqual({});
   });
 
   // The devices an account is signed in on. A row is named by an id minted
@@ -363,7 +377,8 @@ describe('identity store', () => {
     expect(store.endSession(stranger.uid, phoneRow.id)).toBeNull();
     expect(store.verify(phone.token)).toMatchObject({ uid: phone.uid });
 
-    expect(store.endSession(phone.uid, phoneRow.id)).toBe(phone.token);
+    // What comes back is the digest of the token that went, never the token.
+    expect(store.endSession(phone.uid, phoneRow.id)).toBe(store.hashToken(phone.token));
     expect(store.verify(phone.token)).toBeNull();
     expect(store.verify(mac.token)).toMatchObject({ uid: mac.uid });
     expect(store.sessions(mac.uid)).toHaveLength(1);
@@ -381,43 +396,41 @@ describe('identity store', () => {
     expect(store.revokeToken('never-was-a-token')).toBe(false);
   });
 
-  test('a device keeps its name and its id across a restart', () => {
-    const store = createIdentityStore({ saveDir: dir });
+  test('a device keeps its name and its id across a restart', async () => {
+    const db = freshDb('device');
+    const store = createIdentityStore({ db });
     const me = store.identify({ name: 'Bryce', userAgent: UA_IPHONE });
     const before = store.sessions(me.uid, me.token);
-    store.flush();
+    await store.flush();
 
-    const reopened = createIdentityStore({ saveDir: dir });
+    const reopened = createIdentityStore({ db });
+    await reopened.load();
     const after = reopened.sessions(me.uid, me.token);
     expect(after).toHaveLength(1);
     expect(after[0].id).toBe(before[0].id);
     expect(after[0].label).toBe('Safari on iPhone');
     expect(after[0].current).toBe(true);
     // And it can still be signed out by the id the file remembered.
-    expect(reopened.endSession(me.uid, after[0].id)).toBe(me.token);
+    expect(reopened.endSession(me.uid, after[0].id)).toBe(reopened.hashToken(me.token));
 
-    // A file written before any of this names the device as best it can and
-    // gives it an id, rather than leaving a row nobody can sign out.
-    fs.writeFileSync(
-      path.join(dir, 'identities.json'),
-      JSON.stringify({
-        version: 2,
-        identities: [
-          {
-            uid: 'u_older',
-            name: 'Old',
-            avatar: '🧑',
-            createdAt: 1,
-            lastSeenAt: 1,
-            tokens: [{ token: 'tok_older', createdAt: 1, lastSeenAt: 1 }],
-          },
-        ],
-      })
-    );
-    const older = createIdentityStore({ saveDir: dir });
-    const row = older.sessions('u_older', 'tok_older')[0];
+    // A device stored before any of this had a name or an id gets both on the
+    // way in, rather than leaving a row nobody can sign out.
+    const bare = freshDb('bare-device');
+    await bare.identities.put({
+      uid: 'u_older',
+      name: 'Old',
+      nameKey: 'old',
+      avatar: '🧑',
+      provider: 'guest',
+      createdAt: 1,
+      lastSeenAt: 1,
+      devices: [{ tokenHash: 'f'.repeat(64), createdAt: 1, lastSeenAt: 1 }],
+    });
+    const older = createIdentityStore({ db: bare });
+    await older.load();
+    const row = older.sessions('u_older')[0];
     expect(row.label).toBe('A browser');
     expect(row.id).toMatch(/^[0-9a-f]{16}$/);
-    expect(older.endSession('u_older', row.id)).toBe('tok_older');
+    expect(older.endSession('u_older', row.id)).toBe('f'.repeat(64));
   });
 });

@@ -14,13 +14,10 @@
 // difference beyond a `provider` field.
 
 const crypto = require('crypto');
-const fs = require('fs');
-const fsp = require('fs/promises');
-const path = require('path');
 const random = require('../random');
+const { digestToken } = require('./password');
 
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const FILE_VERSION = 2;
 
 // Two tiers, because the two kinds of change are worth very different money.
 // A material change - a mint, a rename - is rare and worth writing promptly.
@@ -82,7 +79,7 @@ function deviceLabel(userAgent) {
 
 function createIdentityStore(options = {}) {
   const {
-    saveDir = null,
+    db = null,
     ttlMs = DEFAULT_TTL_MS,
     now = Date.now,
     flushDebounceMs = FLUSH_DEBOUNCE_MS,
@@ -103,33 +100,60 @@ function createIdentityStore(options = {}) {
       String(v || '')
         .trim()
         .toLocaleLowerCase(),
+    log = () => {},
   } = options;
 
   // uid -> { uid, name, avatar, provider, gnUserId, createdAt, lastSeenAt,
-  //          tokens: Map<token, { createdAt, lastSeenAt }> }
+  //          tokens: Map<tokenHash, { id, label, createdAt, lastSeenAt }> }
   const identities = new Map();
-  const tokens = new Map(); // token -> uid
-  const file = saveDir ? path.join(saveDir, 'identities.json') : null;
+  const tokens = new Map(); // tokenHash -> uid
+
+  // Who has changed since the last write. The whole map used to go to disk on
+  // every flush, which was O(every identity ever seen) for one rename; a
+  // database is written a record at a time, so only the records that moved.
+  const dirty = new Set();
+  const gone = new Set();
 
   let flushTimer = null;
   let flushTier = null; // 'material' | 'touch' - what the pending timer is for
   let writing = false; // a write is in flight
   let writeQueued = false; // something changed while one was
-  let tmpSeq = 0;
+
+  function mark(uid) {
+    if (!uid) return;
+    dirty.add(uid);
+    gone.delete(uid);
+  }
+
+  function markGone(uid) {
+    if (!uid) return;
+    dirty.delete(uid);
+    gone.add(uid);
+  }
+
+  // Keyed by a digest of the token, never by the token. What is written down
+  // is therefore not a set of live sessions: somebody holding a copy of the
+  // database cannot sign in as anybody with it. The browser keeps the only
+  // copy of the token itself, which is what it was always for.
+  function hash(token) {
+    return typeof token === 'string' && token ? digestToken(token) : null;
+  }
 
   function attachToken(rec, token, at, label = '') {
+    const key = hash(token);
+    if (!key) return;
     // An id of its own, because the sessions list has to name a device without
     // the page ever holding the credential for it. A token is a bearer thing:
     // one that leaked would sign somebody in, and a list of every device's
     // token sitting in a browser is a much better prize than the one that
     // browser already had.
-    rec.tokens.set(token, {
+    rec.tokens.set(key, {
       id: crypto.randomBytes(8).toString('hex'),
       label: deviceLabel(label),
       createdAt: at,
       lastSeenAt: at,
     });
-    tokens.set(token, rec.uid);
+    tokens.set(key, rec.uid);
   }
 
   function mintToken() {
@@ -185,58 +209,60 @@ function createIdentityStore(options = {}) {
     };
   }
 
-  function load() {
-    if (!file || !fs.existsSync(file)) return;
-    try {
-      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      const at = now();
-      for (const rec of data.identities || []) {
-        if (!rec.uid) continue;
-        // Version 1 wrote one token per record, on the record itself.
-        const list = Array.isArray(rec.tokens)
-          ? rec.tokens
-          : rec.token
-            ? [{ token: rec.token, createdAt: rec.createdAt, lastSeenAt: rec.lastSeenAt }]
-            : [];
-        let ident = identities.get(rec.uid);
-        if (!ident) {
-          ident = newRecord(rec, at);
-          identities.set(ident.uid, ident);
-        }
-        for (const t of list) {
-          if (!t || !t.token) continue;
-          ident.tokens.set(t.token, {
-            // A file written before the sessions list gets an id on the way
-            // in, so an old device can still be named and signed out.
-            id: t.id || crypto.randomBytes(8).toString('hex'),
-            label: typeof t.label === 'string' && t.label ? t.label : 'A browser',
-            createdAt: t.createdAt || ident.createdAt,
-            lastSeenAt: t.lastSeenAt || ident.lastSeenAt,
-          });
-          tokens.set(t.token, ident.uid);
-        }
-        if (ident.tokens.size === 0) identities.delete(ident.uid);
+  // Everything, once, before the server listens. The working set is the map;
+  // the database is what it is read out of and written back to.
+  async function load() {
+    identities.clear();
+    tokens.clear();
+    dirty.clear();
+    gone.clear();
+    if (!db) return 0;
+    for (const row of await db.identities.all()) {
+      if (!row || !row.uid) continue;
+      const rec = newRecord(
+        {
+          uid: row.uid,
+          name: row.name,
+          avatar: row.avatar,
+          provider: row.provider,
+          gnUserId: row.gnUserId,
+          createdAt: row.createdAt,
+          lastSeenAt: row.lastSeenAt,
+          prefs: row.prefs,
+        },
+        row.createdAt || now()
+      );
+      for (const device of row.devices || []) {
+        if (!device || !device.tokenHash) continue;
+        rec.tokens.set(device.tokenHash, {
+          id: device.id || crypto.randomBytes(8).toString('hex'),
+          label: device.label || 'A browser',
+          createdAt: device.createdAt || rec.createdAt,
+          lastSeenAt: device.lastSeenAt || rec.lastSeenAt,
+        });
+        tokens.set(device.tokenHash, rec.uid);
       }
-    } catch (_err) {
-      // A corrupt file starts the store empty; identities are cheap to remint.
-      identities.clear();
-      tokens.clear();
+      // An identity with no device on it is nobody, and was already dropped on
+      // the way in when this was a file.
+      if (rec.tokens.size === 0) continue;
+      identities.set(rec.uid, rec);
     }
+    return identities.size;
   }
 
-  function serialize() {
-    const list = [...identities.values()].map((rec) => ({
+  function toRow(rec) {
+    return {
       uid: rec.uid,
       name: rec.name,
+      nameKey: nameKeyOf(rec.name),
       avatar: rec.avatar,
       provider: rec.provider,
       gnUserId: rec.gnUserId,
       createdAt: rec.createdAt,
       lastSeenAt: rec.lastSeenAt,
       prefs: rec.prefs,
-      tokens: [...rec.tokens.entries()].map(([token, t]) => ({ token, ...t })),
-    }));
-    return JSON.stringify({ version: FILE_VERSION, identities: list });
+      devices: [...rec.tokens.entries()].map(([tokenHash, t]) => ({ tokenHash, ...t })),
+    };
   }
 
   function cancelPending() {
@@ -246,41 +272,46 @@ function createIdentityStore(options = {}) {
     flushTier = null;
   }
 
-  // The disk write, off the event loop. Every write is the whole map, which is
-  // exactly why it cannot stay synchronous: the cost is O(every identity ever
-  // seen) and it would be paid on the one loop that every table on the server
-  // shares. The map is serialised up front, so the snapshot is the one that
-  // existed when the flush fired and only the write and rename land late.
+  // The write, off the loop every table shares. Only what moved: the set is
+  // taken up front so a change arriving mid-write lands in the next one rather
+  // than being dropped between the copy and the query.
   function flushAsync() {
     flushTimer = null;
     flushTier = null;
-    if (!file) return;
+    if (!db) return Promise.resolve();
     if (writing) {
       writeQueued = true;
-      return;
+      return Promise.resolve();
     }
+    if (!dirty.size && !gone.size) return Promise.resolve();
     writing = true;
-    const body = serialize();
-    // A tmp path of its own per write: flush() uses `${file}.tmp`, and a
-    // shutdown landing on top of an in-flight write must not share a file.
-    tmpSeq = (tmpSeq + 1) % 1e6;
-    const tmp = `${file}.${process.pid}.${tmpSeq}.tmp`;
-    fsp
-      .mkdir(path.dirname(file), { recursive: true })
-      .then(() => fsp.writeFile(tmp, body))
-      .then(() => fsp.rename(tmp, file))
-      .catch(() => fsp.rm(tmp, { force: true }).catch(() => {}))
+    const changed = [...dirty].map((uid) => identities.get(uid)).filter(Boolean);
+    const removed = [...gone];
+    dirty.clear();
+    gone.clear();
+    return Promise.all([
+      ...changed.map((rec) => db.identities.put(toRow(rec))),
+      ...removed.map((uid) => db.identities.remove(uid)),
+    ])
+      .catch((err) => {
+        log({
+          level: 'warn',
+          event: 'identity_write_failed',
+          message: 'Could not write an identity',
+          data: { detail: err && err.message },
+        });
+      })
       .then(() => {
         writing = false;
-        if (writeQueued) {
+        if (writeQueued || dirty.size || gone.size) {
           writeQueued = false;
-          flushAsync();
+          scheduleFlush('material');
         }
       });
   }
 
   function scheduleFlush(tier) {
-    if (!file) return;
+    if (!db) return;
     // A pending material flush already covers whatever just arrived, and a
     // pending touch flush already covers another touch.
     if (flushTimer && (flushTier === 'material' || tier === 'touch')) return;
@@ -290,18 +321,13 @@ function createIdentityStore(options = {}) {
     if (flushTimer.unref) flushTimer.unref();
   }
 
-  // Synchronous on purpose: this is the shutdown path (flushStores in
-  // server.js), where the process is about to go away and an async write would
-  // never land. A write already in flight is left to finish - it renames a tmp
-  // file of its own, and its content differs from this one only in lastSeenAt.
+  // The shutdown path. It returns a promise now rather than writing
+  // synchronously, because a query cannot be made to happen before the process
+  // goes away - so whoever is shutting down waits for it.
   function flush() {
     cancelPending();
     writeQueued = false;
-    if (!file) return;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.tmp`;
-    fs.writeFileSync(tmp, serialize());
-    fs.renameSync(tmp, file);
+    return flushAsync();
   }
 
   function publicView(token, rec) {
@@ -316,14 +342,17 @@ function createIdentityStore(options = {}) {
   }
 
   function recordFor(token) {
-    const uid = typeof token === 'string' ? tokens.get(token) : undefined;
+    const key = hash(token);
+    const uid = key ? tokens.get(key) : undefined;
     return uid ? identities.get(uid) || null : null;
   }
 
   function touch(rec, token, at) {
     rec.lastSeenAt = at;
-    const t = rec.tokens.get(token);
+    const key = hash(token);
+    const t = key ? rec.tokens.get(key) : null;
     if (t) t.lastSeenAt = at;
+    mark(rec.uid);
   }
 
   // Returns the identity, or null when a new identity would have no name.
@@ -364,6 +393,7 @@ function createIdentityStore(options = {}) {
       }
       touch(rec, token, at);
     }
+    mark(rec.uid);
     scheduleFlush(isNew || changed ? 'material' : 'touch');
     return { ...publicView(token, rec), isNew };
   }
@@ -406,6 +436,7 @@ function createIdentityStore(options = {}) {
     }
     const token = mintToken();
     attachToken(rec, token, at, userAgent);
+    mark(rec.uid);
     scheduleFlush('material');
     return { ...publicView(token, rec), isNew: false };
   }
@@ -438,6 +469,7 @@ function createIdentityStore(options = {}) {
     }
     const token = mintToken();
     attachToken(rec, token, at, userAgent);
+    mark(rec.uid);
     scheduleFlush('material');
     return { ...publicView(token, rec), isNew };
   }
@@ -461,7 +493,10 @@ function createIdentityStore(options = {}) {
     }
     // Material rather than a touch: somebody pressed something, and losing it
     // to a hard kill would be the bug this exists to fix.
-    if (changed) scheduleFlush('material');
+    if (changed) {
+      mark(rec.uid);
+      scheduleFlush('material');
+    }
     return { ...rec.prefs };
   }
 
@@ -488,6 +523,7 @@ function createIdentityStore(options = {}) {
     if (safeName && rec.provider !== 'gamenight') rec.name = safeName;
     if (safeAvatar) rec.avatar = safeAvatar;
     rec.lastSeenAt = now();
+    mark(rec.uid);
     scheduleFlush('material');
     return { uid: rec.uid, name: rec.name, avatar: rec.avatar, provider: rec.provider };
   }
@@ -500,36 +536,44 @@ function createIdentityStore(options = {}) {
   function sessions(uid, currentToken = null) {
     const rec = uid ? identities.get(uid) : null;
     if (!rec) return [];
+    const here = hash(currentToken);
     return [...rec.tokens.entries()]
-      .map(([token, t]) => ({
+      .map(([tokenHash, t]) => ({
         id: t.id,
         label: t.label || 'A browser',
         createdAt: t.createdAt,
         lastSeenAt: t.lastSeenAt,
         // So the screen can say which row is the one reading it, and warn
         // before somebody signs out the device in their hand.
-        current: !!currentToken && token === currentToken,
+        current: !!here && tokenHash === here,
       }))
       .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
   }
 
   // Signing a device out, named by its public id and only ever from its own
   // identity: an id is not a secret, so the uid is what authorises this.
-  // Returns the token that was dropped, so the caller can find the socket
-  // holding it and tell it; null if there was no such row.
+  // Returns the digest of the token that was dropped, so the caller can find
+  // the socket holding it and tell it; null if there was no such row. A digest
+  // rather than the token, because the token is not here to return - see
+  // hash() above - and hashToken() lets a caller compare its own.
   function endSession(uid, id) {
     const rec = uid ? identities.get(uid) : null;
     if (!rec || !id) return null;
-    for (const [token, t] of rec.tokens) {
+    for (const [tokenHash, t] of rec.tokens) {
       if (t.id !== id) continue;
-      rec.tokens.delete(token);
-      tokens.delete(token);
+      rec.tokens.delete(tokenHash);
+      tokens.delete(tokenHash);
       // An identity with no devices left is nobody. Dropping it here rather
-      // than waiting for the idle sweep keeps the file honest, and matches
+      // than waiting for the idle sweep keeps the store honest, and matches
       // what load() would do with it on the next boot anyway.
-      if (rec.tokens.size === 0) identities.delete(rec.uid);
+      if (rec.tokens.size === 0) {
+        identities.delete(rec.uid);
+        markGone(rec.uid);
+      } else {
+        mark(rec.uid);
+      }
       scheduleFlush('material');
-      return token;
+      return tokenHash;
     }
     return null;
   }
@@ -539,7 +583,7 @@ function createIdentityStore(options = {}) {
   function revokeToken(token) {
     const rec = recordFor(token);
     if (!rec) return false;
-    const row = rec.tokens.get(token);
+    const row = rec.tokens.get(hash(token));
     return !!row && !!endSession(rec.uid, row.id);
   }
 
@@ -549,22 +593,25 @@ function createIdentityStore(options = {}) {
     let dropped = 0;
     const at = now();
     for (const [uid, rec] of identities) {
-      for (const [token, t] of rec.tokens) {
+      let lost = false;
+      for (const [tokenHash, t] of rec.tokens) {
         if (at - t.lastSeenAt > ttlMs) {
-          rec.tokens.delete(token);
-          tokens.delete(token);
+          rec.tokens.delete(tokenHash);
+          tokens.delete(tokenHash);
+          lost = true;
         }
       }
       if (rec.tokens.size === 0) {
         identities.delete(uid);
+        markGone(uid);
         dropped++;
+      } else if (lost) {
+        mark(uid);
       }
     }
     if (dropped) scheduleFlush('material');
     return dropped;
   }
-
-  load();
 
   return {
     identify,
@@ -579,7 +626,11 @@ function createIdentityStore(options = {}) {
     endSession,
     revokeToken,
     expireIdle,
+    load,
     flush,
+    // So a caller holding a raw token can compare it with what endSession
+    // returns, without the store ever handing a token back.
+    hashToken: hash,
     get size() {
       return identities.size;
     },

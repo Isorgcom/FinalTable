@@ -164,6 +164,19 @@ for (const skip of envSkipped || []) {
 
 // Who a player is: name + avatar behind a device token, persisted beside the
 // saves. See server/identity.js for the interface a login backend would fill.
+// Where everything is kept. Made here and connected in startServer, because
+// nothing may be read out of it before the server is listening and everything
+// is read out of it after.
+const db = createDatabase({
+  url: config.dbUrl,
+  host: config.dbHost,
+  port: config.dbPort,
+  user: config.dbUser,
+  password: config.dbPassword,
+  database: config.dbName,
+  log: structuredLog,
+});
+
 // The two know one thing about each other and are made in this order because
 // of it: identity asks accounts whether a name is spoken for, and accounts
 // asks identity whether anybody else is playing under it. Late-bound through
@@ -172,7 +185,8 @@ for (const skip of envSkipped || []) {
 let accounts = null;
 
 const identity = createIdentityStore({
-  saveDir: process.env.SAVE_DIR || path.join(__dirname, 'data'),
+  db,
+  log: structuredLog,
   sanitizeName,
   sanitizeAvatar,
   // Owned, or held by a sign-up waiting on its link: either way somebody else
@@ -350,19 +364,6 @@ const handHistoryStore =
     : null;
 
 // Admin settings, set from the lobby and kept beside the saves.
-// Where everything is kept. Made here and connected in startServer, because
-// nothing may be read out of it before the server is listening and everything
-// is read out of it after.
-const db = createDatabase({
-  url: config.dbUrl,
-  host: config.dbHost,
-  port: config.dbPort,
-  user: config.dbUser,
-  password: config.dbPassword,
-  database: config.dbName,
-  log: structuredLog,
-});
-
 const settingsStore = createSettingsStore({ db, log: structuredLog });
 // startServer can be called more than once in a test run; the stores open once.
 let storesOpen = false;
@@ -423,14 +424,17 @@ const restoredTournaments = tournamentLayer.registry.restore();
 
 // Flush both stores on the way out. Installed only when run directly, so the
 // test harness (which requires this module many times) never stacks handlers.
-function flushStores() {
+// Returns a promise now: what used to be a synchronous write of a file is a
+// query, and a query cannot be made to happen before the process goes away. So
+// whoever is shutting down waits for it rather than hoping.
+async function flushStores() {
   try {
     adminLog.flush();
   } catch (_err) {
     /* nothing better to do on the way out */
   }
   try {
-    identity.flush();
+    await identity.flush();
   } catch (_err) {
     /* nothing better to do on the way out */
   }
@@ -458,8 +462,12 @@ function flushStores() {
 if (require.main === module) {
   for (const signal of ['SIGTERM', 'SIGINT']) {
     process.on(signal, () => {
-      flushStores();
-      process.exit(0);
+      // Waited on, with a bound: a database that has stopped answering must
+      // not hold a shutdown open for ever, and ten seconds is far more than
+      // the writes need.
+      const done = flushStores().catch(() => {});
+      const bail = new Promise((r) => setTimeout(r, 10000));
+      Promise.race([done, bail]).then(() => process.exit(0));
     });
   }
 }
@@ -544,6 +552,7 @@ async function openStores() {
   await db.connect();
   await db.apply();
   await settingsStore.load();
+  await identity.load();
   // Everything that reads a setting at boot, now that there are settings to
   // read: the GameNight pairing set from the Admin page beats the environment,
   // and it can only know that once the store has loaded.
