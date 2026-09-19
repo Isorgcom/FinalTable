@@ -105,7 +105,7 @@ as the memory ceiling and watch the clock separately on a small box.
 | `server/tournament-handlers.js`                              | Socket events for tournaments, a thin shim over the registry                                 |
 | `server/identity.js`                                         | Who a player is: an account here, or a GameNight one, behind device tokens                   |
 | `server/gamenight-sso.js`                                    | Checks the signed token a player brings back from GameNight, with only the public key        |
-| `server/gamenight-pairing.js`, `settings-store.js`           | The pairing itself: fetched from GameNight by the admin, kept in `data/settings.json`        |
+| `server/gamenight-pairing.js`, `settings-store.js`           | The pairing itself: fetched from GameNight by the admin, kept in the settings table          |
 | `server/tournament-store.js`                                 | Registering tournaments persisted as JSON so a restart keeps them                            |
 | `director.js`                                                | `TournamentDirector`: N tables on one clock, seating, balancing, breaking, payouts           |
 | `engine.js`                                                  | `PokerGame`: one table, one hand loop, betting and showdown                                  |

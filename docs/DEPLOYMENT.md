@@ -208,8 +208,8 @@ browser:
 2. In this server's lobby, open the menu in the top corner and pick
    **admin** (it is only there for an administrator), then enter the GameNight
    address and the slug.
-   The signing key is fetched from GameNight, checked, and saved to
-   `data/settings.json`; the button appears for everyone at once.
+   The signing key is fetched from GameNight, checked, and saved in the
+   database; the button appears for everyone at once.
 3. If GameNight ever regenerates its key, press **Refresh key** on the same
    page. **Unpair** takes the button away again.
 
@@ -227,9 +227,45 @@ own public address.
 
 The three environment variables (`GAMENIGHT_URL`, `GAMENIGHT_AUDIENCE`,
 `GAMENIGHT_PUBLIC_KEY`, see `.env.example`) still work for a headless setup:
-they seed the pairing the first time a server boots with nothing saved, and
-after that the saved pairing wins, so a change made on the Admin page is
-not undone by a restart.
+they seed the pairing on a boot that finds nothing saved, and after that the
+saved pairing wins, so a change made on the Admin page is not undone by a
+restart. Two things differ from the page. The seed fetches nothing, so
+`GAMENIGHT_URL` is stored as the issuer exactly as written and must be
+GameNight's public name (`https://gamenight.poker`), not the internal address
+above. And the key has to be pasted: it is the `pem` in GameNight's answer at
+`/api/v1/sso`, on one line with `\n` for each line break. Once the boot has
+persisted the pairing the three lines can come out of `.env`.
+
+### Seeding a saved setting from the environment
+
+Mail, the GameNight pairing and the Server knobs are settings the Admin page
+keeps in the database, and the environment only seeds a boot that finds
+nothing saved. So to change one from the shell - re-pairing after a wipe,
+pointing a server at a relay without an administrator to hand - the saved row
+has to go first, or the seed is ignored:
+
+```bash
+cd /opt/finaltable
+docker exec finaltable-db mariadb -ufinaltable -p"$DB_PASSWORD" finaltable \
+  -e "delete from settings where k='mail'"     # or 'gamenight', or 'server'
+# put the seed in .env: SMTP_URL and MAIL_FROM, or the three GAMENIGHT_ lines
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker logs --since 1m finaltable | grep -E 'mail_configured|gamenight_paired'
+```
+
+`up -d` rather than `restart`: the environment changed, and only a recreate
+carries that in. The boot applies the seed and writes it down, and from then
+on the page wins again - so take the seed back out of `.env` and `up -d` once
+more, and the secret lives in one place. A mail seed can be tried before an
+administrator presses **Test and send me one**:
+
+```bash
+docker exec finaltable node -e 'require("nodemailer").createTransport(process.env.SMTP_URL).verify().then(() => console.log("ok"), (e) => console.log(e.message))'
+```
+
+Note that a bootstrap row counts as saved: a server brought up on
+`MAIL_TRANSPORT=log` has a `mail` row in `log` mode, and an `SMTP_URL` added
+later does nothing until that row is deleted or the page is used.
 
 ### Sizing it
 
@@ -255,10 +291,37 @@ divergence, never mirrored from the repository. A pull must not clobber it.
 
 ## The data outlives everything
 
-Tournaments, identities, chat and the GameNight pairing live in a named volume
-at `/app/data`, not in the image and not in the clone, so neither a pull nor a
-rebuild touches the field that was playing. A running tournament is recorded
-between hands and seated again on the way back up.
+Tournaments, accounts, identities, chat, the hand histories, the settings and
+the admin log live in the database, whose volume (`finaltable-db`) is not the
+image and not the clone, so neither a pull nor a rebuild touches the field
+that was playing. A running tournament is recorded between hands and seated
+again on the way back up. The `finaltable-data` volume at `/app/data` holds
+only what the file-to-database import left behind.
+
+## Starting over
+
+A server that should forget everything - a test box being reset, a database
+that was never worth keeping - is taken down and brought back in a few
+minutes. What survives is nothing on this host: GameNight's side of the
+pairing (its Connected Apps entry) stays, so re-pairing is only this side.
+
+```bash
+cd /opt/finaltable
+docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v --remove-orphans
+docker rmi finaltable:latest finaltable:previous
+cd / && rm -rf /opt/finaltable
+git clone github-finaltable:OWNER/FinalTable.git /opt/finaltable
+cd /opt/finaltable
+cp .env.example .env    # DB_PASSWORD, DB_ROOT_PASSWORD, CLAIM_TOKEN
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+`down -v` takes the named volumes and the anonymous `node_modules` one with
+the containers; the deploy key and its ssh alias live in `~/.ssh`, outside the
+clone, and are reused. On a box too small to build, ship the image from
+elsewhere before `up -d`, as above. Then the first ten minutes, from the top:
+claim it, set mail, re-pair GameNight from the Admin page or seed it as
+described under Pairing.
 
 ## Running it somewhere else
 

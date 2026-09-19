@@ -769,7 +769,10 @@ Give it the **public address** players actually reach the server on: links in
 the mail are built against it, so behind a proxy that is the proxy's address
 rather than the container's. Then choose how to send. **Through a mail
 server** wants the host, the port, whether TLS starts from the first byte
-(usually port 465) or not (usually 587), and the account to sign in as.
+(usually port 465) or not (usually 587), and the account to sign in as. The
+**from** address should be one that server will send for - a relay only sends
+for domains it has verified, and refuses the message rather than the login
+when it is not.
 **Write it to this server's log instead** sends nothing and puts the whole
 message where `docker logs` will show it, which is how to try the whole flow
 on a machine with no mail server. **Not at all** means nobody can sign up.
