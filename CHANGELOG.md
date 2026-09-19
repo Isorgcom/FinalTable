@@ -53,6 +53,18 @@ Release on GitHub to go with it.
 
 ### Added
 
+- **A Mail page on the Admin panel**, so setting a server up no longer means
+  editing a file on the box. The public address players reach it on, the mail
+  server, the account it signs in as, and whether to send properly or write
+  the message to the server's own log while you are testing. **Test and send
+  me one** tries what is on the screen rather than what was saved — it opens
+  the connection, signs in, and sends one message to your own address — and
+  reports what the mail server actually said when it does not work. Mail is
+  what an account needs, so the sign-in screen stops saying the server cannot
+  make accounts the moment it is set, in every browser that is open, without
+  anybody reloading. The environment variables still seed a first boot, and
+  this page wins from then on. The password is typed once and never shown
+  again, not even to the administrator who set it.
 - **A Users page on the Admin panel.** Every account on the server, searchable,
   filterable by administrator or suspended, showing how many devices each is
   signed in on and when they were last here. From a row: make somebody an

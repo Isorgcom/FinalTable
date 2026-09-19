@@ -59,6 +59,10 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onAdminGameNight(data);
   });
   // Every game on the server, for the Admin page; the same unlock.
+  socket.on('adminMail', (data) => {
+    if (window.Lobby) Lobby.onAdminMail(data);
+  });
+
   socket.on('adminUsers', (data) => {
     if (window.Lobby) Lobby.onAdminUsers(data);
   });

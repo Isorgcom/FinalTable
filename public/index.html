@@ -307,6 +307,18 @@
             </button>
             <button
               class="side-tab"
+              id="tabAdminMail"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="adminPageMail"
+              tabindex="-1"
+              data-admin-tab="mail"
+            >
+              Mail
+            </button>
+            <button
+              class="side-tab"
               id="tabAdminUsers"
               type="button"
               role="tab"
@@ -390,6 +402,107 @@
                 Refresh key
               </button>
               <button class="btn-secondary hidden" id="btnAdminUnpair" type="button">Unpair</button>
+            </div>
+          </section>
+          <section
+            class="admin-page hidden"
+            id="adminPageMail"
+            role="tabpanel"
+            tabindex="0"
+            aria-labelledby="tabAdminMail"
+          >
+            <div class="admin-heading">Mail</div>
+            <p class="admin-help">
+              How this server sends the two messages it sends: the link that proves an address at
+              sign-up, and the one that sets a forgotten password. Without it nobody can make an
+              account here.
+            </p>
+            <div class="admin-status" id="adminMailStatus" aria-live="polite"></div>
+            <div class="admin-detail hidden" id="adminMailDetail"></div>
+            <div class="form-group">
+              <label for="adminMailPublicUrl">Public address</label>
+              <input
+                type="url"
+                id="adminMailPublicUrl"
+                placeholder="https://poker.example.com"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <div class="seg-hint">
+                Where players reach this server. Links in the mail are built against it, so behind a
+                proxy it is the proxy's address rather than the container's.
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="adminMailMode">Send it</label>
+              <select id="adminMailMode">
+                <option value="smtp">Through a mail server</option>
+                <option value="log">Write it to this server's log instead</option>
+                <option value="off">Not at all</option>
+              </select>
+            </div>
+            <!-- Everything below is only for the first of those. -->
+            <div id="adminMailServer">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="adminMailHost">Mail server</label>
+                  <input
+                    type="text"
+                    id="adminMailHost"
+                    placeholder="smtp.example.com"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="adminMailPort">Port</label>
+                  <input type="number" id="adminMailPort" min="1" max="65535" placeholder="465" />
+                </div>
+              </div>
+              <div class="check-row">
+                <input type="checkbox" id="adminMailSecure" checked />
+                <label for="adminMailSecure">
+                  TLS from the first byte, which is usually port 465. Off means plain or STARTTLS,
+                  usually 587.
+                </label>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="adminMailUser">Username</label>
+                  <input type="text" id="adminMailUser" autocomplete="off" spellcheck="false" />
+                </div>
+                <div class="form-group">
+                  <label for="adminMailPass">Password</label>
+                  <!-- new-password, or the browser offers to fill in the
+                       administrator's own FinalTable password here. -->
+                  <input
+                    type="password"
+                    id="adminMailPass"
+                    autocomplete="new-password"
+                    maxlength="256"
+                    placeholder="unchanged"
+                  />
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="adminMailFrom">From</label>
+                <input
+                  type="text"
+                  id="adminMailFrom"
+                  placeholder="FinalTable &lt;no-reply@example.com&gt;"
+                  autocomplete="off"
+                />
+                <div class="seg-hint">Some mail servers insist this matches the account above.</div>
+              </div>
+            </div>
+            <div class="lobby-actions">
+              <button class="btn-enter" id="btnAdminMailSave" type="button">Save</button>
+              <button class="btn-secondary" id="btnAdminMailTest" type="button">
+                Test and send me one
+              </button>
+              <button class="btn-secondary hidden" id="btnAdminMailForget" type="button">
+                Forget the password
+              </button>
             </div>
           </section>
           <section

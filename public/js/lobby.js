@@ -337,6 +337,7 @@
   const ADMIN_PAGES = [
     { name: 'games', cap: 'Games', onShow: () => askForAdminGames() },
     { name: 'gamenight', cap: 'GameNight', onShow: null },
+    { name: 'mail', cap: 'Mail', onShow: () => askForMail() },
     { name: 'users', cap: 'Users', onShow: () => askForUsers({ fresh: true }) },
     { name: 'log', cap: 'Log', onShow: () => askForAdminLog({ fresh: true }) },
   ];
@@ -736,6 +737,144 @@
     if (!email) return setUsersStatus('An address to send the link to.', 'err');
     setUsersStatus('Making it…');
     socket.emit('adminCreateUser', { name, email });
+  }
+
+  // ── Mail ────────────────────────────────────────────────────────────────
+  //
+  // Where this server sends from. The password is the one thing the server
+  // will not hand back, so the box is always empty and an empty box means
+  // "leave it alone" rather than "clear it" - forgetting one is its own
+  // button.
+
+  let mailSettings = null;
+
+  function setMailStatus(text, kind) {
+    const el = $('adminMailStatus');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('err', kind === 'err');
+  }
+
+  function setMailBusy(busy) {
+    ['btnAdminMailSave', 'btnAdminMailTest', 'btnAdminMailForget'].forEach(
+      (id) => ($(id).disabled = busy)
+    );
+  }
+
+  function askForMail() {
+    if (socket && socket.connected) socket.emit('adminGetMail');
+  }
+
+  function mailFromForm() {
+    const payload = {
+      mode: $('adminMailMode').value,
+      publicUrl: $('adminMailPublicUrl').value.trim(),
+      from: $('adminMailFrom').value.trim(),
+      host: $('adminMailHost').value.trim(),
+      port: Number($('adminMailPort').value) || 0,
+      secure: $('adminMailSecure').checked,
+      user: $('adminMailUser').value.trim(),
+    };
+    // Only when somebody typed one. Empty means the stored one stands.
+    const pass = $('adminMailPass').value;
+    if (pass) payload.pass = pass;
+    return payload;
+  }
+
+  function renderMail() {
+    const m = mailSettings;
+    if (!m) return;
+    $('adminMailMode').value = m.mode || 'off';
+    // Backfilled rather than overwritten, so a half-typed form is not wiped
+    // by the answer to somebody else's save.
+    if (!$('adminMailPublicUrl').value) $('adminMailPublicUrl').value = m.publicUrl || '';
+    if (!$('adminMailFrom').value) $('adminMailFrom').value = m.from || '';
+    if (!$('adminMailHost').value) $('adminMailHost').value = m.host || '';
+    if (!$('adminMailPort').value) $('adminMailPort').value = m.port || '';
+    if (!$('adminMailUser').value) $('adminMailUser').value = m.user || '';
+    $('adminMailSecure').checked = m.secure !== false;
+    $('adminMailServer').classList.toggle('hidden', m.mode !== 'smtp');
+    $('btnAdminMailForget').classList.toggle('hidden', !m.passSet);
+    $('adminMailPass').placeholder = m.passSet ? 'unchanged' : 'none stored';
+
+    const detail = $('adminMailDetail');
+    detail.innerHTML = '';
+    const lines = [];
+    if (m.passSet) {
+      lines.push(
+        `password  stored${m.passSetAt ? ` on ${new Date(m.passSetAt).toLocaleString()}` : ''}`
+      );
+    }
+    if (m.source === 'env') lines.push('source    seeded from the environment');
+    if (m.why) lines.push(`missing   ${m.why}`);
+    for (const line of lines) {
+      const row = document.createElement('div');
+      row.textContent = line;
+      detail.appendChild(row);
+    }
+    detail.classList.toggle('hidden', !lines.length);
+  }
+
+  function onAdminMail(data) {
+    mailSettings = data || null;
+    if (data && data.ok === false) setMailStatus(data.error || 'That did not work.', 'err');
+    else if (data && data.ok === true) {
+      setMailStatus(
+        data.sentTo
+          ? `Sent to ${data.sentTo}.${data.logged ? ' Written to this server’s log.' : ''}`
+          : 'Saved.',
+        'ok'
+      );
+      // Typed once and kept by the server from here on.
+      $('adminMailPass').value = '';
+    } else if (data) {
+      setMailStatus(
+        data.available
+          ? 'This server can send mail.'
+          : 'This server cannot send mail, so nobody can sign up.'
+      );
+    }
+    renderMail();
+    setMailBusy(false);
+  }
+
+  async function saveMail() {
+    if (!socket) return;
+    const payload = mailFromForm();
+    // Turning it off on a server with no GameNight leaves nobody a way in and
+    // no way to reset a password, so it is worth asking about.
+    if (payload.mode === 'off' && !(serverInfo && serverInfo.gamenight)) {
+      const ok = await confirmThat({
+        title: 'Turn mail off?',
+        message:
+          'Nobody will be able to sign up or reset a password, and this server has no GameNight to fall back on.',
+        confirmLabel: 'Turn it off',
+      });
+      if (!ok) return;
+    }
+    setMailBusy(true);
+    setMailStatus('Saving…');
+    socket.emit('adminSetMail', payload);
+  }
+
+  function testMail() {
+    if (!socket) return;
+    setMailBusy(true);
+    setMailStatus('Trying it…');
+    socket.emit('adminTestMail', mailFromForm());
+  }
+
+  async function forgetMailPassword() {
+    if (!socket) return;
+    const ok = await confirmThat({
+      title: 'Forget the password?',
+      message: 'This server will have none for the mail account until you set another.',
+      confirmLabel: 'Forget it',
+    });
+    if (!ok) return;
+    setMailBusy(true);
+    socket.emit('adminSetMail', { clearPass: true });
   }
 
   function setPairingStatus(text, kind) {
@@ -2912,6 +3051,13 @@
     );
     const adminStrip = document.querySelector('#lobbyAdmin .admin-tabs');
     if (adminStrip) adminStrip.addEventListener('keydown', onAdminTabKey);
+    $('btnAdminMailSave').addEventListener('click', saveMail);
+    $('btnAdminMailTest').addEventListener('click', testMail);
+    $('btnAdminMailForget').addEventListener('click', forgetMailPassword);
+    // The server half of the form is only for one of the three modes.
+    $('adminMailMode').addEventListener('change', () => {
+      $('adminMailServer').classList.toggle('hidden', $('adminMailMode').value !== 'smtp');
+    });
     $('btnAdminCreateUser').addEventListener('click', createUser);
     $('btnAdminUsersMore').addEventListener('click', () => {
       usersShown += PAGE_USERS;
@@ -2986,6 +3132,7 @@
     onServerInfo,
     onAdminStatus,
     onAdminGameNight,
+    onAdminMail,
     onAdminUsers,
     onAdminUser,
     onAdminUserResult,

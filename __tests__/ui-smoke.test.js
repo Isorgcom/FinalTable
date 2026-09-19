@@ -66,6 +66,7 @@ describe('UI smoke', () => {
     // strip would still render, just as one long scroll again.
     expect(html).toContain('role="tablist" aria-label="Admin"');
     expect(html).toContain('id="adminPageLog"');
+    expect(html).toContain('id="adminPageMail"');
     // The admin surface is an account now: no password page, and no unlock.
     expect(html).not.toContain('id="adminPagePassword"');
     expect(html).not.toContain('id="adminLocked"');
