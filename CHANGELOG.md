@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.21.0 - 2026-09-19
+
 ### Changed
 
 - **Everybody who plays here has an account now.** Typing a name into a box is
@@ -36,9 +38,18 @@ Release on GitHub to go with it.
   after that an administrator can make another. The **admin** item in the
   corner menu is there for them and nobody else, there is nothing to type, and
   it stays put across a reload, a reconnect and a restart instead of asking
-  again. The Admin page has three tabs now rather than four - there is no
-  password left to change - and the table menu offers **cancel tournament** to
-  an administrator directly.
+  again. The Admin page lost its Password tab, there being no password left to
+  change, and the table menu offers **cancel tournament** to an administrator
+  directly.
+- FinalTable keeps everything it knows in a database of its own now - accounts,
+  identities and the devices you are signed in on, the games in progress, the
+  chat, the hands it keeps and the admin log - instead of files beside the
+  application. Running it needs a MariaDB alongside the server, which the
+  compose file starts; set `DB_PASSWORD` and `DB_ROOT_PASSWORD` in `.env` and it
+  refuses to start without them. The first boot imports whatever the old files
+  held and leaves them where they are, renamed. Nobody is signed out by the
+  change, and the token that signs your browser in is kept as a digest rather
+  than as itself, so a copy of the data is not a copy of everybody's session.
 
 ### Removed
 
@@ -96,21 +107,9 @@ Release on GitHub to go with it.
   preferences, your devices and your kept games come with you. Confirming an
   email address is what makes the name yours, and forgetting the password sends
   a link to that address. Nobody is ever told whether a name has an account.
-  A server with no mail set up carries on as it did - guests, and the GameNight
-  sign-in if it is paired - and says so where the password box would have been.
-  Needs `PUBLIC_URL` and `SMTP_URL`.
-
-### Changed
-
-- FinalTable keeps everything it knows in a database of its own now - accounts,
-  identities and the devices you are signed in on, the games in progress, the
-  chat, the hands it keeps and the admin log - instead of files beside the
-  application. Running it needs a MariaDB alongside the server, which the
-  compose file starts; set `DB_PASSWORD` and `DB_ROOT_PASSWORD` in `.env` and it
-  refuses to start without them. The first boot imports whatever the old files
-  held and leaves them where they are, renamed. Nobody is signed out by the
-  change, and the token that signs your browser in is kept as a digest rather
-  than as itself, so a copy of the data is not a copy of everybody's session.
+  A server with no mail set up makes no new accounts and says so where the
+  buttons would be; the GameNight sign-in carries on if it is paired. Set up
+  from the Admin page's Mail tab.
 
 ### Fixed
 
