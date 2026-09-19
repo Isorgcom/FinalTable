@@ -30,30 +30,51 @@ function createSettingsStore({ db = null, log = () => {} } = {}) {
     return Object.fromEntries(settings);
   }
 
-  // The write is not waited on: a setting is in memory the moment it is set,
-  // and a database that refuses it is worth a line in the log rather than an
-  // error thrown at whoever pressed the button.
+  // The write is not waited on by set(): a setting is in memory the moment it
+  // is set, and a database that refuses it is worth a line in the log rather
+  // than an error thrown at whoever pressed the button.
+  //
+  // saved() is for the callers that cannot take that answer. A pairing that
+  // failed to write is re-fetchable and a stale one is obvious; a password
+  // that failed to write is a mail server that works until the next restart
+  // and then quietly does not, with "Saved" on the screen either way. Those
+  // callers wait, and say so if it did not.
+  let lastWrite = Promise.resolve();
+
   function set(key, value) {
     const gone = value === null || value === undefined;
     if (gone) settings.delete(key);
     else settings.set(key, value);
     if (db) {
-      Promise.resolve(gone ? db.settings.remove(key) : db.settings.put(key, value)).catch((err) => {
+      lastWrite = Promise.resolve(
+        gone ? db.settings.remove(key) : db.settings.put(key, value)
+      ).catch((err) => {
         log({
           level: 'warn',
           event: 'settings_write_failed',
           message: 'Could not write a setting',
           data: { key, detail: err && err.message },
         });
+        throw err;
       });
+      // The unwaited path must not become an unhandled rejection for the
+      // callers that do not call saved().
+      lastWrite.catch(() => {});
     }
     return all();
+  }
+
+  // Resolves when the write started by the last set() has landed, and rejects
+  // with what went wrong if it did not.
+  function saved() {
+    return lastWrite;
   }
 
   return {
     load,
     get,
     set,
+    saved,
     all,
     get size() {
       return settings.size;

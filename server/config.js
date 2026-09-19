@@ -51,6 +51,54 @@ function pemFromEnv(name) {
   return pem;
 }
 
+// The mail settings as the environment describes them, in the shape the
+// Admin page and the database use. This seeds a server's first boot and is
+// not consulted again: the page's setting wins from then on, exactly as the
+// GameNight pairing works.
+//
+// Deliberately different from gamenightFromEnv below in one way: it does not
+// throw. A half-configured GameNight can stop a boot safely, because mail is
+// the other way in. Mail has no other way in - a typo in SMTP_URL would turn
+// a restart into a lockout on a server that was working five minutes ago - so
+// a URL that will not parse is a warning and the rest of the seed still
+// applies.
+function mailFromEnv(reportProblem = () => {}) {
+  const publicUrl = (process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  const smtpUrl = (process.env.SMTP_URL || '').trim();
+  const from = (process.env.MAIL_FROM || '').trim();
+  const transport = (process.env.MAIL_TRANSPORT || '').trim().toLowerCase();
+  if (!publicUrl && !smtpUrl && !transport) return null;
+
+  const seed = {
+    mode: transport === 'log' ? 'log' : smtpUrl ? 'smtp' : 'off',
+    publicUrl,
+    from,
+    host: '',
+    port: 0,
+    secure: true,
+    user: '',
+    pass: '',
+    source: 'env',
+  };
+
+  if (smtpUrl) {
+    try {
+      const parsed = new URL(smtpUrl);
+      seed.secure = parsed.protocol === 'smtps:';
+      seed.host = parsed.hostname;
+      seed.port = Number(parsed.port) || (seed.secure ? 465 : 587);
+      // Decoded, because a URL is where a password with @ : / or # in it has
+      // to be escaped and the form is where it does not.
+      seed.user = parsed.username ? decodeURIComponent(parsed.username) : '';
+      seed.pass = parsed.password ? decodeURIComponent(parsed.password) : '';
+    } catch (err) {
+      seed.mode = transport === 'log' ? 'log' : 'off';
+      reportProblem(err && err.message ? err.message : 'SMTP_URL could not be read');
+    }
+  }
+  return seed;
+}
+
 function gamenightFromEnv() {
   const url = (process.env.GAMENIGHT_URL || '').trim().replace(/\/+$/, '');
   const pem = pemFromEnv('GAMENIGHT_PUBLIC_KEY');
@@ -191,4 +239,4 @@ function loadConfig() {
   };
 }
 
-module.exports = { loadConfig };
+module.exports = { loadConfig, mailFromEnv };

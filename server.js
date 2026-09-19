@@ -8,7 +8,7 @@ const { createTournamentStore } = require('./server/tournament-store');
 const { createChatStore } = require('./server/chat-store');
 const { createHandHistoryStore } = require('./server/hand-history-store');
 const { loadLocalEnv } = require('./server/load-env');
-const { loadConfig } = require('./server/config');
+const { loadConfig, mailFromEnv } = require('./server/config');
 const { applySecurityHeaders, createRateLimiter } = require('./server/http-middleware');
 const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
@@ -17,6 +17,7 @@ const { createDatabase } = require('./server/db');
 const { migrateFromFiles } = require('./server/db/migrate');
 const { runMigrations } = require('./server/db/migrations');
 const { createMailer } = require('./server/mailer');
+const { createMailRuntime } = require('./server/mail-settings');
 const { createSsoRuntime } = require('./server/gamenight-pairing');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
 const { createStructuredLogger, onEntry } = require('./server/logger');
@@ -390,6 +391,21 @@ const sso = createSsoRuntime({ settingsStore, envConfig: config.gamenight, log: 
 // not loaded until openStores() below. Reading now would find an empty store
 // and seed the environment over a pairing somebody set from the page.
 
+// Where this server sends from, on the same terms and for the same reason.
+const mail = createMailRuntime({
+  settingsStore,
+  mailer,
+  envSeed: mailFromEnv((detail) =>
+    structuredLog({
+      level: 'warn',
+      event: 'mail_env_invalid',
+      message: 'SMTP_URL could not be read, so it was ignored',
+      data: { detail },
+    })
+  ),
+  log: structuredLog,
+});
+
 const tournamentLayer = registerTournamentHandlers({
   io,
   identity,
@@ -403,6 +419,8 @@ const tournamentLayer = registerTournamentHandlers({
   store: tournamentStore,
   accounts,
   mailer,
+  mail,
+  settingsStore,
   sanitizeName,
   normalizeNameKey,
   sanitizeAvatar,
@@ -584,6 +602,9 @@ async function openStores() {
   // read: the GameNight pairing set from the Admin page beats the environment,
   // and it can only know that once the store has loaded.
   sso.init();
+  // And where this server sends from, which the page may have changed since
+  // the environment last had an opinion about it.
+  mail.init();
 
   // An account named in the environment, made an administrator. This is how a
   // server gets its first one when the first-account rule is not the answer -
@@ -668,6 +689,7 @@ module.exports = {
   registry: tournamentLayer.registry,
   identity,
   sso,
+  mail,
   settingsStore,
   db,
   handHistoryStore,

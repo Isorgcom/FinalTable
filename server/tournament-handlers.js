@@ -23,6 +23,11 @@ const ADMIN_LOG_LIMIT = 30;
 const EXPORT_LIMIT = 6;
 const EXPORT_WINDOW_MS = 60 * 1000;
 const ADMIN_LOG_WINDOW_MS = 10 * 1000;
+// Test messages from the Admin page. A person presses this once or twice while
+// setting mail up; a loop is somebody making the server open connections to a
+// host of their choosing.
+const MAIL_TEST_LIMIT = 3;
+const MAIL_TEST_WINDOW_MS = 60 * 1000;
 // Signing in, signing up and asking for a reset, per socket. A person does
 // each of these once or twice; a loop is somebody working through a list of
 // passwords or making the server send mail to strangers.
@@ -51,6 +56,14 @@ function registerTournamentHandlers(deps) {
   // absent on a server that has neither, where the lobby offers guests only.
   const accounts = deps.accounts || null;
   const mailer = deps.mailer || { available: () => false, why: () => null };
+  const settingsStore = deps.settingsStore || null;
+  const mail = deps.mail || {
+    status: () => ({ mode: 'off', available: false }),
+    apply: () => {},
+    asTyped: () => ({}),
+    redact: (t) => t,
+    get: () => ({}),
+  };
 
   const version = typeof deps.version === 'string' ? deps.version : '';
   // The build of index.html and its scripts this server hands out. A page
@@ -129,6 +142,16 @@ function registerTournamentHandlers(deps) {
       if (s && s.data && s.data.uid === uid) found.push(s);
     }
     return found;
+  }
+
+  // Enough of an address to recognise, not enough to be one. What the test
+  // button echoes back: an administrator knows their own address and does not
+  // need to be shown it, and the answer goes into a page anybody standing
+  // behind them can read.
+  function maskAddress(address) {
+    const at = String(address || '').indexOf('@');
+    if (at < 1) return '';
+    return `${address[0]}***${address.slice(at)}`;
   }
 
   function fail(socket, error) {
@@ -918,11 +941,13 @@ function registerTournamentHandlers(deps) {
     // The GameNight pairing, from the Admin page. All four answer on
     // adminGameNight, and a change is announced to every socket as a fresh
     // serverInfo so the button appears or goes without a reload. Nobody who
-    // has not unlocked the admin controls gets an answer at all.
+    // is not an administrator gets an answer at all.
     function sendPairing(extra = {}) {
       socket.emit('adminGameNight', { ...sso.status(), ...extra });
     }
-    function announcePairing() {
+    // Nothing about this is pairing-specific: the mail settings need the same
+    // call, because whether an account can be made is in serverInfo too.
+    function announceServerInfo() {
       io.emit('serverInfo', serverInfo());
     }
     // ── The people who play here ──────────────────────────────────────
@@ -1157,6 +1182,103 @@ function registerTournamentHandlers(deps) {
       }
     }
 
+    // ── Where this server sends from ──────────────────────────────────
+    //
+    // Three events, the same shape as the pairing's four. The password is
+    // never in an answer: status() leaves it out, and the test button's error
+    // is run through the redactor first, because an SMTP server quotes what it
+    // was given more often than anybody expects and this one reaches a browser
+    // and the admin Log.
+    function sendMail(extra = {}) {
+      socket.emit('adminMail', { ...mail.status(), ...extra });
+    }
+
+    socket.on('adminGetMail', () => {
+      if (!socket.data.isAdmin) return;
+      sendMail();
+    });
+
+    socket.on('adminSetMail', async (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      mail.apply(payload);
+      // Waited for, unlike every other setting. A pairing that failed to write
+      // is re-fetchable and an obviously stale one; a password that failed to
+      // write is a mail server that works until the next restart and then
+      // quietly does not, with "Saved" on the screen either way.
+      try {
+        if (settingsStore && settingsStore.saved) await settingsStore.saved();
+      } catch (err) {
+        return sendMail({
+          ok: false,
+          error: `Saved here, but not written down: ${(err && err.message) || 'the database said no'}`,
+        });
+      }
+      announceServerInfo();
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: 'admin_set_mail',
+          message: 'An administrator set where this server sends from',
+        });
+      }
+      sendMail({ ok: true });
+    });
+
+    // The form as typed, rather than what is saved - otherwise setting a mail
+    // server up is still guess, save, restart, guess. Sends only to the
+    // administrator's own address, which is what stops the button being a
+    // small open relay.
+    socket.on('adminTestMail', async (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      const at = Date.now();
+      const recent = (socket.data.mailTests || []).filter((t) => at - t < MAIL_TEST_WINDOW_MS);
+      if (recent.length >= MAIL_TEST_LIMIT) {
+        socket.data.mailTests = recent;
+        // Answered rather than ignored: silence on a button somebody just
+        // pressed reads as a broken page.
+        return sendMail({ ok: false, error: 'That is enough for one minute.' });
+      }
+      recent.push(at);
+      socket.data.mailTests = recent;
+      if (socket.data.mailTestBusy) return;
+
+      const who = identity.get(socket.data.uid);
+      const account = accounts ? accounts.byUid(socket.data.uid) : null;
+      const to = account && account.email ? account.email : null;
+      if (!to) {
+        return sendMail({
+          ok: false,
+          error:
+            who && who.provider === 'gamenight'
+              ? 'Your account is a GameNight one, so this server has no address for you.'
+              : 'There is no address on your account to send it to.',
+        });
+      }
+
+      socket.data.mailTestBusy = true;
+      const trying = mail.asTyped(payload);
+      const settled = mail.get();
+      try {
+        // Tried on the live mailer, then put back however it was. The window
+        // is the length of one connection and this is the admin page, so a
+        // message going out in the middle of it goes through the settings
+        // being tested - which is what was asked for.
+        mail.apply(trying, { persist: false });
+        const checked = await mailer.verify();
+        if (!checked.ok) {
+          return sendMail({ ok: false, error: mail.redact(checked.error) });
+        }
+        const sent = payload.send === false ? { ok: true } : await mailer.sendTest({ to });
+        if (!sent.ok) return sendMail({ ok: false, error: mail.redact(sent.error) });
+        sendMail({ ok: true, sentTo: maskAddress(to), logged: !!sent.logged });
+      } catch (err) {
+        sendMail({ ok: false, error: mail.redact((err && err.message) || 'That did not work.') });
+      } finally {
+        mail.apply(settled, { persist: false, source: settled.source });
+        socket.data.mailTestBusy = false;
+      }
+    });
+
     socket.on('adminGetGameNight', () => {
       if (!socket.data.isAdmin) return;
       sendPairing();
@@ -1165,7 +1287,7 @@ function registerTournamentHandlers(deps) {
       if (!socket.data.isAdmin) return;
       try {
         await sso.pair(payload.url, payload.audience);
-        announcePairing();
+        announceServerInfo();
         sendPairing({ ok: true });
       } catch (err) {
         sendPairing({ ok: false, error: err.message });
@@ -1175,7 +1297,7 @@ function registerTournamentHandlers(deps) {
       if (!socket.data.isAdmin) return;
       try {
         await sso.refresh();
-        announcePairing();
+        announceServerInfo();
         sendPairing({ ok: true });
       } catch (err) {
         sendPairing({ ok: false, error: err.message });
@@ -1184,7 +1306,7 @@ function registerTournamentHandlers(deps) {
     socket.on('adminUnpairGameNight', () => {
       if (!socket.data.isAdmin) return;
       sso.unpair();
-      announcePairing();
+      announceServerInfo();
       sendPairing({ ok: true });
     });
 
