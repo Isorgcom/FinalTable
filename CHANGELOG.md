@@ -65,6 +65,15 @@ Release on GitHub to go with it.
   anybody reloading. The environment variables still seed a first boot, and
   this page wins from then on. The password is typed once and never shown
   again, not even to the administrator who set it.
+- **A Server page on the Admin panel**: how many games the server holds at
+  once, whether the reaction strip exists, how long hands are kept and how
+  many games' worth, and the two pauses that set the pace of a table. Each row
+  says when it takes effect — **now** for the ones read fresh every time, and
+  **next game** for the pacing, because a table is handed that when it is made
+  and keeps it. Chat and how many hands a running game keeps are still
+  environment settings, and the page says so and why: with either switched
+  off, the thing it writes to is never built, so a control here would work in
+  one direction and not the other.
 - **A Users page on the Admin panel.** Every account on the server, searchable,
   filterable by administrator or suspended, showing how many devices each is
   signed in on and when they were last here. From a row: make somebody an

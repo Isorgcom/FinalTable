@@ -299,10 +299,16 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
 
   const tabs = page.locator('#lobbyAdmin .admin-tabs .side-tab');
   // Four: the Password page went with the password, and Users arrived.
-  await expect(tabs).toHaveCount(5);
+  await expect(tabs).toHaveCount(6);
   // It opens on Games, and exactly one page is showing.
   await expect(page.locator('#adminPageGames')).toBeVisible();
-  for (const id of ['#adminPageGameNight', '#adminPageMail', '#adminPageUsers', '#adminPageLog']) {
+  for (const id of [
+    '#adminPageGameNight',
+    '#adminPageMail',
+    '#adminPageServer',
+    '#adminPageUsers',
+    '#adminPageLog',
+  ]) {
     await expect(page.locator(id)).toBeHidden();
   }
   await expect(page.locator('#tabAdminGames')).toHaveAttribute('aria-selected', 'true');
@@ -318,6 +324,8 @@ test('the Admin page is tabs, opening on Games, with one page showing', async ({
   await page.locator('#tabAdminGameNight').focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#adminPageMail')).toBeVisible();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#adminPageServer')).toBeVisible();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#adminPageUsers')).toBeVisible();
   await page.keyboard.press('ArrowRight');

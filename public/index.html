@@ -319,6 +319,18 @@
             </button>
             <button
               class="side-tab"
+              id="tabAdminServer"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="adminPageServer"
+              tabindex="-1"
+              data-admin-tab="server"
+            >
+              Server
+            </button>
+            <button
+              class="side-tab"
               id="tabAdminUsers"
               type="button"
               role="tab"
@@ -503,6 +515,64 @@
               <button class="btn-secondary hidden" id="btnAdminMailForget" type="button">
                 Forget the password
               </button>
+            </div>
+          </section>
+          <section
+            class="admin-page hidden"
+            id="adminPageServer"
+            role="tabpanel"
+            tabindex="0"
+            aria-labelledby="tabAdminServer"
+          >
+            <div class="admin-heading">Server</div>
+            <p class="admin-help">
+              A few things that can be changed without a restart. Each says when it takes effect:
+              <strong>now</strong> means the next person to ask, <strong>next game</strong> means
+              games made from here on, because a table is handed its pacing when it is made and
+              keeps it.
+            </p>
+            <div class="admin-status" id="adminServerStatus" aria-live="polite"></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="adminSrvMaxTournaments">Games at once <em>(now)</em></label>
+                <input type="number" id="adminSrvMaxTournaments" min="1" max="100" />
+              </div>
+              <div class="form-group">
+                <label for="adminSrvHistoryMaxGames">Games kept <em>(now)</em></label>
+                <input type="number" id="adminSrvHistoryMaxGames" min="1" max="10000" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="adminSrvHistoryDays">Hands are kept for, in days <em>(now)</em></label>
+              <input type="number" id="adminSrvHistoryDays" min="0" max="365" />
+            </div>
+            <div class="check-row">
+              <input type="checkbox" id="adminSrvReactions" />
+              <label for="adminSrvReactions">
+                The reaction strip exists at all <em>(now)</em>. Off removes it from every table
+                rather than hiding it.
+              </label>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="adminSrvHandPause">Pause between hands, ms <em>(next game)</em></label>
+                <input type="number" id="adminSrvHandPause" min="0" max="60000" />
+              </div>
+              <div class="form-group">
+                <label for="adminSrvStreetPause">
+                  Pause between streets, ms <em>(next game)</em>
+                </label>
+                <input type="number" id="adminSrvStreetPause" min="0" max="15000" />
+              </div>
+            </div>
+            <p class="admin-help">
+              Chat, and how many hands a running game keeps, are still set in the server's
+              environment. Neither is a flag the server merely consults - with them off, the thing
+              they write to is never built - so a switch here would work in one direction and not
+              the other, which is worse than saying so.
+            </p>
+            <div class="lobby-actions">
+              <button class="btn-enter" id="btnAdminServerSave" type="button">Save</button>
             </div>
           </section>
           <section

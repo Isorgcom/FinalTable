@@ -57,6 +57,7 @@ function registerTournamentHandlers(deps) {
   const accounts = deps.accounts || null;
   const mailer = deps.mailer || { available: () => false, why: () => null };
   const settingsStore = deps.settingsStore || null;
+  const serverSettings = deps.serverSettings || { status: () => ({}), apply: () => {} };
   const mail = deps.mail || {
     status: () => ({ mode: 'off', available: false }),
     apply: () => {},
@@ -1277,6 +1278,37 @@ function registerTournamentHandlers(deps) {
         mail.apply(settled, { persist: false, source: settled.source });
         socket.data.mailTestBusy = false;
       }
+    });
+
+    // ── The knobs ─────────────────────────────────────────────────────
+    //
+    // Two events. Every row carries when it takes effect, so the page can say
+    // so rather than implying they are all immediate - which they are not, and
+    // the difference between "now" and "the next game" is the difference
+    // between a control that works and one that looks broken.
+    function sendServerSettings(extra = {}) {
+      socket.emit('adminServer', { ...serverSettings.status(), ...extra });
+    }
+
+    socket.on('adminGetServer', () => {
+      if (!socket.data.isAdmin) return;
+      sendServerSettings();
+    });
+
+    socket.on('adminSetServer', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      serverSettings.apply(payload);
+      // Whether reactions exist is in serverInfo, so the strip appears and
+      // vanishes in every open browser rather than on the next reload.
+      announceServerInfo();
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: 'admin_set_server',
+          message: 'An administrator changed the server settings',
+        });
+      }
+      sendServerSettings({ ok: true });
     });
 
     socket.on('adminGetGameNight', () => {

@@ -18,6 +18,7 @@ const { migrateFromFiles } = require('./server/db/migrate');
 const { runMigrations } = require('./server/db/migrations');
 const { createMailer } = require('./server/mailer');
 const { createMailRuntime } = require('./server/mail-settings');
+const { createServerSettings } = require('./server/server-settings');
 const { createSsoRuntime } = require('./server/gamenight-pairing');
 const { computeAssetVersion, renderIndexTemplate } = require('./server/asset-version');
 const { createStructuredLogger, onEntry } = require('./server/logger');
@@ -406,6 +407,22 @@ const mail = createMailRuntime({
   log: structuredLog,
 });
 
+// The handful of knobs an admin can turn from the Server tab. What it tells -
+// the registry - is built by the call below, so it is bound afterwards.
+const serverSettings = createServerSettings({
+  settingsStore,
+  historyStore: handHistoryStore,
+  defaults: {
+    maxTournaments: config.maxTournaments,
+    reactionsEnabled: config.reactionsEnabled,
+    handHistoryTtlMs: config.handHistoryTtlMs,
+    handHistoryMaxGames: config.handHistoryMaxGames,
+    handPauseMs: config.handPauseMs,
+    streetPauseMs: config.streetPauseMs,
+  },
+  log: structuredLog,
+});
+
 const tournamentLayer = registerTournamentHandlers({
   io,
   identity,
@@ -442,7 +459,11 @@ const tournamentLayer = registerTournamentHandlers({
   reactionsEnabled: config.reactionsEnabled,
   reactionRatePerWindow: config.reactionRatePerWindow,
   reactionRateWindowMs: config.reactionRateWindowMs,
+  // Late-bound, because what it tells is built by this very call.
+  serverSettings,
 });
+serverSettings.bind({ registry: tournamentLayer.registry });
+
 // Filled by openStores(), which is where the games are read back: restoring a
 // field is synchronous and cannot happen until everything it needs is in hand.
 let restoredTournaments = 0;
@@ -602,6 +623,9 @@ async function openStores() {
   // read: the GameNight pairing set from the Admin page beats the environment,
   // and it can only know that once the store has loaded.
   sso.init();
+  // And the knobs, which the page may have turned since the environment last
+  // had an opinion about them.
+  serverSettings.init();
   // And where this server sends from, which the page may have changed since
   // the environment last had an opinion about it.
   mail.init();
@@ -695,6 +719,7 @@ module.exports = {
   handHistoryStore,
   accounts,
   mailer,
+  serverSettings,
   flushStores,
   startServer,
   config,

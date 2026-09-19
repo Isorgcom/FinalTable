@@ -338,6 +338,7 @@
     { name: 'games', cap: 'Games', onShow: () => askForAdminGames() },
     { name: 'gamenight', cap: 'GameNight', onShow: null },
     { name: 'mail', cap: 'Mail', onShow: () => askForMail() },
+    { name: 'server', cap: 'Server', onShow: () => askForServerSettings() },
     { name: 'users', cap: 'Users', onShow: () => askForUsers({ fresh: true }) },
     { name: 'log', cap: 'Log', onShow: () => askForAdminLog({ fresh: true }) },
   ];
@@ -875,6 +876,49 @@
     if (!ok) return;
     setMailBusy(true);
     socket.emit('adminSetMail', { clearPass: true });
+  }
+
+  // ── The knobs ───────────────────────────────────────────────────────────
+
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  function askForServerSettings() {
+    if (socket && socket.connected) socket.emit('adminGetServer');
+  }
+
+  function onAdminServer(data) {
+    if (!data) return;
+    const el = $('adminServerStatus');
+    if (data.ok) {
+      el.textContent = 'Saved.';
+      el.classList.add('ok');
+      el.classList.remove('err');
+    } else {
+      el.textContent = '';
+      el.classList.remove('ok', 'err');
+    }
+    $('adminSrvMaxTournaments').value = data.maxTournaments || '';
+    $('adminSrvHistoryMaxGames').value = data.handHistoryMaxGames || '';
+    $('adminSrvHistoryDays').value = Math.round((data.handHistoryTtlMs || 0) / DAY_MS);
+    $('adminSrvReactions').checked = data.reactionsEnabled !== false;
+    $('adminSrvHandPause').value = data.handPauseMs === undefined ? '' : data.handPauseMs;
+    $('adminSrvStreetPause').value = data.streetPauseMs === undefined ? '' : data.streetPauseMs;
+    $('btnAdminServerSave').disabled = false;
+  }
+
+  function saveServerSettings() {
+    if (!socket) return;
+    $('btnAdminServerSave').disabled = true;
+    socket.emit('adminSetServer', {
+      maxTournaments: Number($('adminSrvMaxTournaments').value),
+      handHistoryMaxGames: Number($('adminSrvHistoryMaxGames').value),
+      // Days on the page, milliseconds on the wire: nobody thinks about how
+      // long to keep a hand in milliseconds.
+      handHistoryTtlMs: Number($('adminSrvHistoryDays').value) * DAY_MS,
+      reactionsEnabled: $('adminSrvReactions').checked,
+      handPauseMs: Number($('adminSrvHandPause').value),
+      streetPauseMs: Number($('adminSrvStreetPause').value),
+    });
   }
 
   function setPairingStatus(text, kind) {
@@ -3051,6 +3095,7 @@
     );
     const adminStrip = document.querySelector('#lobbyAdmin .admin-tabs');
     if (adminStrip) adminStrip.addEventListener('keydown', onAdminTabKey);
+    $('btnAdminServerSave').addEventListener('click', saveServerSettings);
     $('btnAdminMailSave').addEventListener('click', saveMail);
     $('btnAdminMailTest').addEventListener('click', testMail);
     $('btnAdminMailForget').addEventListener('click', forgetMailPassword);
@@ -3133,6 +3178,7 @@
     onAdminStatus,
     onAdminGameNight,
     onAdminMail,
+    onAdminServer,
     onAdminUsers,
     onAdminUser,
     onAdminUserResult,

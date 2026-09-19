@@ -63,6 +63,10 @@ function ensureSocket() {
     if (window.Lobby) Lobby.onAdminMail(data);
   });
 
+  socket.on('adminServer', (data) => {
+    if (window.Lobby) Lobby.onAdminServer(data);
+  });
+
   socket.on('adminUsers', (data) => {
     if (window.Lobby) Lobby.onAdminUsers(data);
   });
