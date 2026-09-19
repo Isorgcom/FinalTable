@@ -28,6 +28,26 @@ FinalTable is designed for **self-hosted, private network** deployment (home NAS
 - **GameNight sign-in tokens** are ES256 JWTs verified locally with GameNight's public key (`server/gamenight-sso.js`): algorithm pinned (`none` and HS256 refused before the signature is read), issuer and audience matched, two-minute lifetime with a ten-minute ceiling, and a `jti` replay set so a token is good once. The token arrives in the URL fragment, so it reaches no access log or Referer, and the page scrubs it. The client also carries a random `state` through the round trip against login CSRF. No password, email or phone ever reaches this server. Sign-out is per browser: this server has no revoke yet, so a GameNight logout does not reach a device already signed in here. The pairing itself (`server/gamenight-pairing.js`) is the server's one outbound HTTP call: a GET of GameNight's `/api/v1/sso`, made only when an admin who has unlocked the admin controls asks for it, with an 8-second timeout, and the answer is accepted only if it carries a P-256 key; the admin can point it at any http(s) address, which is the trust the admin password already implies
 - **The admin surface belongs to an account**, not to a password. A socket is an administrator because the account that identified on it carries the role, which is read once at identify and settled nowhere else, so it survives a reconnect, cannot be guessed, and is per person rather than per server. Taking it away reaches the browser the person is holding. The first account made on a fresh server gets the role; an existing server with nobody marked says so at boot and is given one by name with `ADMIN_PROMOTE`, which is also the way back in when the only administrator is lost — set it, **restart**, and the account is an administrator from then on. There is no `ADMIN_PASSWORD`; a server that still sets one is told at boot that it does nothing, and any password stored from the old Admin page is cleared
 
+- **The SMTP password is the one secret kept recoverably.** Everything else
+  this server holds is hashed (passwords) or digested (device tokens), so a
+  stolen copy of the database is not a stolen set of credentials — with this
+  one exception, because a mail password has to be replayed to the mail host
+  and cannot be hashed. It is in the `settings` table as given, which means it
+  is in any `mysqldump`, any replica, and readable by anyone with the database
+  password or a shell on that container. The mitigations are that the database
+  publishes no port, has its own volume and its own credentials, and that the
+  Admin page never sends the password back to a browser — not even as a hash,
+  because a hash of a password is a thing to attack offline at leisure. What
+  the page is told is whether one is stored and when it was set. Anything the
+  mail server says back is run through a redactor first, because an SMTP error
+  quotes what it was given more often than anybody expects and that answer
+  reaches both a browser and the admin Log
+- **The Mail page's test button makes an outbound connection to a host an
+  administrator names**, as the GameNight pairing already does. It is behind
+  the administrator role, rate-limited to three a minute per socket, carries
+  its own short timeouts, and sends only to the address on the administrator's
+  own account — never to one typed into the form, which is what stops it being
+  a small open relay
 - **Passwords** are scrypt (N=16384, r=8, p=1) with a salt of its own per record, hashed and compared off the event loop, and never logged. An administrator's is an account password like anybody else's. Signing in answers the same sentence to a wrong password and to a name with no account, so the answer is never a list of who plays here
 - **Hole cards never leave the server for anyone but their owner.** `getStateForPlayer()` in `engine.js` builds every player's view separately and puts a seat's cards in it only when the viewer is that seat, or the hand is face up (showdown, or an all-in run-out with the betting finished); every other seat's `holeCards` is `null` in the payload, not hidden client-side. `__tests__/engine.test.js` walks those exposure rules. The shuffle is a Fisher-Yates over `crypto.randomInt` (`deck.js`, `random.js`), not `Math.random`
 - **A game is unlisted unless its host makes it public.** The lobby list and `GET /api/tournaments` carry public games only; a private or invite-only game reaches only the lists of its own members, and an id presented without its code gets "Tournament not found" rather than any hint the game exists. Invite-only adds a door: a request to join is held in memory only (never on disk), capped at fifty per game, and is not a registration, an entrant, a chat member or a vote toward anything until the host lets it in

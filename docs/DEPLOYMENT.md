@@ -129,6 +129,37 @@ The clone is the deployment. `docker-compose.prod.yml` is committed and carries
 this host's specifics: the bind mount, the proxy network, `TRUST_PROXY`, and
 memory sized for a box that has other tenants.
 
+### The first ten minutes of a new server
+
+There is an order to this, because two things need each other. Mail is what
+makes an account, and the Admin page — where mail is set — needs an account to
+open it. The way through is the log transport, which needs no mail server at
+all:
+
+1. Bring the stack up. The boot log says `no_way_in`: no mail, no GameNight,
+   nobody can sign in.
+2. Put `PUBLIC_URL` and `MAIL_TRANSPORT=log` in `.env` and restart. Note that
+   the stock `docker-compose.yml` passes neither through — the production
+   overlay bind-mounts the working tree, which is how a `.env` beside it is
+   read at all — so on a plain compose file, add them to the service's
+   `environment:` for this one boot.
+3. Open the lobby and **Create an account**. The link is not sent anywhere;
+   read it out of the log:
+
+   ```bash
+   docker logs finaltable 2>&1 | grep mail_logged | tail -1
+   ```
+
+4. Open that link, sign in, and you are the administrator — the first account
+   on a fresh server gets it.
+5. Open **admin › Mail** and set the real mail server. Press **Test and send
+   me one**; when it arrives, press **Save**.
+6. Take `MAIL_TRANSPORT` back out of the environment. It was only ever the
+   ladder up, and the saved setting wins over it anyway.
+
+A server paired with a GameNight can skip all of it: sign in there, and the
+first account through the door administers this one.
+
 ### Who administers the server
 
 Nobody, at first - and then whoever makes the first account on it. There is no

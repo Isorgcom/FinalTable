@@ -714,8 +714,8 @@ for thirty days (`HAND_HISTORY_TTL_MS`) and the server keeps the most recent
 
 ### The Admin page
 
-Four pages behind one strip of tabs: **Games**, **Sign-in**, **Users** and
-**Log**. One shows at a time, it opens on Games, and **Back to the lobby** is
+Six pages behind one strip of tabs: **Games**, **Sign-in**, **Mail**,
+**Server**, **Users** and **Log**. One shows at a time, it opens on Games, and **Back to the lobby** is
 below all of them. The arrow keys walk the tabs.
 
 **Games on this server** is the page it opens on: every game the server holds,
@@ -751,6 +751,42 @@ can sign in with their account there. Register the server on GameNight first
 slug here; the signing key is fetched, nothing is pasted. **Refresh key** if
 GameNight regenerates its key; **Unpair** takes the button away. The full
 procedure is in [DEPLOYMENT.md](./DEPLOYMENT.md#pairing-with-gamenight).
+
+**Mail** is how this server sends the two messages it sends — the link that
+proves an address at sign-up, and the one that sets a forgotten password.
+Without it nobody can make an account, so on a new server this is the first
+page to fill in.
+
+Give it the **public address** players actually reach the server on: links in
+the mail are built against it, so behind a proxy that is the proxy's address
+rather than the container's. Then choose how to send. **Through a mail
+server** wants the host, the port, whether TLS starts from the first byte
+(usually port 465) or not (usually 587), and the account to sign in as.
+**Write it to this server's log instead** sends nothing and puts the whole
+message where `docker logs` will show it, which is how to try the whole flow
+on a machine with no mail server. **Not at all** means nobody can sign up.
+
+**Test and send me one** tries what is on the screen rather than what was
+saved, so a setting can be proved before it is kept: it opens the connection,
+signs in, and sends one message to your own address. When it will not work it
+says what the mail server said, which is usually the whole answer.
+
+The password is typed once. It is never shown again — not to you, not to
+anybody — so the box is empty whenever you come back and leaving it empty
+keeps what is stored. **Forget the password** is there for when you mean to
+clear it.
+
+**Server** is the handful of things that can be changed without a restart: how
+many games the server holds at once, whether the reaction strip exists, how
+long hands are kept and how many games' worth, and the two pauses that set the
+pace of a table. Each row says when it takes effect. **now** means the next
+person to ask; **next game** means games made from here on, because a table is
+handed its pacing when it is made and keeps it.
+
+Chat, and how many hands a running game keeps, are still set in the server's
+environment. Neither is a flag the server merely consults — with them off, the
+thing they write to is never built — so a switch on the page would work in one
+direction and not the other.
 
 **Users** is everybody with an account here. Search by name, or show only
 administrators or only suspended accounts. A row says how many devices they
@@ -812,25 +848,28 @@ Admin page, reached without leaving the felt.
 ### Server settings
 
 These live in the server's `.env` (see `.env.example`) and take effect on a
-restart:
+restart. The ones marked below seed a page on the Admin panel the first time a
+server boots, and that page wins from then on — so they are for a headless
+setup and for a box nobody has pointed a browser at yet, rather than the place
+to change a setting on a server that is running:
 
-| Setting                      | Default    | What it does                                                              |
-| ---------------------------- | ---------- | ------------------------------------------------------------------------- |
-| `ADMIN_PROMOTE`              | none       | An account to make an administrator at boot, by name.                     |
-| `MAX_TOURNAMENTS`            | 8          | How many games the server holds at once.                                  |
-| `CHAT_ENABLED`               | true       | Chat exists at all.                                                       |
-| `REACTIONS_ENABLED`          | true       | The reaction strip exists at all.                                         |
-| `TOURNAMENT_FINISHED_TTL_MS` | 600000     | How long a finished game stays listed (ten minutes).                      |
-| `TOURNAMENT_ZOMBIE_HOLD_MS`  | 21600000   | How long a held game waits for somebody before it is written off.         |
-| `HOST_TRANSFER_GRACE_MS`     | 120000     | How long a missing host keeps the game before it passes.                  |
-| `CHAT_RATE`, `REACTION_RATE` | 4, 3       | Messages and reactions allowed per ten seconds.                           |
-| `GAMENIGHT_URL` and friends  | none       | Seed the GameNight pairing on a first boot; the page wins after.          |
-| `HAND_HISTORY_MAX`           | 500        | Hands a running game keeps for the download. Zero turns it off.           |
-| `HAND_HISTORY_TTL_MS`        | 2592000000 | How long a game's hands are kept afterwards (thirty days).                |
-| `HAND_HISTORY_MAX_GAMES`     | 200        | How many games' hands the server keeps at once.                           |
-| `PUBLIC_URL`, `SMTP_URL`     | none       | Both needed for accounts: where a link points, and how to send it.        |
-| `MAIL_FROM`                  | none       | The address the two messages come from.                                   |
-| `MAIL_TRANSPORT`             | none       | `log` writes mail to the server log instead of sending. Development only. |
+| Setting                      | Default    | What it does                                                               |
+| ---------------------------- | ---------- | -------------------------------------------------------------------------- |
+| `ADMIN_PROMOTE`              | none       | An account to make an administrator at boot, by name.                      |
+| `MAX_TOURNAMENTS`            | 8          | Seeds the Server tab: how many games the server holds at once.             |
+| `CHAT_ENABLED`               | true       | Chat exists at all.                                                        |
+| `REACTIONS_ENABLED`          | true       | Seeds the Server tab: the reaction strip exists at all.                    |
+| `TOURNAMENT_FINISHED_TTL_MS` | 600000     | How long a finished game stays listed (ten minutes).                       |
+| `TOURNAMENT_ZOMBIE_HOLD_MS`  | 21600000   | How long a held game waits for somebody before it is written off.          |
+| `HOST_TRANSFER_GRACE_MS`     | 120000     | How long a missing host keeps the game before it passes.                   |
+| `CHAT_RATE`, `REACTION_RATE` | 4, 3       | Messages and reactions allowed per ten seconds.                            |
+| `GAMENIGHT_URL` and friends  | none       | Seed the GameNight pairing on a first boot; the page wins after.           |
+| `HAND_HISTORY_MAX`           | 500        | Hands a running game keeps for the download. Zero turns it off.            |
+| `HAND_HISTORY_TTL_MS`        | 2592000000 | Seeds the Server tab: how long a game's hands are kept (thirty days).      |
+| `HAND_HISTORY_MAX_GAMES`     | 200        | Seeds the Server tab: how many games' hands are kept at once.              |
+| `PUBLIC_URL`, `SMTP_URL`     | none       | Seed the Mail tab on a first boot; the page wins after.                    |
+| `MAIL_FROM`                  | none       | Seeds the Mail tab: the address the two messages come from.                |
+| `MAIL_TRANSPORT`             | none       | Seeds the Mail tab: `log` writes mail to the server log. Development only. |
 
 ## Privacy and fairness, briefly
 

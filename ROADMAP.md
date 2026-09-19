@@ -60,6 +60,14 @@ hosted for strangers, which is the same line 1.0.0 is drawn on.
 
 ### Done
 
+Mail, and the settings, on the page. Where this server sends from is set from
+the Admin panel and kept in the database, with a button that tries what is on
+the screen and says what the mail server said when it will not work. The
+password is typed once and never shown again, and is the one recoverable
+secret this server keeps - which SECURITY.md says out loud. Beside it, the
+knobs that can move without a restart, each labelled with when it takes
+effect.
+
 Everybody has an account, and the admin surface is one. The name box is gone:
 a player signs in with an account of this server's own or with GameNight, one
 name belongs to one person server-wide, and the lobby is not drawn for anybody
@@ -275,6 +283,20 @@ Not the game, and not the split below: what the person who hosts it needs.
 **The admin panel is done** - see Done above. What stays ruled out is a
 dashboard for its own sake. The controls over a running game live in the table
 menu, offered to an administrator and to nobody else.
+
+**Settings live on the page, not in a file.** Mail and the handful of knobs
+that can move without a restart are set from the Admin panel and kept in the
+database; the environment seeds a first boot and stops mattering after it.
+What is left in the environment is what cannot honestly be changed while the
+server runs - chat and how many hands a game keeps, where the store behind
+them is not built when they are off - and the things that have to be true
+before anything starts: the database, the port, the heap.
+
+Worth remembering why this happened. Mail was four environment variables that
+the stock compose file did not pass through at all, on the one setting a new
+server cannot start without: no mail, no accounts, and since accounts became
+the only way in, no way in. The setting that blocked a new install was the one
+buried deepest.
 
 ## Architecture
 
