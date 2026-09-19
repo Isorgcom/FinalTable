@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.22.0 - 2026-09-19
+
 ### Added
 
 - **Claim a new server from the lobby.** Put `CLAIM_TOKEN` in `.env` before
