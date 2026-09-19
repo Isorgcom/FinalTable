@@ -466,10 +466,26 @@ describe('identity store', () => {
     expect(await reopened.load()).toBe(2);
     expect(reopened.adminCount()).toBe(0);
 
-    // Named in the environment, applied at boot.
+    // And not to the next person through the door either: an upgraded server
+    // handing itself to whoever signs up first is handing itself to a
+    // stranger.
+    const newcomer = signIn(reopened, 'Newcomer');
+    expect(reopened.isAdmin(newcomer.uid)).toBe(false);
+    expect(reopened.adminCount()).toBe(0);
+
+    // Named in the environment, applied at boot, is the way in.
     expect(reopened.promoteByName('BOB')).toBe('u_bob');
     expect(reopened.isAdmin('u_bob')).toBe(true);
     expect(reopened.promoteByName('nobody here')).toBeNull();
+  });
+
+  // The other half of the same rule: a server that loaded nothing is fresh,
+  // and the first person through its door does get the keys.
+  test('a server that loaded an empty database still hands over the first account', async () => {
+    const db = freshDb('fresh-load');
+    const store = createIdentityStore({ db });
+    expect(await store.load()).toBe(0);
+    expect(store.isAdmin(signIn(store, 'Pioneer').uid)).toBe(true);
   });
 
   test('a disabled account cannot get in by any door', async () => {

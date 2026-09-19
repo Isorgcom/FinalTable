@@ -131,6 +131,12 @@ function createIdentityStore(options = {}) {
   const byNameKey = new Map(); // nameKey -> uid
   const admins = new Set(); // uid
 
+  // Whether this server had anybody at all when it started. What decides
+  // whether the first account made here administers it: on a fresh server that
+  // is the only way one ever could, and on an upgraded one it would be
+  // arbitrary. A store that has not loaded is a fresh one.
+  let bornEmpty = true;
+
   // Who has changed since the last write. The whole map used to go to disk on
   // every flush, which was O(every identity ever seen) for one rename; a
   // database is written a record at a time, so only the records that moved.
@@ -170,8 +176,13 @@ function createIdentityStore(options = {}) {
   // password to fall back on any more - so the first person through the door
   // gets the keys, whichever door they came through. Both creation paths go
   // through here, which is what stops that being two rules.
+  //
+  // Only on a server that started out empty, though. An existing one being
+  // upgraded has people already and no administrator among them, and handing
+  // it to whoever happens to sign up next would be handing it to a stranger.
+  // That server is told to name one instead.
   function hold(rec) {
-    if (!admins.size && rec.role !== 'admin') {
+    if (bornEmpty && !admins.size && rec.role !== 'admin') {
       rec.role = 'admin';
       log({
         level: 'info',
@@ -332,6 +343,7 @@ function createIdentityStore(options = {}) {
       if (key) byNameKey.set(key, rec.uid);
       if (rec.role === 'admin') admins.add(rec.uid);
     }
+    bornEmpty = identities.size === 0;
     return identities.size;
   }
 
