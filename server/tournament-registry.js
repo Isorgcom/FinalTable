@@ -110,9 +110,9 @@ function createTournamentRegistry(deps = {}) {
       String(v || '')
         .trim()
         .toLowerCase(),
-    maxTournaments = 8,
-    tableOptions = {},
-    handPauseMs = 0,
+    maxTournaments: maxTournamentsAtBoot = 8,
+    tableOptions: tableOptionsAtBoot = {},
+    handPauseMs: handPauseAtBoot = 0,
     historyMax = 500,
     historyStore = null,
     // Every connected socket, for the personalised tournament list. Injectable
@@ -146,7 +146,7 @@ function createTournamentRegistry(deps = {}) {
     chatRatePerWindow = 4,
     chatRateWindowMs = 10 * 1000,
     // Reactions ride chat's rooms and chat's mute, with a limit of their own.
-    reactionsEnabled = true,
+    reactionsEnabled: reactionsEnabledAtBoot = true,
     reactionRatePerWindow = reactions.DEFAULT_RATE,
     reactionRateWindowMs = reactions.DEFAULT_WINDOW_MS,
   } = deps;
@@ -179,6 +179,43 @@ function createTournamentRegistry(deps = {}) {
   const LIST_COALESCE_MS = 250;
 
   // id -> entry
+  // Two of the options can be changed while the server runs, from the Admin
+  // page's Server tab. They start where the environment put them.
+  //
+  // Worth saying out loud: each of these stops being "a value this server was
+  // built with" and becomes "a value that can change under a running game".
+  // Both are read on a path that runs per request rather than held by a table,
+  // so a change cannot make two tournaments disagree about the rules - which
+  // is exactly why the pacing is not one of them.
+  let maxTournaments = maxTournamentsAtBoot;
+  let reactionsEnabled = reactionsEnabledAtBoot;
+  // The pacing is different in kind: a table is handed it when the game is
+  // made and keeps it, so a change reaches the next game rather than this one.
+  // Reaching into running tables to change how long they pause between streets
+  // would mean two tournaments on one server playing at different speeds
+  // halfway through, which is worse than waiting for the next one.
+  let handPauseMs = handPauseAtBoot;
+  let tableOptions = { ...tableOptionsAtBoot };
+
+  function setLimits(next = {}) {
+    if (Number.isFinite(next.maxTournaments) && next.maxTournaments > 0) {
+      maxTournaments = next.maxTournaments;
+    }
+    if (typeof next.reactionsEnabled === 'boolean') reactionsEnabled = next.reactionsEnabled;
+    if (Number.isFinite(next.handPauseMs) && next.handPauseMs >= 0) {
+      handPauseMs = next.handPauseMs;
+    }
+    if (Number.isFinite(next.streetPauseMs) && next.streetPauseMs >= 0) {
+      tableOptions = { ...tableOptions, streetPauseMs: next.streetPauseMs };
+    }
+    return {
+      maxTournaments,
+      reactionsEnabled,
+      handPauseMs,
+      streetPauseMs: tableOptions.streetPauseMs,
+    };
+  }
+
   const tournaments = new Map();
   const chat = createChatRooms({
     historyLimit: chatHistory,
@@ -2602,8 +2639,18 @@ function createTournamentRegistry(deps = {}) {
     sendChatHistory,
     chat,
     chatEnabled,
-    reactionsEnabled,
-    reactions: reactionsEnabled ? reactions.REACTIONS.slice() : null,
+    setLimits,
+    // Read when asked rather than fixed at construction: serverInfo is built
+    // fresh on every call, so the strip appears and vanishes with the setting.
+    get reactionsEnabled() {
+      return reactionsEnabled;
+    },
+    get reactions() {
+      return reactionsEnabled ? reactions.REACTIONS.slice() : null;
+    },
+    get maxTournaments() {
+      return maxTournaments;
+    },
     sweep,
     restore,
     flush,

@@ -25,12 +25,24 @@ const MAX_GAMES = 200;
 function createHandHistoryStore(options = {}) {
   const {
     db = null,
-    ttlMs = TTL_MS,
-    maxGames = MAX_GAMES,
+    ttlMs: ttlAtBoot = TTL_MS,
+    maxGames: maxGamesAtBoot = MAX_GAMES,
     flushDebounceMs = FLUSH_DEBOUNCE_MS,
     log = () => {},
     now = () => Date.now(),
   } = options;
+
+  // Both bounds can be changed from the Admin page while the server runs.
+  // Safe to move, because nothing holds them: prune() reads them on each
+  // sweep, so a change lands at the next one.
+  let ttlMs = ttlAtBoot;
+  let maxGames = maxGamesAtBoot;
+
+  function setLimits(next = {}) {
+    if (Number.isFinite(next.ttlMs) && next.ttlMs >= 0) ttlMs = next.ttlMs;
+    if (Number.isFinite(next.maxGames) && next.maxGames > 0) maxGames = next.maxGames;
+    return { ttlMs, maxGames };
+  }
 
   // id -> { meta, hands, uids }, waiting to be written
   const pending = new Map();
@@ -211,7 +223,10 @@ function createHandHistoryStore(options = {}) {
     flush,
     flushAsync,
     size,
-    limits: { ttlMs, maxGames },
+    setLimits,
+    get limits() {
+      return { ttlMs, maxGames };
+    },
   };
 }
 
