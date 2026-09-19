@@ -579,7 +579,12 @@ function registerTournamentHandlers(deps) {
           });
         }
         const { ident, error } = establishSession(made, payload);
-        if (error) return socket.emit('accountResult', { ok: false, error });
+        if (error) {
+          // The same as the branch above: an account that never became a
+          // session is not left holding the name.
+          accounts.remove(made.uid);
+          return socket.emit('accountResult', { ok: false, error });
+        }
         // On a server that loaded empty the store granted this already, and
         // said so; on one that loaded people, this is the grant.
         identity.setRole(ident.uid, 'admin');
