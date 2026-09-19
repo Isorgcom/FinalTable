@@ -209,6 +209,10 @@ const identity = createIdentityStore({
   // Owned, or held by a sign-up waiting on its link: either way somebody else
   // may not answer to it.
   nameOwner: (name) => (accounts ? accounts.holderOf(name) : null),
+  // Owned outright, which is a claim a GameNight name yields to. A sign-up
+  // merely holding one is not, and gives way instead.
+  nameOwnedBy: (name) => (accounts ? accounts.ownerOf(name) : null),
+  releaseName: (name) => (accounts ? accounts.releasePending(name) : null),
   nameKeyOf: normalizeNameKey,
 });
 

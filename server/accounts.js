@@ -281,6 +281,32 @@ function createAccounts(options = {}) {
     return true;
   }
 
+  // Give up a name a sign-up is holding but has not proved.
+  //
+  // A hold exists so that two people cannot both be halfway through claiming
+  // one name. It is not meant to outrank somebody whose name is already
+  // established elsewhere - a GameNight account arriving with one - because
+  // the hold is an unproven claim on an address nobody has confirmed, and the
+  // GameNight name is a fact about a person who exists.
+  //
+  // Returns the uid the hold belonged to, or null if there was nothing to
+  // give up. Whoever started it finds their link no longer works, which is
+  // the honest outcome: the name they were claiming is somebody else's now.
+  function releasePending(name) {
+    const key = nameKey(name);
+    const held = pending.get(key);
+    if (!held) return null;
+    pending.delete(key);
+    write(() => db.accounts.removePending(key));
+    log({
+      level: 'info',
+      event: 'account_hold_released',
+      message: 'A sign-up gave up the name it was holding',
+      data: { name: held.name },
+    });
+    return held.uid;
+  }
+
   // ── Signing in ──────────────────────────────────────────────────────────
 
   // Null for a name with no account and for a wrong password alike: the answer
@@ -413,6 +439,7 @@ function createAccounts(options = {}) {
     ownerOf,
     holderOf,
     createVerified,
+    releasePending,
     remove,
     byUid,
     isHeld,

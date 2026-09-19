@@ -238,6 +238,47 @@ describe('identity store', () => {
     expect(store.get('gn_7')).toMatchObject({ name: 'newname' });
   });
 
+  // A sign-up holds a name while it waits for its link. That hold is an
+  // unproven claim on an address nobody has confirmed, and the commonest case
+  // by far is the same person - who started a sign-up here and then signed in
+  // with GameNight instead. It must not cost them their own name.
+  test('a name only being held gives way to a GameNight one, and is given up', () => {
+    const released = [];
+    const held = new Map([['bryce', 'u_halfway']]);
+    const store = createIdentityStore({
+      // Held by a sign-up, owned by nobody.
+      nameOwner: (name) => held.get(String(name).toLocaleLowerCase()) || null,
+      nameOwnedBy: () => null,
+      releaseName: (name) => {
+        released.push(name);
+        held.delete(String(name).toLocaleLowerCase());
+        return 'u_halfway';
+      },
+    });
+
+    const gn = store.identifyFromGameNight({ sub: '12', name: 'Bryce' });
+    expect(gn.name).toBe('Bryce');
+    expect(gn.nameAdjusted).toBeNull();
+    // Given up rather than left to lapse: the account it belonged to must not
+    // still be creatable on a name that is now somebody else's.
+    expect(released).toEqual(['Bryce']);
+  });
+
+  // An account that owns its name is a different matter: that claim was
+  // proved, and the arrival yields to it.
+  test('a name an account owns still beats a GameNight one', () => {
+    const store = createIdentityStore({
+      nameOwner: (name) => (String(name).toLocaleLowerCase() === 'bryce' ? 'u_owner' : null),
+      nameOwnedBy: (name) => (String(name).toLocaleLowerCase() === 'bryce' ? 'u_owner' : null),
+      releaseName: () => {
+        throw new Error('an owned name is not a hold to give up');
+      },
+    });
+    const gn = store.identifyFromGameNight({ sub: '13', name: 'Bryce' });
+    expect(gn.name).toBe('Bryce 2');
+    expect(gn.nameAdjusted).toBe('Bryce');
+  });
+
   // A GameNight name was chosen somewhere else, by somebody who cannot see
   // this server's list. Turning them away for it would mean an account that
   // simply cannot play here, so they wear a number instead and are told.

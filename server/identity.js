@@ -103,6 +103,13 @@ function createIdentityStore(options = {}) {
     // know that on its own. Always null on a server with no accounts, which
     // is exactly how this behaved before there were any.
     nameOwner = () => null,
+    // The same question without the sign-ups that are only holding a name:
+    // an account that owns one, and nothing else.
+    nameOwnedBy = () => null,
+    // Told when a GameNight arrival takes a name a sign-up was holding, so
+    // the hold can be given up rather than left to lapse over a name that is
+    // now somebody else's.
+    releaseName = () => null,
     // How two names are compared for sameness. The server's own
     // normalizeNameKey, so the accounts store and this one agree.
     nameKeyOf = (v) =>
@@ -463,10 +470,14 @@ function createIdentityStore(options = {}) {
   // about who is called what.
   //
   // Answers null when the name is free for this uid, or the uid that holds it.
-  function nameHeldBy(name, uid) {
+  // `heldOnly` skips the sign-ups that are holding a name without having
+  // proved it. What a GameNight arrival asks, and only that: see
+  // claimGameNightName below for why an unproven hold does not outrank a name
+  // somebody already has.
+  function nameHeldBy(name, uid, { ignorePending = false } = {}) {
     const key = nameKeyOf(name);
     if (!key) return null;
-    const owner = nameOwner(name);
+    const owner = ignorePending ? nameOwnedBy(name) : nameOwner(name);
     if (owner && owner !== uid) return owner;
     const playing = byNameKey.get(key);
     if (playing && playing !== uid) return playing;
@@ -596,11 +607,28 @@ function createIdentityStore(options = {}) {
   const NAME_SUFFIX_TRIES = 9;
 
   function claimGameNightName(wanted, uid, current) {
-    if (!nameHeldBy(wanted, uid)) return { name: wanted, adjusted: false };
+    // A sign-up that is only holding this name does not outrank a name
+    // somebody already has somewhere else. The hold exists so that two people
+    // cannot both be halfway through claiming one name; it is an unproven
+    // claim on an address nobody has confirmed, and the commonest case by far
+    // is the same person, who started a sign-up here and then signed in with
+    // GameNight instead. Letting the unfinished half cost them their own name
+    // is the wrong way round.
+    //
+    // So the hold gives way, and is given up rather than left to lapse -
+    // leaving it would mean the account it belongs to could still be created
+    // on a name that is now somebody else's.
+    if (!nameHeldBy(wanted, uid, { ignorePending: true })) {
+      if (nameHeldBy(wanted, uid)) releaseName(wanted);
+      return { name: wanted, adjusted: false };
+    }
     for (let n = 2; n <= NAME_SUFFIX_TRIES; n++) {
       const tail = ` ${n}`;
       const candidate = sanitizeName(wanted.slice(0, 16 - tail.length) + tail);
-      if (candidate && !nameHeldBy(candidate, uid)) return { name: candidate, adjusted: true };
+      if (candidate && !nameHeldBy(candidate, uid, { ignorePending: true })) {
+        if (nameHeldBy(candidate, uid)) releaseName(candidate);
+        return { name: candidate, adjusted: true };
+      }
     }
     // Nine of them are taken. Keep whatever they are already called rather
     // than refuse the sign-in.

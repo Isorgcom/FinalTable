@@ -114,6 +114,16 @@ Release on GitHub to go with it.
 
 ### Fixed
 
+- Starting to make an account here and then signing in with GameNight instead
+  no longer costs you your own name. A sign-up holds its name while it waits
+  for the link in the mail, which is what stops two people both being halfway
+  through claiming one — but an address nobody has confirmed should not
+  outrank a name somebody already has somewhere else, and the person on both
+  ends of it is almost always the same person. The hold gives way and is given
+  up, so the half-finished sign-up's link stops working rather than leaving it
+  claimable on a name that now belongs to somebody. A name an account actually
+  owns is untouched: that claim was proved, and a GameNight arrival still
+  yields to it.
 - Checking a password no longer holds up every table on the server. Hashing one
   takes a tenth of a second of solid work, and it was being done on the thread
   that deals: a few people signing in together was a visible stutter at the

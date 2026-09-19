@@ -180,6 +180,24 @@ describe('accounts', () => {
     await store.flush();
   });
 
+  // A hold stops two people both being halfway through claiming one name. It
+  // is not meant to outrank somebody whose name is established elsewhere, so
+  // the identity store can ask for it back.
+  test('a hold can be given up, and the link that was waiting on it stops working', async () => {
+    const store = make();
+    const started = await signUp(store);
+    expect(store.isHeld('Ann')).toBe(true);
+
+    expect(store.releasePending('ANN')).toBe('u_ann');
+    expect(store.isHeld('Ann')).toBe(false);
+    expect(store.completeSignUp(started.token).error).toMatch(/not one of ours/);
+    // Nothing to give up twice.
+    expect(store.releasePending('Ann')).toBeNull();
+
+    // And the name is free for somebody else now.
+    expect((await signUp(store, { uid: 'u_bob', name: 'Ann' })).token).toBeTruthy();
+  });
+
   test('addresses are taken as they are, within reason', () => {
     expect(normalizeEmail('  Ann@Example.COM ')).toBe('ann@example.com');
     expect(normalizeEmail('ann@localhost')).toBeNull();

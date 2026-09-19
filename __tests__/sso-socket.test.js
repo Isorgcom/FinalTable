@@ -155,6 +155,31 @@ describe('GameNight sign-in over the socket', () => {
     expect(serverModule.identity.size).toBe(before);
   });
 
+  // The sequence that happens to a real person: start signing up here, never
+  // open the link, then sign in with GameNight instead. Their own unfinished
+  // sign-up used to cost them their own name.
+  test('an unfinished sign-up does not cost somebody their GameNight name', async () => {
+    const started = await serverModule.accounts.startSignUp({
+      uid: 'u_halfway',
+      name: 'Doubled',
+      email: 'doubled@example.com',
+      password: 'a good long password',
+    });
+    expect(started.token).toBeTruthy();
+    expect(serverModule.accounts.isHeld('Doubled')).toBe(true);
+
+    const { s } = await connect();
+    const arrived = await identify(s, { gnToken: token({ sub: '910', name: 'Doubled' }) });
+    expect(arrived.kind).toBe('identified');
+    expect(arrived.data.name).toBe('Doubled');
+    expect(arrived.data.nameAdjusted).toBeNull();
+
+    // The hold was given up rather than left to lapse over a name that is now
+    // somebody else's, so the link that was waiting on it is spent.
+    expect(serverModule.accounts.isHeld('Doubled')).toBe(false);
+    expect(serverModule.accounts.completeSignUp(started.token).error).toMatch(/not one of ours/);
+  });
+
   test('a GameNight player is badged on the roster; an account of ours is not', async () => {
     const { s: host } = await connect();
     await identify(host, { gnToken: token({ sub: '77', name: 'hostess' }) });
