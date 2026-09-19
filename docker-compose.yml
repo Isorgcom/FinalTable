@@ -83,6 +83,19 @@ services:
       # the first account made on a fresh server is the administrator. This is
       # the way back in when that is not the answer.
       - ADMIN_PROMOTE=${ADMIN_PROMOTE:-}
+      # The word that claims a fresh server from the lobby: whoever opens it
+      # with this makes the first account, which is the administrator. No mail
+      # needed. Read every boot and honoured only while there is no
+      # administrator, so it can stay in .env or come out, as you like.
+      - CLAIM_TOKEN=${CLAIM_TOKEN:-}
+      # Mail, which is how every other account is made. These four seed the
+      # Admin page's Mail tab on a first boot and the page wins from then on;
+      # passed through here so a .env beside this file is enough, and the
+      # container never has to read the file itself.
+      - PUBLIC_URL=${PUBLIC_URL:-}
+      - SMTP_URL=${SMTP_URL:-}
+      - MAIL_FROM=${MAIL_FROM:-}
+      - MAIL_TRANSPORT=${MAIL_TRANSPORT:-}
       # Sign in with GameNight, all three from .env (see .env.example). Unset
       # means the button does not exist.
       - GAMENIGHT_URL=${GAMENIGHT_URL:-}

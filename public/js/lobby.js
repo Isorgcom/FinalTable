@@ -251,6 +251,13 @@
     }
     renderIdentityRow();
     setConnection(true);
+    // Straight from the claim to the one thing left to do.
+    if (openAfterIdentify && ident.isAdmin) {
+      const tab = openAfterIdentify;
+      openAfterIdentify = null;
+      openAdmin();
+      selectAdminTab(tab);
+    }
     if (ident.resume) {
       store.set(LAST_KEY, null);
       return; // the server rebinds and sends tournamentJoined
@@ -321,6 +328,10 @@
   // Whether the Create account button has been pressed once: the first press
   // asks for the address, the second sends the link.
   let signUpArmed = false;
+  // Which Admin tab to open once the next identify lands: set by a claim, so
+  // the person who just made the server theirs is looking at Mail rather than
+  // at the lobby wondering what comes next.
+  let openAfterIdentify = null;
 
   // ── The Admin page's tabs ───────────────────────────────────────────────
   //
@@ -584,6 +595,8 @@
         setUsersStatus(`${data.made} has an account, and a link is on its way.`, 'ok');
         $('adminNewUserName').value = '';
         $('adminNewUserEmail').value = '';
+      } else if (data.admitted) {
+        setUsersStatus(`${data.admitted} can sign in now.`, 'ok');
       } else if (data.sent) {
         setUsersStatus(`A link is on its way to ${data.sent}.`, 'ok');
       } else {
@@ -706,9 +719,47 @@
     }
     const more = users.total > users.rows.length;
     $('btnAdminUsersMore').classList.toggle('hidden', !more);
+    renderPending(Array.isArray(users.pending) ? users.pending : []);
     setUsersStatus(
       users.total === 1 ? '1 account' : `${users.rows.length} of ${users.total} accounts`
     );
+  }
+
+  // The sign-ups still waiting on their link. The section is only there when
+  // somebody is: an empty list under a heading is a question nobody asked.
+  function renderPending(rows) {
+    const section = $('adminPendingSection');
+    const list = $('adminPendingList');
+    if (!section || !list) return;
+    section.classList.toggle('hidden', !rows.length);
+    list.innerHTML = '';
+    for (const row of rows) {
+      const wrap = document.createElement('div');
+      wrap.className = 'session-row';
+      const who = document.createElement('div');
+      who.className = 'session-row-main';
+      const name = document.createElement('strong');
+      name.textContent = row.name;
+      who.appendChild(name);
+      const detail = document.createElement('div');
+      detail.className = 'session-row-detail';
+      const hoursLeft = Math.max(0, Math.ceil((row.expiresAt - Date.now()) / 3600000));
+      detail.textContent = `asked ${whenSeen(row.createdAt)} · lapses in ${hoursLeft}h · ${row.email}`;
+      who.appendChild(detail);
+      wrap.appendChild(who);
+      const actions = document.createElement('div');
+      actions.className = 'session-row-actions';
+      const admit = document.createElement('button');
+      admit.type = 'button';
+      admit.className = 'btn-secondary';
+      admit.textContent = 'Let them in';
+      admit.addEventListener('click', () => {
+        if (socket) socket.emit('adminAdmitUser', { name: row.name });
+      });
+      actions.appendChild(admit);
+      wrap.appendChild(actions);
+      list.appendChild(wrap);
+    }
   }
 
   // One person, with the things the list leaves out. A dialog rather than a
@@ -1364,6 +1415,11 @@
     return !!(serverInfo && serverInfo.accounts);
   }
 
+  // Whether this server has nobody running it and a token to claim it with.
+  function claimOffered() {
+    return !!(serverInfo && serverInfo.claim);
+  }
+
   function setAccountStatus(text, kind) {
     const el = $('accountStatus');
     if (!el) return;
@@ -1382,31 +1438,51 @@
     // offers only the sign-in half - and if it has no GameNight pairing
     // either, it has no way in at all and says so.
     const canSignUp = accountsOffered();
+    // A server nobody runs, with a token to claim it: the card is the claim,
+    // and the ordinary doors wait until somebody has come through this one.
+    const claiming = !signedIn && claimOffered();
     row.classList.toggle('hidden', signedIn);
-    $('btnCreateAccount').classList.toggle('hidden', signedIn || !canSignUp);
-    $('btnForgotPassword').classList.toggle('hidden', signedIn || !canSignUp);
+    $('claimHead').classList.toggle('hidden', !claiming);
+    $('claimTokenGroup').classList.toggle('hidden', !claiming);
+    $('btnClaimServer').classList.toggle('hidden', !claiming);
+    $('btnSignIn').classList.toggle('hidden', claiming);
+    $('btnCreateAccount').classList.toggle('hidden', signedIn || claiming || !canSignUp);
+    $('btnForgotPassword').classList.toggle('hidden', signedIn || claiming || !canSignUp);
+    $('accountPassword').setAttribute(
+      'autocomplete',
+      claiming ? 'new-password' : 'current-password'
+    );
+    if (claiming) {
+      $('accountEmailGroup').classList.remove('hidden');
+      $('accountAvatarGroup').classList.remove('hidden');
+    }
 
     // Said once, where the buttons would have been. What is missing is the
     // server's business rather than the player's - the reason is in the
     // server's log, and this is what it means to whoever is trying to play.
     const noWayIn = !!serverInfo && !serverInfo.accounts && !(serverInfo && serverInfo.gamenight);
-    const sayWhy = !signedIn && !!serverInfo && !serverInfo.accounts;
+    const sayWhy = !signedIn && !claiming && !!serverInfo && !serverInfo.accounts;
     why.classList.toggle('hidden', !sayWhy);
     why.textContent = !sayWhy
       ? ''
       : noWayIn
-        ? 'This server has no way to sign anybody in yet. Whoever runs it needs to set up mail, or pair it with a GameNight.'
+        ? serverInfo.unclaimed
+          ? 'This server has no administrator yet and no way to sign anybody in. Whoever runs it can set CLAIM_TOKEN in .env and claim it from here, pair it with a GameNight, or set up mail.'
+          : 'This server has no way to sign anybody in yet. Whoever runs it needs to set up mail, or pair it with a GameNight.'
         : 'This server cannot make new accounts - it has no way to send the mail that proves an address. Sign in with GameNight, or with an account somebody made for you.';
     $('btnChangePassword').classList.toggle('hidden', !isAccount());
-    if (signedIn || !canSignUp) disarmSignUp();
+    if (signedIn || (!canSignUp && !claiming)) disarmSignUp();
   }
 
   // The second press of Create an account is the one that sends it. Putting
   // the form back is its own function because three things do it.
   function disarmSignUp() {
     signUpArmed = false;
-    $('accountEmailGroup').classList.add('hidden');
-    $('accountAvatarGroup').classList.add('hidden');
+    // The claim wants the same two fields, and is not a sign-up to disarm.
+    if (!claimOffered() || identity) {
+      $('accountEmailGroup').classList.add('hidden');
+      $('accountAvatarGroup').classList.add('hidden');
+    }
     $('btnCreateAccount').textContent = 'Create an account';
   }
 
@@ -1418,6 +1494,23 @@
     if (!password) return setAccountStatus('Enter your password.', 'err');
     setAccountStatus('Signing in…');
     socket.emit('signIn', { name, password, avatar: $('playerAvatar').value });
+  }
+
+  // The claim. One press, every field at once: this is the first account on
+  // the server and there is no link to wait for.
+  function claimServer() {
+    if (!socket || !socket.connected) return;
+    const name = nameValue();
+    const password = $('accountPassword').value;
+    const email = $('accountEmail').value;
+    const token = $('claimToken').value;
+    if (!name) return setAccountStatus('Enter the name you want to run this server under.', 'err');
+    if (!password) return setAccountStatus('Choose a password.', 'err');
+    if (!email) return setAccountStatus('An address, for the day you forget it.', 'err');
+    if (!token) return setAccountStatus('Enter the claim token.', 'err');
+    setAccountStatus('Claiming…');
+    socket.emit('claimServer', { name, password, email, token, avatar: avatarValue() });
+    $('claimToken').value = '';
   }
 
   // Two presses. The first asks for an address, because a name and a password
@@ -1468,6 +1561,9 @@
       disarmSignUp();
       store.set(PROVIDER_KEY, 'local');
       store.set(TOKEN_KEY, info.token);
+      // Whoever just claimed the server has one thing to do next, and it is
+      // on the Mail tab.
+      if (info.claimed) openAfterIdentify = 'mail';
       identify();
       return;
     }
@@ -3060,6 +3156,10 @@
     $('btnSessions').addEventListener('click', openSessions);
     $('btnMyGames').addEventListener('click', openMyGames);
     $('btnSignIn').addEventListener('click', signIn);
+    $('btnClaimServer').addEventListener('click', claimServer);
+    $('claimToken').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') claimServer();
+    });
     $('btnCreateAccount').addEventListener('click', createAccount);
     $('btnForgotPassword').addEventListener('click', forgotPassword);
     $('btnChangePassword').addEventListener('click', openPassword);

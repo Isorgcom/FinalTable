@@ -725,6 +725,21 @@
   display: none;
 }
 
+/* The claim: a server with nobody running it, said before the fields. */
+.identity-claim {
+  margin-bottom: 12px;
+}
+.identity-claim-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+.identity-claim.hidden,
+.admin-pending.hidden {
+  display: none;
+}
+
 /* The admin page, locked out again. Loud enough to be read before anything
    below it is believed. */
 .admin-locked {

@@ -25,6 +25,19 @@ function adminPromoteFromEnv() {
   return typeof raw === 'string' ? raw.trim() : '';
 }
 
+// The word that claims a fresh server. Whoever opens the lobby and enters it
+// makes the first account, which is the administrator - no mail needed, and
+// nothing read out of a log. Read on every boot and honoured only while the
+// server has no administrator, so leaving it set afterwards does nothing.
+// Shorter than this is refused at boot rather than offered: the lobby is
+// public, and a short word behind a rate limit is still a short word.
+const CLAIM_TOKEN_MIN = 16;
+
+function claimTokenFromEnv() {
+  const raw = process.env.CLAIM_TOKEN;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
 // The GameNight sign-in bridge, as the environment describes it. A player
 // logged in to GameNight can be seated here on a token GameNight signs; this
 // server needs only the public key to check it. The admin normally pairs
@@ -142,6 +155,7 @@ function loadConfig() {
 
   return {
     adminPromote: adminPromoteFromEnv(),
+    claimToken: claimTokenFromEnv(),
     gamenight: gamenightFromEnv(),
     port: process.env.PORT || 2026,
     host: process.env.HOST || '0.0.0.0',
@@ -239,4 +253,4 @@ function loadConfig() {
   };
 }
 
-module.exports = { loadConfig, mailFromEnv };
+module.exports = { loadConfig, mailFromEnv, CLAIM_TOKEN_MIN };

@@ -44,8 +44,13 @@ npx playwright test       # the lobby, a table and a two-browser tournament
 Or with Docker:
 
 ```bash
+cp .env.example .env      # set DB_PASSWORD, DB_ROOT_PASSWORD and a CLAIM_TOKEN
 docker compose up -d --build
 ```
+
+Then open the lobby and press **Claim this server**: a name, a password, an
+address and the token make the first account, which runs the server. Mail is
+set from the Admin page once you are in; nothing has to be read out of a log.
 
 The app listens on **2026** inside the container. The compose file publishes it
 to loopback only, on the assumption a reverse proxy sits in front.
@@ -132,7 +137,7 @@ announces to every table at once and over the felt.
 A game is private unless its host lists it: friends come in by code or link, a
 public game is on the lobby list for anyone, and an invite-only game has a door
 the host works. Identity is now shared with Game Night, optionally: a server paired with one
-(from the lobby's Admin page, behind the admin password; see
+(from the lobby's Admin page, offered to an administrator; see
 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)) offers "Sign in with GameNight",
 and a player who signs in there is seated here under their Game Night
 username, the same player on every device. A server with no Game Night is

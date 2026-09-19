@@ -78,6 +78,12 @@ a fresh server administers it; `ADMIN_PROMOTE` is the way back in when that is
 not the answer. The Admin page gained **Users**: who plays here, and what can
 be done about them.
 
+The first ten minutes need no shell. A fresh server is claimed from its own
+sign-in card with a token from `.env`: the first account is made with no mail
+and lands on the Mail tab to set some up, and nothing is restarted or read out
+of a log. For the mail that never arrives afterwards, the Users page lists the
+sign-ups still waiting and lets one in.
+
 A database of its own. Everything this server keeps - accounts, identities and
 the devices they are signed in on, the games in progress, the chat, the hands
 it keeps and the admin log - lives in a MariaDB beside the server rather than
@@ -296,7 +302,10 @@ Worth remembering why this happened. Mail was four environment variables that
 the stock compose file did not pass through at all, on the one setting a new
 server cannot start without: no mail, no accounts, and since accounts became
 the only way in, no way in. The setting that blocked a new install was the one
-buried deepest.
+buried deepest. Answered twice over: the compose file passes them through
+now, and a fresh server is claimed with a token before mail exists, so the
+Mail tab is the first thing its administrator sees rather than the thing
+standing between them and the door.
 
 ## Architecture
 

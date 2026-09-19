@@ -103,6 +103,8 @@ describe('GameNight sign-in over the socket', () => {
       reactions: require('../server/reactions').REACTIONS,
       accounts: false,
       unclaimed: expect.any(Boolean),
+      // No token in this environment, so no claim; the pairing is the door.
+      claim: false,
       gamenight: { connectUrl: `${ISSUER}/connect.php`, audience: AUDIENCE },
     });
     const r = await identify(s, { gnToken: token(), avatar: '🦊' });

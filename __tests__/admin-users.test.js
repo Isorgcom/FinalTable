@@ -309,6 +309,62 @@ describe('the Users page', () => {
     ).toMatchObject({ ok: true });
   });
 
+  // The fallback for the mail that never arrived. The link would have made
+  // the hold an account; the administrator does the same from the page, and
+  // the player signs in with what they chose.
+  test('a sign-up waiting on its link is listed, and can be let in without it', async () => {
+    const { boss, them, who } = await pair();
+    const waiting = await connect();
+    const started = await ask(
+      waiting,
+      'signUp',
+      { name: `Waiting${who}`, email: 'waiting@example.com', password: 'a good password' },
+      'accountResult'
+    );
+    expect(started.pending).toBe(true);
+
+    const listed = await ask(boss, 'adminListUsers', {}, 'adminUsers');
+    expect(listed.pending).toHaveLength(1);
+    expect(listed.pending[0]).toMatchObject({
+      name: `Waiting${who}`,
+      email: 'w***@example.com',
+      createdAt: expect.any(Number),
+      expiresAt: expect.any(Number),
+    });
+    expect(listed.pending[0]).not.toHaveProperty('password');
+    expect(listed.pending[0]).not.toHaveProperty('tokenHash');
+
+    // Not a player's to do.
+    let answered = false;
+    them.on('adminUserResult', () => (answered = true));
+    them.emit('adminAdmitUser', { name: `Waiting${who}` });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(answered).toBe(false);
+
+    const done = await ask(boss, 'adminAdmitUser', { name: `Waiting${who}` }, 'adminUserResult');
+    expect(done).toMatchObject({ ok: true, admitted: `Waiting${who}` });
+    const after = await ask(boss, 'adminListUsers', {}, 'adminUsers');
+    expect(after.pending).toHaveLength(0);
+    expect(after.rows.some((r) => r.name === `Waiting${who}`)).toBe(true);
+    // Twice is a mistake, and says so.
+    expect(
+      (await ask(boss, 'adminAdmitUser', { name: `Waiting${who}` }, 'adminUserResult')).error
+    ).toMatch(/Nobody is waiting/);
+
+    // With the password they chose, from another browser.
+    const later = await connect();
+    const signedIn = await ask(
+      later,
+      'signIn',
+      { name: `Waiting${who}`, password: 'a good password' },
+      'accountResult'
+    );
+    expect(signedIn).toMatchObject({ ok: true, signedIn: true });
+    // And the Log says who let them in.
+    const log = await ask(boss, 'adminLog', {}, 'adminLogRows');
+    expect(JSON.stringify(log)).toMatch(/let Waiting/);
+  });
+
   test('every write is refused to somebody who is not an administrator', async () => {
     const { them, theirs } = await pair();
     let answered = false;

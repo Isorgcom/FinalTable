@@ -10,8 +10,9 @@ jest.setTimeout(15000);
 
 describe('a server with no way in', () => {
   const originalEnv = { ...process.env };
-  let baseUrl, serverModule, tempDir;
+  let baseUrl, serverModule, tempDir, offLog;
   const sockets = [];
+  const events = [];
 
   beforeAll(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-noadmin-'));
@@ -23,13 +24,18 @@ describe('a server with no way in', () => {
     delete process.env.MAIL_TRANSPORT;
     delete process.env.GAMENIGHT_URL;
     delete process.env.GAMENIGHT_PUBLIC_KEY;
+    delete process.env.CLAIM_TOKEN;
+    process.env.DB_NAME = 'no-way-in';
     jest.resetModules();
+    // What the boot says, which is most of what this server has to offer.
+    offLog = require('../server/logger').onEntry((entry) => events.push(entry));
     serverModule = require('../server');
     await serverModule.startServer({ port: 0, host: '127.0.0.1', unrefServer: true });
     baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
   });
 
   afterAll(async () => {
+    if (offLog) offLog();
     while (sockets.length) sockets.pop().close();
     serverModule.registry.stop();
     await new Promise((r) => serverModule.io.close(r));
@@ -66,6 +72,24 @@ describe('a server with no way in', () => {
     expect(info.gamenight).toBeNull();
     // Nobody administers it either, and the first account made would.
     expect(info.unclaimed).toBe(true);
+    // And no token to claim it with.
+    expect(info.claim).toBe(false);
+  });
+
+  // The boot log is where whoever brought this box up finds out what to do.
+  test('the boot names every door that would open it', () => {
+    const noWayIn = events.filter((e) => e.event === 'no_way_in');
+    expect(noWayIn).toHaveLength(1);
+    expect(noWayIn[0].detail).toMatch(/CLAIM_TOKEN/);
+    expect(noWayIn[0].detail).toMatch(/GameNight/);
+    expect(noWayIn[0].detail).toMatch(/SMTP_URL/);
+    // Said once, after the saved settings were read - not from the
+    // environment alone before them.
+    const unavailable = events.filter((e) => e.event === 'accounts_unavailable');
+    expect(unavailable).toHaveLength(1);
+    const migrated = events.findIndex((e) => e.event === 'migrations_applied');
+    expect(migrated).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf(unavailable[0])).toBeGreaterThan(migrated);
   });
 
   // The admin surface is an account now, so there is no password to guess and
@@ -92,8 +116,32 @@ describe('a server with no way in', () => {
     let answered = false;
     s.on('accountResult', () => (answered = true));
     s.emit('signUp', { name: 'Hopeful', email: 'a@b.com', password: 'a good password' });
+    s.emit('claimServer', {
+      name: 'Hopeful',
+      email: 'a@b.com',
+      password: 'a good password',
+      token: 'anything',
+    });
     await new Promise((r) => setTimeout(r, 300));
     expect(answered).toBe(false);
     expect(serverModule.identity.adminCount()).toBe(0);
+  });
+
+  // An account that exists works whether or not the server can send mail
+  // today: only making one, and resetting its password, need a link. Last,
+  // because the first account made here becomes the administrator.
+  test('an account that exists can still sign in', async () => {
+    const made = await serverModule.accounts.createWithPassword({
+      name: 'Kept',
+      email: 'k@example.com',
+      password: 'a good password',
+    });
+    expect(made.uid).toBeTruthy();
+    const s = await connect();
+    const answer = await new Promise((res) => {
+      s.once('accountResult', res);
+      s.emit('signIn', { name: 'Kept', password: 'a good password' });
+    });
+    expect(answer).toMatchObject({ ok: true, signedIn: true, name: 'Kept' });
   });
 });

@@ -13,6 +13,41 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **Claim a new server from the lobby.** Put `CLAIM_TOKEN` in `.env` before
+  the first boot and the sign-in card offers **Claim this server** until
+  somebody has: a name, a password, an address and the token make the account
+  that runs the server. No mail is needed for it, nothing has to be read out
+  of the log, and the Admin page opens on Mail once you are in. Once there is
+  an administrator the token does nothing, and the boot log says so if it is
+  still set. A token under sixteen characters is refused at boot rather than
+  offered.
+- **Let them in.** The Users page lists sign-ups still waiting on their link
+  under **Waiting on email**, and a button lets one in without it, for the
+  mail that never arrived. They sign in with the name and password they
+  chose, and the Log says who let them in.
+
+### Changed
+
+- Signing in with a name and password works on a server that cannot send
+  mail. Only making an account and resetting a password need it.
+- The compose file passes the mail settings and the claim token through to
+  the container, so a `.env` beside it is enough and a fresh server reaches a
+  working one with no restart.
+- A sign-up whose mail could not be sent is told that whoever runs the server
+  can let them in. A server with no administrator and no way in says the three
+  things that would fix it where the buttons would be.
+
+### Fixed
+
+- The boot log no longer says nobody can sign up on a server whose mail was
+  set from the Admin page; the line was written before the saved setting was
+  read.
+- A server that bind-mounts its working tree no longer gets a warning in the
+  admin Log on every boot for the `.env` its container is not allowed to
+  read.
+
 ## 0.21.0 - 2026-09-19
 
 ### Changed

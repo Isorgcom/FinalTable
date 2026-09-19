@@ -8,7 +8,7 @@ const { createTournamentStore } = require('./server/tournament-store');
 const { createChatStore } = require('./server/chat-store');
 const { createHandHistoryStore } = require('./server/hand-history-store');
 const { loadLocalEnv } = require('./server/load-env');
-const { loadConfig, mailFromEnv } = require('./server/config');
+const { loadConfig, mailFromEnv, CLAIM_TOKEN_MIN } = require('./server/config');
 const { applySecurityHeaders, createRateLimiter } = require('./server/http-middleware');
 const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
@@ -182,13 +182,33 @@ onEntry((entry) => {
 });
 
 // The one line that would have named the crash loop, which could not use the
-// logger because it happens before there is one.
+// logger because it happens before there is one. A file this user may not
+// read is not a problem, only a fact: on a host that bind-mounts its working
+// tree the .env beside the compose file is the operator's, mode 600, and
+// compose has already read it and passed every value in. That is info. Any
+// other reason is somebody's to look at.
 for (const skip of envSkipped || []) {
   structuredLog({
-    level: 'warn',
+    level: skip.reason === 'EACCES' ? 'info' : 'warn',
     event: 'env_file_skipped',
     message: 'Could not read an environment file; carrying on without it',
     data: { detail: `${skip.file}: ${skip.reason}` },
+  });
+}
+
+// The word that claims this server from the lobby while it has no
+// administrator. Too short to be safe is not offered at all, and said so:
+// a token the lobby quietly ignored would leave whoever set it staring at a
+// sign-in card wondering why.
+const claimToken = config.claimToken.length >= CLAIM_TOKEN_MIN ? config.claimToken : '';
+if (config.claimToken && !claimToken) {
+  structuredLog({
+    level: 'error',
+    event: 'claim_token_short',
+    message: 'CLAIM_TOKEN is too short to use, so it was ignored',
+    data: {
+      detail: `Use at least ${CLAIM_TOKEN_MIN} characters - openssl rand -hex 16 makes one - and start the server again`,
+    },
   });
 }
 
@@ -228,18 +248,6 @@ const mailer = createMailer({
   transport: config.mailTransport,
   log: structuredLog,
 });
-
-// Said once at boot, to the log rather than to every browser: why this server
-// cannot hold an account is whoever runs it's business, and a player only
-// needs to know that it cannot.
-if (!mailer.available()) {
-  structuredLog({
-    level: 'info',
-    event: 'accounts_unavailable',
-    message: 'Nobody can sign up here',
-    data: { reason: mailer.why() },
-  });
-}
 
 accounts = createAccounts({
   db,
@@ -441,6 +449,7 @@ const tournamentLayer = registerTournamentHandlers({
   accounts,
   mailer,
   mail,
+  claimToken,
   settingsStore,
   sanitizeName,
   normalizeNameKey,
@@ -634,6 +643,20 @@ async function openStores() {
   // the environment last had an opinion about it.
   mail.init();
 
+  // Said once at boot, to the log rather than to every browser: why this server
+  // cannot hold an account is whoever runs it's business, and a player only
+  // needs to know that it cannot. After mail.init(), because before it the
+  // mailer knows only what the environment said, and a server whose mail was
+  // set from the Admin page would be called unable on every boot.
+  if (!mailer.available()) {
+    structuredLog({
+      level: 'info',
+      event: 'accounts_unavailable',
+      message: 'Nobody can sign up here',
+      data: { reason: mailer.why() },
+    });
+  }
+
   // An account named in the environment, made an administrator. This is how a
   // server gets its first one when the first-account rule is not the answer -
   // a stranger signed up before the owner did, or the only administrator has
@@ -660,7 +683,8 @@ async function openStores() {
       event: 'admin_unclaimed',
       message: 'Nobody administers this server',
       data: {
-        detail: 'Set ADMIN_PROMOTE to the name of an account here and start the server again.',
+        detail:
+          'Set ADMIN_PROMOTE to the name of an account here, or CLAIM_TOKEN to claim it from the lobby, and start the server again.',
       },
     });
   }
@@ -681,18 +705,42 @@ async function openStores() {
     if (settingsStore.get('adminPassword')) settingsStore.set('adminPassword', null);
   }
 
+  // The claim. A server with no administrator and a token in the environment
+  // offers itself to whoever opens the lobby with that token; one that has an
+  // administrator ignores the token, and says so once so the line can come
+  // out of .env rather than sit there meaning nothing.
+  const claimOpen = !!claimToken && identity.adminCount() === 0;
+  if (claimToken && !claimOpen) {
+    structuredLog({
+      level: 'info',
+      event: 'claim_token_stale',
+      message: 'CLAIM_TOKEN does nothing now that this server has an administrator',
+      data: { detail: 'Take it out of .env whenever convenient.' },
+    });
+  }
+  if (claimOpen) {
+    structuredLog({
+      level: 'info',
+      event: 'claim_open',
+      message: 'This server has no administrator yet; the lobby offers to claim it',
+      data: {
+        detail: 'Open the lobby, press Claim this server and enter the CLAIM_TOKEN from .env.',
+      },
+    });
+  }
+
   // Now that the pairing is known, the one thing worth stopping to say. An
-  // account is the only way in; a server that can send no mail and is paired
-  // with no GameNight has no way for anybody to become anybody, including
-  // whoever is trying to set it up.
-  if (!mailer.available() && !sso.get()) {
+  // account is the only way in; a server that can send no mail, is paired
+  // with no GameNight and offers no claim has no way for anybody to become
+  // anybody, including whoever is trying to set it up.
+  if (!mailer.available() && !sso.get() && !claimOpen) {
     structuredLog({
       level: 'error',
       event: 'no_way_in',
       message: 'Nobody can sign in to this server',
       data: {
         detail:
-          'Set PUBLIC_URL and SMTP_URL so accounts can be made, or pair the server with a GameNight.',
+          'Set CLAIM_TOKEN in .env and claim the server from the lobby, pair it with a GameNight, or set PUBLIC_URL and SMTP_URL so accounts can be made.',
       },
     });
   }

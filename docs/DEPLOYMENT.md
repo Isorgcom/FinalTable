@@ -119,11 +119,14 @@ commit that exists nowhere else is unpleasant to work out later.
       IdentitiesOnly yes
   ```
   then `git clone github-finaltable:OWNER/FinalTable.git /opt/finaltable`.
-- Its own `.env` beside the compose files, holding that machine's admin
-  password and any sizing. It is gitignored, so a pull never touches it.
-  Compose reads it on the host and passes the values in; the container sees the
-  file too, through the bind mount, and skips it if the permissions say it is
-  none of its business, so mode 600 is fine and is the point.
+- Its own `.env` beside the compose files, holding the two database
+  passwords, the `CLAIM_TOKEN` that opens it the first time, and any sizing.
+  It is gitignored, so a pull never touches it. Compose reads it on the host
+  and passes every value the container needs in, so the container never has
+  to read the file; it sees it through the bind mount all the same, and skips
+  it when the permissions say it is none of its business, so mode 600 is
+  right and the `env_file_skipped` line at boot is the expected shape of
+  things.
 
 The clone is the deployment. `docker-compose.prod.yml` is committed and carries
 this host's specifics: the bind mount, the proxy network, `TRUST_PROXY`, and
@@ -131,42 +134,45 @@ memory sized for a box that has other tenants.
 
 ### The first ten minutes of a new server
 
-There is an order to this, because two things need each other. Mail is what
-makes an account, and the Admin page — where mail is set — needs an account to
-open it. The way through is the log transport, which needs no mail server at
-all:
+Two things need each other here. Mail is what makes an account, and the Admin
+page — where mail is set — needs an account to open it. The claim token is
+the way through: it makes the first account with no mail at all, and nothing
+after it needs a shell.
 
-1. Bring the stack up. The boot log says `no_way_in`: no mail, no GameNight,
-   nobody can sign in.
-2. Put `PUBLIC_URL` and `MAIL_TRANSPORT=log` in `.env` and restart. Note that
-   the stock `docker-compose.yml` passes neither through — the production
-   overlay bind-mounts the working tree, which is how a `.env` beside it is
-   read at all — so on a plain compose file, add them to the service's
-   `environment:` for this one boot.
-3. Open the lobby and **Create an account**. The link is not sent anywhere;
-   read it out of the log:
+1. Write `.env`: `DB_PASSWORD`, `DB_ROOT_PASSWORD`, and a `CLAIM_TOKEN` of
+   sixteen characters or more (`openssl rand -hex 16` makes one).
+2. Bring the stack up. The boot log says `claim_open`.
+3. Open the lobby. The sign-in card says the server has no administrator yet
+   and offers **Claim this server**: a name, a password, an address, and the
+   token. You are signed in as the administrator, and the Admin page opens
+   on **Mail**.
+4. Set the public address and the mail server there. Press **Test and send
+   me one**; when it arrives, press **Save**. Players can sign up from that
+   moment; nobody restarts anything.
+5. `CLAIM_TOKEN` does nothing now. Take it out of `.env` whenever convenient;
+   the boot log says `claim_token_stale` until you do, and that is all it
+   says.
 
-   ```bash
-   docker logs finaltable 2>&1 | grep mail_logged | tail -1
-   ```
-
-4. Open that link, sign in, and you are the administrator — the first account
-   on a fresh server gets it.
-5. Open **admin › Mail** and set the real mail server. Press **Test and send
-   me one**; when it arrives, press **Save**.
-6. Take `MAIL_TRANSPORT` back out of the environment. It was only ever the
-   ladder up, and the saved setting wins over it anyway.
-
-A server paired with a GameNight can skip all of it: sign in there, and the
+A server paired with a GameNight can skip the token: sign in there, and the
 first account through the door administers this one.
+
+**When the mail does not arrive.** New hosts have unreliable mail for a
+while — a relay that is not quite right, a domain still warming up. A player
+whose link never came is not stuck: their sign-up is held for a day, and the
+Users page lists it under **Waiting on email** with a **Let them in** button.
+They sign in with the name and password they chose.
 
 ### Who administers the server
 
 Nobody, at first - and then whoever makes the first account on it. There is no
 admin password: the Admin page and ending a running tournament from the table
 menu belong to an account carrying the administrator role, and on a fresh
-server the first account through the door gets it. The boot log says
-`admin_claimed` when that happens.
+server the first account through the door gets it, whichever door - the
+claim above, a GameNight sign-in, or a link in the mail. The boot log says
+`admin_claimed` when that happens. A server left reachable before its owner
+got to it has handed the keys to whoever got there first, which is what the
+claim token is for: while it is set, the ordinary doors still work, but the
+claim is the one that needs nothing else in place.
 
 Two cases where that is not the answer, and one variable for both. A server
 left reachable before its owner got to it has handed the keys to a stranger;
@@ -184,8 +190,9 @@ Taking the role off the stranger is then done from the Users page.
 
 A server upgrading from a version that had `ADMIN_PASSWORD` promotes nobody -
 it has accounts already, and handing it to whoever signs in next would be
-arbitrary. It says `admin_unclaimed` at boot until `ADMIN_PROMOTE` names one.
-The old variable is ignored, and says so.
+arbitrary. It says `admin_unclaimed` at boot until `ADMIN_PROMOTE` names one,
+or `CLAIM_TOKEN` lets somebody claim it from the lobby. The old variable is
+ignored, and says so.
 
 ### Pairing with GameNight
 

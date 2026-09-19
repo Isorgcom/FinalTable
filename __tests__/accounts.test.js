@@ -198,6 +198,74 @@ describe('accounts', () => {
     expect((await signUp(store, { uid: 'u_bob', name: 'Ann' })).token).toBeTruthy();
   });
 
+  // The claim: the first account on a fresh server, made with no link.
+  test('an account can be made with its password already chosen', async () => {
+    const store = make();
+    expect(
+      (await store.createWithPassword({ name: 'Ann', email: 'ann@example.com', password: 'no' }))
+        .error
+    ).toMatch(/at least 8/);
+    expect(
+      (await store.createWithPassword({ name: 'Ann', email: 'nope', password: 'correct horse' }))
+        .error
+    ).toMatch(/email/);
+    const made = await store.createWithPassword({
+      name: 'Ann',
+      email: 'ann@example.com',
+      password: 'correct horse',
+    });
+    expect(made.uid).toBeTruthy();
+    expect(store.ownerOf('ann')).toBe(made.uid);
+    expect(await store.signIn('Ann', 'correct horse')).toEqual({ uid: made.uid, name: 'Ann' });
+    // Taken now, and a hold on it is refused the same way.
+    expect(
+      (
+        await store.createWithPassword({
+          name: 'ann',
+          email: 'b@example.com',
+          password: 'correct horse',
+        })
+      ).error
+    ).toMatch(/taken/);
+    await signUp(store, { uid: 'u_bob', name: 'Bob' });
+    expect(
+      (
+        await store.createWithPassword({
+          name: 'Bob',
+          email: 'c@example.com',
+          password: 'correct horse',
+        })
+      ).error
+    ).toMatch(/already signing up/);
+  });
+
+  // The fallback for the mail that never came: an administrator opens the
+  // door the link would have.
+  test('a waiting sign-up can be let in without its link', async () => {
+    let clock = 1_000_000;
+    const store = make({ verifyTtlMs: 1000, now: () => clock });
+    await signUp(store);
+    expect(store.pendingList().map((r) => r.name)).toEqual(['Ann']);
+    // Nothing in the list that could open the door.
+    expect(Object.keys(store.pendingList()[0]).sort()).toEqual([
+      'createdAt',
+      'email',
+      'expiresAt',
+      'name',
+    ]);
+    expect(store.admit('Nobody').error).toMatch(/Nobody is waiting/);
+    expect(store.admit('ann')).toEqual({ uid: 'u_ann', name: 'Ann' });
+    expect(store.ownerOf('Ann')).toBe('u_ann');
+    expect(store.pendingList()).toEqual([]);
+    // With the password they chose.
+    expect(await store.signIn('Ann', 'correct horse')).toEqual({ uid: 'u_ann', name: 'Ann' });
+    // A lapsed one is gone from the list and cannot be let in.
+    await signUp(store, { uid: 'u_bob', name: 'Bob' });
+    clock += 5000;
+    expect(store.pendingList()).toEqual([]);
+    expect(store.admit('Bob').error).toMatch(/lapsed/);
+  });
+
   test('addresses are taken as they are, within reason', () => {
     expect(normalizeEmail('  Ann@Example.COM ')).toBe('ann@example.com');
     expect(normalizeEmail('ann@localhost')).toBeNull();

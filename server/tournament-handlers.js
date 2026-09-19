@@ -10,6 +10,7 @@
 // state from the new table. There is no room membership to migrate.
 
 const { createTournamentRegistry } = require('./tournament-registry');
+const { sameString } = require('./password');
 
 // How many wrong passwords a single socket may offer before it stops being
 // asked. Low, because there is nothing to guess at but one string, and a
@@ -56,6 +57,14 @@ function registerTournamentHandlers(deps) {
   // absent on a server that has neither, where the lobby offers guests only.
   const accounts = deps.accounts || null;
   const mailer = deps.mailer || { available: () => false, why: () => null };
+  // The word that claims this server while it has no administrator. Empty is
+  // no claim: the event does not exist and the lobby never offers it. The
+  // length rule is server.js's, applied before this is handed over.
+  const claimToken = typeof deps.claimToken === 'string' ? deps.claimToken : '';
+  // One claim at a time. The token check is instant but the password hash is
+  // not, and two right answers racing through it would both find no
+  // administrator. Server-wide, not per socket, for the same reason.
+  let claiming = false;
   const settingsStore = deps.settingsStore || null;
   const serverSettings = deps.serverSettings || { status: () => ({}), apply: () => {} };
   const mail = deps.mail || {
@@ -86,6 +95,9 @@ function registerTournamentHandlers(deps) {
       // reachable for five minutes with this true has handed itself to
       // whoever got there first.
       unclaimed: identity.adminCount() === 0,
+      // And whether the lobby should offer to claim it: no administrator, and
+      // a token in the environment to claim it with. Never the token.
+      claim: !!claimToken && identity.adminCount() === 0,
       // The set the strip draws, or null when the surface does not exist.
       reactions: registry.reactions,
       gamenight: live
@@ -396,8 +408,11 @@ function registerTournamentHandlers(deps) {
     // Nothing here logs an address. It is the most sensitive thing this
     // server holds and it lives in one file.
 
-    function accountAllowed() {
-      if (!accounts || !mailer.available()) return false;
+    // The brake alone: one window per socket, shared by everything that takes
+    // a name and a password or sends a mail. Signing in needs only this - an
+    // account that exists works whether or not the server can send mail today.
+    function accountRate() {
+      if (!accounts) return false;
       const at = Date.now();
       const recent = (socket.data.accountAsks || []).filter((t) => at - t < ACCOUNT_WINDOW_MS);
       if (recent.length >= ACCOUNT_LIMIT) {
@@ -407,6 +422,44 @@ function registerTournamentHandlers(deps) {
       recent.push(at);
       socket.data.accountAsks = recent;
       return true;
+    }
+
+    // The brake, for the things that send a mail: a sign-up and a reset are
+    // nothing without one. Mail first, so a refused ask costs no slot.
+    function accountAllowed() {
+      return mailer.available() && accountRate();
+    }
+
+    // The tail of signing in, shared by the two doors that end there. An
+    // identity for the account, or the sentence to show instead.
+    function establishSession(who, payload = {}) {
+      const ident = identity.signInAs({
+        uid: who.uid,
+        name: who.name,
+        avatar: payload.avatar,
+        userAgent: userAgentOf(socket),
+      });
+      if (!ident) return { error: 'That did not work.' };
+      // The third door disabling has to close. The other two are inside the
+      // identity store, on the paths that take a token; this one is here,
+      // because signing in with a name and a password never touches them.
+      if (ident.error === 'disabled') {
+        return { error: 'That account has been suspended on this server.' };
+      }
+      return { ident };
+    }
+
+    // The name comes back with it: the client shows who it just became, and
+    // it may not be quite what was typed - the account's own capitalisation
+    // wins over whatever was in the box.
+    function answerSignedIn(ident, extra = {}) {
+      socket.emit('accountResult', {
+        ok: true,
+        signedIn: true,
+        token: ident.token,
+        name: ident.name,
+        ...extra,
+      });
     }
 
     socket.on('signUp', async (payload = {}) => {
@@ -435,7 +488,7 @@ function registerTournamentHandlers(deps) {
           pending: true,
           message: sent
             ? 'Check your mail and open the link. It lasts a day, and the name is held for you until then.'
-            : 'The mail could not be sent. Ask whoever runs this server.',
+            : 'The mail could not be sent. Whoever runs this server can let you in from the Admin page - your name and password are kept for a day.',
         });
       });
     });
@@ -445,7 +498,7 @@ function registerTournamentHandlers(deps) {
     // progress, the rail and everything else take the one path they always
     // took rather than a second copy of it here.
     socket.on('signIn', async (payload = {}) => {
-      if (!accountAllowed()) return;
+      if (!accountRate()) return;
       const who = await accounts.signIn(payload.name, payload.password);
       if (!who) {
         return setTimeout(() => {
@@ -455,37 +508,100 @@ function registerTournamentHandlers(deps) {
           });
         }, ACCOUNT_FAIL_DELAY_MS);
       }
-      const ident = identity.signInAs({
-        uid: who.uid,
-        name: who.name,
-        avatar: payload.avatar,
-        userAgent: userAgentOf(socket),
-      });
-      if (!ident) return socket.emit('accountResult', { ok: false, error: 'That did not work.' });
-      // The third door disabling has to close. The other two are inside the
-      // identity store, on the paths that take a token; this one is here,
-      // because signing in with a name and a password never touches them.
-      if (ident.error === 'disabled') {
-        return socket.emit('accountResult', {
-          ok: false,
-          error: 'That account has been suspended on this server.',
-        });
-      }
+      const { ident, error } = establishSession(who, payload);
+      if (error) return socket.emit('accountResult', { ok: false, error });
       log({
         level: 'info',
         event: 'account_sign_in',
         message: 'Player signed in with an account',
         data: { uid: ident.uid },
       });
-      // The name comes back with it: the client shows who it just became, and
-      // it may not be quite what was typed - the account's own capitalisation
-      // wins over whatever was in the box.
-      socket.emit('accountResult', {
-        ok: true,
-        signedIn: true,
-        token: ident.token,
-        name: ident.name,
-      });
+      answerSignedIn(ident);
+    });
+
+    // Claiming the server: the first account on a box that has no
+    // administrator, made by whoever holds the token in its environment. No
+    // mail is involved, which is the point - the page where mail is set is
+    // behind this door. The guard is "no administrator", not "born empty":
+    // an upgraded server whose people predate the role is claimable too, and
+    // the role is set here rather than left to the first-account rule.
+    //
+    // Silence when the event does not exist, as every admin event answers a
+    // player. A wrong token is answered, after the same delay a wrong
+    // password gets, and written down: it is somebody guessing at a public
+    // page, and the rate window is the brake.
+    socket.on('claimServer', async (payload = {}) => {
+      if (!accounts || !claimToken) return;
+      if (identity.adminCount() > 0) {
+        return socket.emit('accountResult', {
+          ok: false,
+          error: 'This server has an administrator already.',
+        });
+      }
+      if (!accountRate()) return;
+      if (!sameString(String(payload.token || ''), claimToken)) {
+        log({
+          level: 'warn',
+          event: 'claim_refused',
+          message: 'Somebody offered the wrong claim token',
+          data: { detail: 'The token did not match CLAIM_TOKEN in .env', name: payload.name },
+        });
+        return setTimeout(() => {
+          socket.emit('accountResult', {
+            ok: false,
+            error:
+              'That is not the claim token. It is CLAIM_TOKEN in the .env beside the compose file.',
+          });
+        }, ACCOUNT_FAIL_DELAY_MS);
+      }
+      if (claiming) {
+        return socket.emit('accountResult', {
+          ok: false,
+          error: 'Somebody is claiming this server right now. Try again in a moment.',
+        });
+      }
+      claiming = true;
+      try {
+        const made = await accounts.createWithPassword({
+          uid: socket.data.uid || null,
+          name: payload.name,
+          email: payload.email,
+          password: payload.password,
+        });
+        if (made.error) return socket.emit('accountResult', { ok: false, error: made.error });
+        // The hash took a moment; somebody may have come through another
+        // door meanwhile.
+        if (identity.adminCount() > 0) {
+          accounts.remove(made.uid);
+          return socket.emit('accountResult', {
+            ok: false,
+            error: 'This server has an administrator already.',
+          });
+        }
+        const { ident, error } = establishSession(made, payload);
+        if (error) return socket.emit('accountResult', { ok: false, error });
+        // On a server that loaded empty the store granted this already, and
+        // said so; on one that loaded people, this is the grant.
+        identity.setRole(ident.uid, 'admin');
+        log({
+          level: 'info',
+          event: 'server_claimed',
+          message: 'The server was claimed from the lobby',
+          data: { uid: ident.uid, name: ident.name },
+        });
+        if (adminLog) {
+          adminLog.recordServer({
+            level: 'info',
+            event: 'server_claimed',
+            message: `${ident.name} claimed this server from the lobby`,
+          });
+        }
+        answerSignedIn(ident, { claimed: true });
+        // Every open lobby stops offering the claim.
+        announceServerInfo();
+      } finally {
+        claiming = false;
+      }
     });
 
     socket.on('requestPasswordReset', (payload = {}) => {
@@ -503,7 +619,7 @@ function registerTournamentHandlers(deps) {
     });
 
     socket.on('changeAccountPassword', async (payload = {}) => {
-      if (!accountAllowed() || !socket.data.uid) return;
+      if (!accountRate() || !socket.data.uid) return;
       const problem = await accounts.changePassword(socket.data.uid, payload.current, payload.next);
       socket.emit('accountResult', {
         ok: !problem,
@@ -961,9 +1077,26 @@ function registerTournamentHandlers(deps) {
     // Every write answers adminUserResult and then a fresh list, so the page
     // never has to guess what it now looks like.
 
+    // Who is waiting on a link, for the same page. The address is masked
+    // here, the way the mail test echoes one back: enough to recognise, not
+    // enough to be one, in a list that is polled.
+    function pendingRows() {
+      if (!accounts) return [];
+      return accounts.pendingList().map((row) => ({
+        name: row.name,
+        email: maskAddress(row.email),
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      }));
+    }
+
+    function usersPayload(query) {
+      return { ...identity.list(query || {}), pending: pendingRows() };
+    }
+
     function usersResult(error, extra = {}) {
       socket.emit('adminUserResult', { ok: !error, error: error || null, ...extra });
-      if (!error) socket.emit('adminUsers', identity.list(socket.data.adminUserQuery || {}));
+      if (!error) socket.emit('adminUsers', usersPayload(socket.data.adminUserQuery));
     }
 
     // Somebody the administrator is acting on. Answers the record, or the
@@ -985,7 +1118,28 @@ function registerTournamentHandlers(deps) {
       // Kept so a write can answer with the page they were looking at rather
       // than the first one.
       socket.data.adminUserQuery = query;
-      socket.emit('adminUsers', identity.list(query));
+      socket.emit('adminUsers', usersPayload(query));
+    });
+
+    // Somebody whose link never arrived, let in by an administrator. They
+    // sign in with the name and password they chose at sign-up; nothing is
+    // sent and nobody is told a secret.
+    socket.on('adminAdmitUser', (payload = {}) => {
+      if (!socket.data.isAdmin) return;
+      if (!accounts) return usersResult('This server keeps no accounts.');
+      const admitted = accounts.admit(String(payload.name || ''));
+      if (admitted.error) return usersResult(admitted.error);
+      // A person as well as an account, so the page that just let them in can
+      // see them. No devices: they have not signed in yet.
+      identity.create({ uid: admitted.uid, name: admitted.name });
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: 'admin_admitted',
+          message: `An administrator let ${admitted.name} in without the link`,
+        });
+      }
+      usersResult(null, { admitted: admitted.name });
     });
 
     // One person, with the things the list deliberately leaves out. The

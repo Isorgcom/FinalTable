@@ -193,46 +193,90 @@ function createAccounts(options = {}) {
   }
 
   // The link in the mail, clicked. The name is owned from here.
+  // A hold becoming an account: the one thing a proved link and an
+  // administrator's say-so have in common. The hold is spent either way -
+  // a lapsed one too, because there is nothing left for it to do.
+  function promote(held, at, lapsed, raced) {
+    pending.delete(held.key);
+    write(() => db.accounts.removePending(held.key));
+    if (held.expiresAt <= at) return { error: lapsed };
+    // Claimed while they were reading their mail.
+    const owner = byKey.get(held.key);
+    if (owner && owner.uid !== held.uid) return { error: raced };
+    const account = {
+      uid: held.uid,
+      key: held.key,
+      name: held.name,
+      email: held.email,
+      password: held.password,
+      createdAt: held.createdAt,
+      verifiedAt: at,
+    };
+    byKey.set(account.key, account);
+    byId.set(account.uid, account);
+    write(() => db.accounts.put(account));
+    return { uid: account.uid, name: account.name };
+  }
+
   function completeSignUp(token) {
     const at = now();
     const hash = digestToken(token);
     if (!hash) return { error: 'That link is not one of ours.' };
     for (const held of [...pending.values()]) {
       if (!sameDigest(held.tokenHash, hash)) continue;
-      pending.delete(held.key);
-      write(() => db.accounts.removePending(held.key));
-      if (held.expiresAt <= at) {
-        return { error: 'That link has expired. Sign up again.' };
-      }
-      // Claimed while they were reading their mail.
-      const owner = byKey.get(held.key);
-      if (owner && owner.uid !== held.uid) {
-        return { error: 'That name was taken while you were away.' };
-      }
-      const account = {
-        uid: held.uid,
-        key: held.key,
-        name: held.name,
-        email: held.email,
-        password: held.password,
-        createdAt: held.createdAt,
-        verifiedAt: at,
-      };
-      byKey.set(account.key, account);
-      byId.set(account.uid, account);
-      write(() => db.accounts.put(account));
-      return { uid: account.uid, name: account.name };
+      return promote(
+        held,
+        at,
+        'That link has expired. Sign up again.',
+        'That name was taken while you were away.'
+      );
     }
     return { error: 'That link is not one of ours.' };
   }
 
-  // An account made by an administrator rather than by its owner. No password
-  // is set: what goes out is a reset link, and choosing one from that link is
-  // what makes the account usable. So the administrator never knows it, which
-  // is the only sensible way to hand one over.
-  //
-  // Returns the account, or an error to show them.
-  function createVerified({ uid, name, email, role = 'player' } = {}) {
+  // The same door, opened by an administrator for somebody whose link never
+  // arrived. The password is the one they chose at sign-up, so nobody has to
+  // be told anything: they sign in with what they typed.
+  function admit(name) {
+    const at = now();
+    const held = pending.get(nameKey(name));
+    if (!held) return { error: 'Nobody is waiting under that name.' };
+    const done = promote(
+      held,
+      at,
+      'That sign-up has lapsed. Ask them to sign up again.',
+      'That name was taken while they waited.'
+    );
+    if (!done.error) {
+      log({
+        level: 'info',
+        event: 'account_admitted',
+        message: 'An administrator let a sign-up in without its link',
+        data: { name: done.name },
+      });
+    }
+    return done;
+  }
+
+  // Who is waiting, for the Users page. Live holds only, newest first, and
+  // neither the password record nor the link's digest: an address is here
+  // because the page masks it, and nothing else is anybody's business.
+  function pendingList(at = now()) {
+    return [...pending.values()]
+      .filter((held) => held.expiresAt > at)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((held) => ({
+        name: held.name,
+        email: held.email,
+        createdAt: held.createdAt,
+        expiresAt: held.expiresAt,
+      }));
+  }
+
+  // Whether a name and an address can become an account right now, with no
+  // link in between. The checks are the ones a sign-up makes, minus the hold:
+  // an account made this way exists the moment it is made.
+  function claimable({ uid, name, email } = {}) {
     const at = now();
     const safeName = sanitizeName(name);
     const key = nameKey(safeName);
@@ -247,20 +291,48 @@ function createAccounts(options = {}) {
     }
     const address = normalizeEmail(email);
     if (!address) return { error: 'That does not look like an email address.' };
+    return { key, safeName, address, at };
+  }
 
+  function putVerified({ uid, key, safeName, address, at }, passwordRecord) {
     const account = {
       uid: uid || random.randomId('u_'),
       key,
       name: safeName,
       email: address,
-      password: NO_PASSWORD,
+      password: passwordRecord,
       createdAt: at,
       verifiedAt: at,
     };
     byKey.set(account.key, account);
     byId.set(account.uid, account);
     write(() => db.accounts.put(account));
-    return { uid: account.uid, name: account.name, email: address, role };
+    return { uid: account.uid, name: account.name, email: address };
+  }
+
+  // An account made by an administrator rather than by its owner. No password
+  // is set: what goes out is a reset link, and choosing one from that link is
+  // what makes the account usable. So the administrator never knows it, which
+  // is the only sensible way to hand one over.
+  //
+  // Returns the account, or an error to show them.
+  function createVerified({ uid, name, email, role = 'player' } = {}) {
+    const ok = claimable({ uid, name, email });
+    if (ok.error) return ok;
+    return { ...putVerified({ uid, ...ok }, NO_PASSWORD), role };
+  }
+
+  // An account made by its owner with no link: the claim, where whoever holds
+  // the server's token makes the first account on it. The password is theirs
+  // from the start. The cheap checks come first so a name that is taken does
+  // not cost a scrypt.
+  async function createWithPassword({ uid, name, email, password } = {}) {
+    const ok = claimable({ uid, name, email });
+    if (ok.error) return ok;
+    const problem = passwordProblem(password);
+    if (problem) return { error: problem };
+    const record = await hashPassword(password);
+    return putVerified({ uid, ...ok }, record);
   }
 
   // Gone. The identity is the caller's to remove - this is only the half that
@@ -439,6 +511,9 @@ function createAccounts(options = {}) {
     ownerOf,
     holderOf,
     createVerified,
+    createWithPassword,
+    admit,
+    pendingList,
     releasePending,
     remove,
     byUid,

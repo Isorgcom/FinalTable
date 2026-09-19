@@ -116,6 +116,16 @@
           <!-- Signed out, and signing up. The name and password are both, the
                email only the second. -->
           <div class="identity-account" id="accountRow">
+            <!-- A server nobody runs yet, offering itself to whoever holds its
+                 claim token (serverInfo.claim). The same fields make the
+                 account; the token is what says they may. -->
+            <div class="identity-claim hidden" id="claimHead">
+              <div class="identity-claim-title">This server has no administrator yet</div>
+              <div class="seg-hint">
+                The first account made here runs it. The claim token is CLAIM_TOKEN in the .env
+                beside the compose file.
+              </div>
+            </div>
             <div class="form-group">
               <label for="playerName">Name</label>
               <input
@@ -152,7 +162,14 @@
               <div class="avatar-picker" id="avatarPicker"></div>
               <input type="hidden" id="playerAvatar" value="🧑" />
             </div>
+            <div class="form-group hidden" id="claimTokenGroup">
+              <label for="claimToken">Claim token</label>
+              <input type="password" id="claimToken" autocomplete="off" maxlength="256" />
+            </div>
             <div class="identity-account-actions">
+              <button class="btn-enter hidden" id="btnClaimServer" type="button">
+                Claim this server
+              </button>
               <button class="btn-enter" id="btnSignIn" type="button">Sign in</button>
               <button class="btn-secondary" id="btnCreateAccount" type="button">
                 Create an account
@@ -605,6 +622,17 @@
             <div class="session-list" id="adminUsersList"></div>
             <div class="lobby-actions">
               <button class="btn-secondary" id="btnAdminUsersMore" type="button">Show more</button>
+            </div>
+            <!-- Waiting on a link that may never come. Letting one in is the
+                 door the link would have opened; the password is the one they
+                 chose, so nobody has to be told anything. -->
+            <div class="admin-pending hidden" id="adminPendingSection">
+              <div class="admin-heading">Waiting on email</div>
+              <p class="admin-help">
+                Sign-ups whose link has not been opened. If the mail never arrived, let them in:
+                they sign in with the name and password they chose.
+              </p>
+              <div class="session-list" id="adminPendingList"></div>
             </div>
             <!-- Making one. The password is never chosen here: a link goes to
                  the address and whoever opens it picks their own, so the

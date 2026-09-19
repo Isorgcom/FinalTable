@@ -65,7 +65,11 @@ so when you arrive.
 
 A server that has no way to send mail cannot make new accounts, and says so
 where the buttons would be; one that also has no GameNight pairing has no way
-in at all, which is something for whoever runs it to fix.
+in at all, which is something for whoever runs it to fix. A server nobody
+runs yet says that instead, and - when whoever set it up gave it a claim
+token - offers **Claim this server** in place of the sign-in button: the same
+name, password and address, plus the token, make the first account, which
+runs the server.
 
 **Your devices**, also in the corner menu, lists where you are signed in: each
 one named as far as the browser will say, with when it was last here and a
@@ -84,9 +88,8 @@ told afterwards, so nothing at the table waits on it.
 ### The corner menu
 
 The button in the top-right corner of the lobby opens a small menu: **admin**
-(only when the server has an admin password), **sign out** (only when
-signed in with GameNight), and the version of FinalTable this server is
-running.
+(only for an administrator), **sign out** (only when signed in with
+GameNight), and the version of FinalTable this server is running.
 
 ### The list
 
@@ -669,11 +672,14 @@ your seat.
 
 ## For the admin
 
-The admin is an account. On a fresh server it is whoever makes the first one;
-after that, an administrator makes another from the Users page. There is
-nothing to type and nothing to unlock: the **admin** item in the lobby's
-corner menu is there for an administrator and nowhere else, and it stays
-there across a reload, a reconnect and a restart.
+The admin is an account. On a fresh server it is whoever makes the first one
+
+- usually by claiming the server from the sign-in card with the token in its
+  `.env`, which needs no mail and lands you on the Mail tab to set some up;
+  after that, an administrator makes another from the Users page. There is
+  nothing to type and nothing to unlock: the **admin** item in the lobby's
+  corner menu is there for an administrator and nowhere else, and it stays
+  there across a reload, a reconnect and a restart.
 
 If a server ends up with nobody administering it - a stranger signed up first,
 or the only administrator lost their password and their address - whoever runs
@@ -698,7 +704,9 @@ one did.
 A server with no mail set up cannot confirm an address, so it makes no new
 accounts and says so where the buttons would be. Accounts somebody already has
 still work, and so does the GameNight sign-in if the server is paired with
-one.
+one. If you signed up and the link never came, ask whoever runs the server:
+your sign-up is held for a day, and they can let you in from the Users page.
+You then sign in with the name and password you chose.
 
 ### Your games
 
@@ -812,6 +820,12 @@ about them:
   deleted - its id belongs to GameNight, so it would come back on the next
   sign-in, and without the suspension - so suspend one instead.
 
+**Waiting on email**, shown only when there is somebody in it, lists the
+sign-ups whose link has not been opened - who asked, how long ago, and when
+the hold lapses. **Let them in** does what the link would have: the account
+exists, and they sign in with the name and password they chose. It is for the
+mail that never arrived, and the Log says who did it.
+
 **Make an account** below the list creates one for somebody by name and
 address. No password is set: a link goes to them and they choose their own, so
 whoever made the account never knows it. It needs mail set up, like every
@@ -856,6 +870,7 @@ to change a setting on a server that is running:
 | Setting                      | Default    | What it does                                                               |
 | ---------------------------- | ---------- | -------------------------------------------------------------------------- |
 | `ADMIN_PROMOTE`              | none       | An account to make an administrator at boot, by name.                      |
+| `CLAIM_TOKEN`                | none       | Lets a server with no administrator be claimed from the sign-in card.      |
 | `MAX_TOURNAMENTS`            | 8          | Seeds the Server tab: how many games the server holds at once.             |
 | `CHAT_ENABLED`               | true       | Chat exists at all.                                                        |
 | `REACTIONS_ENABLED`          | true       | Seeds the Server tab: the reaction strip exists at all.                    |
