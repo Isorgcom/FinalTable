@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.26.0 - 2026-09-20
+
 ### Added
 
 - **GameNight can run the game.** A game made over the API can now be
