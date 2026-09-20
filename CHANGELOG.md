@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.24.0 - 2026-09-20
+
 ### Added
 
 - **GameNight is told how a game went.** A game made over the API can name
