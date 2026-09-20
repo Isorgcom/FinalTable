@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.23.0 - 2026-09-20
+
 ### Added
 
 - **GameNight can set up a game here.** The Admin page's GameNight tab makes
