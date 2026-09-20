@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.25.0 - 2026-09-20
+
 ### Added
 
 - **GameNight hears the clock.** A game made over the API with a webhook is
