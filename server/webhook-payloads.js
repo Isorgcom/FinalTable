@@ -118,4 +118,83 @@ function cancelled(entry, reason, at) {
   };
 }
 
-module.exports = { playerRef, standings, eliminated, reentered, completed, cancelled, userId };
+// ── The clock ────────────────────────────────────────────────────────────
+
+// Where the clock stands. On a break, `level` is the level just finished and
+// `blinds` are the ones play resumes at, which is how the director reads
+// them; `duration` is the current row's, break or level, in seconds.
+function clock(entry) {
+  const d = entry.director;
+  const t = d.tournament;
+  const row = t.blindSchedule[t.currentLevel] || {};
+  const blinds = t.getCurrentBlinds();
+  return {
+    level: t.levelNumber(),
+    on_break: t.onBreak(),
+    blinds: { sb: blinds.sb, bb: blinds.bb, ante: blinds.ante || 0 },
+    duration: Number.isFinite(row.duration) ? row.duration : null,
+    next_level_in: t.getTimeUntilNextLevel(),
+    levels: t.playLevelCount(),
+    final_level: t.isFinalLevel(),
+    late_reg_open: d.lateRegOpen(),
+    reentry_open: d.reentryOpen(),
+    add_on_open: d.addOnOpen(),
+  };
+}
+
+// How the field stands. The average stack is the director's own arithmetic
+// from fieldSummary, done here because there is no accessor for it.
+function field(entry) {
+  const d = entry.director;
+  const alive = d.fieldPlayers().filter((p) => p.chips > 0).length;
+  return {
+    remaining: d.playersRemaining(),
+    entrants: d.entrants.length,
+    humans: d.entrants.filter((e) => !e.isBot).length,
+    entries: d.entrants.length + d.extraEntries,
+    tables: d.activeTables().length,
+    average_stack: alive ? Math.floor(d.totalChips() / alive) : 0,
+    prize_pool: d.prizePool(),
+    paid_places: d.paidPlaces,
+  };
+}
+
+// The clock started. Level one and its blinds come here and nowhere else:
+// the level hook is wired after the clock starts, so it never says them.
+function started(entry, at) {
+  return { ...clock(entry), ...field(entry), buy_in: entry.director.buyIn, at };
+}
+
+function level(entry, { manual, back } = {}, at) {
+  return { ...clock(entry), manual: !!manual, back: !!back, ...field(entry), at };
+}
+
+function clockStop(entry, at) {
+  const c = clock(entry);
+  return {
+    level: c.level,
+    on_break: c.on_break,
+    next_level_in: c.next_level_in,
+    remaining: entry.director.playersRemaining(),
+    at,
+  };
+}
+
+const paused = clockStop;
+const resumed = clockStop;
+
+module.exports = {
+  playerRef,
+  standings,
+  eliminated,
+  reentered,
+  completed,
+  cancelled,
+  started,
+  level,
+  paused,
+  resumed,
+  clock,
+  field,
+  userId,
+};

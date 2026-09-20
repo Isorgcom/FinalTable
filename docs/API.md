@@ -209,7 +209,8 @@ without one has to be read inside that window.
 
 ## Webhooks
 
-A game made with a `webhook` reports back to it: every bust-out, every
+A game made with a `webhook` reports back to it: the clock starting, every
+level and break, the host pausing and resuming, every bust-out, every
 re-entry, and the ending. Each is a `POST` of a JSON body to the address
 given, signed with the secret given, and tried again for about a day if
 GameNight does not answer.
@@ -219,7 +220,7 @@ GameNight does not answer.
 ```
 POST <url>
 Content-Type: application/json
-User-Agent: FinalTable/0.24.0
+User-Agent: FinalTable/0.25.0
 X-FinalTable-Event: player.eliminated
 X-FinalTable-Delivery: 41
 X-FinalTable-Timestamp: 1790000000000
@@ -269,6 +270,74 @@ A player is named three ways: this server's `uid`, GameNight's `user_id`
 was at the table. Bots take places and are sent like anybody else, flagged
 `is_bot`.
 
+### `tournament.started`
+
+```json
+{
+  "level": 1,
+  "on_break": false,
+  "blinds": { "sb": 25, "bb": 50, "ante": 0 },
+  "duration": 900,
+  "next_level_in": 900,
+  "levels": 18,
+  "final_level": false,
+  "late_reg_open": true,
+  "reentry_open": false,
+  "add_on_open": false,
+  "remaining": 5,
+  "entrants": 5,
+  "humans": 5,
+  "entries": 5,
+  "tables": 1,
+  "average_stack": 5000,
+  "prize_pool": 500,
+  "paid_places": 2,
+  "buy_in": 100,
+  "at": 1790000000000
+}
+```
+
+The clock started - on the scheduled time, or the host pressing start.
+Level one and its blinds come here and nowhere else: the level event below
+is for changes, and the first level is not one. A restart seats the field
+again and does not send this again.
+
+### `tournament.level`
+
+```json
+{
+  "level": 3,
+  "on_break": true,
+  "blinds": { "sb": 100, "bb": 200, "ante": 200 },
+  "duration": 600,
+  "next_level_in": 600,
+  "levels": 18,
+  "final_level": false,
+  "late_reg_open": false,
+  "reentry_open": false,
+  "add_on_open": true,
+  "manual": false,
+  "back": false,
+  "remaining": 4,
+  "entrants": 5,
+  "humans": 5,
+  "entries": 6,
+  "tables": 1,
+  "average_stack": 7500,
+  "prize_pool": 600,
+  "paid_places": 2,
+  "at": 1790001800000
+}
+```
+
+Sent when the clock moves to a new level or into or out of a break, and
+when the host steps a level by hand (`manual: true`; `back: true` when they
+stepped backwards, which is a correction). On a break, `level` is the level
+just finished and `blinds` are the ones play resumes at; `duration` is the
+break's. `next_level_in` is seconds, `0` on the final level. The host adding
+or taking a minute does not send this; the level change it may bring
+forward does.
+
 ### `player.eliminated`
 
 ```json
@@ -307,6 +376,22 @@ last word.
 The bust-out this undoes was sent; this is the correction. `entries` counts
 everybody's entries, re-entries and add-ons together, which is what the
 prize pool is built from.
+
+### `tournament.paused` and `tournament.resumed`
+
+```json
+{
+  "level": 4,
+  "on_break": false,
+  "next_level_in": 312,
+  "remaining": 3,
+  "at": 1790002400000
+}
+```
+
+The host holding the clock, and letting it go. Nothing is sent for the
+server's own hold on a room everybody has left - that is not a pause, and
+its end is `tournament.cancelled` if nobody comes back.
 
 ### `tournament.completed`
 
@@ -396,5 +481,5 @@ go on) or `empty`. `standings` is who had gone out by then; `started_at` is
 
 ## Not here yet
 
-Cancel, pause and end from GameNight's side; the blind-level event; a
-heartbeat. See the [roadmap](../ROADMAP.md).
+Cancel, pause and end from GameNight's side; a heartbeat. See the
+[roadmap](../ROADMAP.md).

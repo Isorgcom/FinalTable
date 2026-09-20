@@ -1361,6 +1361,15 @@ function createTournamentRegistry(deps = {}) {
       // A level change, a break included. The line itself arrives as a
       // gameMessage like any other; this is what the client chimes on.
       onLevelChange: (info) => {
+        // GameNight hears the clock too. Never level one, which the hook
+        // does not fire for: that came with tournament.started.
+        if (webhooks && entry.webhook) {
+          webhooks.enqueue({
+            entry,
+            event: 'tournament.level',
+            payload: payloads.level(entry, { manual: info.manual, back: info.back }, now()),
+          });
+        }
         emitAll(entry, 'tournamentLevelUp', info);
         // The cards in the lobby turn on a level as much as the felt does: a
         // break opens the add-on, a level closes re-entry or late
@@ -2149,6 +2158,13 @@ function createTournamentRegistry(deps = {}) {
     const refused = hostRunning(entry, uid);
     if (refused) return { error: refused };
     if (!entry.director.pause()) return { error: 'Already paused' };
+    if (webhooks && entry.webhook) {
+      webhooks.enqueue({
+        entry,
+        event: 'tournament.paused',
+        payload: payloads.paused(entry, now()),
+      });
+    }
     persist();
     emitList();
     return { entry };
@@ -2158,6 +2174,13 @@ function createTournamentRegistry(deps = {}) {
     const refused = hostRunning(entry, uid);
     if (refused) return { error: refused };
     if (!entry.director.resume()) return { error: 'Not paused' };
+    if (webhooks && entry.webhook) {
+      webhooks.enqueue({
+        entry,
+        event: 'tournament.resumed',
+        payload: payloads.resumed(entry, now()),
+      });
+    }
     // Everybody may have walked off during the pause, in which case the field
     // goes straight from the host's pause into the hold for an empty room.
     syncAwayHold(entry);
@@ -2361,6 +2384,15 @@ function createTournamentRegistry(deps = {}) {
     entry.status = 'running';
     entry.startedAt = now();
     entry.waitingReason = null;
+    // Here and not in resume(): a restart seats the field again, it does not
+    // start the game again.
+    if (webhooks && entry.webhook) {
+      webhooks.enqueue({
+        entry,
+        event: 'tournament.started',
+        payload: payloads.started(entry, now()),
+      });
+    }
     entry.timer = timers.setInterval(() => {
       try {
         entry.director.tick();

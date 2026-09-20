@@ -349,9 +349,9 @@ Final Table to Game Night:
 
 - ~~Player eliminated, with finishing place~~ Done.
 - ~~Re-entry~~ Done.
-- Blind level up. The server already tells every client (`tournamentLevelUp`,
-  break or level, with the blinds and the time to the next); the webhook is
-  the same event sent outward.
+- ~~Blind level up.~~ Done: the same `tournamentLevelUp` every client gets,
+  sent outward - with the game starting, and the host pausing and resuming,
+  since the outbox made each one cheap.
 - ~~Tournament complete, with final standings~~ Done, and a cancellation with
   the standings so far.
 
@@ -360,10 +360,12 @@ the server sends it every bust-out (with the place, provisional until late
 registration and re-entry have closed), every re-entry, and the ending. Each
 is signed, written to an outbox before the first attempt, retried on a
 backoff for about a day, in order per game, and given up on loudly in the
-admin Log. See [docs/API.md](./docs/API.md).
+admin Log. Then the clock: `tournament.started` (level one rides it),
+`tournament.level` for every level and break and the host's steps, and
+`tournament.paused` / `tournament.resumed`. See
+[docs/API.md](./docs/API.md).
 
-Later if they turn out to be needed: a game-started confirmation, and a
-heartbeat.
+Later if it turns out to be needed: a heartbeat.
 
 ## Identity bridge
 
@@ -423,7 +425,7 @@ Suggested, for the split:
 1. ~~The game-creation endpoint and the game id~~ (done)
 2. ~~The elimination and tournament-complete webhooks~~ (done, with re-entry)
 3. ~~The JWT bridge and the redirect flow~~ (done)
-4. The blind-level event
+4. ~~The blind-level event~~ (done, with started, paused and resumed)
 5. The online event type in Game Night
 6. Cancel and pause, the heartbeat, and seat-move requests
 

@@ -1529,6 +1529,8 @@ class TournamentDirector {
           onBreak,
           nextLevelIn: this.tournament.getTimeUntilNextLevel(),
           manual: !!info.manual,
+          // A step backwards by the host is a correction, and is said so.
+          back: !!info.back,
         });
       }
     };

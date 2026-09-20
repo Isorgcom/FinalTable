@@ -1802,6 +1802,7 @@ describe('blind structures in the registry', () => {
       onBreak: true,
       nextLevelIn: expect.any(Number),
       manual: false,
+      back: false,
     });
     const lines = io.sent.filter((m) => m.event === 'gameMessage').map((m) => m.payload);
     expect(lines).toContain('Break: 90s · play resumes at 50/100 ante 100');
@@ -3008,6 +3009,96 @@ describe('re-entry and the add-on in the registry', () => {
       bust(plain, 'g');
       registry.cancel(plain, 'h');
       expect(hooks.enqueue).not.toHaveBeenCalled();
+    });
+
+    test('the clock is reported: the start, every level, and the host holding it', () => {
+      const entry = running(
+        { reentryLevels: 2, structure: BREAKS, addOn: true },
+        { webhook: HOOK }
+      );
+      const began = sent('tournament.started');
+      expect(began).toHaveLength(1);
+      expect(began[0].payload).toEqual({
+        level: 1,
+        on_break: false,
+        blinds: { sb: expect.any(Number), bb: expect.any(Number), ante: expect.any(Number) },
+        duration: 60,
+        next_level_in: expect.any(Number),
+        levels: 2,
+        final_level: false,
+        late_reg_open: true,
+        reentry_open: true,
+        add_on_open: false,
+        remaining: 4,
+        entrants: 4,
+        humans: 4,
+        entries: 4,
+        tables: 1,
+        average_stack: 5000,
+        prize_pool: 400,
+        paid_places: expect.any(Number),
+        buy_in: 100,
+        at: expect.any(Number),
+      });
+      expect(began[0].payload.at).toBe(entry.startedAt);
+
+      // The clock crossing into the break, the way the tournament clock does it.
+      const t = entry.director.tournament;
+      t.currentLevel = 1;
+      t.onLevelUp(1, t.getCurrentBlinds());
+      const levels = sent('tournament.level');
+      expect(levels).toHaveLength(1);
+      expect(levels[0].payload).toMatchObject({
+        level: 1,
+        on_break: true,
+        duration: 90,
+        manual: false,
+        back: false,
+        add_on_open: true,
+        remaining: 4,
+        at: Date.now(),
+      });
+      // Play resumes at level 2's blinds, which is what a break carries.
+      expect(levels[0].payload.blinds).toEqual({
+        sb: BREAKS.levels[2].sb,
+        bb: BREAKS.levels[2].bb,
+        ante: BREAKS.levels[2].ante || 0,
+      });
+
+      // The host stepping it, and stepping it back.
+      expect(registry.stepLevel(entry, 'h', 1).error).toBeUndefined();
+      expect(sent('tournament.level')[1].payload).toMatchObject({
+        level: 2,
+        manual: true,
+        back: false,
+      });
+      expect(registry.stepLevel(entry, 'h', -1).error).toBeUndefined();
+      expect(sent('tournament.level')[2].payload).toMatchObject({ manual: true, back: true });
+
+      // Held by the host, and let go. A second press changes nothing and says nothing.
+      expect(registry.pause(entry, 'h').error).toBeUndefined();
+      expect(registry.pause(entry, 'h').error).toBe('Already paused');
+      const held = sent('tournament.paused');
+      expect(held).toHaveLength(1);
+      expect(held[0].payload).toEqual({
+        level: expect.any(Number),
+        on_break: expect.any(Boolean),
+        next_level_in: expect.any(Number),
+        remaining: 4,
+        at: Date.now(),
+      });
+      expect(registry.resume(entry, 'h').error).toBeUndefined();
+      expect(sent('tournament.resumed')).toHaveLength(1);
+
+      // A restart seats the field again; it does not start the game again.
+      registry.flush();
+      registry.stop();
+      const second = makeRegistry(store, { webhooks: hooks });
+      expect(second.restore()).toBe(1);
+      expect(sent('tournament.started')).toHaveLength(1);
+      expect(sent('tournament.level')).toHaveLength(3);
+      second.stop();
+      registry = makeRegistry(store); // for afterEach
     });
 
     test('the address is written down and read back, and a bad one reads as none', () => {

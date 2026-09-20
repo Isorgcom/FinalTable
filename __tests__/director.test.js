@@ -1272,6 +1272,7 @@ describe('blind structures', () => {
         onBreak: true,
         nextLevelIn: expect.any(Number),
         manual: false,
+        back: false,
       },
       {
         level: 2,
@@ -1279,6 +1280,7 @@ describe('blind structures', () => {
         onBreak: false,
         nextLevelIn: expect.any(Number),
         manual: false,
+        back: false,
       },
     ]);
     expect(d.fieldSummary()).toMatchObject({

@@ -13,6 +13,14 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **GameNight hears the clock.** A game made over the API with a webhook is
+  now told when it starts, every time the blinds go up or a break begins -
+  the host stepping a level included - and when the host pauses and
+  resumes: the same signed, retried deliveries as the bust-outs and the
+  ending. Level one arrives with the start.
+
 ## 0.24.0 - 2026-09-20
 
 ### Added

@@ -717,6 +717,16 @@ describe('GameNight being told how a game went', () => {
     entry.director._handleRoundEnd(table, null);
   }
 
+  // Wait for a delivery that may already have landed.
+  async function arrived(gameId, event) {
+    for (let i = 0; i < 100; i++) {
+      const hit = receiver.got.find((h) => h.json.event === event && h.json.game.id === gameId);
+      if (hit) return hit;
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    throw new Error(`${event} for ${gameId} never arrived`);
+  }
+
   let key = null;
 
   test('the address is taken, answered without its secret, and refused when half given', async () => {
@@ -758,6 +768,19 @@ describe('GameNight being told how a game went', () => {
     });
     expect(JSON.stringify(made)).not.toContain(SECRET);
 
+    // The clock starting was the first thing said, before anybody busted.
+    const began = await arrived(made.id, 'tournament.started');
+    expect(began.json).toMatchObject({
+      game: { external_id: 'ev_41' },
+      level: 1,
+      on_break: false,
+      entrants: 2,
+      humans: 2,
+      remaining: 2,
+      prize_pool: 200,
+      buy_in: 100,
+    });
+
     const first = receiver.next();
     bust(entry, 'gn_42');
     const hit = await first;
@@ -797,12 +820,12 @@ describe('GameNight being told how a game went', () => {
     ]);
     for (let i = 0; i < 50; i++) {
       const view = await get(made.id, key);
-      if (view.body.data.webhook.deliveries.delivered === 2) break;
+      if (view.body.data.webhook.deliveries.delivered === 3) break;
       await new Promise((res) => setTimeout(res, 50));
     }
     expect((await get(made.id, key)).body.data.webhook.deliveries).toEqual({
       pending: 0,
-      delivered: 2,
+      delivered: 3,
       abandoned: 0,
       lastError: null,
     });
@@ -812,6 +835,7 @@ describe('GameNight being told how a game went', () => {
 
   test('a receiver that answers 500 leaves the delivery pending, and the Log says so', async () => {
     const { made, entry } = await runningGame(key, 51, 52);
+    await arrived(made.id, 'tournament.started');
     receiver.statuses.push(500);
     const hit = receiver.next();
     bust(entry, 'gn_52');
@@ -826,7 +850,7 @@ describe('GameNight being told how a game went', () => {
     // finish waits its turn behind the bust-out that could not be delivered.
     expect(deliveries).toEqual({
       pending: 2,
-      delivered: 0,
+      delivered: 1,
       abandoned: 0,
       lastError: 'answered 500',
     });
@@ -849,7 +873,7 @@ describe('GameNight being told how a game went', () => {
     expect((await get(pendingId, key)).status).toBe(404);
     expect(serverModule.webhooks.status(pendingId)).toEqual({
       pending: 2,
-      delivered: 0,
+      delivered: 1,
       abandoned: 0,
       lastError: 'answered 500',
     });
