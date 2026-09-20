@@ -31,6 +31,7 @@ function tablesFor(name) {
       chat: new Map(), // tournament_id -> data
       games: new Map(), // id -> { meta, hands, uids }
       adminLog: new Map(), // id -> row
+      webhooks: new Map(), // id -> row
       migrations: new Map(), // name -> applied_at
     });
   }
@@ -49,6 +50,7 @@ function createMemoryDatabase(options = {}) {
     chat,
     games,
     adminLog,
+    webhooks,
     migrations,
   } = tablesFor(database);
 
@@ -66,6 +68,7 @@ function createMemoryDatabase(options = {}) {
         chat,
         games,
         adminLog,
+        webhooks,
         migrations,
       ];
       for (const table of tables) table.clear();
@@ -258,6 +261,31 @@ function createMemoryDatabase(options = {}) {
       },
       async count() {
         return adminLog.size;
+      },
+    },
+
+    webhooks: {
+      async put(row) {
+        if (!row || row.id === undefined) return;
+        webhooks.set(row.id, clone(row));
+      },
+      async all() {
+        return [...webhooks.values()].sort((a, b) => a.id - b.id).map(clone);
+      },
+      async prune({ olderThan = null } = {}) {
+        if (!Number.isFinite(olderThan)) return 0;
+        let dropped = 0;
+        for (const [id, row] of [...webhooks]) {
+          const done = row.deliveredAt || row.abandonedAt;
+          if (done && done < olderThan) {
+            webhooks.delete(id);
+            dropped++;
+          }
+        }
+        return dropped;
+      },
+      async count() {
+        return webhooks.size;
       },
     },
 

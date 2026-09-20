@@ -144,6 +144,45 @@ describe('reading a create request', () => {
     expect(read({ invitees: big }).error).toMatch(/at most 200/);
   });
 
+  test('a webhook is both an address and a secret, or nothing', () => {
+    const good = { url: 'https://gamenight.example/hooks', secret: 's'.repeat(16) };
+    expect(read({ invitees: roster }).webhook).toBeNull();
+    expect(read({ invitees: roster, webhook: good }).webhook).toEqual({
+      ...good,
+      externalId: null,
+    });
+    expect(
+      read({
+        invitees: roster,
+        webhook_url: good.url,
+        webhook_secret: good.secret,
+        event_id: 'ev_812',
+      }).webhook
+    ).toEqual({ ...good, externalId: 'ev_812' });
+    expect(read({ invitees: roster, webhook: good, external_id: 'x' }).webhook.externalId).toBe(
+      'x'
+    );
+    // Nothing rides in the payload a browser could have sent.
+    expect(read({ invitees: roster, webhook: good }).payload).not.toHaveProperty('webhook');
+
+    expect(read({ invitees: roster, webhook: 'nope' }).error).toMatch(/object with a url/);
+    expect(read({ invitees: roster, webhook_url: good.url }).error).toMatch(
+      /both a url and a secret/
+    );
+    expect(read({ invitees: roster, webhook_secret: good.secret }).error).toMatch(/both/);
+    expect(
+      read({ invitees: roster, webhook: { url: 'ftp://x', secret: good.secret } }).error
+    ).toMatch(/http\(s\)/);
+    expect(
+      read({ invitees: roster, webhook: { url: 'not a url', secret: good.secret } }).error
+    ).toMatch(/http\(s\)/);
+    expect(read({ invitees: roster, webhook: { url: good.url, secret: 'short' } }).error).toMatch(
+      /at least 16/
+    );
+    expect(read({ invitees: roster, external_id: 'x'.repeat(65) }).error).toMatch(/up to 64/);
+    expect(read({ invitees: roster, external_id: '' }).payload).toBeTruthy();
+  });
+
   test('blind_levels must be a list; a bad body is refused before anything else', () => {
     expect(read({ blind_levels: 'turbo', invitees: roster }).error).toMatch(/array/);
     expect(read(null).error).toMatch(/JSON object/);
@@ -481,5 +520,338 @@ describe('GameNight making a game over the API', () => {
     const r = await get(made.id, key);
     expect(r.status).toBe(401);
     expect(r.body.error).toMatch(/no API key/);
+  });
+});
+
+// ── What GameNight is told, over a real socket and a real receiver ────────
+describe('GameNight being told how a game went', () => {
+  const originalEnv = { ...process.env };
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const sockets = [];
+  let baseUrl, serverModule, tempDir, receiver;
+  let seq = 100;
+  const SECRET = 'a-webhook-secret-of-length';
+
+  function gnToken(sub, name) {
+    const now = Math.floor(Date.now() / 1000);
+    seq += 1;
+    const claims = {
+      iss: ISSUER,
+      aud: AUDIENCE,
+      sub: String(sub),
+      iat: now,
+      exp: now + 120,
+      jti: `hook-${String(seq).padStart(12, '0')}-abcdef`,
+      name,
+      tier: 'Free',
+    };
+    const input = `${b64url({ typ: 'JWT', alg: 'ES256' })}.${b64url(claims)}`;
+    const sig = crypto.sign('sha256', Buffer.from(input), {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    });
+    return `${input}.${sig.toString('base64url')}`;
+  }
+
+  // A stand-in GameNight endpoint: records every delivery, answers a queue of
+  // statuses, and hands the next delivery to whoever is waiting for it.
+  function makeReceiver() {
+    const http = require('http');
+    const got = [];
+    const waiting = [];
+    const statuses = [];
+    return new Promise((resolve) => {
+      const server = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', () => {
+          const hit = { headers: req.headers, body, json: JSON.parse(body) };
+          got.push(hit);
+          const status = statuses.length ? statuses.shift() : 200;
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end('{"ok":true}');
+          const w = waiting.shift();
+          if (w) w(hit);
+        });
+      });
+      server.listen(0, '127.0.0.1', () => {
+        resolve({
+          url: `http://127.0.0.1:${server.address().port}/hooks/finaltable`,
+          got,
+          statuses,
+          next: () =>
+            new Promise((res, rej) => {
+              const timer = setTimeout(() => rej(new Error('no delivery in 10 s')), 10000);
+              waiting.push((hit) => {
+                clearTimeout(timer);
+                res(hit);
+              });
+            }),
+          close: () => new Promise((r) => server.close(r)),
+        });
+      });
+    });
+  }
+
+  async function boot() {
+    jest.resetModules();
+    serverModule = require('../server');
+    await serverModule.startServer({ port: 0, host: '127.0.0.1', unrefServer: true });
+    baseUrl = `http://127.0.0.1:${serverModule.server.address().port}`;
+  }
+
+  async function shutdown() {
+    while (sockets.length) sockets.pop().close();
+    await serverModule.flushStores();
+    serverModule.registry.stop();
+    await new Promise((r) => serverModule.io.close(r));
+    if (serverModule.server.listening) await new Promise((r) => serverModule.server.close(r));
+  }
+
+  beforeAll(async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-api-hooks-'));
+    process.env.SAVE_DIR = tempDir;
+    process.env.DB_NAME = 'api-games-hooks';
+    process.env.HOST = '127.0.0.1';
+    process.env.HTTP_RATE_LIMIT = '1000';
+    process.env.TOURNAMENT_SWEEP_MS = '100';
+    process.env.GAMENIGHT_URL = ISSUER;
+    process.env.GAMENIGHT_PUBLIC_KEY = publicKey
+      .export({ type: 'spki', format: 'pem' })
+      .replace(/\n/g, '\\n');
+    process.env.GAMENIGHT_AUDIENCE = AUDIENCE;
+    process.env.PUBLIC_URL = 'https://table.example';
+    process.env.MAIL_TRANSPORT = 'log';
+    delete process.env.ADMIN_PASSWORD;
+    delete process.env.ADMIN_PROMOTE;
+    delete process.env.CLAIM_TOKEN;
+    receiver = await makeReceiver();
+    await boot();
+  });
+
+  afterAll(async () => {
+    await shutdown();
+    await receiver.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    process.env = originalEnv;
+  });
+
+  function connect() {
+    return new Promise((res) => {
+      const s = Client(baseUrl, { forceNew: true, reconnection: false, transports: ['websocket'] });
+      sockets.push(s);
+      s.once('connect', () => res(s));
+    });
+  }
+
+  function ask(s, event, payload, answer) {
+    return new Promise((res) => {
+      s.once(answer, res);
+      s.emit(event, payload);
+    });
+  }
+
+  let admins = 10;
+  async function adminSocket() {
+    const s = await connect();
+    await ask(
+      s,
+      'identify',
+      { token: accountFor(serverModule, `Hooker${admins++}`, { role: 'admin' }).token },
+      'identified'
+    );
+    return s;
+  }
+
+  const post = (body, key) =>
+    fetch(`${baseUrl}/api/games`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      body: JSON.stringify(body),
+    }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+  const get = (id, key) =>
+    fetch(`${baseUrl}/api/games/${id}`, { headers: { authorization: `Bearer ${key}` } }).then(
+      async (r) => ({ status: r.status, body: await r.json() })
+    );
+
+  // A game with two GameNight people in it and the clock started, held so
+  // nothing plays itself out.
+  async function runningGame(key, hostId, guestId, extra = {}) {
+    const r = await post(
+      {
+        title: `Hooked ${hostId}`,
+        startsAt: Date.now() - 1000,
+        tableSize: 6,
+        buyIn: 100,
+        reentryLevels: 2,
+        invitees: [
+          { user_id: hostId, username: `Host${hostId}`, manager: true },
+          { user_id: guestId, username: `Guest${guestId}` },
+        ],
+        webhook: { url: receiver.url, secret: SECRET },
+        external_id: `ev_${hostId}`,
+        ...extra,
+      },
+      key
+    );
+    expect(r.status).toBe(201);
+    const guest = await connect();
+    await ask(guest, 'identify', { gnToken: gnToken(guestId, `Guest${guestId}`) }, 'identified');
+    await ask(guest, 'joinTournament', { code: r.body.data.code }, 'tournamentJoined');
+    const entry = serverModule.registry.tournaments.get(r.body.data.id);
+    for (let i = 0; i < 50 && entry.status !== 'running'; i++) {
+      await new Promise((res) => setTimeout(res, 100));
+    }
+    expect(entry.status).toBe('running');
+    entry.director.holdField();
+    return { made: r.body.data, entry };
+  }
+
+  function bust(entry, uid) {
+    const { table, player } = entry.director.playerByUid(uid);
+    const keeper = table.players.find((p) => p.uid !== uid && p.chips > 0);
+    keeper.chips += player.chips;
+    player.chips = 0;
+    entry.director.tournament.recordElimination(player.name, 1, uid);
+    entry.director._handleRoundEnd(table, null);
+  }
+
+  let key = null;
+
+  test('the address is taken, answered without its secret, and refused when half given', async () => {
+    const boss = await adminSocket();
+    key = (await ask(boss, 'adminMakeApiKey', {}, 'adminApiKey')).key;
+    const roster = [
+      { user_id: 41, username: 'Ann', manager: true },
+      { user_id: 42, username: 'Bob' },
+    ];
+    expect(await post({ invitees: roster, webhook_url: receiver.url }, key)).toMatchObject({
+      status: 400,
+      body: { error: expect.stringMatching(/both a url and a secret/) },
+    });
+    expect(
+      await post({ invitees: roster, webhook: { url: 'ftp://x', secret: SECRET } }, key)
+    ).toMatchObject({ status: 400, body: { error: expect.stringMatching(/http/) } });
+    expect(
+      await post({ invitees: roster, webhook: { url: receiver.url, secret: 'short' } }, key)
+    ).toMatchObject({ status: 400, body: { error: expect.stringMatching(/16/) } });
+    expect(
+      await post(
+        {
+          invitees: roster,
+          webhook: { url: receiver.url, secret: SECRET },
+          external_id: 'x'.repeat(65),
+        },
+        key
+      )
+    ).toMatchObject({ status: 400, body: { error: expect.stringMatching(/64/) } });
+    expect(serverModule.registry.tournaments.size).toBe(0);
+  });
+
+  test('a bust-out and the finish reach the receiver, signed and in order', async () => {
+    const { made, entry } = await runningGame(key, 41, 42);
+    expect(made.webhook).toEqual({
+      url: receiver.url,
+      externalId: 'ev_41',
+      deliveries: { pending: 0, delivered: 0, abandoned: 0, lastError: null },
+    });
+    expect(JSON.stringify(made)).not.toContain(SECRET);
+
+    const first = receiver.next();
+    bust(entry, 'gn_42');
+    const hit = await first;
+    expect(hit.headers['x-finaltable-event']).toBe('player.eliminated');
+    expect(hit.headers['user-agent']).toMatch(/^FinalTable\//);
+    expect(hit.json).toMatchObject({
+      event: 'player.eliminated',
+      game: { id: made.id, name: 'Hooked 41', external_id: 'ev_41' },
+      player: { uid: 'gn_42', user_id: '42', name: 'Guest42', is_bot: false },
+      place: 2,
+      final: false,
+      how: 'busted',
+      remaining: 1,
+      entrants: 2,
+    });
+    expect(hit.headers['x-finaltable-delivery']).toBe(String(hit.json.delivery_id));
+    const want = crypto
+      .createHmac('sha256', SECRET)
+      .update(`${hit.headers['x-finaltable-timestamp']}.${hit.body}`)
+      .digest('hex');
+    expect(hit.headers['x-finaltable-signature']).toBe(`sha256=${want}`);
+
+    const second = receiver.next();
+    entry.director._finish(null);
+    const end = await second;
+    expect(end.json).toMatchObject({
+      event: 'tournament.completed',
+      outcome: 'winner',
+      winner: { uid: 'gn_41', user_id: '41', name: 'Host41' },
+      entrants: 2,
+      humans: 2,
+      prize_pool: 200,
+    });
+    expect(end.json.standings.map((r) => [r.place, r.uid])).toEqual([
+      [1, 'gn_41'],
+      [2, 'gn_42'],
+    ]);
+    for (let i = 0; i < 50; i++) {
+      const view = await get(made.id, key);
+      if (view.body.data.webhook.deliveries.delivered === 2) break;
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    expect((await get(made.id, key)).body.data.webhook.deliveries).toEqual({
+      pending: 0,
+      delivered: 2,
+      abandoned: 0,
+      lastError: null,
+    });
+  });
+
+  let pendingId = null;
+
+  test('a receiver that answers 500 leaves the delivery pending, and the Log says so', async () => {
+    const { made, entry } = await runningGame(key, 51, 52);
+    receiver.statuses.push(500);
+    const hit = receiver.next();
+    bust(entry, 'gn_52');
+    await hit;
+    let deliveries = null;
+    for (let i = 0; i < 50; i++) {
+      deliveries = (await get(made.id, key)).body.data.webhook.deliveries;
+      if (deliveries.lastError) break;
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    // Two of them: busting one of two people finishes the game, and the
+    // finish waits its turn behind the bust-out that could not be delivered.
+    expect(deliveries).toEqual({
+      pending: 2,
+      delivered: 0,
+      abandoned: 0,
+      lastError: 'answered 500',
+    });
+    pendingId = made.id;
+
+    const boss = await adminSocket();
+    const rows = await ask(boss, 'adminLog', {}, 'adminLogRows');
+    const text = JSON.stringify(rows);
+    expect(text).toContain('webhook_failed');
+    expect(text).toContain('player.eliminated for Hooked 51');
+    expect(text).toContain('trying again in 1 minute');
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toContain('/hooks/finaltable');
+  });
+
+  test('what is owed survives a restart, after the game itself is gone', async () => {
+    await shutdown();
+    await boot();
+    // A finished game is not kept across a restart; what is owed for it is.
+    expect((await get(pendingId, key)).status).toBe(404);
+    expect(serverModule.webhooks.status(pendingId)).toEqual({
+      pending: 2,
+      delivered: 0,
+      abandoned: 0,
+      lastError: 'answered 500',
+    });
   });
 });

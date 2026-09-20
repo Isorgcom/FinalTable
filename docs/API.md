@@ -63,6 +63,8 @@ Where both are given, GameNight's wins.
 | `buyin_amount`, `poker_buyin`     | `buyIn`                     | 0-10000                                                                                                     |
 | `blind_levels` + `structure_name` | `structure`                 | see below                                                                                                   |
 | `invitees`                        | `roster`                    | see below                                                                                                   |
+| `webhook_url` + `webhook_secret`  | `webhook: { url, secret }`  | where to send the game's events, and what to sign them with: both or neither; see Webhooks below            |
+| `event_id`                        | `external_id`               | GameNight's own id for the event, up to 64 characters, echoed on every webhook                              |
 |                                   | `bots`                      | 0-40 seats the server plays, for trying it out                                                              |
 
 `visibility` is ignored: a game with a roster is invite-only, and the roster
@@ -168,10 +170,18 @@ The answer, `201`:
     "links": {
       "join": "https://finaltable.example/?t=K7PQ2",
       "rail": "https://finaltable.example/?w=M4XZ9"
+    },
+    "webhook": {
+      "url": "https://gamenight.example/hooks/finaltable",
+      "externalId": "ev_812",
+      "deliveries": { "pending": 0, "delivered": 0, "abandoned": 0, "lastError": null }
     }
   }
 }
 ```
+
+`webhook` is where the game reports to and how that is going; it is `null`
+for a game made without one, and never carries the secret.
 
 `code` is the way in and `rail` the way to watch; `links` are those against
 the public address the Mail tab holds, and `null` until it has one - the
@@ -194,11 +204,197 @@ The same `data` as above, as things stand now: `status` is `registering`,
 
 A finished game answers for as long as this server keeps it - ten minutes by
 default (`TOURNAMENT_FINISHED_TTL_MS`) - and is then a 404. The final
-standings are the webhook's business, when there is one; until then, read
-the game inside that window.
+standings arrive on the `tournament.completed` webhook, below; a game made
+without one has to be read inside that window.
+
+## Webhooks
+
+A game made with a `webhook` reports back to it: every bust-out, every
+re-entry, and the ending. Each is a `POST` of a JSON body to the address
+given, signed with the secret given, and tried again for about a day if
+GameNight does not answer.
+
+### The request
+
+```
+POST <url>
+Content-Type: application/json
+User-Agent: FinalTable/0.24.0
+X-FinalTable-Event: player.eliminated
+X-FinalTable-Delivery: 41
+X-FinalTable-Timestamp: 1790000000000
+X-FinalTable-Signature: sha256=<hex>
+```
+
+The signature is HMAC-SHA256, keyed with the secret, over the timestamp, a
+dot, and the body exactly as sent. Check it before reading anything, and
+keep the delivery id: a retry carries the same `delivery_id` and a fresh
+timestamp, so a delivery you have already handled is one to answer `200`
+and drop.
+
+```php
+$ts   = $_SERVER['HTTP_X_FINALTABLE_TIMESTAMP'];
+$sig  = $_SERVER['HTTP_X_FINALTABLE_SIGNATURE'];      // "sha256=<hex>"
+$body = file_get_contents('php://input');
+$want = 'sha256=' . hash_hmac('sha256', $ts . '.' . $body, $secret);
+if (!hash_equals($want, $sig)) { http_response_code(401); exit; }
+$event = json_decode($body, true);
+// seen $event['delivery_id'] before? answer 200 and stop.
+```
+
+Any `2xx` counts as delivered. Anything else - another status, a redirect
+(which is not followed), no answer within `WEBHOOK_TIMEOUT_MS` (8 seconds) -
+counts as a failure, and the delivery is tried again after 1 minute, then 5,
+30, 2 hours, 6, 12; after the seventh failure it is given up on, and the
+admin Log says so. The first failure is in the Log too; the retries between
+are not. Deliveries go in order per game - a game's second event waits for
+its first - and a delivery given up on releases the ones behind it. What is
+owed is kept in the database, so a restart in the middle loses nothing.
+
+### The envelope
+
+Every body carries the event, the delivery, when it was sent, and the game:
+
+```json
+{
+  "event": "player.eliminated",
+  "delivery_id": 41,
+  "sent_at": 1790000000000,
+  "game": { "id": "t_3f9a1c2b4", "name": "Thursday", "external_id": "ev_812" }
+}
+```
+
+A player is named three ways: this server's `uid`, GameNight's `user_id`
+(the `sub` its sign-in token carries, `null` for a bot), and the `name` as it
+was at the table. Bots take places and are sent like anybody else, flagged
+`is_bot`.
+
+### `player.eliminated`
+
+```json
+{
+  "player": { "uid": "gn_12", "user_id": "12", "name": "Bob", "is_bot": false },
+  "place": 4,
+  "prize": 0,
+  "in_the_money": false,
+  "final": false,
+  "how": "busted",
+  "remaining": 3,
+  "entrants": 5,
+  "at": 1790000000000
+}
+```
+
+`how` is `busted`, `forfeit` (they conceded the seat) or `removed` (the host
+took them out). **`place` and `prize` are provisional while `final` is
+`false`**: until late registration and re-entry have both closed, a player
+coming in behind them moves every place already handed out. Corrected
+places are not re-sent; the `standings` on `tournament.completed` are the
+last word.
+
+### `player.reentered`
+
+```json
+{
+  "player": { "uid": "gn_12", "user_id": "12", "name": "Bob", "is_bot": false },
+  "reentries": 1,
+  "remaining": 4,
+  "entries": 6,
+  "at": 1790000000000
+}
+```
+
+The bust-out this undoes was sent; this is the correction. `entries` counts
+everybody's entries, re-entries and add-ons together, which is what the
+prize pool is built from.
+
+### `tournament.completed`
+
+```json
+{
+  "outcome": "winner",
+  "winner": { "uid": "gn_7", "user_id": "7", "name": "Ann" },
+  "standings": [
+    {
+      "place": 1,
+      "uid": "gn_7",
+      "user_id": "7",
+      "name": "Ann",
+      "is_bot": false,
+      "prize": 350,
+      "in_the_money": true,
+      "reentries": 0,
+      "add_on": false
+    },
+    {
+      "place": 2,
+      "uid": "bot:t_3f9a1c2b4:2",
+      "user_id": null,
+      "name": "Jenny",
+      "is_bot": true,
+      "prize": 150,
+      "in_the_money": true,
+      "reentries": 0,
+      "add_on": false
+    },
+    {
+      "place": 3,
+      "uid": "gn_12",
+      "user_id": "12",
+      "name": "Bob",
+      "is_bot": false,
+      "prize": 0,
+      "in_the_money": false,
+      "reentries": 1,
+      "add_on": true
+    }
+  ],
+  "entrants": 3,
+  "humans": 2,
+  "entries": 5,
+  "prize_pool": 500,
+  "buy_in": 100,
+  "level": 6,
+  "hands": 87,
+  "started_at": 1790000000000,
+  "finished_at": 1790003600000
+}
+```
+
+Every place, first to last; this is the record of the night.
+
+### `tournament.cancelled`
+
+```json
+{
+  "outcome": "cancelled",
+  "reason": "cancelled by the host",
+  "standings": [
+    {
+      "place": 5,
+      "uid": "gn_31",
+      "user_id": "31",
+      "name": "Cy",
+      "is_bot": false,
+      "prize": 0,
+      "in_the_money": false,
+      "reentries": 0,
+      "add_on": false
+    }
+  ],
+  "entrants": 5,
+  "started_at": 1790000000000,
+  "ended_at": 1790001000000
+}
+```
+
+`reason` is one of `cancelled by the host`, `cancelled by the admin`,
+`nobody else came` (the start passed with fewer than two people), `nobody
+came back` (everybody left and stayed gone), `halted` (the table could not
+go on) or `empty`. `standings` is who had gone out by then; `started_at` is
+`null` for a game that never dealt.
 
 ## Not here yet
 
-Cancel, pause and end from GameNight's side; the events this server would
-send back - a bust-out, a re-entry, a level, the final table. See the
-[roadmap](../ROADMAP.md).
+Cancel, pause and end from GameNight's side; the blind-level event; a
+heartbeat. See the [roadmap](../ROADMAP.md).

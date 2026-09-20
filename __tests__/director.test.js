@@ -132,6 +132,8 @@ describe('TournamentDirector', () => {
 
     expect(d.finished).not.toBeNull();
     expect(d.finished.winner).toBeTruthy();
+    // And who that is, not only what they are called.
+    expect(d.finished.winnerUid).toBe(d.fieldPlayers().find((p) => p.chips > 0).uid);
     expect(d.playersRemaining()).toBe(1);
     expect(hands).toBeGreaterThan(0);
     d.stop();

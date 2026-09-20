@@ -14,6 +14,7 @@ const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
 const { createApiKeys } = require('./server/api-keys');
 const { readCreateBody } = require('./server/api-games');
+const { createWebhooks } = require('./server/webhooks');
 const { createAccounts } = require('./server/accounts');
 const { createDatabase } = require('./server/db');
 const { migrateFromFiles } = require('./server/db/migrate');
@@ -165,6 +166,15 @@ const adminLog = createAdminLog({
   maxAgeMs: config.adminLogMaxAgeMs,
   signInGapMs: config.adminLogSignInGapMs,
   log: structuredLog,
+});
+
+// What GameNight is told about a game it made here, and the outbox that
+// makes sure it is. Read back in openStores; the sender starts then too.
+const webhooks = createWebhooks({
+  db,
+  log: structuredLog,
+  timeoutMs: config.webhookTimeoutMs,
+  version: require('./package.json').version,
 });
 
 // Every warning and error, wherever it is raised and whoever raises it. A sink
@@ -450,6 +460,7 @@ const tournamentLayer = registerTournamentHandlers({
   sso,
   log: structuredLog,
   adminLog,
+  webhooks,
   store: tournamentStore,
   accounts,
   mailer,
@@ -548,13 +559,21 @@ app.post('/api/games', apiKeys.guard, jsonBody, (req, res) => {
       return res.status(400).json({ ok: false, error: `No usable name for user_id ${row.sub}.` });
     }
   }
-  const { entry, error } = registry.create(hostUid, read.payload, null);
+  const { entry, error } = registry.create(hostUid, read.payload, null, {
+    webhook: read.webhook,
+  });
   if (error) return res.status(400).json({ ok: false, error });
   structuredLog({
     level: 'info',
     event: 'api_game_created',
     message: 'GameNight made a game',
-    data: { id: entry.id, name: entry.name, host: hostUid, roster: entry.guests.size },
+    data: {
+      id: entry.id,
+      name: entry.name,
+      host: hostUid,
+      roster: entry.guests.size,
+      webhook: !!entry.webhook,
+    },
   });
   const host = identity.get(hostUid);
   adminLog.recordServer({
@@ -589,6 +608,11 @@ async function flushStores() {
     await adminLog.flush();
   } catch (_err) {
     /* nothing better to do on the way out */
+  }
+  try {
+    await webhooks.flush();
+  } catch (_err) {
+    /* as above */
   }
   try {
     await identity.flush();
@@ -721,6 +745,8 @@ async function openStores() {
   await tournamentStore.load();
   if (chatStore) await chatStore.loadAll();
   await adminLog.load();
+  // What is still owed to GameNight, and the sender that owes it.
+  await webhooks.load();
   // The hands of the games about to be seated again, and only those: the
   // restore reads them synchronously, so they have to be in hand before it
   // runs. Every other game is read when somebody asks for it.
@@ -870,6 +896,7 @@ module.exports = {
   accounts,
   mailer,
   serverSettings,
+  webhooks,
   flushStores,
   startServer,
   config,

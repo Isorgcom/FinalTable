@@ -18,6 +18,10 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ROSTER = 200;
 // A GameNight user id, as the SSO token's `sub` carries it.
 const USER_ID = /^\d{1,12}$/;
+// The secret a webhook is signed with, and the id GameNight wants echoed.
+const MIN_SECRET = 16;
+const MAX_SECRET = 256;
+const MAX_EXTERNAL_ID = 64;
 
 function has(v) {
   return v !== undefined && v !== null && v !== '';
@@ -141,7 +145,53 @@ function readCreateBody(body, { sanitizeName, now = () => Date.now() } = {}) {
   // The uids are the registry's guest list, known before the identities
   // exist because a GameNight uid is a function of the user id.
   payload.guests = roster.map((r) => `gn_${r.sub}`);
-  return { payload, roster, hostId };
+
+  // Where to report to, if anywhere. Not in the payload: the payload is what
+  // a browser's create form sends too, and the registry takes this by a
+  // separate hand that only the API route reaches for.
+  const hook = pick('webhook');
+  if (hook !== undefined && (typeof hook !== 'object' || Array.isArray(hook))) {
+    return { error: 'webhook must be an object with a url and a secret.' };
+  }
+  const url = has(body.webhook_url) ? body.webhook_url : hook ? hook.url : undefined;
+  const secret = has(body.webhook_secret) ? body.webhook_secret : hook ? hook.secret : undefined;
+  let webhook = null;
+  if (has(url) || has(secret)) {
+    if (!has(url) || !has(secret)) return { error: 'A webhook needs both a url and a secret.' };
+    let parsed;
+    try {
+      parsed = new URL(String(url));
+    } catch (_err) {
+      parsed = null;
+    }
+    if (
+      !parsed ||
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      String(url).length > 2048
+    ) {
+      return { error: 'The webhook url must be an http(s) address.' };
+    }
+    if (typeof secret !== 'string' || secret.length < MIN_SECRET || secret.length > MAX_SECRET) {
+      return { error: `The webhook secret must be at least ${MIN_SECRET} characters.` };
+    }
+    webhook = { url: String(url).trim(), secret, externalId: null };
+  }
+  const externalId = pick('external_id', 'event_id');
+  if (externalId !== undefined) {
+    const text = String(externalId);
+    if (!text || text.length > MAX_EXTERNAL_ID) {
+      return { error: `external_id must be a string of up to ${MAX_EXTERNAL_ID} characters.` };
+    }
+    if (webhook) webhook.externalId = text;
+  }
+  return { payload, roster, hostId, webhook };
 }
 
-module.exports = { readCreateBody, levelsFromGameNight, WEEK_MS, MAX_ROSTER };
+module.exports = {
+  readCreateBody,
+  levelsFromGameNight,
+  WEEK_MS,
+  MAX_ROSTER,
+  MIN_SECRET,
+  MAX_EXTERNAL_ID,
+};

@@ -2355,7 +2355,7 @@ describe('re-entry and the add-on in the registry', () => {
     ],
   };
 
-  function makeRegistry(withStore) {
+  function makeRegistry(withStore, deps = {}) {
     return createTournamentRegistry({
       io,
       identity: makeIdentity(names),
@@ -2367,16 +2367,18 @@ describe('re-entry and the add-on in the registry', () => {
       tableOptions: { actionTimeoutMs: 0 },
       connectedSockets: () => live.values(),
       socketById: (id) => live.get(id) || null,
+      ...deps,
     });
   }
 
   // Four people, dealt and held: one can bust and one can be removed with a
   // game still on.
-  function running(extra = {}) {
+  function running(extra = {}, options = undefined) {
     const { entry } = registry.create(
       'h',
       { name: 'Night', startsAt: Date.now() + 1000, tableSize: 6, buyIn: 100, ...extra },
-      makeSocket('sh', 'h')
+      makeSocket('sh', 'h'),
+      options
     );
     for (const uid of ['g', 't', 'u']) {
       registry.join(uid, { code: entry.code }, makeSocket(`s${uid}`, uid));
@@ -2846,5 +2848,195 @@ describe('re-entry and the add-on in the registry', () => {
     expect(() => back.director.assertChipConservation()).not.toThrow();
     second.stop();
     registry = makeRegistry(store); // for afterEach
+  });
+
+  // What GameNight is told. The registry hands the outbox a payload at each
+  // of the four moments; the outbox is a fake here, and what is asserted is
+  // that the right thing is handed over at the right moment, once.
+  describe('what GameNight is told', () => {
+    const HOOK = {
+      url: 'https://gamenight.test/hooks/ft',
+      secret: 's'.repeat(20),
+      externalId: 'ev_9',
+    };
+    let hooks;
+    let adminLog;
+
+    beforeEach(() => {
+      hooks = {
+        enqueue: jest.fn(),
+        status: () => ({ pending: 0, delivered: 0, abandoned: 0, lastError: null }),
+        stop: jest.fn(),
+      };
+      adminLog = { recordGame: jest.fn(), recordServer: jest.fn(), recordSignIn: jest.fn() };
+      registry.stop();
+      registry = makeRegistry(store, { webhooks: hooks, adminLog });
+    });
+
+    const sent = (event) =>
+      hooks.enqueue.mock.calls.map((c) => c[0]).filter((c) => c.event === event);
+
+    test('a bust-out, a removal and a forfeit each carry their place and how it happened', () => {
+      const entry = running({ reentryLevels: 2, structure: BREAKS }, { webhook: HOOK });
+      expect(entry.webhook).toEqual(HOOK);
+      bust(entry, 'g');
+      const out = sent('player.eliminated');
+      expect(out).toHaveLength(1);
+      expect(out[0].entry).toBe(entry);
+      expect(out[0].payload).toEqual({
+        player: { uid: 'g', user_id: null, name: 'Guest', is_bot: false },
+        place: 4,
+        prize: 0,
+        in_the_money: false,
+        // Re-entry is open, so this place can still move.
+        final: false,
+        how: 'busted',
+        remaining: 3,
+        entrants: 4,
+        at: Date.now(),
+      });
+
+      const before = io.sent.length;
+      expect(registry.removePlayer(entry, 'h', 't').error).toBeUndefined();
+      expect(sent('player.eliminated')[1].payload).toMatchObject({
+        player: { uid: 't', name: 'Third' },
+        place: 3,
+        how: 'removed',
+        remaining: 2,
+      });
+      // The socket is still not told by the eliminated route - removePlayer says so itself.
+      expect(
+        io.sent.slice(before).some((m) => m.event === 'tournamentEliminated' && m.to === 'st')
+      ).toBe(false);
+
+      expect(registry.forfeit(entry, 'u').error).toBeUndefined();
+      expect(sent('player.eliminated')[2].payload).toMatchObject({
+        player: { uid: 'u' },
+        place: 2,
+        how: 'forfeit',
+      });
+    });
+
+    test('a re-entry is told, and a finish carries the winner and every place', () => {
+      const entry = running({ reentryLevels: 2, structure: BREAKS, bots: 1 }, { webhook: HOOK });
+      const botUid = entry.director.entrants.find((e) => e.isBot).uid;
+      bust(entry, 'g');
+      registry.reenter(entry, 'g', makeSocket('sg2', 'g'));
+      const back = sent('player.reentered');
+      expect(back).toHaveLength(1);
+      expect(back[0].payload).toEqual({
+        player: { uid: 'g', user_id: null, name: 'Guest', is_bot: false },
+        reentries: 1,
+        remaining: 5,
+        entries: 6,
+        at: Date.now(),
+      });
+
+      bust(entry, botUid);
+      bust(entry, 'g');
+      entry.director._finish(null);
+      expect(entry.status).toBe('finished');
+      const done = sent('tournament.completed');
+      expect(done).toHaveLength(1);
+      const p = done[0].payload;
+      expect(p.outcome).toBe('winner');
+      expect(['h', 't', 'u']).toContain(p.winner.uid);
+      expect(p.winner).toEqual({ uid: p.winner.uid, user_id: null, name: names[p.winner.uid] });
+      expect(p.standings.map((r) => r.place)).toEqual([1, 4, 5]);
+      expect(p.standings[0]).toMatchObject({
+        uid: p.winner.uid,
+        is_bot: false,
+        in_the_money: true,
+      });
+      // The re-entry wiped the first bust-out, so the bot went out fifth and
+      // the re-entered player fourth.
+      expect(p.standings.find((r) => r.uid === botUid)).toMatchObject({
+        place: 5,
+        user_id: null,
+        is_bot: true,
+        reentries: 0,
+        add_on: false,
+      });
+      expect(p.standings.find((r) => r.uid === 'g')).toMatchObject({ place: 4, reentries: 1 });
+      expect(p).toMatchObject({
+        entrants: 5,
+        humans: 4,
+        entries: 6,
+        prize_pool: 600,
+        buy_in: 100,
+        hands: expect.any(Number),
+        started_at: expect.any(Number),
+        finished_at: Date.now(),
+      });
+      expect(adminLog.recordGame).toHaveBeenCalledTimes(1);
+
+      // Swept ten minutes on, it is not told twice.
+      jest.advanceTimersByTime(11 * 60 * 1000);
+      expect(registry.tournaments.has(entry.id)).toBe(false);
+      expect(sent('tournament.completed')).toHaveLength(1);
+      expect(sent('tournament.cancelled')).toHaveLength(0);
+      expect(adminLog.recordGame).toHaveBeenCalledTimes(1);
+    });
+
+    test('a game called off says why, with the places so far', () => {
+      const entry = running({ reentryLevels: 2, structure: BREAKS }, { webhook: HOOK });
+      bust(entry, 'g');
+      expect(registry.cancel(entry, 'h').error).toBeUndefined();
+      const off = sent('tournament.cancelled');
+      expect(off).toHaveLength(1);
+      expect(off[0].payload).toMatchObject({
+        outcome: 'cancelled',
+        reason: 'cancelled by the host',
+        standings: [{ place: 4, uid: 'g', name: 'Guest' }],
+        entrants: 4,
+        started_at: expect.any(Number),
+        ended_at: Date.now(),
+      });
+      expect(sent('tournament.completed')).toHaveLength(0);
+      expect(adminLog.recordGame).toHaveBeenCalledTimes(1);
+    });
+
+    test('a browser cannot attach one, and a game without one tells nobody', () => {
+      const { entry } = registry.create(
+        'h',
+        { name: 'Night', startsAt: Date.now() + 1000, webhook: HOOK },
+        makeSocket('sh', 'h')
+      );
+      expect(entry.webhook).toBeNull();
+      registry.cancel(entry, 'h');
+      const plain = running({ reentryLevels: 2, structure: BREAKS });
+      bust(plain, 'g');
+      registry.cancel(plain, 'h');
+      expect(hooks.enqueue).not.toHaveBeenCalled();
+    });
+
+    test('the address is written down and read back, and a bad one reads as none', () => {
+      const entry = running({ reentryLevels: 2, structure: BREAKS }, { webhook: HOOK });
+      registry.flush();
+      expect(store.saved()[0].webhook).toEqual(HOOK);
+      // Never through a view.
+      expect(JSON.stringify(registry.stateFor(entry, 'h'))).not.toContain(HOOK.secret);
+      expect(JSON.stringify(registry.adminList())).not.toContain(HOOK.secret);
+      expect(JSON.stringify(registry.listFor('h'))).not.toContain(HOOK.secret);
+      const view = registry.apiView(entry);
+      expect(view.webhook).toEqual({
+        url: HOOK.url,
+        externalId: 'ev_9',
+        deliveries: hooks.status(),
+      });
+      expect(JSON.stringify(view)).not.toContain(HOOK.secret);
+      registry.stop();
+      const second = makeRegistry(store, { webhooks: hooks });
+      expect(second.restore()).toBe(1);
+      expect(second.tournaments.get(entry.id).webhook).toEqual(HOOK);
+      second.stop();
+
+      store.saved()[0].webhook.secret = 'short';
+      const third = makeRegistry(store, { webhooks: hooks });
+      third.restore();
+      expect(third.tournaments.get(entry.id).webhook).toBeNull();
+      third.stop();
+      registry = makeRegistry(store); // for afterEach
+    });
   });
 });

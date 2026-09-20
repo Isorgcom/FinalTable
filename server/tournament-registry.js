@@ -29,6 +29,7 @@ const MAX_WATCHERS = 50;
 const MAX_GUESTS = 200;
 const random = require('../random');
 const { clampStructure, summary: structureSummary } = require('../blind-structures');
+const payloads = require('./webhook-payloads');
 
 const TICK_MS = 1200;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -105,6 +106,9 @@ function createTournamentRegistry(deps = {}) {
     // What the server has done, for the Admin page. A no-op when there is none,
     // the same way the logger dep is elsewhere.
     adminLog = null,
+    // What GameNight is told, for a game it made with an address to tell.
+    // Absent the same way.
+    webhooks = null,
     sanitizeName = (v, max = 16) =>
       String(v || '')
         .trim()
@@ -263,6 +267,7 @@ function createTournamentRegistry(deps = {}) {
       // Who may walk in without asking. Empty on every game a person made from
       // the form; the whole roster on one GameNight made over the API.
       guests: [...entry.guests],
+      webhook: entry.webhook ? { ...entry.webhook } : null,
       status: entry.status,
       // How many times this field has been seated again without getting a hand
       // out. See the guard in restore().
@@ -717,6 +722,15 @@ function createTournamentRegistry(deps = {}) {
       remaining: card.remaining,
       prizePool: card.prizePool,
       winner: card.winner,
+      // Where it reports to and how that is going. The address and the id,
+      // never the secret.
+      webhook: entry.webhook
+        ? {
+            url: entry.webhook.url,
+            externalId: entry.webhook.externalId,
+            deliveries: webhooks ? webhooks.status(entry.id) : null,
+          }
+        : null,
     };
   }
 
@@ -1155,11 +1169,35 @@ function createTournamentRegistry(deps = {}) {
     return out;
   }
 
+  // Where a game reports to, or null. Silent rather than answering, because
+  // restore() runs it too; the API route says its own sentences first. The
+  // secret lives on the entry and in the outbox and nowhere a view can reach.
+  function clampWebhook(input) {
+    if (!input || typeof input !== 'object') return null;
+    const url = typeof input.url === 'string' ? input.url.trim() : '';
+    const secret = typeof input.secret === 'string' ? input.secret : '';
+    if (!url || url.length > 2048 || secret.length < 16 || secret.length > 256) return null;
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    } catch (_err) {
+      return null;
+    }
+    const externalId =
+      input.externalId === undefined || input.externalId === null
+        ? null
+        : String(input.externalId).slice(0, 64) || null;
+    return { url, secret, externalId };
+  }
+
   function isPublic(entry) {
     return entry.settings.visibility === 'public';
   }
 
-  function create(uid, payload = {}, socket) {
+  // The fourth argument is the API route's alone: a browser's payload reaches
+  // here as it was sent, and a webhook is not a thing a player attaches to
+  // their own game.
+  function create(uid, payload = {}, socket, { webhook = null } = {}) {
     const who = identity.get(uid);
     if (!who) return { error: 'Identify first' };
     if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
@@ -1176,7 +1214,15 @@ function createTournamentRegistry(deps = {}) {
       settings.visibility = 'invite';
       if (!guests.includes(uid)) guests.push(uid);
     }
-    const entry = buildEntry({ name, startsAt, hostUid: uid, creatorUid: uid, settings, guests });
+    const entry = buildEntry({
+      name,
+      startsAt,
+      hostUid: uid,
+      creatorUid: uid,
+      settings,
+      guests,
+      webhook: clampWebhook(webhook),
+    });
     entry.director.register({
       id: socket ? socket.id : null,
       uid,
@@ -1230,6 +1276,7 @@ function createTournamentRegistry(deps = {}) {
     settings,
     createdAt,
     guests = [],
+    webhook = null,
   }) {
     const entry = {
       id,
@@ -1284,6 +1331,10 @@ function createTournamentRegistry(deps = {}) {
       // with a roster. Empty means the door works as it always has: the host
       // lets people in. Written to the file with the rest.
       guests: new Set(guests),
+      // Where GameNight asked to be told, or null: { url, secret, externalId }.
+      // The secret is in it, so it never leaves through a view - every view
+      // names its fields - and rides only serialize() and the outbox.
+      webhook,
     };
     const director = new TournamentDirector({
       id: id || undefined,
@@ -1344,7 +1395,20 @@ function createTournamentRegistry(deps = {}) {
       onAddOnLanded: ({ uid: paidUid, chips, added }) => {
         emitTo(entry, paidUid, 'tournamentAddOn', { queued: false, chips, added });
       },
-      onPlayerEliminated: ({ uid: outUid, place, tableId }) => {
+      onPlayerEliminated: ({ uid: outUid, name, place, tableId, forfeit, removed }) => {
+        // GameNight first, before the host-removed return below: a place is
+        // a place however it was reached.
+        if (webhooks && entry.webhook) {
+          webhooks.enqueue({
+            entry,
+            event: 'player.eliminated',
+            payload: payloads.eliminated(
+              entry,
+              { uid: outUid, name, place, forfeit, removed },
+              now()
+            ),
+          });
+        }
         // Somebody the host removed is told so by removePlayer, and is not
         // kept watching a game they are no longer in.
         if (entry.removedUids.has(outUid)) return;
@@ -1370,7 +1434,7 @@ function createTournamentRegistry(deps = {}) {
         entry.finishedAt = now();
         // Now rather than at remove(): a finished game sits listed for its TTL,
         // and the Log should have it while it is still on the Games page.
-        logGame(entry, 'finished');
+        settle(entry, 'finished');
         if (entry.timer) {
           timers.clearInterval(entry.timer);
           entry.timer = null;
@@ -2229,6 +2293,14 @@ function createTournamentRegistry(deps = {}) {
       chips: seat.player.chips,
       table: seat.table.tableNumber,
     });
+    // The bust-out GameNight was told of is undone; it is told that too.
+    if (webhooks && entry.webhook) {
+      webhooks.enqueue({
+        entry,
+        event: 'player.reentered',
+        payload: payloads.reentered(entry, uid, now()),
+      });
+    }
     persist();
     emitState(entry);
     emitList();
@@ -2310,41 +2382,54 @@ function createTournamentRegistry(deps = {}) {
     remove(entry, reason);
   }
 
-  // What a game leaves behind. Written here because here is the only place
-  // every ending passes through - a winner, a host cancelling, an admin
+  // What a game leaves behind, and who is told. Here because here is the only
+  // place every ending passes through - a winner, a host cancelling, an admin
   // cancelling, a hold nobody came back to, a room that emptied - and because
   // ten minutes later the entry is gone and there is nothing left to read.
+  // Once per game: a finished one is settled at the finish and again, to no
+  // effect, when it is swept.
   //
-  // Names rather than uids: the standings carry no uid, and a guest identity is
-  // deleted thirty days on, so the name as it was is the only name there is.
-  function logGame(entry, ended) {
-    if (!adminLog || !entry || entry.logged) return;
-    entry.logged = true;
+  // The Log gets names rather than uids: the standings carry no uid, and a
+  // guest identity is deleted thirty days on, so the name as it was is the
+  // only name there is. GameNight gets both, from the payload builders.
+  function settle(entry, ended) {
+    if (!entry || entry.settled) return;
+    entry.settled = true;
     const d = entry.director;
-    const results = d && d.finished ? d.finished.results : null;
-    let places;
-    try {
-      places = d && d.finished ? d.finalResults() : null;
-    } catch (_err) {
-      places = null;
+    if (adminLog) {
+      const results = d && d.finished ? d.finished.results : null;
+      let places;
+      try {
+        places = d && d.finished ? d.finalResults() : null;
+      } catch (_err) {
+        places = null;
+      }
+      adminLog.recordGame({
+        id: entry.id,
+        name: entry.name,
+        ended,
+        startedAt: entry.startedAt || null,
+        finishedAt: entry.finishedAt || now(),
+        entrants: d ? d.entrants.length : 0,
+        humans: entry.registrations.size,
+        level: results ? results.finalLevel : null,
+        hands: results ? results.totalHands : null,
+        winner: d && d.finished ? d.finished.winner : null,
+        places,
+      });
     }
-    adminLog.recordGame({
-      id: entry.id,
-      name: entry.name,
-      ended,
-      startedAt: entry.startedAt || null,
-      finishedAt: entry.finishedAt || now(),
-      entrants: d ? d.entrants.length : 0,
-      humans: entry.registrations.size,
-      level: results ? results.finalLevel : null,
-      hands: results ? results.totalHands : null,
-      winner: d && d.finished ? d.finished.winner : null,
-      places,
-    });
+    if (webhooks && entry.webhook && d) {
+      const won = entry.status === 'finished';
+      webhooks.enqueue({
+        entry,
+        event: won ? 'tournament.completed' : 'tournament.cancelled',
+        payload: won ? payloads.completed(entry) : payloads.cancelled(entry, ended, now()),
+      });
+    }
   }
 
   function remove(entry, reason) {
-    logGame(entry, entry.status === 'finished' ? 'finished' : reason || 'ended');
+    settle(entry, entry.status === 'finished' ? 'finished' : reason || 'ended');
     // Every way a tournament goes comes through here, so this is where
     // whoever was still waiting to be let in is told there is nothing to
     // wait for.
@@ -2561,6 +2646,8 @@ function createTournamentRegistry(deps = {}) {
       timers.clearInterval(sweepTimer);
       sweepTimer = null;
     }
+    // The sender too: every teardown that stops the registry stops it.
+    if (webhooks && webhooks.stop) webhooks.stop();
     for (const entry of tournaments.values()) {
       if (entry.timer) timers.clearInterval(entry.timer);
       entry.timer = null;
@@ -2599,6 +2686,7 @@ function createTournamentRegistry(deps = {}) {
         settings,
         createdAt: saved.createdAt,
         guests: clampGuests(saved.guests),
+        webhook: clampWebhook(saved.webhook),
       });
       for (const e of saved.entrants || []) {
         // A file written before the bots were removed carries them; skip those

@@ -858,7 +858,9 @@ every time their browser says hello, so a reload or a dropped connection does
 not bury the games (`ADMIN_LOG_SIGNIN_GAP_MS`, an hour by default; zero writes
 one every time). A row for every restart, which is what
 answers "has this thing been coming up over and over". And a row for anything
-that logged a warning or an error, which is the half that says why.
+that logged a warning or an error, which is the half that says why - among
+them a row when a game GameNight made could not report back to it, and one
+when the server gave up trying after a day.
 
 It is kept in the database, so it survives a restart, and entries drop off
 both by age and by count so it cannot grow without end
@@ -867,8 +869,8 @@ the page is open, without touching anything. **Show older** pages back
 through it, and once you have, the page stops following so nothing moves under
 you while you read; opening the Log again starts at the newest.
 
-What is never written to it: a hole card, a device token, a password, or a
-join code. An admin runs the server, which is not the same as being allowed to
+What is never written to it: a hole card, a device token, a password, a
+join code, or a webhook secret. An admin runs the server, which is not the same as being allowed to
 see everybody's cards, and a log a browser can read is a log that leaks if
 anything else does.
 
@@ -898,6 +900,7 @@ to change a setting on a server that is running:
 | `HOST_TRANSFER_GRACE_MS`     | 120000     | How long a missing host keeps the game before it passes.                   |
 | `CHAT_RATE`, `REACTION_RATE` | 4, 3       | Messages and reactions allowed per ten seconds.                            |
 | `GAMENIGHT_URL` and friends  | none       | Seed the GameNight pairing on a first boot; the page wins after.           |
+| `WEBHOOK_TIMEOUT_MS`         | 8000       | How long one webhook to GameNight waits for an answer.                     |
 | `HAND_HISTORY_MAX`           | 500        | Hands a running game keeps for the download. Zero turns it off.            |
 | `HAND_HISTORY_TTL_MS`        | 2592000000 | Seeds the Server tab: how long a game's hands are kept (thirty days).      |
 | `HAND_HISTORY_MAX_GAMES`     | 200        | Seeds the Server tab: how many games' hands are kept at once.              |

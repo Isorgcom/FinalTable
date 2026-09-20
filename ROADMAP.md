@@ -78,6 +78,13 @@ a fresh server administers it; `ADMIN_PROMOTE` is the way back in when that is
 not the answer. The Admin page gained **Users**: who plays here, and what can
 be done about them.
 
+GameNight is told how a game went. A game it made can name an address and a
+secret; from then on every bust-out, every re-entry and the ending go there as
+signed deliveries, written down before they are tried, retried for a day, and
+given up on loudly. The places are provisional until the re-entry window
+closes, because a re-entry moves everybody below it - so the finish carries
+the standings that count.
+
 GameNight can make a game here. The first piece of the split: a key made on
 the Admin page, an endpoint that takes Game Night's own event, blind rows and
 roster, and a game that arrives invite-only with the roster as its guest
@@ -340,12 +347,20 @@ break }`, one to one with a row of Game Night's blind editor, and the
 
 Final Table to Game Night:
 
-- Player eliminated, with finishing place
-- Re-entry
+- ~~Player eliminated, with finishing place~~ Done.
+- ~~Re-entry~~ Done.
 - Blind level up. The server already tells every client (`tournamentLevelUp`,
   break or level, with the blinds and the time to the next); the webhook is
   the same event sent outward.
-- Tournament complete, with final standings
+- ~~Tournament complete, with final standings~~ Done, and a cancellation with
+  the standings so far.
+
+What shipped: a game made over the API names an address and a secret, and
+the server sends it every bust-out (with the place, provisional until late
+registration and re-entry have closed), every re-entry, and the ending. Each
+is signed, written to an outbox before the first attempt, retried on a
+backoff for about a day, in order per game, and given up on loudly in the
+admin Log. See [docs/API.md](./docs/API.md).
 
 Later if they turn out to be needed: a game-started confirmation, and a
 heartbeat.
@@ -406,9 +421,9 @@ auto-invites and seats the roster.
 Suggested, for the split:
 
 1. ~~The game-creation endpoint and the game id~~ (done)
-2. The elimination and tournament-complete webhooks
+2. ~~The elimination and tournament-complete webhooks~~ (done, with re-entry)
 3. ~~The JWT bridge and the redirect flow~~ (done)
-4. Re-entry and blind-level events
+4. The blind-level event
 5. The online event type in Game Night
 6. Cancel and pause, the heartbeat, and seat-move requests
 

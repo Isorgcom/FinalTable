@@ -157,6 +157,26 @@ const SCHEMA = [
      data JSON        NOT NULL,
      KEY idx_admin_log_at (at)
    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  // What this server owes GameNight: one row per webhook, written before it
+  // is sent, updated on every try, kept a week after it lands so a delivery
+  // can be answered for. The address and the secret ride in the row, so a
+  // game that is long gone can still be reported on. The id is the store's
+  // own, like the admin log's, so a row exists before its write does.
+  `CREATE TABLE IF NOT EXISTS webhook_outbox (
+     id           BIGINT      NOT NULL PRIMARY KEY,
+     game_id      VARCHAR(64) NOT NULL,
+     event        VARCHAR(32) NOT NULL,
+     created_at   BIGINT      NOT NULL,
+     next_at      BIGINT      NOT NULL,
+     attempts     INT         NOT NULL DEFAULT 0,
+     delivered_at BIGINT      NULL,
+     abandoned_at BIGINT      NULL,
+     data         JSON        NOT NULL,
+     KEY idx_outbox_delivered (delivered_at),
+     KEY idx_outbox_abandoned (abandoned_at),
+     KEY idx_outbox_game (game_id, id)
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 module.exports = { SCHEMA };

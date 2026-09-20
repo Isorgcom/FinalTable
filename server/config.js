@@ -219,6 +219,9 @@ function loadConfig() {
     dbName: (process.env.DB_NAME || 'finaltable').trim(),
     // The registry's lifecycle sweep interval.
     tournamentSweepMs: intFromEnv('TOURNAMENT_SWEEP_MS', 1000, 20, 60000),
+    // How long one webhook to GameNight waits for an answer before it counts
+    // as a failure and is tried again later.
+    webhookTimeoutMs: intFromEnv('WEBHOOK_TIMEOUT_MS', 8000, 1000, 60000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),
     // Chat. Off turns the surface off entirely rather than hiding the box, the
     // same way an empty ADMIN_PASSWORD removes the admin controls. The history

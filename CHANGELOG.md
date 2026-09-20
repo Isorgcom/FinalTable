@@ -13,6 +13,17 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **GameNight is told how a game went.** A game made over the API can name
+  an address and a secret, and this server then sends it every bust-out with
+  the place (provisional while late registration or re-entry is open), every
+  re-entry, and the ending - the winner with the full standings, or why the
+  game was called off. Each is signed, is tried again for up to a day if
+  GameNight is not answering, and the admin Log says when one could not be
+  delivered and when the server gave up on it. `WEBHOOK_TIMEOUT_MS` sets how
+  long one attempt waits. The whole of it is in [docs/API.md](./docs/API.md).
+
 ## 0.23.0 - 2026-09-20
 
 ### Added

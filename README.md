@@ -170,13 +170,14 @@ are separate tabs beside the felt, so a conversation and a hand never bury
 each other, and the create form seats up to forty bots for a field of
 several tables.
 
-The first piece of that split is here: Game Night makes a game on this
+The first pieces of that split are here: Game Night makes a game on this
 server with a key from the Admin page - its own blind rows, its roster, the
-manager as host - and the game arrives invite-only with the roster as its
-guest list. Next is the rest of it: Game Night owning invites and records,
-FinalTable sending the bust-outs and the final table back, talking over an
-API and webhooks so neither can take the other down. See
-[ROADMAP.md](./ROADMAP.md) for the shape of that and what comes in what order.
+manager as host - the game arrives invite-only with the roster as its guest
+list, and this server tells Game Night who busted, who came back in, and how
+it ended, signed and retried for a day. Next is the rest of it: Game Night
+owning invites and records, cancel and pause from its side, so neither can
+take the other down. See [ROADMAP.md](./ROADMAP.md) for the shape of that
+and what comes in what order.
 
 ## Licence
 

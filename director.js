@@ -1442,7 +1442,14 @@ class TournamentDirector {
     this.isRunning = false;
     const results = tournamentResult || this.tournament.getResults();
     const winner = this.fieldPlayers().find((p) => p.chips > 0) || null;
-    this.finished = { results, winner: winner ? winner.name : null };
+    // The name for the felt and the uid for whoever is told afterwards: the
+    // eliminations carry the winner's name only, and a webhook keyed on
+    // GameNight's ids cannot work from a name.
+    this.finished = {
+      results,
+      winner: winner ? winner.name : null,
+      winnerUid: winner ? winner.uid : null,
+    };
     this.tournament.stop();
     this._say(winner ? `${winner.name} wins the tournament` : 'Tournament over');
     if (this.onFinished) this.onFinished(this.finished);

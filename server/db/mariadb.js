@@ -531,6 +531,72 @@ function createMariaDatabase(options = {}) {
       },
     },
 
+    // The outbox. The scalar columns are what pruning and an operator's query
+    // ask about; everything a delivery needs - the address, the secret, the
+    // body - is the document.
+    webhooks: {
+      async put(row) {
+        const { id, gameId, event, createdAt, nextAt, attempts, deliveredAt, abandonedAt } = row;
+        const data = {
+          url: row.url,
+          secret: row.secret,
+          externalId: row.externalId,
+          game: row.game,
+          payload: row.payload,
+          lastError: row.lastError || null,
+        };
+        await pool.query(
+          'INSERT INTO webhook_outbox ' +
+            '(id, game_id, event, created_at, next_at, attempts, delivered_at, abandoned_at, data) ' +
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+            'ON DUPLICATE KEY UPDATE next_at = VALUES(next_at), attempts = VALUES(attempts), ' +
+            'delivered_at = VALUES(delivered_at), abandoned_at = VALUES(abandoned_at), ' +
+            'data = VALUES(data)',
+          [
+            id,
+            gameId,
+            event,
+            createdAt,
+            nextAt,
+            attempts || 0,
+            deliveredAt || null,
+            abandonedAt || null,
+            json(data),
+          ]
+        );
+      },
+      async all() {
+        const [rows] = await pool.query(
+          'SELECT id, game_id, event, created_at, next_at, attempts, delivered_at, abandoned_at, data ' +
+            'FROM webhook_outbox ORDER BY id'
+        );
+        return rows.map((r) => ({
+          id: Number(r.id),
+          gameId: r.game_id,
+          event: r.event,
+          createdAt: num(r.created_at),
+          nextAt: num(r.next_at),
+          attempts: num(r.attempts) || 0,
+          deliveredAt: num(r.delivered_at),
+          abandonedAt: num(r.abandoned_at),
+          ...(unjson(r.data) || {}),
+        }));
+      },
+      async prune({ olderThan = null } = {}) {
+        if (!Number.isFinite(olderThan)) return 0;
+        const [res] = await pool.query(
+          'DELETE FROM webhook_outbox WHERE (delivered_at IS NOT NULL AND delivered_at < ?) ' +
+            'OR (abandoned_at IS NOT NULL AND abandoned_at < ?)',
+          [olderThan, olderThan]
+        );
+        return res.affectedRows || 0;
+      },
+      async count() {
+        const [rows] = await pool.query('SELECT COUNT(*) AS n FROM webhook_outbox');
+        return Number(rows[0].n);
+      },
+    },
+
     accounts: {
       async all() {
         const [accountRows] = await pool.query(
