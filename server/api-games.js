@@ -194,4 +194,5 @@ module.exports = {
   MAX_ROSTER,
   MIN_SECRET,
   MAX_EXTERNAL_ID,
+  USER_ID,
 };

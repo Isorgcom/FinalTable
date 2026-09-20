@@ -11,3 +11,7 @@ coverage/
 # Written by the Claude Code permission prompt, git-ignored, and not ours to
 # format. Without this every approval leaves format:check failing.
 .claude/settings.local.json
+
+# A session's where-we-left-off note, excluded from git locally and rewritten
+# by hand; not the repository's to format.
+CLAUDE.local.md

@@ -109,6 +109,8 @@ function createTournamentRegistry(deps = {}) {
     // What GameNight is told, for a game it made with an address to tell.
     // Absent the same way.
     webhooks = null,
+    // How often such a game says it is still here. Zero is never.
+    heartbeatMs = 5 * 60 * 1000,
     sanitizeName = (v, max = 16) =>
       String(v || '')
         .trim()
@@ -722,6 +724,12 @@ function createTournamentRegistry(deps = {}) {
       remaining: card.remaining,
       prizePool: card.prizePool,
       winner: card.winner,
+      // Held because everybody stepped away, which a poller must be able to
+      // tell from the host's pause; and where the clock stands.
+      awayHeld: !!card.awayHeld,
+      awayHeldSince: entry.awayHeldSince || null,
+      nextLevelIn:
+        entry.status === 'running' ? entry.director.tournament.getTimeUntilNextLevel() : null,
       // Where it reports to and how that is going. The address and the id,
       // never the secret.
       webhook: entry.webhook
@@ -2111,8 +2119,14 @@ function createTournamentRegistry(deps = {}) {
     return { entry, ...result };
   }
 
-  function startNow(entry, uid) {
-    if (!requireHost(entry, uid)) return { error: 'Only the host can start the tournament' };
+  // The controls without the host check - the force* family, of which
+  // forceCancel below was the first. The host of a running tournament may be
+  // a seat that has long since busted or dropped, and the title moves on its
+  // own, so a caller that is not a person at the table - the admin's socket,
+  // or GameNight over the API - needs a way in that does not depend on who
+  // happens to hold that role. Authorisation is the caller's business and is
+  // done at the socket or the route, not here.
+  function forceStart(entry) {
     if (entry.status !== 'registering') return { error: 'Already started' };
     if (entry.director.entrants.length < 2) return { error: 'Need at least 2 entrants' };
     // Starting a held tournament is the host deciding to play it out from the
@@ -2122,6 +2136,11 @@ function createTournamentRegistry(deps = {}) {
     entry.heldField = null;
     start(entry);
     return { entry };
+  }
+
+  function startNow(entry, uid) {
+    if (!requireHost(entry, uid)) return { error: 'Only the host can start the tournament' };
+    return forceStart(entry);
   }
 
   // Cancel without the host check. The host of a running tournament may be a
@@ -2144,18 +2163,23 @@ function createTournamentRegistry(deps = {}) {
   }
 
   // ── The host's controls over a running game ──────────────────────────────
-  // Authorised here, like the door: the socket layer only forwards.
+  // Authorised here, like the door: the socket layer only forwards. Each is a
+  // force* body, which the API route reaches directly, behind a host check
+  // the table's buttons go through.
+
+  function running(entry) {
+    return entry.status === 'running' ? null : 'The tournament is not running';
+  }
 
   function hostRunning(entry, uid) {
     if (!requireHost(entry, uid)) return 'Only the host can do that';
-    if (entry.status !== 'running') return 'The tournament is not running';
-    return null;
+    return running(entry);
   }
 
   // hostPause/hostResume rather than pause/resume: resume(entry) below is
   // the restore path, starting a seated field's clock and tick again.
-  function hostPause(entry, uid) {
-    const refused = hostRunning(entry, uid);
+  function forcePause(entry) {
+    const refused = running(entry);
     if (refused) return { error: refused };
     if (!entry.director.pause()) return { error: 'Already paused' };
     if (webhooks && entry.webhook) {
@@ -2170,8 +2194,13 @@ function createTournamentRegistry(deps = {}) {
     return { entry };
   }
 
-  function hostResume(entry, uid) {
-    const refused = hostRunning(entry, uid);
+  function hostPause(entry, uid) {
+    if (!requireHost(entry, uid)) return { error: 'Only the host can do that' };
+    return forcePause(entry);
+  }
+
+  function forceResume(entry) {
+    const refused = running(entry);
     if (refused) return { error: refused };
     if (!entry.director.resume()) return { error: 'Not paused' };
     if (webhooks && entry.webhook) {
@@ -2187,6 +2216,11 @@ function createTournamentRegistry(deps = {}) {
     persist();
     emitList();
     return { entry };
+  }
+
+  function hostResume(entry, uid) {
+    if (!requireHost(entry, uid)) return { error: 'Only the host can do that' };
+    return forceResume(entry);
   }
 
   function stepLevel(entry, uid, delta) {
@@ -2214,11 +2248,16 @@ function createTournamentRegistry(deps = {}) {
   // Take somebody out of the game. Their stack leaves play and they finish
   // where they stand; their registration goes, they are told, and they
   // cannot come back in by code or by link.
-  function removePlayer(entry, uid, targetUid) {
-    const refused = hostRunning(entry, uid);
+  // The host is not removable from either side: their seat holds the table's
+  // controls, and the title moves only through transferHost. GameNight that
+  // wants the host out cancels the game.
+  function forceRemove(entry, targetUid) {
+    const refused = running(entry);
     if (refused) return { error: refused };
     if (!targetUid) return { error: 'Nobody named' };
-    if (targetUid === entry.hostUid) return { error: 'Leave the game to remove yourself' };
+    if (targetUid === entry.hostUid) {
+      return { error: 'The host cannot be removed; cancel the game instead' };
+    }
     // Marked before the director acts, so the elimination it reports on the
     // way out is not sent to a registration about to be dropped. A refusal
     // unmarks only what this call marked: asking twice must not let them back.
@@ -2251,14 +2290,27 @@ function createTournamentRegistry(deps = {}) {
     return { entry, ...result };
   }
 
-  function movePlayer(entry, uid, targetUid, tableNumber) {
+  function removePlayer(entry, uid, targetUid) {
     const refused = hostRunning(entry, uid);
+    if (refused) return { error: refused };
+    if (targetUid === entry.hostUid) return { error: 'Leave the game to remove yourself' };
+    return forceRemove(entry, targetUid);
+  }
+
+  function forceMove(entry, targetUid, tableNumber) {
+    const refused = running(entry);
     if (refused) return { error: refused };
     if (!targetUid) return { error: 'Nobody named' };
     const result = entry.director.requestMove(targetUid, tableNumber);
     if (result.error) return result;
     emitState(entry);
     return { entry, ...result };
+  }
+
+  function movePlayer(entry, uid, targetUid, tableNumber) {
+    const refused = hostRunning(entry, uid);
+    if (refused) return { error: refused };
+    return forceMove(entry, targetUid, tableNumber);
   }
 
   // ── Re-entry and the add-on ──────────────────────────────────────────────
@@ -2660,6 +2712,25 @@ function createTournamentRegistry(deps = {}) {
     if (sweeps % Math.max(1, Math.round(60000 / sweepMs)) === 0 && identity.expireDevices) {
       identity.expireDevices();
     }
+    // Still here: every game with an address to tell says so every few
+    // minutes, as a delivery tried once and owed to nobody. Not a finished
+    // one, whose ending already went.
+    if (
+      heartbeatMs > 0 &&
+      webhooks &&
+      sweeps % Math.max(1, Math.round(heartbeatMs / sweepMs)) === 0
+    ) {
+      const at = now();
+      for (const entry of tournaments.values()) {
+        if (!entry.webhook || entry.status === 'finished') continue;
+        webhooks.enqueue({
+          entry,
+          event: 'tournament.heartbeat',
+          payload: payloads.heartbeat(entry, at),
+          transient: true,
+        });
+      }
+    }
   }
 
   function startSweep() {
@@ -2834,6 +2905,11 @@ function createTournamentRegistry(deps = {}) {
     startNow,
     cancel,
     forceCancel,
+    forceStart,
+    forcePause,
+    forceResume,
+    forceRemove,
+    forceMove,
     watch,
     watchTable,
     unwatch,

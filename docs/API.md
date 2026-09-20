@@ -1,7 +1,7 @@
 # The API
 
 What GameNight calls to make a game on this server and to read it back while
-it runs. Two routes, one caller, one key. Everything a player does goes over
+it runs. A handful of routes, one caller, one key. Everything a player does goes over
 the socket; this is the machine's door.
 
 ## The key
@@ -31,15 +31,15 @@ Every answer is JSON, in GameNight's own shape:
 { "ok": false, "error": "A sentence saying what was wrong." }
 ```
 
-| status | when                                                                 |
-| ------ | -------------------------------------------------------------------- |
-| 201    | the game was made                                                    |
-| 200    | the game was read                                                    |
-| 400    | the body could not be read; `error` says which field                 |
-| 401    | no key on this server, or the wrong one; the sentence says which     |
-| 404    | no game by that id                                                   |
-| 409    | the host is already in a game, or the server holds as many as it may |
-| 429    | too many requests from one address; `Retry-After` says when          |
+| status | when                                                                                                                               |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 201    | the game was made                                                                                                                  |
+| 200    | the game was read                                                                                                                  |
+| 400    | the body could not be read; `error` says which field                                                                               |
+| 401    | no key on this server, or the wrong one; the sentence says which                                                                   |
+| 404    | no game by that id                                                                                                                 |
+| 409    | the game is not in a state for that, the host is already in a game, or the server holds as many as it may; the sentence says which |
+| 429    | too many requests from one address; `Retry-After` says when                                                                        |
 
 Requests under `/api` are rate limited per address, 240 a minute by default
 (`HTTP_RATE_LIMIT`, `HTTP_RATE_WINDOW_MS`).
@@ -200,12 +200,89 @@ while the first exists: that answers 409.
 The same `data` as above, as things stand now: `status` is `registering`,
 `running` or `finished`; `entrants` carries `connected`, `chips`, `table` and
 `place` for everybody with a seat; `level`, `paused`, `remaining`,
-`prizePool` and `winner` say how it is going.
+`prizePool` and `winner` say how it is going; `awayHeld` and
+`awayHeldSince` say whether the room emptied and the field is being held for
+it, which is not the host's `paused`; `nextLevelIn` is seconds to the next
+level, `null` before the clock starts.
 
 A finished game answers for as long as this server keeps it - ten minutes by
 default (`TOURNAMENT_FINISHED_TTL_MS`) - and is then a 404. The final
 standings arrive on the `tournament.completed` webhook, below; a game made
 without one has to be read inside that window.
+
+## Driving a game
+
+The host's buttons, from GameNight's side, with the key that made the game.
+Each answers `200` with the game as it now stands (the same `data` as `GET`),
+or `404` for an id this server does not hold, or `409` with the sentence the
+table would have shown the host. Every one leaves a row in the admin Log.
+
+### `POST /api/games/:id/start`
+
+Starts a registering game before its time. `409 Already started`, or
+`Need at least 2 entrants`. `tournament.started` goes out.
+
+### `POST /api/games/:id/pause` and `/resume`
+
+Holds the clock and lets it go. `409 The tournament is not running`,
+`Already paused`, `Not paused`. A room everybody has left is already held,
+and `/pause` answers `Already paused` there too - `awayHeld` on the answer
+says which kind of hold it is. `tournament.paused` / `tournament.resumed`
+go out.
+
+### `POST /api/games/:id/cancel`
+
+Calls the game off. The answer is the game as it stood a moment before with
+`status: "cancelled"` and `reason: "cancelled by GameNight"`; the game is
+gone after it, and `GET` answers `404`. `tournament.cancelled` goes out with
+that reason and the places so far. `409 Already finished` for a game that
+has a winner. There is no ending early with a result: a game ends with a
+winner or it is cancelled.
+
+### `POST /api/games/:id/remove`
+
+```json
+{ "user_id": 12 }
+```
+
+Takes a player out of play, the way the host's **Remove** does: their seat
+goes, they are told, and `player.eliminated` goes out with `how: "removed"`
+and their place. Between hands it happens at once (`remove.removed`); during
+a hand it waits for the hand to end (`remove.queued`), and the elimination
+follows. The host cannot be removed (`409 The host cannot be removed; cancel
+the game instead`); somebody not seated is `409 They are not seated`.
+
+```json
+{ "remove": { "removed": true, "queued": false, "place": 4 } }
+```
+
+### `POST /api/games/:id/move`
+
+```json
+{ "user_id": 12, "table": 2 }
+```
+
+Asks for a seat at another table. Advisory: the director keeps tables within
+a seat of each other and refuses a move that would not (`409 Table 2 would
+then have more players than table 1; ...`, `There is no table 2`, `Table 2
+is full`, `They are already at table 2`); between hands it happens at once
+(`move.moved`), during a hand it is queued for after (`move.queued`) and
+dropped if it no longer passes by then - said at the felt, nothing sent.
+The next `GET` or heartbeat shows where they sat.
+
+### `POST /api/players/:user_id/sign-out`
+
+Ends every device that GameNight player is signed in on here, the way the
+Users page's **Sign out** does: each browser is told and goes back to the
+lobby as a stranger; a stack they left in a game stays where it is.
+
+```json
+{ "ok": true, "data": { "uid": "gn_12", "user_id": "12", "name": "Bob", "devices": 2 } }
+```
+
+`404 No GameNight player by that id here.` for somebody who has never been
+here. This is not a refusal: their next sign-in through GameNight works as
+before, and turning them away is GameNight's job at its own door.
 
 ## Webhooks
 
@@ -393,6 +470,39 @@ The host holding the clock, and letting it go. Nothing is sent for the
 server's own hold on a room everybody has left - that is not a pause, and
 its end is `tournament.cancelled` if nobody comes back.
 
+### `tournament.heartbeat`
+
+```json
+{
+  "status": "running",
+  "level": 4,
+  "on_break": false,
+  "blinds": { "sb": 100, "bb": 200, "ante": 200 },
+  "duration": 900,
+  "next_level_in": 312,
+  "levels": 18,
+  "final_level": false,
+  "late_reg_open": false,
+  "reentry_open": false,
+  "add_on_open": false,
+  "remaining": 3,
+  "entrants": 5,
+  "paused": false,
+  "away_held": false,
+  "away_held_since": null,
+  "at": 1790002400000
+}
+```
+
+Still here. Sent every `WEBHOOK_HEARTBEAT_MS` (five minutes; `0` turns it
+off) for every game with a webhook that has not ended, registering or
+running - the clock fields only once it runs. Unlike everything else here it
+is tried **once**: never written down, never retried, not counted in
+`deliveries`, and not sent at all while a delivery for the game is still
+pending, so it never queues behind one. Its `delivery_id` is `null` and the
+`X-FinalTable-Delivery` header reads `heartbeat`, because there is nothing
+to recognise a second time.
+
 ### `tournament.completed`
 
 ```json
@@ -474,12 +584,13 @@ Every place, first to last; this is the record of the night.
 ```
 
 `reason` is one of `cancelled by the host`, `cancelled by the admin`,
-`nobody else came` (the start passed with fewer than two people), `nobody
+`cancelled by GameNight`, `nobody else came` (the start passed with fewer than two people), `nobody
 came back` (everybody left and stayed gone), `halted` (the table could not
 go on) or `empty`. `standings` is who had gone out by then; `started_at` is
 `null` for a game that never dealt.
 
 ## Not here yet
 
-Cancel, pause and end from GameNight's side; a heartbeat. See the
-[roadmap](../ROADMAP.md).
+Nothing on the roadmap's list for this side. What comes next is on
+GameNight's: the online event type that makes the game, keeps the key,
+receives the webhooks. See the [roadmap](../ROADMAP.md).

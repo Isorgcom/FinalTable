@@ -271,6 +271,63 @@ describe('the webhook outbox', () => {
     await hooks.stop();
   });
 
+  test('a heartbeat is tried once, written nowhere, and counted nowhere', async () => {
+    const { fetchImpl, calls } = makeFetch([200, 500]);
+    const hooks = make({ fetchImpl });
+    const id = hooks.enqueue({
+      entry: entry(),
+      event: 'tournament.heartbeat',
+      payload: { status: 'running' },
+      transient: true,
+    });
+    expect(id).toBe(1);
+    expect(await db.webhooks.count()).toBe(0);
+    // Sendable at once, with no write to wait for.
+    await hooks.sweep();
+    expect(calls).toHaveLength(1);
+    const sent = calls[0];
+    const body = JSON.parse(sent.body);
+    expect(body).toMatchObject({
+      event: 'tournament.heartbeat',
+      delivery_id: null,
+      status: 'running',
+    });
+    expect(sent.headers['X-FinalTable-Delivery']).toBe('heartbeat');
+    expect(sent.headers['X-FinalTable-Signature']).toBe(
+      `sha256=${sign(SECRET, Number(sent.headers['X-FinalTable-Timestamp']), sent.body)}`
+    );
+    expect(hooks.status('t_one')).toEqual({
+      pending: 0,
+      delivered: 0,
+      abandoned: 0,
+      lastError: null,
+    });
+    expect(await db.webhooks.count()).toBe(0);
+
+    // One that is not answered is let go of quietly, and not tried again.
+    hooks.enqueue({ entry: entry(), event: 'tournament.heartbeat', payload: {}, transient: true });
+    await hooks.sweep();
+    expect(calls).toHaveLength(2);
+    expect(seen('webhook_failed')).toHaveLength(0);
+    expect(seen('webhook_abandoned')).toHaveLength(0);
+    expect(seen('webhook_heartbeat_failed')).toHaveLength(1);
+    expect(seen('webhook_heartbeat_failed')[0].level).toBe('info');
+    t += 24 * 60 * 60 * 1000;
+    await hooks.sweep();
+    expect(calls).toHaveLength(2);
+    expect(hooks.status('t_one').lastError).toBeNull();
+
+    // And not made at all while a real delivery is waiting its turn.
+    hooks.enqueue({ entry: entry(), event: 'player.eliminated', payload: { place: 3 } });
+    expect(
+      hooks.enqueue({ entry: entry(), event: 'tournament.heartbeat', payload: {}, transient: true })
+    ).toBeNull();
+    await hooks.flush();
+    await hooks.sweep();
+    expect(calls).toHaveLength(3);
+    expect(JSON.parse(calls[2].body).event).toBe('player.eliminated');
+  });
+
   test('the secret is in every row and in no log line', async () => {
     const { fetchImpl } = makeFetch([500, new Error('connect ECONNREFUSED https://u:p@host/x')]);
     const hooks = make({ fetchImpl });

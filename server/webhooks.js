@@ -15,6 +15,14 @@
 // The secret is in the row. It has to be: the game is gone ten minutes after
 // it ends and a retry hours later still has to sign. It never reaches a log
 // line, a browser, or the admin Log.
+//
+// The one exception to none of it being fire-and-forget is the heartbeat. A
+// "still here" is worth nothing five minutes late, so it is tried once, never
+// written down, never counted as owed, and not made at all while a real
+// delivery for the game is waiting its turn - it must never queue behind one
+// and never reorder them. It carries no delivery id, because a number that
+// was never written could be reused by a real delivery after a restart, and
+// the receiver dedupes on that number.
 
 const crypto = require('crypto');
 
@@ -78,8 +86,11 @@ function createWebhooks(options = {}) {
 
   // Written down and, on the next tick, tried. Nothing for a game that gave
   // no address.
-  function enqueue({ entry, event, payload } = {}) {
+  function enqueue({ entry, event, payload, transient = false } = {}) {
     if (!entry || !entry.webhook || !event) return null;
+    // A heartbeat never queues behind anything and never reorders: with a
+    // retry pending or a delivery waiting its turn, this one is not made.
+    if (transient && rows.some((r) => r.gameId === entry.id && open(r))) return null;
     const at = now();
     const row = {
       id: nextId++,
@@ -96,13 +107,17 @@ function createWebhooks(options = {}) {
       abandonedAt: null,
       lastError: null,
       createdAt: at,
+      transient: !!transient,
       // Not sent until the write has landed: a delivery the receiver has and
-      // this server has no record of is the one thing the table is for.
-      written: !db,
+      // this server has no record of is the one thing the table is for. A
+      // heartbeat is never written, so it is sendable at once.
+      written: transient || !db,
     };
     rows.push(row);
-    dirty.add(row.id);
-    flushAsync();
+    if (!transient) {
+      dirty.add(row.id);
+      flushAsync();
+    }
     nudge();
     return row.id;
   }
@@ -122,6 +137,18 @@ function createWebhooks(options = {}) {
     row.attempts += 1;
     row.lastError = error;
     const label = `${row.event} for ${row.game.name}`;
+    // A heartbeat gets one try and a quiet word: the admin Log keeps warn
+    // and error, and a receiver that is down for a night must not fill it.
+    if (row.transient) {
+      row.abandonedAt = now();
+      log({
+        level: 'info',
+        event: 'webhook_heartbeat_failed',
+        message: 'A heartbeat was not answered',
+        data: { detail: `${label}: ${error}`, gameId: row.gameId },
+      });
+      return;
+    }
     if (row.attempts > BACKOFF_MS.length) {
       row.abandonedAt = now();
       log({
@@ -151,7 +178,7 @@ function createWebhooks(options = {}) {
     const ts = now();
     const body = JSON.stringify({
       event: row.event,
-      delivery_id: row.id,
+      delivery_id: row.transient ? null : row.id,
       sent_at: ts,
       game: row.game,
       ...row.payload,
@@ -166,7 +193,7 @@ function createWebhooks(options = {}) {
           'Content-Type': 'application/json',
           'User-Agent': `FinalTable/${version}`,
           'X-FinalTable-Event': row.event,
-          'X-FinalTable-Delivery': String(row.id),
+          'X-FinalTable-Delivery': row.transient ? 'heartbeat' : String(row.id),
           'X-FinalTable-Timestamp': String(ts),
           'X-FinalTable-Signature': `sha256=${sign(row.secret, ts, body)}`,
         },
@@ -198,6 +225,11 @@ function createWebhooks(options = {}) {
       fail(row, describe(err, timeoutMs));
     } finally {
       timers.clearTimeout(timer);
+    }
+    if (row.transient) {
+      // Tried, and done with, whichever way it went.
+      rows = rows.filter((r) => r !== row);
+      return;
     }
     dirty.add(row.id);
     flushAsync();
@@ -232,7 +264,7 @@ function createWebhooks(options = {}) {
     // Behind the write under way, and then whatever has changed since.
     if (writing) return writing.then(() => (dirty.size ? flushAsync() : undefined));
     if (!dirty.size) return Promise.resolve();
-    const batch = [...dirty].map(byId).filter(Boolean);
+    const batch = [...dirty].map(byId).filter((r) => r && !r.transient);
     dirty.clear();
     writing = Promise.resolve()
       .then(async () => {
@@ -307,7 +339,8 @@ function createWebhooks(options = {}) {
 
   // For the API's answer: how a game's deliveries stand. Never a secret.
   function status(gameId) {
-    const mine = rows.filter((r) => r.gameId === gameId);
+    // What is owed: a heartbeat is owed to nobody and is not counted.
+    const mine = rows.filter((r) => r.gameId === gameId && !r.transient);
     const errored = mine.filter((r) => r.lastError).sort((a, b) => b.id - a.id)[0];
     return {
       pending: mine.filter(open).length,

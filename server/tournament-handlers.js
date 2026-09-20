@@ -164,6 +164,21 @@ function registerTournamentHandlers(deps) {
     return found;
   }
 
+  // Every token that person is holding, and every browser told. Used by
+  // signing out, by suspending and by deleting - and by the API, when
+  // GameNight signs somebody out of every device here. Answers the digests
+  // it ended, which is how many devices that was.
+  function endEveryDevice(uid) {
+    const dropped = identity.revokeAll(uid) || [];
+    for (const other of socketsForUid(uid)) {
+      other.data.uid = null;
+      other.data.token = null;
+      other.data.isAdmin = false;
+      other.emit('sessionEnded', { mine: false });
+    }
+    return dropped;
+  }
+
   // Enough of an address to recognise, not enough to be one. What the test
   // button echoes back: an administrator knows their own address and does not
   // need to be shown it, and the answer goes into a page anybody standing
@@ -1337,18 +1352,6 @@ function registerTournamentHandlers(deps) {
       usersResult(null);
     });
 
-    // Every token that person is holding, and every browser told. Used by
-    // signing out, by suspending and by deleting.
-    function endEveryDevice(uid) {
-      identity.revokeAll(uid);
-      for (const other of socketsForUid(uid)) {
-        other.data.uid = null;
-        other.data.token = null;
-        other.data.isAdmin = false;
-        other.emit('sessionEnded', { mine: false });
-      }
-    }
-
     // ── Where this server sends from ──────────────────────────────────
     //
     // Three events, the same shape as the pairing's four. The password is
@@ -1608,6 +1611,7 @@ function registerTournamentHandlers(deps) {
     tournaments: registry.tournaments,
     publicList: registry.publicList,
     listFor: registry.listFor,
+    endEveryDevice,
   };
 }
 

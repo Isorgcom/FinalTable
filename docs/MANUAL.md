@@ -901,6 +901,7 @@ to change a setting on a server that is running:
 | `CHAT_RATE`, `REACTION_RATE` | 4, 3       | Messages and reactions allowed per ten seconds.                            |
 | `GAMENIGHT_URL` and friends  | none       | Seed the GameNight pairing on a first boot; the page wins after.           |
 | `WEBHOOK_TIMEOUT_MS`         | 8000       | How long one webhook to GameNight waits for an answer.                     |
+| `WEBHOOK_HEARTBEAT_MS`       | 300000     | How often GameNight is told a game is still here. Zero turns it off.       |
 | `HAND_HISTORY_MAX`           | 500        | Hands a running game keeps for the download. Zero turns it off.            |
 | `HAND_HISTORY_TTL_MS`        | 2592000000 | Seeds the Server tab: how long a game's hands are kept (thirty days).      |
 | `HAND_HISTORY_MAX_GAMES`     | 200        | Seeds the Server tab: how many games' hands are kept at once.              |

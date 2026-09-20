@@ -697,16 +697,39 @@ describe('GameNight being told how a game went', () => {
     );
     expect(r.status).toBe(201);
     const guest = await connect();
-    await ask(guest, 'identify', { gnToken: gnToken(guestId, `Guest${guestId}`) }, 'identified');
+    const asGuest = await ask(
+      guest,
+      'identify',
+      { gnToken: gnToken(guestId, `Guest${guestId}`) },
+      'identified'
+    );
     await ask(guest, 'joinTournament', { code: r.body.data.code }, 'tournamentJoined');
     const entry = serverModule.registry.tournaments.get(r.body.data.id);
-    for (let i = 0; i < 50 && entry.status !== 'running'; i++) {
-      await new Promise((res) => setTimeout(res, 100));
+    if (!extra.startsAt || extra.startsAt <= Date.now()) {
+      for (let i = 0; i < 50 && entry.status !== 'running'; i++) {
+        await new Promise((res) => setTimeout(res, 100));
+      }
+      expect(entry.status).toBe('running');
+      entry.director.holdField();
     }
-    expect(entry.status).toBe('running');
-    entry.director.holdField();
-    return { made: r.body.data, entry };
+    return { made: r.body.data, entry, guest, guestToken: asGuest.token };
   }
+
+  const control = (id, verb, body, key) =>
+    fetch(`${baseUrl}/api/games/${id}/${verb}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(key ? { authorization: `Bearer ${key}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+  const signOut = (userId, key) =>
+    fetch(`${baseUrl}/api/players/${userId}/sign-out`, {
+      method: 'POST',
+      headers: key ? { authorization: `Bearer ${key}` } : {},
+    }).then(async (r) => ({ status: r.status, body: await r.json() }));
 
   function bust(entry, uid) {
     const { table, player } = entry.director.playerByUid(uid);
@@ -877,5 +900,119 @@ describe('GameNight being told how a game went', () => {
       abandoned: 0,
       lastError: 'answered 500',
     });
+  });
+
+  test('the clock is held and let go from GameNight, and the receiver hears both', async () => {
+    const { made, entry } = await runningGame(key, 61, 62);
+    await arrived(made.id, 'tournament.started');
+    const held = await control(made.id, 'pause', null, key);
+    expect(held.status).toBe(200);
+    expect(held.body.data).toMatchObject({ paused: true, awayHeld: false });
+    expect(typeof held.body.data.nextLevelIn).toBe('number');
+    await arrived(made.id, 'tournament.paused');
+    expect(await control(made.id, 'pause', null, key)).toMatchObject({
+      status: 409,
+      body: { ok: false, error: 'Already paused' },
+    });
+    const going = await control(made.id, 'resume', null, key);
+    expect(going.status).toBe(200);
+    expect(going.body.data.paused).toBe(false);
+    await arrived(made.id, 'tournament.resumed');
+    entry.director.holdField();
+    expect(await control(made.id, 'resume', null, key)).toMatchObject({
+      status: 409,
+      body: { error: 'Not paused' },
+    });
+  });
+
+  test("a move is refused in the director's words, and a player can be taken out of play", async () => {
+    const { made, entry, guest } = await runningGame(key, 71, 72);
+    await arrived(made.id, 'tournament.started');
+    expect(await control(made.id, 'move', { user_id: 72, table: 2 }, key)).toMatchObject({
+      status: 409,
+      body: { error: 'There is no table 2' },
+    });
+    expect(await control(made.id, 'move', { user_id: 72, table: 0 }, key)).toMatchObject({
+      status: 400,
+      body: { error: 'table must be a table number.' },
+    });
+    expect(await control(made.id, 'move', { user_id: 'x', table: 1 }, key)).toMatchObject({
+      status: 400,
+      body: { error: expect.stringMatching(/numeric user id/) },
+    });
+    expect(await control(made.id, 'remove', { user_id: 71 }, key)).toMatchObject({
+      status: 409,
+      body: { error: 'The host cannot be removed; cancel the game instead' },
+    });
+    const left = new Promise((res) => guest.once('leftTournament', res));
+    const gone = await control(made.id, 'remove', { user_id: 72 }, key);
+    expect(gone.status).toBe(200);
+    expect(gone.body.data.remove).toEqual({ removed: true, queued: false, place: 2 });
+    expect((await left).reason).toBe('removed');
+    const out = await arrived(made.id, 'player.eliminated');
+    expect(out.json).toMatchObject({ player: { user_id: '72' }, how: 'removed', place: 2 });
+    expect(entry.registrations.has('gn_72')).toBe(false);
+  });
+
+  test('a game is called off from GameNight, and says so', async () => {
+    const { made } = await runningGame(key, 81, 82);
+    await arrived(made.id, 'tournament.started');
+    const off = await control(made.id, 'cancel', null, key);
+    expect(off.status).toBe(200);
+    expect(off.body.data).toMatchObject({
+      id: made.id,
+      status: 'cancelled',
+      reason: 'cancelled by GameNight',
+    });
+    const told = await arrived(made.id, 'tournament.cancelled');
+    expect(told.json).toMatchObject({ outcome: 'cancelled', reason: 'cancelled by GameNight' });
+    expect((await get(made.id, key)).status).toBe(404);
+    expect(await control(made.id, 'pause', null, key)).toMatchObject({ status: 404 });
+    const boss = await adminSocket();
+    const rows = await ask(boss, 'adminLog', {}, 'adminLogRows');
+    expect(JSON.stringify(rows)).toContain('was cancelled by GameNight');
+  });
+
+  test('a game is started before its time from GameNight', async () => {
+    const { made, entry } = await runningGame(key, 91, 92, { startsAt: Date.now() + 3600000 });
+    expect(entry.status).toBe('registering');
+    const began = await control(made.id, 'start', null, key);
+    expect(began.status).toBe(200);
+    expect(began.body.data.status).toBe('running');
+    entry.director.holdField();
+    await arrived(made.id, 'tournament.started');
+    expect(await control(made.id, 'start', null, key)).toMatchObject({
+      status: 409,
+      body: { error: 'Already started' },
+    });
+  });
+
+  test('a player is signed out everywhere from GameNight', async () => {
+    const { guest, guestToken } = await runningGame(key, 101, 102);
+    const ended = new Promise((res) => guest.once('sessionEnded', res));
+    const r = await signOut(102, key);
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual({ uid: 'gn_102', user_id: '102', name: 'Guest102', devices: 1 });
+    expect((await ended).mine).toBe(false);
+    expect(serverModule.identity.verify(guestToken)).toBeNull();
+    expect(await signOut(999999, key)).toMatchObject({
+      status: 404,
+      body: { error: 'No GameNight player by that id here.' },
+    });
+    expect(await signOut('abc', key)).toMatchObject({ status: 400 });
+  });
+
+  test('none of it without the key', async () => {
+    for (const verb of ['cancel', 'start', 'pause', 'resume']) {
+      expect(await control('t_x', verb, null, null)).toMatchObject({
+        status: 401,
+        body: { ok: false },
+      });
+    }
+    expect(await control('t_x', 'remove', { user_id: 1 }, null)).toMatchObject({ status: 401 });
+    expect(await control('t_x', 'move', { user_id: 1, table: 1 }, null)).toMatchObject({
+      status: 401,
+    });
+    expect(await signOut(1, null)).toMatchObject({ status: 401 });
   });
 });

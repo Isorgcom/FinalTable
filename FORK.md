@@ -70,8 +70,8 @@ database with GameNight, and neither imports the other. It may be served from a
 subdomain of gamenight.poker; that is a DNS record, not a dependency.
 
 What is planned is integration, not merging. The two talk over a signed token
-and over an HTTP API with webhooks back - GameNight asks for a game and is
-told when players bust and when it ends (`docs/API.md`). The token is the sign-in
+and over an HTTP API with webhooks back - GameNight asks for a game, runs it,
+and is told when players bust and when it ends (`docs/API.md`). The token is the sign-in
 bridge: somebody logged into GameNight is seated here without a second account.
 GameNight signs it with a key only GameNight holds, this server checks it with
 the public half (`server/gamenight-sso.js`), and the player lands as a

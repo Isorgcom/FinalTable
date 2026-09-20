@@ -183,6 +183,24 @@ function clockStop(entry, at) {
 const paused = clockStop;
 const resumed = clockStop;
 
+// Still here, every few minutes. Enough to tell a paused game from an empty
+// room from a dead server; nothing a poller of GET /api/games/:id would not
+// see.
+function heartbeat(entry, at) {
+  const d = entry.director;
+  const running = entry.status === 'running';
+  return {
+    status: entry.status,
+    ...(running ? clock(entry) : {}),
+    remaining: running ? d.playersRemaining() : d.entrants.length,
+    entrants: d.entrants.length,
+    paused: d.isPaused(),
+    away_held: running && d.isHeldForAbsence(),
+    away_held_since: entry.awayHeldSince || null,
+    at,
+  };
+}
+
 module.exports = {
   playerRef,
   standings,
@@ -194,6 +212,7 @@ module.exports = {
   level,
   paused,
   resumed,
+  heartbeat,
   clock,
   field,
   userId,

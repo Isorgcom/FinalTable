@@ -13,6 +13,19 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **GameNight can run the game.** A game made over the API can now be
+  started, paused, resumed and cancelled from GameNight's side, a player
+  moved to another table or taken out of play - each a signed request with
+  the key that made the game - and while such a game exists GameNight is
+  told every five minutes that it is still here (`WEBHOOK_HEARTBEAT_MS`,
+  zero for never), a delivery tried once and never counted against the game.
+- **GameNight can sign a player out everywhere.** Every browser a GameNight
+  player is signed in on here can be ended from GameNight's side, the way
+  the Users page's Sign out does; their next sign-in through GameNight works
+  as before.
+
 ## 0.25.0 - 2026-09-20
 
 ### Added

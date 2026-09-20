@@ -3101,6 +3101,103 @@ describe('re-entry and the add-on in the registry', () => {
       registry = makeRegistry(store); // for afterEach
     });
 
+    test('the force bodies work with no host in hand, and refuse the same things', () => {
+      // A registering game with two people: started without the host.
+      const { entry: fresh } = registry.create(
+        'h',
+        { name: 'Night', startsAt: Date.now() + 60000, tableSize: 6 },
+        makeSocket('sh', 'h'),
+        { webhook: HOOK }
+      );
+      expect(registry.forceStart(fresh)).toEqual({ error: 'Need at least 2 entrants' });
+      registry.join('g', { code: fresh.code }, makeSocket('sg', 'g'));
+      expect(registry.forceStart(fresh).entry).toBe(fresh);
+      expect(fresh.status).toBe('running');
+      expect(registry.forceStart(fresh)).toEqual({ error: 'Already started' });
+      expect(sent('tournament.started')).toHaveLength(1);
+      fresh.director.holdField();
+
+      expect(registry.forcePause(fresh).entry).toBe(fresh);
+      expect(registry.forcePause(fresh)).toEqual({ error: 'Already paused' });
+      expect(registry.forceResume(fresh).entry).toBe(fresh);
+      expect(registry.forceResume(fresh)).toEqual({ error: 'Not paused' });
+      expect(sent('tournament.paused')).toHaveLength(1);
+      expect(sent('tournament.resumed')).toHaveLength(1);
+
+      // The host from either side: the table's sentence and the API's.
+      expect(registry.removePlayer(fresh, 'h', 'h')).toEqual({
+        error: 'Leave the game to remove yourself',
+      });
+      expect(registry.forceRemove(fresh, 'h')).toEqual({
+        error: 'The host cannot be removed; cancel the game instead',
+      });
+      expect(registry.forceRemove(fresh, null)).toEqual({ error: 'Nobody named' });
+      expect(registry.forceRemove(fresh, 'g')).toMatchObject({ removed: true, place: 2 });
+      expect(sent('player.eliminated')[0].payload).toMatchObject({
+        player: { uid: 'g' },
+        how: 'removed',
+      });
+      expect(fresh.registrations.has('g')).toBe(false);
+      registry.cancel(fresh, 'h');
+      expect(registry.forcePause(fresh)).toEqual({ error: 'The tournament is not running' });
+    });
+
+    test('a move from outside is honoured, or queued for after the hand', () => {
+      const entry = running({ tableSize: 3, bots: 1 }, { webhook: HOOK });
+      expect(entry.director.tables.length).toBe(2);
+      const [a, b] = entry.director.tables;
+      const bigger = a.players.length >= b.players.length ? a : b;
+      const smaller = bigger === a ? b : a;
+      const human = bigger.players.find((p) => !p.isBot && p.uid !== 'h');
+      expect(registry.forceMove(entry, human.uid, smaller.tableNumber)).toMatchObject({
+        moved: true,
+      });
+      // Mid-hand, the same request waits.
+      const [c, d] = entry.director.tables;
+      const from = c.players.length >= d.players.length ? c : d;
+      const to = from === c ? d : c;
+      const next = from.players.find((p) => !p.isBot && p.uid !== 'h');
+      to.isRunning = true;
+      expect(registry.forceMove(entry, next.uid, to.tableNumber)).toMatchObject({ queued: true });
+      expect(entry.director._pendingMoves.has(next.uid)).toBe(true);
+      to.isRunning = false;
+      expect(registry.forceMove(entry, 'nobody', 1)).toEqual({ error: 'They are not seated' });
+    });
+
+    test('a game with an address says it is still here, and one without says nothing', () => {
+      registry.stop();
+      registry = makeRegistry(store, { webhooks: hooks, adminLog, heartbeatMs: 5000 });
+      const entry = running({ reentryLevels: 2, structure: BREAKS }, { webhook: HOOK });
+      const before = sent('tournament.heartbeat').length;
+      jest.advanceTimersByTime(5000);
+      const beats = sent('tournament.heartbeat');
+      expect(beats.length).toBeGreaterThan(before);
+      const last = beats[beats.length - 1];
+      expect(last.entry).toBe(entry);
+      expect(last.transient).toBe(true);
+      expect(last.payload).toMatchObject({
+        status: 'running',
+        level: 1,
+        paused: false,
+        away_held: false,
+        away_held_since: null,
+        remaining: 4,
+        entrants: 4,
+        at: expect.any(Number),
+      });
+      const count = beats.length;
+      jest.advanceTimersByTime(5000);
+      expect(sent('tournament.heartbeat').length).toBe(count + 1);
+
+      // Off, none - however long it runs.
+      registry.stop();
+      hooks.enqueue.mockClear();
+      registry = makeRegistry(store, { webhooks: hooks, adminLog, heartbeatMs: 0 });
+      registry.restore();
+      jest.advanceTimersByTime(30000);
+      expect(sent('tournament.heartbeat')).toHaveLength(0);
+    });
+
     test('the address is written down and read back, and a bad one reads as none', () => {
       const entry = running({ reentryLevels: 2, structure: BREAKS }, { webhook: HOOK });
       registry.flush();

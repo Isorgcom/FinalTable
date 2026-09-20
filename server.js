@@ -13,7 +13,7 @@ const { applySecurityHeaders, createRateLimiter } = require('./server/http-middl
 const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
 const { createApiKeys } = require('./server/api-keys');
-const { readCreateBody } = require('./server/api-games');
+const { readCreateBody, USER_ID } = require('./server/api-games');
 const { createWebhooks } = require('./server/webhooks');
 const { createAccounts } = require('./server/accounts');
 const { createDatabase } = require('./server/db');
@@ -461,6 +461,7 @@ const tournamentLayer = registerTournamentHandlers({
   log: structuredLog,
   adminLog,
   webhooks,
+  heartbeatMs: config.webhookHeartbeatMs,
   store: tournamentStore,
   accounts,
   mailer,
@@ -592,6 +593,173 @@ app.get('/api/games/:id', apiKeys.guard, (req, res) => {
   const entry = tournamentLayer.tournaments.get(String(req.params.id || ''));
   if (!entry) return res.status(404).json({ ok: false, error: 'No game by that id.' });
   res.json({ ok: true, data: apiAnswer(entry) });
+});
+
+// ── Driving a game from GameNight's side ────────────────────────────────
+//
+// The host's buttons, reachable with the key that made the game. Each calls
+// the registry's force* body - the one the admin's socket already uses for
+// cancelling - so nothing here pretends to be the host, whose title may have
+// moved. A refusal is the registry's own sentence, as a 409. Every one
+// leaves a line in the log and a row in the admin Log.
+
+function gameOr404(req, res) {
+  const entry = tournamentLayer.tournaments.get(String(req.params.id || ''));
+  if (!entry) res.status(404).json({ ok: false, error: 'No game by that id.' });
+  return entry || null;
+}
+
+function refused(res, error) {
+  return res.status(409).json({ ok: false, error });
+}
+
+function controlLog(entry, verb, event, data = {}, detail = null) {
+  structuredLog({
+    level: 'info',
+    event,
+    message: `GameNight ${verb} a game`,
+    data: { id: entry.id, name: entry.name, ...data },
+  });
+  adminLog.recordServer({
+    level: 'info',
+    event,
+    message: `${entry.name} was ${verb} by GameNight`,
+    ...(detail ? { detail } : {}),
+  });
+}
+
+// The game as it stood a moment before, since cancelling takes it away.
+app.post('/api/games/:id/cancel', apiKeys.guard, (req, res) => {
+  const entry = gameOr404(req, res);
+  if (!entry) return;
+  const before = apiAnswer(entry);
+  const reason = 'cancelled by GameNight';
+  const { error } = tournamentLayer.registry.forceCancel(entry, reason);
+  if (error) return refused(res, error);
+  controlLog(entry, 'cancelled', 'api_game_cancelled');
+  res.json({ ok: true, data: { ...before, status: 'cancelled', reason } });
+});
+
+app.post('/api/games/:id/start', apiKeys.guard, (req, res) => {
+  const entry = gameOr404(req, res);
+  if (!entry) return;
+  const { error } = tournamentLayer.registry.forceStart(entry);
+  if (error) return refused(res, error);
+  controlLog(entry, 'started', 'api_game_started');
+  res.json({ ok: true, data: apiAnswer(entry) });
+});
+
+app.post('/api/games/:id/pause', apiKeys.guard, (req, res) => {
+  const entry = gameOr404(req, res);
+  if (!entry) return;
+  const { error } = tournamentLayer.registry.forcePause(entry);
+  if (error) return refused(res, error);
+  controlLog(entry, 'paused', 'api_game_paused');
+  res.json({ ok: true, data: apiAnswer(entry) });
+});
+
+app.post('/api/games/:id/resume', apiKeys.guard, (req, res) => {
+  const entry = gameOr404(req, res);
+  if (!entry) return;
+  const { error } = tournamentLayer.registry.forceResume(entry);
+  if (error) return refused(res, error);
+  controlLog(entry, 'resumed', 'api_game_resumed');
+  res.json({ ok: true, data: apiAnswer(entry) });
+});
+
+// A GameNight user id from a body, as the roster takes them.
+function userIdFrom(body, res) {
+  const raw = body && body.user_id !== undefined && body.user_id !== null ? body.user_id : '';
+  const id = String(raw).trim();
+  if (!USER_ID.test(id)) {
+    res.status(400).json({ ok: false, error: "user_id must be GameNight's numeric user id." });
+    return null;
+  }
+  return id;
+}
+
+app.post('/api/games/:id/remove', apiKeys.guard, jsonBody, (req, res) => {
+  const entry = gameOr404(req, res);
+  if (!entry) return;
+  const id = userIdFrom(req.body, res);
+  if (!id) return;
+  const uid = `gn_${id}`;
+  const who = identity.get(uid);
+  const result = tournamentLayer.registry.forceRemove(entry, uid);
+  if (result.error) return refused(res, result.error);
+  controlLog(
+    entry,
+    'changed',
+    'api_player_removed',
+    { uid, queued: !!result.queued },
+    `${who ? who.name : uid} was removed from the game`
+  );
+  res.json({
+    ok: true,
+    data: {
+      ...apiAnswer(entry),
+      remove: {
+        removed: !!result.removed,
+        queued: !!result.queued,
+        place: Number.isFinite(result.place) ? result.place : null,
+      },
+    },
+  });
+});
+
+app.post('/api/games/:id/move', apiKeys.guard, jsonBody, (req, res) => {
+  const entry = gameOr404(req, res);
+  if (!entry) return;
+  const id = userIdFrom(req.body, res);
+  if (!id) return;
+  const table = Number(req.body && req.body.table);
+  if (!Number.isInteger(table) || table < 1) {
+    return res.status(400).json({ ok: false, error: 'table must be a table number.' });
+  }
+  const uid = `gn_${id}`;
+  const who = identity.get(uid);
+  const result = tournamentLayer.registry.forceMove(entry, uid, table);
+  if (result.error) return refused(res, result.error);
+  controlLog(
+    entry,
+    'changed',
+    'api_player_moved',
+    { uid, table, queued: !!result.queued },
+    `${who ? who.name : uid} ${result.queued ? 'will move' : 'moved'} to table ${table}`
+  );
+  res.json({
+    ok: true,
+    data: { ...apiAnswer(entry), move: { moved: !!result.moved, queued: !!result.queued } },
+  });
+});
+
+// Every device a GameNight player is signed in on here, ended. Not a ban:
+// their next sign-in through GameNight works as before, and refusing them is
+// GameNight's job at its own door.
+app.post('/api/players/:user_id/sign-out', apiKeys.guard, (req, res) => {
+  const id = String(req.params.user_id || '').trim();
+  if (!USER_ID.test(id)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "user_id must be GameNight's numeric user id." });
+  }
+  const uid = `gn_${id}`;
+  const who = identity.get(uid);
+  if (!who)
+    return res.status(404).json({ ok: false, error: 'No GameNight player by that id here.' });
+  const dropped = tournamentLayer.endEveryDevice(uid);
+  structuredLog({
+    level: 'info',
+    event: 'api_player_signed_out',
+    message: 'GameNight signed a player out everywhere',
+    data: { uid, devices: dropped.length },
+  });
+  adminLog.recordServer({
+    level: 'info',
+    event: 'api_player_signed_out',
+    message: `GameNight signed ${who.name} out everywhere`,
+  });
+  res.json({ ok: true, data: { uid, user_id: id, name: who.name, devices: dropped.length } });
 });
 
 // Filled by openStores(), which is where the games are read back: restoring a

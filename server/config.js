@@ -222,6 +222,9 @@ function loadConfig() {
     // How long one webhook to GameNight waits for an answer before it counts
     // as a failure and is tried again later.
     webhookTimeoutMs: intFromEnv('WEBHOOK_TIMEOUT_MS', 8000, 1000, 60000),
+    // How often a game with a webhook tells GameNight it is still here. Zero
+    // turns it off.
+    webhookHeartbeatMs: intFromEnv('WEBHOOK_HEARTBEAT_MS', 300000, 0, 3600000),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),
     // Chat. Off turns the surface off entirely rather than hiding the box, the
     // same way an empty ADMIN_PASSWORD removes the admin controls. The history

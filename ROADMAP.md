@@ -340,8 +340,11 @@ They talk over an API and webhooks. Neither takes the other down.
 break }`, one to one with a row of Game Night's blind editor, and the
   endpoint takes either spelling.
 - ~~It returns a unique game id.~~ Done. Every later call references it.
-- Game Night to Final Table: start a game, cancel or end early, pause, and
-  request a seat move - advisory only, see Seating authority below.
+- ~~Game Night to Final Table: start a game, cancel or end early, pause, and
+  request a seat move - advisory only, see Seating authority below.~~ Done:
+  `POST /api/games/:id/{start,pause,resume,cancel,remove,move}`. Ending early
+  is cancelling; there is no paying out as it stands, and a cancellation
+  carries the places so far.
 
 ## Webhook events
 
@@ -365,7 +368,8 @@ admin Log. Then the clock: `tournament.started` (level one rides it),
 `tournament.paused` / `tournament.resumed`. See
 [docs/API.md](./docs/API.md).
 
-Later if it turns out to be needed: a heartbeat.
+~~Later if it turns out to be needed: a heartbeat.~~ Done:
+`tournament.heartbeat`, tried once and owed to nobody.
 
 ## Identity bridge
 
@@ -385,9 +389,10 @@ Built. What shipped, and what changed from the sketch:
 
 The name reservation is done: one name is one person across both providers,
 and a Game Night display name that is already taken here is worn with a number
-after it rather than refused at the door. Still to do: a reject-list so
-somebody can be signed out of every device mid-game from the Game Night side -
-the server can do it now, but only from its own Users page.
+after it rather than refused at the door. ~~Still to do: a reject-list so
+somebody can be signed out of every device mid-game from the Game Night side~~
+Done: `POST /api/players/:user_id/sign-out` ends every device here; refusing
+them is Game Night's job at its own door.
 
 ## Seating authority
 
@@ -395,6 +400,8 @@ the server can do it now, but only from its own Users page.
 - Once it is live, Final Table's tournament director owns it - balancing and
   collapsing tables.
 - A manual move from Game Night is a request the director may override.
+  Done: `POST /api/games/:id/move` is honoured between hands, queued during
+  one, and dropped if it no longer keeps the tables within a seat.
 
 ## Standalone mode
 
@@ -427,7 +434,8 @@ Suggested, for the split:
 3. ~~The JWT bridge and the redirect flow~~ (done)
 4. ~~The blind-level event~~ (done, with started, paused and resumed)
 5. The online event type in Game Night
-6. Cancel and pause, the heartbeat, and seat-move requests
+6. ~~Cancel and pause, the heartbeat, and seat-move requests~~ (done, with
+   start, remove and sign-out)
 
 The game-side work above is independent of all six and can be picked up in any
 order.

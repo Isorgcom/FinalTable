@@ -157,7 +157,7 @@ keeps, so a structure comes across from there as it is, over the
 The host runs the night from the table's Info tab: pause and resume, a level
 back or forward, a minute on or off the clock, a player moved to a smaller
 table, a player removed from the game. Every action is checked again on the
-server. The create form's bot box takes a count, one to forty, and a table
+server, and GameNight can do the same over the API for a game it made. The create form's bot box takes a count, one to forty, and a table
 the field is waiting on sits out a hand so tables merge and balance even
 when they never rest at the same moment.
 
