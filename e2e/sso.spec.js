@@ -533,6 +533,40 @@ test('the admin unpairs and re-pairs from the lobby', async ({ page }) => {
   }
 });
 
+test('the API key is made on the GameNight tab, shown once, and revoked', async ({ page }) => {
+  await helpers.signInAs(page, 'Keymaker', { admin: true });
+  await openLobbyMenu(page);
+  await page.click('#btnLobbyAdmin');
+  await expect(page.locator('#lobbyAdmin')).toBeVisible();
+  await page.click('#tabAdminGameNight');
+  await expect(page.locator('#adminApiStatus')).toContainText('No key');
+  await expect(page.locator('#btnAdminApiRevoke')).toBeHidden();
+
+  await page.click('#btnAdminApiMake');
+  await expect(page.locator('#adminApiStatus')).toContainText('Copy it now');
+  await expect(page.locator('#adminApiKeyRow')).toBeVisible();
+  const key = await page.inputValue('#adminApiKey');
+  expect(key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  await page.click('#btnAdminApiCopy');
+  await expect(page.locator('#btnAdminApiCopy')).toHaveText('Copied');
+  await expect(page.locator('#btnAdminApiMake')).toHaveText('Make a new key');
+  await expect(page.locator('#btnAdminApiRevoke')).toBeVisible();
+
+  // Once is once: back on the tab, there is a key and it is not on the screen.
+  await page.click('#tabAdminGames');
+  await page.click('#tabAdminGameNight');
+  await expect(page.locator('#adminApiStatus')).toContainText('Key set on');
+  await expect(page.locator('#adminApiKeyRow')).toBeHidden();
+  expect(await page.content()).not.toContain(key);
+  await expect(page.locator('#adminApiDetail')).toContainText('never');
+
+  await page.click('#btnAdminApiRevoke');
+  await page.click('#btnAppDialogConfirm');
+  await expect(page.locator('#adminApiStatus')).toContainText('Revoked');
+  await expect(page.locator('#btnAdminApiRevoke')).toBeHidden();
+  await expect(page.locator('#btnAdminApiMake')).toHaveText('Make a key');
+});
+
 test('the menu shows the version, and only the version when nothing is configured', async ({
   page,
 }) => {

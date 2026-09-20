@@ -191,11 +191,12 @@ Press **Create a tournament**. The form:
 
 Chosen when the game is created; it cannot be changed after.
 
-| Mode            | On the lobby list | Code or link           |
-| --------------- | ----------------- | ---------------------- |
-| **Public**      | Yes, for everyone | Joins                  |
-| **Private**     | No                | Joins                  |
-| **Invite-only** | No                | Asks; the host lets in |
+| Mode            | On the lobby list | Code or link                        |
+| --------------- | ----------------- | ----------------------------------- |
+| **Public**      | Yes, for everyone | Joins                               |
+| **Private**     | No                | Joins                               |
+| **Invite-only** | No                | Asks; the host lets in              |
+| **Guest list**  | For the guests    | Listed people join; nobody else can |
 
 Private is the default and is what a home game usually wants: the code or the
 link is the invitation, and nobody who was not given it can find the game.
@@ -250,6 +251,13 @@ Once the cards are out, the host's controls are in the table's Info tab; see
 
 An invite-only game's waiting room says so under the code: anyone with the
 link asks to join, and the host lets them in below.
+
+A game GameNight made has a **guest list** instead - the roster it was made
+with - and the door works differently: everybody on the list walks straight
+in, by the link or from their own lobby list, where the game shows with
+**Join**; anybody else who presents the code is told they are not on the
+list. Nobody asks and nobody is let in by hand, so the host's waiting room
+says there is a guest list rather than offering the door.
 
 **If you are asking**: after the code or the link, the lobby shows a
 "Waiting for {host} to let you in" screen. You are not in the game yet: you
@@ -759,6 +767,14 @@ can sign in with their account there. Register the server on GameNight first
 slug here; the signing key is fetched, nothing is pasted. **Refresh key** if
 GameNight regenerates its key; **Unpair** takes the button away. The full
 procedure is in [DEPLOYMENT.md](./DEPLOYMENT.md#pairing-with-gamenight).
+
+The same tab holds the key for the other direction. **Make a key** makes the
+one GameNight presents to make games here (see [the API](./API.md)); it is
+shown once, with a **Copy** button, and never again - paste it into
+GameNight's Connected Apps entry for this server. **Make a new key** replaces
+it and the old one stops working; **Revoke** leaves none, which stops
+GameNight until another is made. The tab says when the key was made and
+when it was last used.
 
 **Mail** is how this server sends the two messages it sends — the link that
 proves an address at sign-up, and the one that sets a forgotten password.

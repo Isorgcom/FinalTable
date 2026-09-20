@@ -9,7 +9,8 @@ and merging down to a final table. See [FORK.md](./FORK.md) for lineage, what
 was removed, and an important licence caution, and
 [CHANGELOG.md](./CHANGELOG.md) for what has changed since.
 
-There is a [user manual](./docs/MANUAL.md) for players, hosts and admins.
+There is a [user manual](./docs/MANUAL.md) for players, hosts and admins, and
+an [API reference](./docs/API.md) for the one caller that is not a person.
 
 Status: **playable.** Multi-table tournaments run end to end: a lobby where
 friends register by code or link, a scheduled start, a blind structure the
@@ -150,7 +151,8 @@ A blind structure is chosen when a game is made, Turbo, Standard or Deep, or
 edited level by level: blinds, a big-blind ante, length, breaks. The ladder is
 in the waiting room and the Info tab; a break holds every table until the
 clock moves on. A level is a row of the same shape Game Night's blind editor
-keeps, so a structure can come across from there when the API below exists.
+keeps, so a structure comes across from there as it is, over the
+[API](./docs/API.md).
 
 The host runs the night from the table's Info tab: pause and resume, a level
 back or forward, a minute on or off the clock, a player moved to a smaller
@@ -168,10 +170,13 @@ are separate tabs beside the felt, so a conversation and a hand never bury
 each other, and the create form seats up to forty bots for a field of
 several tables.
 
-Next is the rest of that split: Game Night owning invites and records,
-FinalTable owning the live game, talking over an API and webhooks so neither
-can take the other down. See [ROADMAP.md](./ROADMAP.md) for the shape of that
-and what comes in what order.
+The first piece of that split is here: Game Night makes a game on this
+server with a key from the Admin page - its own blind rows, its roster, the
+manager as host - and the game arrives invite-only with the roster as its
+guest list. Next is the rest of it: Game Night owning invites and records,
+FinalTable sending the bust-outs and the final table back, talking over an
+API and webhooks so neither can take the other down. See
+[ROADMAP.md](./ROADMAP.md) for the shape of that and what comes in what order.
 
 ## Licence
 

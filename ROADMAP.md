@@ -78,6 +78,14 @@ a fresh server administers it; `ADMIN_PROMOTE` is the way back in when that is
 not the answer. The Admin page gained **Users**: who plays here, and what can
 be done about them.
 
+GameNight can make a game here. The first piece of the split: a key made on
+the Admin page, an endpoint that takes Game Night's own event, blind rows and
+roster, and a game that arrives invite-only with the roster as its guest
+list - the people on it walk straight in, nobody else can, and the manager
+hosts. Every one of them is known to this server before they arrive, so the
+seat is waiting when they sign in. Reading the game back is the other half;
+the events this server would send back are next.
+
 The first ten minutes need no shell. A fresh server is claimed from its own
 sign-in card with a token from `.env`: the first account is made with no mail
 and lands on the Mail tab to set some up, and nothing is restarted or read out
@@ -318,11 +326,13 @@ They talk over an API and webhooks. Neither takes the other down.
 
 ## Core API
 
-- An endpoint to launch a game with its settings: the blind structure, player
-  count, roster. A level here is `{ sb, bb, ante, duration, break }`, one to
-  one with a row of Game Night's blind editor, so a structure can travel as it
-  is; the server's own presets and clamp live in `blind-structures.js`.
-- It returns a unique game id. Every later call references it.
+- ~~An endpoint to launch a game with its settings: the blind structure, player
+  count, roster.~~ Done: `POST /api/games` takes Game Night's own rows and
+  roster, and `GET /api/games/:id` reads the game back; see
+  [docs/API.md](./docs/API.md). A level here is `{ sb, bb, ante, duration,
+break }`, one to one with a row of Game Night's blind editor, and the
+  endpoint takes either spelling.
+- ~~It returns a unique game id.~~ Done. Every later call references it.
 - Game Night to Final Table: start a game, cancel or end early, pause, and
   request a seat move - advisory only, see Seating authority below.
 
@@ -395,7 +405,7 @@ auto-invites and seats the roster.
 
 Suggested, for the split:
 
-1. The game-creation endpoint and the game id
+1. ~~The game-creation endpoint and the game id~~ (done)
 2. The elimination and tournament-complete webhooks
 3. ~~The JWT bridge and the redirect flow~~ (done)
 4. Re-entry and blind-level events

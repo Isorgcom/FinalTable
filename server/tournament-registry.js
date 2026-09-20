@@ -24,6 +24,9 @@ const MAX_PENDING = 50;
 // And how many may watch one from the rail. The same bound, for the same
 // reason.
 const MAX_WATCHERS = 50;
+// And how many a guest list may name. GameNight's rosters are capped at the
+// same number on its side.
+const MAX_GUESTS = 200;
 const random = require('../random');
 const { clampStructure, summary: structureSummary } = require('../blind-structures');
 
@@ -257,6 +260,9 @@ function createTournamentRegistry(deps = {}) {
       mutedUids: [...entry.mutedUids],
       removedUids: [...entry.removedUids],
       forfeitedUids: [...entry.forfeitedUids],
+      // Who may walk in without asking. Empty on every game a person made from
+      // the form; the whole roster on one GameNight made over the API.
+      guests: [...entry.guests],
       status: entry.status,
       // How many times this field has been seated again without getting a hand
       // out. See the guard in restore().
@@ -636,11 +642,17 @@ function createTournamentRegistry(deps = {}) {
   function listFor(uid, shared = null) {
     const rows = (
       shared || [...tournaments.values()].map((entry) => ({ entry, card: summarize(entry) }))
-    ).filter(({ entry }) => isPublic(entry) || (!!uid && entry.registrations.has(uid)));
+    ).filter(
+      ({ entry }) =>
+        isPublic(entry) || (!!uid && (entry.registrations.has(uid) || entry.guests.has(uid)))
+    );
     return rows.map(({ entry, card }) => ({
       ...card,
       you: {
         registered: entry.registrations.has(uid) && !entry.registrations.get(uid).left,
+        // On the guest list and not yet in: the card offers the way in the
+        // link would have, since a guest may have come by the lobby instead.
+        invited: entry.guests.has(uid) && !entry.registrations.has(uid),
         // Left the table but the stack is still in play: the card offers a way
         // back, and it must not depend on late registration being open.
         left: !!(entry.registrations.has(uid) && entry.registrations.get(uid).left),
@@ -654,6 +666,58 @@ function createTournamentRegistry(deps = {}) {
         canAddOn: canAddOnNow(entry, uid),
       },
     }));
+  }
+
+  // What GET /api/games/:id and the answer to POST /api/games carry: the
+  // card, the codes, who is on the list and who has come. The caller holds
+  // the API key, so the code is not a secret from them - they were handed it
+  // when the game was made. Nothing here is served to a player.
+  function apiView(entry) {
+    const card = summarize(entry);
+    const shared = sharedState(entry);
+    const s = entry.settings;
+    return {
+      id: entry.id,
+      code: entry.code,
+      rail: entry.rail,
+      name: entry.name,
+      status: entry.status,
+      visibility: s.visibility,
+      createdAt: entry.createdAt,
+      startsAt: entry.startsAt,
+      startedAt: entry.startedAt,
+      finishedAt: entry.finishedAt,
+      host: { uid: entry.hostUid, name: shared.hostName },
+      roster: [...entry.guests].map((uid) => {
+        const who = identity.get(uid);
+        return { uid, name: who ? who.name : null };
+      }),
+      entrants: shared.roster.map((row) => ({
+        uid: row.uid,
+        name: row.name,
+        connected: !!row.connected,
+        chips: row.chips,
+        table: row.table,
+        place: row.place || null,
+        isBot: !!row.isBot,
+        isHost: !!row.isHost,
+      })),
+      settings: {
+        tableSize: s.tableSize,
+        startChips: s.startChips,
+        levelDuration: s.levelDuration,
+        structure: card.structure,
+        lateRegLevels: s.lateRegLevels,
+        reentryLevels: s.reentryLevels,
+        addOn: s.addOn,
+        buyIn: s.buyIn,
+      },
+      level: card.level,
+      paused: card.paused,
+      remaining: card.remaining,
+      prizePool: card.prizePool,
+      winner: card.winner,
+    };
   }
 
   // Everything in a tournament state that is the same whoever is looking.
@@ -690,6 +754,9 @@ function createTournamentRegistry(deps = {}) {
       ...(reg ? { code: entry.code } : {}),
       rail: entry.rail,
       watchers: connectedWatchers(entry),
+      // How many are on the guest list, never who: the host's waiting room
+      // says the door works differently, and that is all it needs to know.
+      guestList: entry.guests.size,
       name: entry.name,
       status: entry.status,
       startsAt: entry.startsAt,
@@ -1071,6 +1138,23 @@ function createTournamentRegistry(deps = {}) {
     };
   }
 
+  // The guest list, as a list of uids: strings, no whitespace, deduplicated,
+  // capped. Not part of settings, which ride every state push and are
+  // re-clamped on restore; the list lives on the entry, as the bots do.
+  function clampGuests(input) {
+    if (!Array.isArray(input)) return [];
+    const out = [];
+    const seen = new Set();
+    for (const raw of input) {
+      const uid = typeof raw === 'string' ? raw.trim() : '';
+      if (!uid || uid.length > 64 || /\s/.test(uid) || seen.has(uid)) continue;
+      seen.add(uid);
+      out.push(uid);
+      if (out.length >= MAX_GUESTS) break;
+    }
+    return out;
+  }
+
   function isPublic(entry) {
     return entry.settings.visibility === 'public';
   }
@@ -1085,7 +1169,14 @@ function createTournamentRegistry(deps = {}) {
 
     const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
     const { startsAt, settings } = clampSettings(payload);
-    const entry = buildEntry({ name, startsAt, hostUid: uid, creatorUid: uid, settings });
+    // A guest list makes the game invite-only whatever was asked, and the
+    // host is on it: the list is who may walk in, and the host already has.
+    const guests = clampGuests(payload.guests);
+    if (guests.length) {
+      settings.visibility = 'invite';
+      if (!guests.includes(uid)) guests.push(uid);
+    }
+    const entry = buildEntry({ name, startsAt, hostUid: uid, creatorUid: uid, settings, guests });
     entry.director.register({
       id: socket ? socket.id : null,
       uid,
@@ -1095,7 +1186,10 @@ function createTournamentRegistry(deps = {}) {
     });
     entry.registrations.set(uid, {
       socketId: null,
-      disconnectedAt: null,
+      // A host made with no socket - a game GameNight made over the API - is
+      // away from the moment it exists, so the host transfer's clock starts
+      // now rather than never. bind() clears this the moment they arrive.
+      disconnectedAt: socket ? null : now(),
       joinedAt: now(),
       left: false,
     });
@@ -1135,6 +1229,7 @@ function createTournamentRegistry(deps = {}) {
     creatorUid = null,
     settings,
     createdAt,
+    guests = [],
   }) {
     const entry = {
       id,
@@ -1185,6 +1280,10 @@ function createTournamentRegistry(deps = {}) {
       // Not an entrant, not a registration, not written to the file; a restart
       // drops them and the link brings them back.
       watchers: new Map(),
+      // Who may walk in without asking, on an invite-only game GameNight made
+      // with a roster. Empty means the door works as it always has: the host
+      // lets people in. Written to the file with the rest.
+      guests: new Set(guests),
     };
     const director = new TournamentDirector({
       id: id || undefined,
@@ -1315,8 +1414,17 @@ function createTournamentRegistry(deps = {}) {
     }
     // A private or invite-only card never reaches a stranger, so an id arriving
     // without the code is a guess. It gets the answer a wrong code gets, and
-    // nothing that says the game exists.
-    if (!fromCode && !isPublic(entry)) return { error: 'Tournament not found' };
+    // nothing that says the game exists. A guest is not a stranger: their
+    // card is on their list, and it joins by id.
+    if (!fromCode && !isPublic(entry) && !entry.guests.has(uid)) {
+      return { error: 'Tournament not found' };
+    }
+    // A game with a guest list is for the people on it. The plain sentence,
+    // not "not found": whoever is asking presented the code, so the game's
+    // existence is no secret from them.
+    if (entry.guests.size && !entry.guests.has(uid)) {
+      return { error: "You are not on this game's guest list" };
+    }
     if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
     if (entry.status === 'finished') return { error: 'That tournament is over' };
     if (entry.status === 'running' && !entry.director.lateRegOpen()) {
@@ -1329,7 +1437,11 @@ function createTournamentRegistry(deps = {}) {
     withdrawAll(uid, entry);
     // A watcher who presents the code is done watching: they are coming in.
     unwatchAll(uid);
-    if (entry.settings.visibility === 'invite') return ask(entry, uid, socket);
+    // Invite-only: ask at the door - unless the guest list says they may
+    // come straight in, which is what the list is for.
+    if (entry.settings.visibility === 'invite' && !entry.guests.has(uid)) {
+      return ask(entry, uid, socket);
+    }
     return enter(entry, uid, who, socket);
   }
 
@@ -2486,6 +2598,7 @@ function createTournamentRegistry(deps = {}) {
         creatorUid: saved.creatorUid || saved.hostUid,
         settings,
         createdAt: saved.createdAt,
+        guests: clampGuests(saved.guests),
       });
       for (const e of saved.entrants || []) {
         // A file written before the bots were removed carries them; skip those
@@ -2621,6 +2734,7 @@ function createTournamentRegistry(deps = {}) {
     listFor,
     publicList,
     adminList,
+    apiView,
     findByUid,
     handHistoryFor,
     pastGamesFor,

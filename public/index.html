@@ -432,6 +432,35 @@
               </button>
               <button class="btn-secondary hidden" id="btnAdminUnpair" type="button">Unpair</button>
             </div>
+            <!-- The other direction: GameNight calling this server. A key made
+                 here, shown once, pasted there. -->
+            <div class="admin-heading">For GameNight to call this server</div>
+            <p class="admin-help">
+              GameNight makes games here with a key you make on this page. It is shown once; paste
+              it into GameNight's Connected Apps entry for this server. Making a new key replaces
+              the old one, and Revoke stops GameNight until there is another.
+            </p>
+            <div class="admin-status" id="adminApiStatus" aria-live="polite"></div>
+            <div class="admin-detail hidden" id="adminApiDetail"></div>
+            <div class="form-group hidden" id="adminApiKeyRow">
+              <label for="adminApiKey">Your new key. This is the only time it is shown.</label>
+              <div class="form-row">
+                <input
+                  type="text"
+                  id="adminApiKey"
+                  readonly
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+                <button class="btn-secondary" id="btnAdminApiCopy" type="button">Copy</button>
+              </div>
+            </div>
+            <div class="lobby-actions">
+              <button class="btn-enter" id="btnAdminApiMake" type="button">Make a key</button>
+              <button class="btn-secondary hidden" id="btnAdminApiRevoke" type="button">
+                Revoke
+              </button>
+            </div>
           </section>
           <section
             class="admin-page hidden"

@@ -26,7 +26,13 @@ function createRateLimiter({ limit, windowMs }) {
     }
     buckets[ip].count++;
     if (buckets[ip].count > limit) {
-      return res.status(429).json({ error: 'Too many requests' });
+      // When to come back, for a caller that reads headers. The envelope is
+      // the API's, and the old field stays for anything that read it.
+      res.setHeader(
+        'Retry-After',
+        String(Math.max(1, Math.ceil((buckets[ip].reset - now) / 1000)))
+      );
+      return res.status(429).json({ ok: false, error: 'Too many requests' });
     }
     next();
   };

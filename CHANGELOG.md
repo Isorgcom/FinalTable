@@ -13,6 +13,20 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **GameNight can set up a game here.** The Admin page's GameNight tab makes
+  an API key, shown once; with it GameNight makes a game with its blinds,
+  stack, seats and roster and gets the code and links back, and can read how
+  the game is going while it runs. The roster's manager is the host, and
+  everybody on it is known to this server before they arrive, so their seat
+  is waiting when they sign in through GameNight. The whole of it is in
+  [docs/API.md](./docs/API.md).
+- **A guest list.** A game made by GameNight is invite-only with everyone on
+  the roster listed: they walk straight in, by link or from the lobby, and
+  anybody else with the code is told they are not on the list. The host's
+  waiting room says so instead of offering the door.
+
 ## 0.22.0 - 2026-09-19
 
 ### Added

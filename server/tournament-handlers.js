@@ -66,6 +66,13 @@ function registerTournamentHandlers(deps) {
   // administrator. Server-wide, not per socket, for the same reason.
   let claiming = false;
   const settingsStore = deps.settingsStore || null;
+  // The key GameNight presents to the API. Made and revoked from the GameNight
+  // tab; absent in tests that do not ask for it.
+  const apiKeys = deps.apiKeys || {
+    status: () => ({ set: false, createdAt: null, lastUsedAt: null }),
+    make: () => ({ key: '', replaced: false }),
+    revoke: () => false,
+  };
   const serverSettings = deps.serverSettings || { status: () => ({}), apply: () => {} };
   const mail = deps.mail || {
     status: () => ({ mode: 'off', available: false }),
@@ -1499,6 +1506,42 @@ function registerTournamentHandlers(deps) {
       sso.unpair();
       announceServerInfo();
       sendPairing({ ok: true });
+    });
+
+    // The key GameNight uses to make games here. Its status never carries the
+    // key or its digest; the one answer that does is the one to the press of
+    // Make, and that key is never sent again by anybody.
+    function sendApiKey(extra = {}) {
+      socket.emit('adminApiKey', { ...apiKeys.status(), ...extra });
+    }
+    socket.on('adminGetApiKey', () => {
+      if (!socket.data.isAdmin) return;
+      sendApiKey();
+    });
+    socket.on('adminMakeApiKey', () => {
+      if (!socket.data.isAdmin) return;
+      const made = apiKeys.make();
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: 'api_key_made',
+          message: 'An administrator made the API key GameNight uses',
+          detail: made.replaced ? 'replacing the previous one' : null,
+        });
+      }
+      sendApiKey({ ok: true, key: made.key });
+    });
+    socket.on('adminRevokeApiKey', () => {
+      if (!socket.data.isAdmin) return;
+      apiKeys.revoke();
+      if (adminLog) {
+        adminLog.recordServer({
+          level: 'info',
+          event: 'api_key_revoked',
+          message: 'An administrator revoked the API key',
+        });
+      }
+      sendApiKey({ ok: true });
     });
 
     // Chat. Deliberately its own event rather than a kind of gameMessage: the

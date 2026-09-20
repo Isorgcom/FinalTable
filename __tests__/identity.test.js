@@ -220,6 +220,41 @@ describe('identity store', () => {
     expect(store.size).toBe(1);
   });
 
+  // A seat kept for somebody who has not arrived: GameNight names a roster
+  // when it makes a game, and the people on it are made known here first.
+  test('a GameNight person can be reserved before they arrive, with no device', () => {
+    const store = createIdentityStore();
+    const kept = store.reserveFromGameNight({ sub: '7', name: 'Ann' });
+    expect(kept).toMatchObject({
+      uid: 'gn_7',
+      name: 'Ann',
+      provider: 'gamenight',
+      isNew: true,
+      nameAdjusted: null,
+      disabled: false,
+    });
+    expect(kept).not.toHaveProperty('token');
+    expect(store.get('gn_7')).toMatchObject({ uid: 'gn_7', name: 'Ann', provider: 'gamenight' });
+    expect(store.sessions('gn_7')).toEqual([]);
+    // Arriving finds the same record and mints the device.
+    const arrived = store.identifyFromGameNight({ sub: '7', name: 'Ann' });
+    expect(arrived.isNew).toBe(false);
+    expect(arrived.uid).toBe('gn_7');
+    expect(arrived.token).toBeTruthy();
+    expect(store.size).toBe(1);
+    // Reserving again is a refresh, not a second person.
+    expect(store.reserveFromGameNight({ sub: '7', name: 'Ann' }).isNew).toBe(false);
+    expect(store.size).toBe(1);
+    // A name somebody here already has is worn with a number, as at the door.
+    signIn(store, 'Bob');
+    const bob = store.reserveFromGameNight({ sub: '8', name: 'Bob' });
+    expect(bob.name).toBe('Bob 2');
+    expect(bob.nameAdjusted).toBe('Bob');
+    // Nothing to reserve from nothing.
+    expect(store.reserveFromGameNight({ sub: '', name: 'X' })).toBeNull();
+    expect(store.reserveFromGameNight({ sub: '9', name: '' })).toBeNull();
+  });
+
   test("the name is GameNight's: refreshed on sign-in, never taken from the browser", () => {
     const store = createIdentityStore();
     const me = store.identifyFromGameNight({ sub: '7', name: 'oldname', avatar: '🦊' });

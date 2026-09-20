@@ -92,6 +92,100 @@ describe('tournament registry', () => {
     return { entry, socket };
   }
 
+  // A guest list: who may walk in without asking, on a game GameNight made
+  // with a roster. The list is the door - listed people come straight in,
+  // nobody else can - and it is written to the file with the rest.
+  describe('a guest list', () => {
+    test('listed people enter an invite-only game without asking; others are refused', () => {
+      const { entry } = create({ visibility: 'public', guests: ['g'] });
+      // A list makes the game invite-only whatever was asked, with the host on it.
+      expect(entry.settings.visibility).toBe('invite');
+      expect([...entry.guests]).toEqual(['g', 'h']);
+      const guest = registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+      expect(guest.error).toBeUndefined();
+      expect(entry.registrations.has('g')).toBe(true);
+      expect(entry.pending.size).toBe(0);
+      const third = registry.join('t', { code: entry.code }, makeSocket('st', 't'));
+      expect(third.error).toMatch(/not on this game's guest list/);
+      expect(entry.pending.size).toBe(0);
+      // And by id alone the game does not exist for them - but does for a guest.
+      expect(registry.join('t', { tournamentId: entry.id }, makeSocket('st2', 't')).error).toMatch(
+        /not found/
+      );
+    });
+
+    test('a guest finds the game on their list and joins it by id', () => {
+      const { entry } = create({ guests: ['g'] });
+      const card = registry.listFor('g').find((c) => c.id === entry.id);
+      expect(card).toBeTruthy();
+      expect(card.you.invited).toBe(true);
+      expect(card).not.toHaveProperty('code');
+      expect(registry.listFor('t').find((c) => c.id === entry.id)).toBeUndefined();
+      const joined = registry.join('g', { tournamentId: entry.id }, makeSocket('sg', 'g'));
+      expect(joined.error).toBeUndefined();
+      expect(registry.listFor('g').find((c) => c.id === entry.id).you.invited).toBe(false);
+    });
+
+    test('without a list, the door works as it always has', () => {
+      const { entry } = create({ visibility: 'invite' });
+      expect(entry.guests.size).toBe(0);
+      const asked = registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+      expect(asked.pending).toBe(true);
+      expect(entry.pending.has('g')).toBe(true);
+    });
+
+    test('the host sees how many are on it, never who', () => {
+      const { entry, socket } = create({ guests: ['g', 't'] });
+      const state = registry.stateFor(entry, 'h');
+      expect(state.guestList).toBe(3);
+      expect(JSON.stringify(state)).not.toContain('"guests"');
+      void socket;
+    });
+
+    test('the list is written down and read back, clamped', () => {
+      const store = makeStore();
+      const reg = createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        store,
+        finishedTtlMs: 5000,
+        connectedSockets: () => live.values(),
+        socketById: (id) => live.get(id) || null,
+      });
+      const { entry } = reg.create(
+        'h',
+        { name: 'Night', guests: ['g', ' ', 'g', 'bad uid'] },
+        null
+      );
+      expect([...entry.guests]).toEqual(['g', 'h']);
+      reg.flush();
+      expect(store.saved()[0].guests).toEqual(['g', 'h']);
+      reg.stop();
+      const second = createTournamentRegistry({
+        io,
+        identity: makeIdentity(names),
+        store,
+        finishedTtlMs: 5000,
+        connectedSockets: () => live.values(),
+        socketById: (id) => live.get(id) || null,
+      });
+      expect(second.restore()).toBe(1);
+      const back = second.tournaments.get(entry.id);
+      expect([...back.guests]).toEqual(['g', 'h']);
+      expect(back.settings.visibility).toBe('invite');
+      expect(back.hostUid).toBe('h');
+      second.stop();
+    });
+
+    test('a host made with no socket is away from the start, and the title moves', () => {
+      const { entry } = registry.create('h', { name: 'Night', guests: ['g'] }, null);
+      expect(entry.registrations.get('h').disconnectedAt).toBe(Date.now());
+      registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+      jest.advanceTimersByTime(2500);
+      expect(entry.hostUid).toBe('g');
+    });
+  });
+
   test('a scheduled tournament starts when its time arrives with two entrants', () => {
     const { entry } = create({ startsAt: Date.now() + 5000 });
     const guest = makeSocket('sg');

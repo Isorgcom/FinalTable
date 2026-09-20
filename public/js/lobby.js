@@ -347,7 +347,7 @@
   // actually have cost something.
   const ADMIN_PAGES = [
     { name: 'games', cap: 'Games', onShow: () => askForAdminGames() },
-    { name: 'gamenight', cap: 'GameNight', onShow: null },
+    { name: 'gamenight', cap: 'GameNight', onShow: () => askForApiKey() },
     { name: 'mail', cap: 'Mail', onShow: () => askForMail() },
     { name: 'server', cap: 'Server', onShow: () => askForServerSettings() },
     { name: 'users', cap: 'Users', onShow: () => askForUsers({ fresh: true }) },
@@ -1273,6 +1273,124 @@
     if (!ok) return;
     setPairingBusy(true);
     socket.emit('adminUnpairGameNight');
+  }
+
+  // ── The key GameNight calls this server with ────────────────────────────
+  //
+  // The same tab, the other direction. The key rides exactly one answer - the
+  // one to Make - and is put on the screen once, with a button to copy it;
+  // every later answer says only that there is one, and since when.
+
+  let apiKey = null;
+
+  function askForApiKey() {
+    // Whatever key was on the screen is gone the moment the tab is opened
+    // again: once is once.
+    $('adminApiKeyRow').classList.add('hidden');
+    $('adminApiKey').value = '';
+    if (socket) socket.emit('adminGetApiKey');
+  }
+
+  function setApiStatus(text, kind) {
+    const el = $('adminApiStatus');
+    el.textContent = text || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('err', kind === 'err');
+  }
+
+  function renderApiKey() {
+    const k = apiKey;
+    const detail = $('adminApiDetail');
+    detail.textContent = '';
+    const set = !!(k && k.set);
+    if (set) {
+      const lines = [
+        `made       ${fmtWhen(k.createdAt)}`,
+        `last used  ${k.lastUsedAt ? fmtWhen(k.lastUsedAt) : 'never'}`,
+      ];
+      for (const line of lines) {
+        const row = document.createElement('div');
+        row.textContent = line;
+        detail.appendChild(row);
+      }
+    }
+    detail.classList.toggle('hidden', !set);
+    $('btnAdminApiMake').textContent = set ? 'Make a new key' : 'Make a key';
+    $('btnAdminApiRevoke').classList.toggle('hidden', !set);
+    const shown = !!(k && k.key);
+    $('adminApiKeyRow').classList.toggle('hidden', !shown);
+    if (shown) $('adminApiKey').value = k.key;
+  }
+
+  function onAdminApiKey(data) {
+    if (!data) return;
+    apiKey = data;
+    if (data.ok === false) {
+      setApiStatus(data.error || 'That did not work.', 'err');
+    } else if (data.ok === true && data.key) {
+      setApiStatus('Key made. Copy it now; it will not be shown again.', 'ok');
+    } else if (data.ok === true) {
+      setApiStatus('Revoked.', 'ok');
+    } else {
+      setApiStatus(
+        data.set
+          ? `Key set on ${fmtWhen(data.createdAt)}.`
+          : 'No key. GameNight cannot make games here until one is made.'
+      );
+    }
+    renderApiKey();
+    setApiBusy(false);
+  }
+
+  function setApiBusy(busy) {
+    ['btnAdminApiMake', 'btnAdminApiRevoke'].forEach((id) => ($(id).disabled = busy));
+  }
+
+  async function makeApiKey() {
+    if (!socket) return;
+    if (apiKey && apiKey.set && typeof window.showConfirmDialog === 'function') {
+      const ok = await window.showConfirmDialog({
+        title: 'Make a new key?',
+        message:
+          'The old one stops working the moment this one is made. GameNight needs the new one pasted in.',
+        confirmLabel: 'Make it',
+        cancelLabel: 'Keep the old one',
+      });
+      if (!ok) return;
+    }
+    setApiBusy(true);
+    socket.emit('adminMakeApiKey');
+  }
+
+  async function revokeApiKey() {
+    if (!socket) return;
+    if (typeof window.showConfirmDialog === 'function') {
+      const ok = await window.showConfirmDialog({
+        title: 'Revoke the API key?',
+        message: 'GameNight cannot make games here until a new key is made and pasted in.',
+        confirmLabel: 'Revoke',
+        cancelLabel: 'Keep it',
+      });
+      if (!ok) return;
+    }
+    setApiBusy(true);
+    socket.emit('adminRevokeApiKey');
+  }
+
+  function copyApiKey() {
+    const value = $('adminApiKey').value;
+    const button = $('btnAdminApiCopy');
+    if (!value || !button) return;
+    const label = button.textContent;
+    const done = () => {
+      button.textContent = 'Copied';
+      setTimeout(() => (button.textContent = label), 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(value).then(done, () => fallbackCopy(value, done));
+    } else {
+      fallbackCopy(value, done);
+    }
   }
 
   // ── GameNight sign-in ────────────────────────────────────────────────────
@@ -2881,7 +2999,13 @@
     const s = t.settings || {};
     const hint = $('wrCodeHint');
     const invite = s.visibility === 'invite';
-    hint.textContent = invite ? 'Anyone with this link asks to join; you let them in below.' : '';
+    // A guest list is a different door: nobody asks, and nobody off the list
+    // gets in. The host is told which kind they are holding.
+    hint.textContent = !invite
+      ? ''
+      : t.guestList > 0
+        ? 'This game has a guest list: the people on it walk straight in, and nobody else can.'
+        : 'Anyone with this link asks to join; you let them in below.';
     hint.classList.toggle('hidden', !(invite && t.isHost));
     const parts = [
       VISIBILITY_LINE[s.visibility] || null,
@@ -3186,6 +3310,9 @@
     $('btnAdminPair').addEventListener('click', pairGameNight);
     $('btnAdminRefresh').addEventListener('click', refreshGameNightKey);
     $('btnAdminUnpair').addEventListener('click', unpairGameNight);
+    $('btnAdminApiMake').addEventListener('click', makeApiKey);
+    $('btnAdminApiRevoke').addEventListener('click', revokeApiKey);
+    $('btnAdminApiCopy').addEventListener('click', copyApiKey);
     $('btnAdminBack').addEventListener('click', () => showView('home'));
     $('btnAdminGamesRefresh').addEventListener('click', askForAdminGames);
     $('btnAdminLogRefresh').addEventListener('click', () => askForAdminLog({ fresh: true }));
@@ -3277,6 +3404,7 @@
     onServerInfo,
     onAdminStatus,
     onAdminGameNight,
+    onAdminApiKey,
     onAdminMail,
     onAdminServer,
     onAdminUsers,

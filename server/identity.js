@@ -635,15 +635,16 @@ function createIdentityStore(options = {}) {
     return { name: current || null, adjusted: true };
   }
 
-  function identifyFromGameNight({ sub, name, avatar, userAgent } = {}) {
+  // The record for a GameNight person, made or refreshed: the middle of both
+  // doors below. The uid is a function of GameNight's user id, so a record
+  // made before they ever arrive is the one they land on when they do.
+  function gameNightRecord({ sub, name, avatar, at }) {
     if (sub === undefined || sub === null || String(sub) === '') return null;
     const safeName = sanitizeName(name);
     if (!safeName) return null;
     const safeAvatar = avatar ? sanitizeAvatar(avatar) : '';
-    const at = now();
     const uid = `gn_${sub}`;
     let rec = identities.get(uid);
-    if (rec && rec.disabledAt) return { error: 'disabled' };
     let isNew = false;
     const claim = claimGameNightName(safeName, uid, rec ? rec.name : null);
     if (!rec) {
@@ -657,12 +658,7 @@ function createIdentityStore(options = {}) {
     } else {
       if (claim.name && claim.name !== rec.name) setName(rec, claim.name);
       if (safeAvatar) rec.avatar = safeAvatar;
-      rec.lastSeenAt = at;
     }
-    const token = mintToken();
-    attachToken(rec, token, at, userAgent);
-    mark(rec.uid);
-    scheduleFlush('material');
     if (claim.adjusted) {
       log({
         level: 'info',
@@ -671,7 +667,51 @@ function createIdentityStore(options = {}) {
         data: { wanted: safeName, seatedAs: rec.name },
       });
     }
-    return { ...publicView(token, rec), isNew, nameAdjusted: claim.adjusted ? safeName : null };
+    return { rec, isNew, wanted: safeName, adjusted: claim.adjusted };
+  }
+
+  function identifyFromGameNight({ sub, name, avatar, userAgent } = {}) {
+    if (sub === undefined || sub === null || String(sub) === '') return null;
+    const existing = identities.get(`gn_${sub}`);
+    if (existing && existing.disabledAt) return { error: 'disabled' };
+    const at = now();
+    const made = gameNightRecord({ sub, name, avatar, at });
+    if (!made) return null;
+    const { rec, isNew, wanted, adjusted } = made;
+    if (!isNew) rec.lastSeenAt = at;
+    const token = mintToken();
+    attachToken(rec, token, at, userAgent);
+    mark(rec.uid);
+    scheduleFlush('material');
+    return { ...publicView(token, rec), isNew, nameAdjusted: adjusted ? wanted : null };
+  }
+
+  // A seat kept for somebody who has not arrived: the record without the
+  // device. GameNight names a roster when it makes a game here, and the
+  // registry refuses a player it has never heard of, so the people on it are
+  // made known first. No token is minted - nobody is signed in - and when
+  // they come through the sign-in bridge, identifyFromGameNight finds this
+  // record and refreshes it rather than making another. A disabled record is
+  // reserved like any other; the door refuses them, not the guest list.
+  //
+  // The first-account rule in hold() cannot fire from here: a game is made
+  // over the API with a key, the key is made by an administrator, so by the
+  // time this runs the server has one.
+  function reserveFromGameNight({ sub, name, avatar } = {}) {
+    const made = gameNightRecord({ sub, name, avatar, at: now() });
+    if (!made) return null;
+    const { rec, isNew, wanted, adjusted } = made;
+    mark(rec.uid);
+    scheduleFlush('material');
+    return {
+      uid: rec.uid,
+      name: rec.name,
+      avatar: rec.avatar,
+      provider: rec.provider,
+      isNew,
+      nameAdjusted: adjusted ? wanted : null,
+      disabled: !!rec.disabledAt,
+    };
   }
 
   // A patch, not a replacement: the client sends the one preference that just
@@ -946,6 +986,7 @@ function createIdentityStore(options = {}) {
   return {
     identify,
     identifyFromGameNight,
+    reserveFromGameNight,
     signInAs,
     nameHolder,
     nameHeldBy,

@@ -58,6 +58,10 @@ function ensureSocket() {
   socket.on('adminGameNight', (data) => {
     if (window.Lobby) Lobby.onAdminGameNight(data);
   });
+  // The key GameNight uses to make games here; the same unlock.
+  socket.on('adminApiKey', (data) => {
+    if (window.Lobby) Lobby.onAdminApiKey(data);
+  });
   // Every game on the server, for the Admin page; the same unlock.
   socket.on('adminMail', (data) => {
     if (window.Lobby) Lobby.onAdminMail(data);

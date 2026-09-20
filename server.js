@@ -12,6 +12,8 @@ const { loadConfig, mailFromEnv, CLAIM_TOKEN_MIN } = require('./server/config');
 const { applySecurityHeaders, createRateLimiter } = require('./server/http-middleware');
 const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
+const { createApiKeys } = require('./server/api-keys');
+const { readCreateBody } = require('./server/api-games');
 const { createAccounts } = require('./server/accounts');
 const { createDatabase } = require('./server/db');
 const { migrateFromFiles } = require('./server/db/migrate');
@@ -394,6 +396,9 @@ const handHistoryStore =
 
 // Admin settings, set from the lobby and kept beside the saves.
 const settingsStore = createSettingsStore({ db, log: structuredLog });
+// The key GameNight presents to make a game here. Made on the Admin page,
+// kept as a digest in the same table; read on every request, so no init.
+const apiKeys = createApiKeys({ settingsStore, log: structuredLog });
 // startServer can be called more than once in a test run; the stores open once.
 let storesOpen = false;
 
@@ -450,6 +455,7 @@ const tournamentLayer = registerTournamentHandlers({
   mailer,
   mail,
   claimToken,
+  apiKeys,
   settingsStore,
   sanitizeName,
   normalizeNameKey,
@@ -476,6 +482,98 @@ const tournamentLayer = registerTournamentHandlers({
   serverSettings,
 });
 serverSettings.bind({ registry: tournamentLayer.registry });
+
+// ── The API GameNight calls ────────────────────────────────────────────────
+//
+// Two routes, one caller. GameNight makes a game here with its blinds, seats
+// and roster and reads it back while it runs; the key it presents is the one
+// an administrator made on the GameNight tab. Declared here rather than beside
+// /api/tournaments above because the guard is a value, and the key store has
+// to exist before the route does. Same /api rate limiter; different
+// credential from /api/tournaments, which takes a player's device token.
+//
+// The envelope is GameNight's own: { ok, data } or { ok, error }.
+
+// No JSON parser is mounted app-wide - nothing else takes JSON - so this one
+// is scoped to the route, and a body that is not JSON is answered in the
+// envelope rather than with body-parser's HTML.
+const apiJson = express.json({ limit: '64kb' });
+function jsonBody(req, res, next) {
+  apiJson(req, res, (err) => {
+    if (err) return res.status(400).json({ ok: false, error: 'The body is not JSON.' });
+    next();
+  });
+}
+
+// Where a player goes to sit down or to watch. Built against the public
+// address the Mail tab holds; without one there are no links, and the game
+// exists all the same - GameNight knows this server's address from its own
+// record and can build them itself.
+function apiLinks(entry) {
+  const record = mail.get() || {};
+  const base = String(record.publicUrl || '').replace(/\/+$/, '');
+  if (!base) return null;
+  return { join: `${base}/?t=${entry.code}`, rail: `${base}/?w=${entry.rail}` };
+}
+
+function apiAnswer(entry) {
+  return { ...tournamentLayer.registry.apiView(entry), links: apiLinks(entry) };
+}
+
+app.post('/api/games', apiKeys.guard, jsonBody, (req, res) => {
+  const registry = tournamentLayer.registry;
+  const read = readCreateBody(req.body, { sanitizeName });
+  if (read.error) return res.status(400).json({ ok: false, error: read.error });
+  // The two refusals that are about this server rather than the body, said
+  // before anybody is made known: a host who is already in a game, and a
+  // server holding as many games as it may.
+  const hostUid = `gn_${read.hostId}`;
+  if (registry.findByUid(hostUid, { includeLeft: true })) {
+    return res
+      .status(409)
+      .json({ ok: false, error: 'The host is already in a game on this server.' });
+  }
+  if (registry.tournaments.size >= registry.maxTournaments) {
+    return res
+      .status(409)
+      .json({ ok: false, error: 'This server is holding as many games as it can.' });
+  }
+  // The roster, made known. The registry refuses a player it has never heard
+  // of, and these are the records their sign-in would make anyway; one left
+  // behind by a refusal below is no different from one made by a sign-in that
+  // never joined a game.
+  for (const row of read.roster) {
+    const made = identity.reserveFromGameNight({ sub: row.sub, name: row.name });
+    if (!made) {
+      return res.status(400).json({ ok: false, error: `No usable name for user_id ${row.sub}.` });
+    }
+  }
+  const { entry, error } = registry.create(hostUid, read.payload, null);
+  if (error) return res.status(400).json({ ok: false, error });
+  structuredLog({
+    level: 'info',
+    event: 'api_game_created',
+    message: 'GameNight made a game',
+    data: { id: entry.id, name: entry.name, host: hostUid, roster: entry.guests.size },
+  });
+  const host = identity.get(hostUid);
+  adminLog.recordServer({
+    level: 'info',
+    event: 'api_game_created',
+    message: `${entry.name} was made by GameNight for ${host ? host.name : hostUid}`,
+    detail: `${entry.guests.size} on the guest list`,
+  });
+  res.status(201).json({ ok: true, data: apiAnswer(entry) });
+});
+
+// A finished game answers for as long as the registry keeps it - ten minutes
+// by default - and then this is a 404. The record of what happened is the
+// webhook's job, when there is one.
+app.get('/api/games/:id', apiKeys.guard, (req, res) => {
+  const entry = tournamentLayer.tournaments.get(String(req.params.id || ''));
+  if (!entry) return res.status(404).json({ ok: false, error: 'No game by that id.' });
+  res.json({ ok: true, data: apiAnswer(entry) });
+});
 
 // Filled by openStores(), which is where the games are read back: restoring a
 // field is synchronous and cannot happen until everything it needs is in hand.
