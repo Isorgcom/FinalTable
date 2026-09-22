@@ -14,6 +14,8 @@
 // roster, that exactly one person on it is the host, and that the start is
 // not so far off that the registry would silently move it to now.
 
+const { webhookAllowed, refusalFor } = require('./webhook-origins');
+
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ROSTER = 200;
 // A GameNight user id, as the SSO token's `sub` carries it.
@@ -43,7 +45,14 @@ function levelsFromGameNight(rows) {
   });
 }
 
-function readCreateBody(body, { sanitizeName, now = () => Date.now() } = {}) {
+function readCreateBody(
+  body,
+  // webhookOrigins: the addresses a webhook may be sent to, or null for no
+  // rule. server.js always passes a list (possibly empty, which refuses every
+  // address); a caller that has not been taught about origins - the unit
+  // tests - gets the old behaviour.
+  { sanitizeName, now = () => Date.now(), webhookOrigins = null } = {}
+) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { error: 'The body must be a JSON object.' };
   }
@@ -170,6 +179,11 @@ function readCreateBody(body, { sanitizeName, now = () => Date.now() } = {}) {
       String(url).length > 2048
     ) {
       return { error: 'The webhook url must be an http(s) address.' };
+    }
+    // And it must be somewhere this server expects to report to. See
+    // webhook-origins.js for why the key alone is not enough.
+    if (!webhookAllowed(url, webhookOrigins)) {
+      return { error: refusalFor(webhookOrigins) };
     }
     if (typeof secret !== 'string' || secret.length < MIN_SECRET || secret.length > MAX_SECRET) {
       return { error: `The webhook secret must be at least ${MIN_SECRET} characters.` };

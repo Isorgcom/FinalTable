@@ -626,6 +626,10 @@ describe('GameNight being told how a game went', () => {
     delete process.env.ADMIN_PROMOTE;
     delete process.env.CLAIM_TOKEN;
     receiver = await makeReceiver();
+    // The pairing says GameNight is at ISSUER; this fake one answers on
+    // loopback. Name it the way an operator with a receiver somewhere else
+    // would, or every webhook here is refused.
+    process.env.WEBHOOK_ORIGINS = new URL(receiver.url).origin;
     await boot();
   });
 
@@ -782,6 +786,79 @@ describe('GameNight being told how a game went', () => {
     expect(serverModule.registry.tournaments.size).toBe(0);
   });
 
+  test('a webhook may only be sent where this server expects to report', async () => {
+    const roster = [
+      { user_id: 43, username: 'Cy', manager: true },
+      { user_id: 44, username: 'Di' },
+    ];
+    // Somewhere else on the network: the key names it, the server refuses it.
+    const elsewhere = await post(
+      {
+        invitees: roster,
+        webhook: { url: 'http://192.168.1.10:8006/api/', secret: SECRET },
+      },
+      key
+    );
+    expect(elsewhere).toMatchObject({
+      status: 400,
+      body: { error: expect.stringMatching(/must be at/) },
+    });
+    // The refusal says where it may go, and never repeats where it was asked
+    // to go: a refusal should not confirm what was probed.
+    expect(elsewhere.body.error).not.toContain('192.168.1.10');
+    // The same host on another port is a different origin, and refused too.
+    const otherPort = new URL(receiver.url);
+    otherPort.port = String(Number(otherPort.port) + 1);
+    expect(
+      await post({ invitees: roster, webhook: { url: otherPort.href, secret: SECRET } }, key)
+    ).toMatchObject({ status: 400, body: { error: expect.stringMatching(/must be at/) } });
+    // Nothing was made by any of it, and the allowed address still works.
+    expect(serverModule.registry.tournaments.size).toBe(0);
+    const good = await post(
+      { invitees: roster, webhook: { url: receiver.url, secret: SECRET } },
+      key
+    );
+    expect(good.status).toBe(201);
+    await control(good.body.data.id, 'cancel', null, key);
+  });
+
+  test('the key drives the games it made, and cannot see the others', async () => {
+    // A game somebody made at the create form, the way a player does.
+    const player = await connect();
+    const { token } = accountFor(serverModule, 'Mallory');
+    await ask(player, 'identify', { token }, 'identified');
+    const theirs = await ask(
+      player,
+      'createTournament',
+      { name: 'Theirs', visibility: 'public', tableSize: 6, startsInMinutes: 15 },
+      'tournamentJoined'
+    );
+    const id = theirs.id;
+    expect(id).toBeTruthy();
+    expect(serverModule.registry.tournaments.get(id)).toBeTruthy();
+
+    // The key holds no relationship to it, so it is not there to be read...
+    expect(await get(id, key)).toMatchObject({
+      status: 404,
+      body: { error: 'No game by that id.' },
+    });
+    // ...nor to be driven, and each refusal is the one a wrong id gets, so
+    // the key learns nothing about what else is running here.
+    for (const verb of ['start', 'pause', 'resume', 'cancel']) {
+      expect(await control(id, verb, null, key)).toMatchObject({
+        status: 404,
+        body: { error: 'No game by that id.' },
+      });
+    }
+    expect(await control(id, 'remove', { user_id: '99' }, key)).toMatchObject({ status: 404 });
+    expect(await control(id, 'move', { user_id: '99', table: 1 }, key)).toMatchObject({
+      status: 404,
+    });
+    // It is still there: nothing the key did touched it.
+    expect(serverModule.registry.tournaments.get(id)).toBeTruthy();
+    serverModule.registry.forceCancel(serverModule.registry.tournaments.get(id), 'test over');
+  });
+
   test('a bust-out and the finish reach the receiver, signed and in order', async () => {
     const { made, entry } = await runningGame(key, 41, 42);
     expect(made.webhook).toEqual({
@@ -875,7 +952,9 @@ describe('GameNight being told how a game went', () => {
       pending: 2,
       delivered: 1,
       abandoned: 0,
-      lastError: 'answered 500',
+      // What the key is told: enough to show "the last one failed", not
+      // enough to tell a closed port from a filtered one.
+      lastError: 'answered an error',
     });
     pendingId = made.id;
 
@@ -894,6 +973,8 @@ describe('GameNight being told how a game went', () => {
     await boot();
     // A finished game is not kept across a restart; what is owed for it is.
     expect((await get(pendingId, key)).status).toBe(404);
+    // The outbox keeps the real reason - this is what the admin Log shows;
+    // only the API answer is coarsened.
     expect(serverModule.webhooks.status(pendingId)).toEqual({
       pending: 2,
       delivered: 1,

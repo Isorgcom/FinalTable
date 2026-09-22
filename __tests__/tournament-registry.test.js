@@ -3226,5 +3226,59 @@ describe('re-entry and the add-on in the registry', () => {
       third.stop();
       registry = makeRegistry(store); // for afterEach
     });
+
+    test('an address the rule no longer allows does not come back on a restart', () => {
+      const entry = running({}, { webhook: HOOK });
+      registry.flush();
+      expect(store.saved()[0].webhook).toEqual(HOOK);
+      registry.stop();
+
+      // Allowed, it comes back as it was.
+      const allowed = makeRegistry(store, {
+        webhooks: hooks,
+        webhookOrigins: () => [new URL(HOOK.url).origin],
+      });
+      expect(allowed.restore()).toBe(1);
+      expect(allowed.tournaments.get(entry.id).webhook).toEqual(HOOK);
+      allowed.stop();
+
+      // Pinned somewhere else, the address does not come back - the create
+      // path would refuse it now, and a restart is not a way around that.
+      // Note the game keeps running and simply reports to nobody, and the
+      // next write down leaves the address out for good: a rule loosened
+      // later does not bring it back.
+      const pinned = makeRegistry(store, {
+        webhooks: hooks,
+        webhookOrigins: () => ['https://somewhere.else'],
+      });
+      expect(pinned.restore()).toBe(1);
+      expect(pinned.tournaments.get(entry.id).webhook).toBeNull();
+      expect(pinned.tournaments.get(entry.id).status).toBe('running');
+      pinned.stop();
+      registry = makeRegistry(store); // for afterEach
+    });
+
+    test("a game made at the create form is not the API's to drive", () => {
+      // The fourth argument is the API route's alone, and viaApi rides it.
+      const mine = running({}, { webhook: HOOK, viaApi: true });
+      expect(mine.viaApi).toBe(true);
+
+      // The same call without it - what the socket handler makes.
+      const theirs = registry.create('v', { name: 'Theirs' }, makeSocket('sv', 'v'));
+      expect(theirs.entry.viaApi).toBe(false);
+
+      // It survives being written down and read back, because that is what
+      // the routes check after a restart.
+      registry.flush();
+      expect(store.saved().find((row) => row.id === mine.id).viaApi).toBe(true);
+      expect(store.saved().find((row) => row.id === theirs.entry.id).viaApi).toBe(false);
+      registry.stop();
+      const second = makeRegistry(store, { webhooks: hooks });
+      second.restore();
+      expect(second.tournaments.get(mine.id).viaApi).toBe(true);
+      expect(second.tournaments.get(theirs.entry.id).viaApi).toBe(false);
+      second.stop();
+      registry = makeRegistry(store); // for afterEach
+    });
   });
 });

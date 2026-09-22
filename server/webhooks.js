@@ -61,6 +61,11 @@ function createWebhooks(options = {}) {
     timeoutMs = 8000,
     sweepMs = 5000,
     version = '0.0.0',
+    // Where the high-water mark for delivery ids is kept, so an id is never
+    // handed out twice. A getter is allowed: the store is made later in the
+    // server's boot than this is. Absent in the unit tests, which then
+    // behave as before - the ids come from the rows on hand.
+    settingsStore = null,
   } = options;
   const timers = options.timers || {
     setInterval: (...a) => setInterval(...a),
@@ -71,6 +76,15 @@ function createWebhooks(options = {}) {
 
   let rows = [];
   let nextId = 1;
+  // Ids are the outbox's order - the sweep takes a game's lowest, and the
+  // API's `lastError` is its highest - so they stay integers that climb. The
+  // trouble is that `nextId` was rebuilt from the rows on hand, and prune()
+  // clears delivered rows after a week: a quiet server eventually restarted
+  // at 1, and a receiver doing what docs/API.md tells it to do - dedupe on
+  // delivery_id - would drop a real bust-out as a repeat. So the ceiling is
+  // written down, a block at a time rather than per delivery.
+  const ID_BLOCK = 64;
+  let idCeiling = 0;
   const dirty = new Set();
   const inFlight = new Set(); // gameIds with an attempt under way
   // The write under way, if one is: a flush waits for it and then for its own.
@@ -78,6 +92,19 @@ function createWebhooks(options = {}) {
   let sweepTimer = null;
   let nudgeTimer = null;
   let sweeps = 0;
+
+  const settings = () => (typeof settingsStore === 'function' ? settingsStore() : settingsStore);
+
+  // The next id, and the promise that the one after it will not repeat.
+  function claimId() {
+    const id = nextId++;
+    const store = settings();
+    if (store && nextId > idCeiling) {
+      idCeiling = nextId + ID_BLOCK;
+      store.set('webhooks', { nextId: idCeiling });
+    }
+    return id;
+  }
 
   const open = (row) => !row.deliveredAt && !row.abandonedAt;
   const byId = (id) => rows.find((r) => r.id === id);
@@ -93,7 +120,7 @@ function createWebhooks(options = {}) {
     if (transient && rows.some((r) => r.gameId === entry.id && open(r))) return null;
     const at = now();
     const row = {
-      id: nextId++,
+      id: claimId(),
       gameId: entry.id,
       externalId: entry.webhook.externalId || null,
       event,
@@ -319,6 +346,13 @@ function createWebhooks(options = {}) {
       try {
         rows = (await db.webhooks.all()).map((r) => ({ ...r, written: true }));
         nextId = rows.reduce((max, r) => Math.max(max, Number(r.id) || 0), 0) + 1;
+        // The rows on hand are only the ones a prune has not taken. The
+        // ceiling remembers the rest.
+        const store = settings();
+        const saved = store ? store.get('webhooks') : null;
+        const ceiling = saved && Number(saved.nextId) > 0 ? Math.floor(Number(saved.nextId)) : 0;
+        if (ceiling > nextId) nextId = ceiling;
+        idCeiling = Math.max(ceiling, nextId);
       } catch (err) {
         rows = [];
         log({
@@ -361,4 +395,16 @@ function createWebhooks(options = {}) {
   return { enqueue, load, sweep, flush, prune, status, stop };
 }
 
-module.exports = { createWebhooks, sign, BACKOFF_MS };
+// What the API is told about a failure, as opposed to what the Log is told.
+// The Log keeps the errno, the status and the timeout - an operator debugging
+// their receiver needs them. The API answer does not: `lastError` is read by
+// whoever holds the key, and a string that tells apart "refused", "no route"
+// and "no answer in 8 s" tells them apart for any address they care to name,
+// which is a port scanner. Two states are all GameNight can act on: we could
+// not reach you, or you answered badly.
+function coarseError(text) {
+  if (!text) return null;
+  return /^answered /.test(String(text)) ? 'answered an error' : 'could not be reached';
+}
+
+module.exports = { createWebhooks, sign, coarseError, BACKOFF_MS };

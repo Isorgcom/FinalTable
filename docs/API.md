@@ -50,22 +50,22 @@ Makes a game. The body is JSON, up to 64 KB, and is understood in two
 vocabularies - GameNight's, and the one this server's own create form sends.
 Where both are given, GameNight's wins.
 
-| GameNight                         | this server                 | notes                                                                                                       |
-| --------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `title`                           | `name`                      | up to 24 characters; `Tournament` if missing                                                                |
-| `start_at` (ISO-8601)             | `startsAt` (ms since epoch) | up to seven days out, or 400; missing or past means now                                                     |
-| `seats_per_table`, `poker_seats`  | `tableSize`                 | 2-8, default 8                                                                                              |
-| `starting_chips`                  | `startChips`                | one of 1000, 2000, 5000, 10000 - anything else becomes 5000                                                 |
-|                                   | `levelDuration` (s)         | 30-3600, default 300; a level without its own duration takes this                                           |
-|                                   | `lateRegLevels`             | 0-8, default 3                                                                                              |
-|                                   | `reentryLevels`             | 0-8, default 0 (a freezeout). Re-entry here is a window of levels, not a count, so `max_rebuys` is not read |
-| `addon_allowed`                   | `addOn`                     | only takes if the structure has a break                                                                     |
-| `buyin_amount`, `poker_buyin`     | `buyIn`                     | 0-10000                                                                                                     |
-| `blind_levels` + `structure_name` | `structure`                 | see below                                                                                                   |
-| `invitees`                        | `roster`                    | see below                                                                                                   |
-| `webhook_url` + `webhook_secret`  | `webhook: { url, secret }`  | where to send the game's events, and what to sign them with: both or neither; see Webhooks below            |
-| `event_id`                        | `external_id`               | GameNight's own id for the event, up to 64 characters, echoed on every webhook                              |
-|                                   | `bots`                      | 0-40 seats the server plays, for trying it out                                                              |
+| GameNight                         | this server                 | notes                                                                                                                                                                                                     |
+| --------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`                           | `name`                      | up to 24 characters; `Tournament` if missing                                                                                                                                                              |
+| `start_at` (ISO-8601)             | `startsAt` (ms since epoch) | up to seven days out, or 400; missing or past means now                                                                                                                                                   |
+| `seats_per_table`, `poker_seats`  | `tableSize`                 | 2-8, default 8                                                                                                                                                                                            |
+| `starting_chips`                  | `startChips`                | one of 1000, 2000, 5000, 10000 - anything else becomes 5000                                                                                                                                               |
+|                                   | `levelDuration` (s)         | 30-3600, default 300; a level without its own duration takes this                                                                                                                                         |
+|                                   | `lateRegLevels`             | 0-8, default 3                                                                                                                                                                                            |
+|                                   | `reentryLevels`             | 0-8, default 0 (a freezeout). Re-entry here is a window of levels, not a count, so `max_rebuys` is not read                                                                                               |
+| `addon_allowed`                   | `addOn`                     | only takes if the structure has a break                                                                                                                                                                   |
+| `buyin_amount`, `poker_buyin`     | `buyIn`                     | 0-10000                                                                                                                                                                                                   |
+| `blind_levels` + `structure_name` | `structure`                 | see below                                                                                                                                                                                                 |
+| `invitees`                        | `roster`                    | see below                                                                                                                                                                                                 |
+| `webhook_url` + `webhook_secret`  | `webhook: { url, secret }`  | where to send the game's events, and what to sign them with: both or neither. The address must be at the paired GameNight's origin, or one this server was given in `WEBHOOK_ORIGINS`; see Webhooks below |
+| `event_id`                        | `external_id`               | GameNight's own id for the event, up to 64 characters, echoed on every webhook                                                                                                                            |
+|                                   | `bots`                      | 0-40 seats the server plays, for trying it out                                                                                                                                                            |
 
 `visibility` is ignored: a game with a roster is invite-only, and the roster
 is the door.
@@ -181,7 +181,12 @@ The answer, `201`:
 ```
 
 `webhook` is where the game reports to and how that is going; it is `null`
-for a game made without one, and never carries the secret.
+for a game made without one, and never carries the secret. `lastError` is
+`null` while nothing has failed, and otherwise one of two sentences - `could
+not be reached` or `answered an error`. The server knows more than that and
+writes it in the admin Log; the answer here says only whether the last
+attempt got through, because a reason that told a refused port from a
+filtered one would tell you that about any address you cared to name.
 
 `code` is the way in and `rail` the way to watch; `links` are those against
 the public address the Mail tab holds, and `null` until it has one - the
@@ -214,8 +219,14 @@ without one has to be read inside that window.
 
 The host's buttons, from GameNight's side, with the key that made the game.
 Each answers `200` with the game as it now stands (the same `data` as `GET`),
-or `404` for an id this server does not hold, or `409` with the sentence the
-table would have shown the host. Every one leaves a row in the admin Log.
+or `404` for an id this server does not hold **or did not make for you**, or
+`409` with the sentence the table would have shown the host. Every one leaves
+a row in the admin Log.
+
+A game somebody made at the create form here is not yours to read or drive:
+its join code, its roster and its chip counts are the host's, and calling it
+off is the host's to do. Those answer `404` - the same answer a wrong id
+gets, so a key learns nothing about what else is running on this server.
 
 ### `POST /api/games/:id/start`
 
@@ -292,6 +303,15 @@ re-entry, and the ending. Each is a `POST` of a JSON body to the address
 given, signed with the secret given, and tried again for about a day if
 GameNight does not answer.
 
+**Where it may be sent.** The address must be at the origin - scheme, host
+and port - of the GameNight this server is paired with, or at one the
+operator named in `WEBHOOK_ORIGINS`. The path is yours: the receiver may live
+anywhere on that host. Anywhere else is a `400`, and a server with no pairing
+and no list refuses a webhook outright rather than making a game that reports
+into the dark. The rule is applied again when a game is read back from disk
+after a restart, so an address that would be refused today does not come back
+tomorrow - the game keeps running and simply reports to nobody.
+
 ### The request
 
 ```
@@ -308,7 +328,9 @@ The signature is HMAC-SHA256, keyed with the secret, over the timestamp, a
 dot, and the body exactly as sent. Check it before reading anything, and
 keep the delivery id: a retry carries the same `delivery_id` and a fresh
 timestamp, so a delivery you have already handled is one to answer `200`
-and drop.
+and drop. A delivery id is never handed out twice by the same server, whatever
+has since been cleared out of its outbox, so deduping on it is safe to do
+forever.
 
 ```php
 $ts   = $_SERVER['HTTP_X_FINALTABLE_TIMESTAMP'];

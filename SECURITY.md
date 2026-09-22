@@ -44,8 +44,19 @@ FinalTable is designed for **self-hosted, private network** deployment (home NAS
   mail server says back is run through a redactor first, because an SMTP error
   quotes what it was given more often than anybody expects and that answer
   reaches both a browser and the admin Log
+- **A game reports only where this server expects to report.** The address on
+  `POST /api/games` used to be taken as given, so whoever held the API key
+  could aim this server's POST at any host it could route to and read the
+  result back through `GET /api/games/:id` - a port scanner, built out of two
+  documented features. Since 0.26.1 the address must be the paired
+  GameNight's origin or one named in `WEBHOOK_ORIGINS`, compared scheme, host
+  and port exactly, on the way in **and** on the way back from disk. A server
+  with neither refuses the webhook and says so. What comes back through the
+  API about a failure is two states - could not be reached, or answered an
+  error - while the admin Log keeps the errno, the status and the timeout an
+  operator actually needs
 - **The Mail page's test button makes an outbound connection to a host an
-  administrator names**, as the GameNight pairing and the webhooks do. It is behind
+  administrator names**, as the GameNight pairing does. It is behind
   the administrator role, rate-limited to three a minute per socket, carries
   its own short timeouts, and sends only to the address on the administrator's
   own account — never to one typed into the form, which is what stops it being

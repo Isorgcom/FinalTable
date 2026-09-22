@@ -13,6 +13,37 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Changed
+
+- **A game reports only to the GameNight this server is paired with.** The
+  address on a game made over the API used to be taken as given, so whoever
+  held the key could point it at anything on the network and read back
+  whether the attempt connected. It must now be at the paired GameNight's
+  origin, or at one an operator named in the new `WEBHOOK_ORIGINS` - useful
+  when the receiver does not live at the address people sign in through.
+  Anywhere else is refused when the game is made, and a server with no
+  pairing and no list says so rather than making a game that reports into
+  the dark. The rule is applied again when games are read back after a
+  restart, so an address that would be refused today does not come back
+  tomorrow: that game keeps running and simply reports to nobody. What the
+  API says about a failed delivery is now "could not be reached" or
+  "answered an error"; the admin Log keeps the status, the errno and the
+  timeout, which is where an operator debugging a receiver should be looking.
+- **The key drives the games it made, and no others.** A game somebody made
+  at the create form on this server now answers the API the way a wrong id
+  does - its join code, its roster and its chip counts are the host's, and
+  calling it off is the host's to do. Pairing a GameNight no longer hands it
+  the room.
+
+### Fixed
+
+- **A delivery id is never handed out twice.** The outbox counted from the
+  rows it still had, and it clears delivered rows after a week - so a quiet
+  server eventually started again at 1, and a GameNight doing what the API
+  documentation tells it to do, ignoring a delivery id it has already seen,
+  would have thrown away a real bust-out as a repeat. The count is written
+  down now, and carries on wherever it left off.
+
 ## 0.26.0 - 2026-09-20
 
 ### Added

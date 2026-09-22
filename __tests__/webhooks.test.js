@@ -244,6 +244,54 @@ describe('the webhook outbox', () => {
     expect(second.enqueue({ entry: entry(), event: 'tournament.completed', payload: {} })).toBe(2);
   });
 
+  test('an id is never handed out twice, even after the rows it came from are gone', async () => {
+    // A store that survives the restart, the way the settings table does.
+    const kept = new Map();
+    const settingsStore = {
+      get: (k) => (kept.has(k) ? kept.get(k) : null),
+      set: (k, v) => kept.set(k, v),
+    };
+
+    const first = make({ fetchImpl: makeFetch([200, 200]).fetchImpl, settingsStore });
+    await first.load();
+    expect(first.enqueue({ entry: entry(), event: 'player.eliminated', payload: {} })).toBe(1);
+    expect(first.enqueue({ entry: entry(), event: 'tournament.completed', payload: {} })).toBe(2);
+    await first.flush();
+    // One sweep sends one row per game: a game's second event waits for its
+    // first, which is the ordering the ids are for.
+    await first.sweep();
+    await first.sweep();
+    await first.stop();
+
+    // A week later the prune takes both, so the table has nothing to count
+    // from - which is where the ids used to start again at 1 and a receiver
+    // deduping on delivery_id dropped a real event as a repeat.
+    await db.webhooks.prune({ olderThan: Number.MAX_SAFE_INTEGER });
+    expect(await db.webhooks.count()).toBe(0);
+
+    const second = make({ fetchImpl: makeFetch([200]).fetchImpl, settingsStore });
+    expect(await second.load()).toBe(0);
+    const next = second.enqueue({ entry: entry(), event: 'player.eliminated', payload: {} });
+    expect(next).toBeGreaterThan(2);
+
+    // And the same again: the ceiling is written down, not merely held.
+    await second.flush();
+    await second.stop();
+    await db.webhooks.prune({ olderThan: Number.MAX_SAFE_INTEGER });
+    const third = make({ fetchImpl: makeFetch([200]).fetchImpl, settingsStore });
+    await third.load();
+    expect(
+      third.enqueue({ entry: entry(), event: 'player.eliminated', payload: {} })
+    ).toBeGreaterThan(next);
+  });
+
+  test('without a store to remember, the ids still climb within a run', async () => {
+    const hooks = make({ fetchImpl: makeFetch([200, 200]).fetchImpl });
+    await hooks.load();
+    expect(hooks.enqueue({ entry: entry(), event: 'a', payload: {} })).toBe(1);
+    expect(hooks.enqueue({ entry: entry(), event: 'b', payload: {} })).toBe(2);
+  });
+
   test('delivered rows are kept a week and then let go', async () => {
     const { fetchImpl } = makeFetch([200, 200]);
     const hooks = make({ fetchImpl });

@@ -225,6 +225,15 @@ function loadConfig() {
     // How often a game with a webhook tells GameNight it is still here. Zero
     // turns it off.
     webhookHeartbeatMs: intFromEnv('WEBHOOK_HEARTBEAT_MS', 300000, 0, 3600000),
+    // Addresses a webhook may be sent to besides the paired GameNight's, as a
+    // comma-separated list of origins. Ordinarily empty: the pairing says
+    // where GameNight is. For a receiver that does not live at the address
+    // people sign in through, or a server driven by an API caller it is not
+    // paired with, name the origins here.
+    webhookOrigins: String(process.env.WEBHOOK_ORIGINS || '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean),
     hostTransferGraceMs: intFromEnv('HOST_TRANSFER_GRACE_MS', 120000, 100, 600000),
     // Chat. Off turns the surface off entirely rather than hiding the box, the
     // same way an empty ADMIN_PASSWORD removes the admin controls. The history

@@ -14,6 +14,7 @@ const { registerTournamentHandlers } = require('./server/tournament-handlers');
 const { createSettingsStore } = require('./server/settings-store');
 const { createApiKeys } = require('./server/api-keys');
 const { readCreateBody, USER_ID } = require('./server/api-games');
+const { allowedOrigins } = require('./server/webhook-origins');
 const { createWebhooks } = require('./server/webhooks');
 const { createAccounts } = require('./server/accounts');
 const { createDatabase } = require('./server/db');
@@ -175,6 +176,9 @@ const webhooks = createWebhooks({
   log: structuredLog,
   timeoutMs: config.webhookTimeoutMs,
   version: require('./package.json').version,
+  // A getter, because the store is made further down: the outbox only reaches
+  // for it once there is one, at load() and at the first delivery after that.
+  settingsStore: () => settingsStore,
 });
 
 // Every warning and error, wherever it is raised and whoever raises it. A sink
@@ -461,6 +465,7 @@ const tournamentLayer = registerTournamentHandlers({
   log: structuredLog,
   adminLog,
   webhooks,
+  webhookOrigins,
   heartbeatMs: config.webhookHeartbeatMs,
   store: tournamentStore,
   accounts,
@@ -534,7 +539,7 @@ function apiAnswer(entry) {
 
 app.post('/api/games', apiKeys.guard, jsonBody, (req, res) => {
   const registry = tournamentLayer.registry;
-  const read = readCreateBody(req.body, { sanitizeName });
+  const read = readCreateBody(req.body, { sanitizeName, webhookOrigins: webhookOrigins() });
   if (read.error) return res.status(400).json({ ok: false, error: read.error });
   // The two refusals that are about this server rather than the body, said
   // before anybody is made known: a host who is already in a game, and a
@@ -562,6 +567,7 @@ app.post('/api/games', apiKeys.guard, jsonBody, (req, res) => {
   }
   const { entry, error } = registry.create(hostUid, read.payload, null, {
     webhook: read.webhook,
+    viaApi: true,
   });
   if (error) return res.status(400).json({ ok: false, error });
   structuredLog({
@@ -590,9 +596,9 @@ app.post('/api/games', apiKeys.guard, jsonBody, (req, res) => {
 // by default - and then this is a 404. The record of what happened is the
 // webhook's job, when there is one.
 app.get('/api/games/:id', apiKeys.guard, (req, res) => {
-  const entry = tournamentLayer.tournaments.get(String(req.params.id || ''));
-  if (!entry) return res.status(404).json({ ok: false, error: 'No game by that id.' });
-  res.json({ ok: true, data: apiAnswer(entry) });
+  const entry = gameOr404(req, res);
+  if (!entry) return undefined;
+  return res.json({ ok: true, data: apiAnswer(entry) });
 });
 
 // ── Driving a game from GameNight's side ────────────────────────────────
@@ -603,10 +609,28 @@ app.get('/api/games/:id', apiKeys.guard, (req, res) => {
 // moved. A refusal is the registry's own sentence, as a 409. Every one
 // leaves a line in the log and a row in the admin Log.
 
+// Where a game may report to: the GameNight this server is paired with, and
+// whatever the operator listed. Read on every call rather than cached - a
+// server can be paired and unpaired while it runs.
+function webhookOrigins() {
+  const paired = sso.get();
+  return allowedOrigins({
+    pairing: paired ? paired.pairing : null,
+    extra: config.webhookOrigins,
+  });
+}
+
+// The games this key may see are the games this key made. A browser-made game
+// is not one of them: its join code, its roster and its chip counts are the
+// host's, and calling it off is the host's to do. The answer is the one a
+// wrong id gets, so a key learns nothing about what else is running here.
 function gameOr404(req, res) {
   const entry = tournamentLayer.tournaments.get(String(req.params.id || ''));
-  if (!entry) res.status(404).json({ ok: false, error: 'No game by that id.' });
-  return entry || null;
+  if (!entry || !entry.viaApi) {
+    res.status(404).json({ ok: false, error: 'No game by that id.' });
+    return null;
+  }
+  return entry;
 }
 
 function refused(res, error) {

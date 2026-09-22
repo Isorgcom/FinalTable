@@ -15,6 +15,8 @@ const { TournamentDirector } = require('../director');
 const { exportHandsFor } = require('../hand-history');
 const { createChatRooms } = require('./chat-rooms');
 const reactions = require('./reactions');
+const { webhookAllowed } = require('./webhook-origins');
+const { coarseError } = require('./webhooks');
 
 // Who may see a tournament and who may walk in. Chosen once at creation.
 const VISIBILITIES = ['public', 'private', 'invite'];
@@ -109,6 +111,10 @@ function createTournamentRegistry(deps = {}) {
     // What GameNight is told, for a game it made with an address to tell.
     // Absent the same way.
     webhooks = null,
+    // Where such a game may report to, as a list of origins - or null for no
+    // rule, which is what the registry's own tests want. Called rather than
+    // read once: a server can be paired and unpaired while it runs.
+    webhookOrigins = () => null,
     // How often such a game says it is still here. Zero is never.
     heartbeatMs = 5 * 60 * 1000,
     sanitizeName = (v, max = 16) =>
@@ -270,6 +276,7 @@ function createTournamentRegistry(deps = {}) {
       // the form; the whole roster on one GameNight made over the API.
       guests: [...entry.guests],
       webhook: entry.webhook ? { ...entry.webhook } : null,
+      viaApi: !!entry.viaApi,
       status: entry.status,
       // How many times this field has been seated again without getting a hand
       // out. See the guard in restore().
@@ -736,10 +743,17 @@ function createTournamentRegistry(deps = {}) {
         ? {
             url: entry.webhook.url,
             externalId: entry.webhook.externalId,
-            deliveries: webhooks ? webhooks.status(entry.id) : null,
+            // The counts as they are, the reason coarsened: see coarseError.
+            deliveries: webhooks ? apiDeliveries(webhooks.status(entry.id)) : null,
           }
         : null,
     };
+  }
+
+  // What the key is told about the outbox. The Log keeps the detail.
+  function apiDeliveries(status) {
+    if (!status) return status;
+    return { ...status, lastError: coarseError(status.lastError) };
   }
 
   // Everything in a tournament state that is the same whoever is looking.
@@ -1180,7 +1194,7 @@ function createTournamentRegistry(deps = {}) {
   // Where a game reports to, or null. Silent rather than answering, because
   // restore() runs it too; the API route says its own sentences first. The
   // secret lives on the entry and in the outbox and nowhere a view can reach.
-  function clampWebhook(input) {
+  function clampWebhook(input, { why = null } = {}) {
     if (!input || typeof input !== 'object') return null;
     const url = typeof input.url === 'string' ? input.url.trim() : '';
     const secret = typeof input.secret === 'string' ? input.secret : '';
@@ -1189,6 +1203,21 @@ function createTournamentRegistry(deps = {}) {
       const parsed = new URL(url);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
     } catch (_err) {
+      return null;
+    }
+    // Where it may be sent, the same rule the API route answers with. Silent
+    // here as the rest of this function is - except on restore, where a game
+    // that used to report somewhere now will not, and the operator should be
+    // able to see why in the Log rather than wonder.
+    if (!webhookAllowed(url, webhookOrigins())) {
+      if (why && adminLog) {
+        adminLog.recordServer({
+          level: 'warn',
+          event: 'webhook_origin_refused',
+          message: 'A game will not report where it used to',
+          detail: `${why}: the address is not one this server may send to`,
+        });
+      }
       return null;
     }
     const externalId =
@@ -1205,7 +1234,7 @@ function createTournamentRegistry(deps = {}) {
   // The fourth argument is the API route's alone: a browser's payload reaches
   // here as it was sent, and a webhook is not a thing a player attaches to
   // their own game.
-  function create(uid, payload = {}, socket, { webhook = null } = {}) {
+  function create(uid, payload = {}, socket, { webhook = null, viaApi = false } = {}) {
     const who = identity.get(uid);
     if (!who) return { error: 'Identify first' };
     if (findByUid(uid, { includeLeft: true })) return { error: 'You are already in a tournament' };
@@ -1230,6 +1259,7 @@ function createTournamentRegistry(deps = {}) {
       settings,
       guests,
       webhook: clampWebhook(webhook),
+      viaApi,
     });
     entry.director.register({
       id: socket ? socket.id : null,
@@ -1285,6 +1315,10 @@ function createTournamentRegistry(deps = {}) {
     createdAt,
     guests = [],
     webhook = null,
+    // Made over the API, rather than by somebody at the create form. The key
+    // may read and drive the games it made and no others, so this is what
+    // the routes check - see gameOr404 in server.js.
+    viaApi = false,
   }) {
     const entry = {
       id,
@@ -1339,6 +1373,7 @@ function createTournamentRegistry(deps = {}) {
       // with a roster. Empty means the door works as it always has: the host
       // lets people in. Written to the file with the rest.
       guests: new Set(guests),
+      viaApi: !!viaApi,
       // Where GameNight asked to be told, or null: { url, secret, externalId }.
       // The secret is in it, so it never leaves through a view - every view
       // names its fields - and rides only serialize() and the outbox.
@@ -2789,7 +2824,14 @@ function createTournamentRegistry(deps = {}) {
         settings,
         createdAt: saved.createdAt,
         guests: clampGuests(saved.guests),
-        webhook: clampWebhook(saved.webhook),
+        webhook: clampWebhook(saved.webhook, { why: saved.id }),
+        // Written since 0.26.1. A game saved before that has no flag, and
+        // there is no version marker here to tell an old file from a game
+        // somebody made at the create form - but a browser cannot attach a
+        // webhook (the fourth argument is the API route's alone), so having
+        // one is the same answer. Drop the fallback once no such file can
+        // still be on disk.
+        viaApi: saved.viaApi === undefined ? !!saved.webhook : !!saved.viaApi,
       });
       for (const e of saved.entrants || []) {
         // A file written before the bots were removed carries them; skip those

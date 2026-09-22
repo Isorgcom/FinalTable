@@ -776,6 +776,14 @@ it and the old one stops working; **Revoke** leaves none, which stops
 GameNight until another is made. The tab says when the key was made and
 when it was last used.
 
+The key makes games and drives the games it made — no others. A game
+somebody made at the create form here answers the API the way a wrong id
+does, so pairing a GameNight does not hand it the room. And a game reports
+only to the GameNight this server is paired with: a webhook aimed anywhere
+else is refused when the game is made. If your receiver lives somewhere
+other than the address people sign in through, name its origin in
+`WEBHOOK_ORIGINS`.
+
 **Mail** is how this server sends the two messages it sends — the link that
 proves an address at sign-up, and the one that sets a forgotten password.
 Without it nobody can make an account, so on a new server this is the first
@@ -902,6 +910,7 @@ to change a setting on a server that is running:
 | `GAMENIGHT_URL` and friends  | none       | Seed the GameNight pairing on a first boot; the page wins after.           |
 | `WEBHOOK_TIMEOUT_MS`         | 8000       | How long one webhook to GameNight waits for an answer.                     |
 | `WEBHOOK_HEARTBEAT_MS`       | 300000     | How often GameNight is told a game is still here. Zero turns it off.       |
+| `WEBHOOK_ORIGINS`            | none       | Extra origins a game may report to, besides the paired GameNight's.        |
 | `HAND_HISTORY_MAX`           | 500        | Hands a running game keeps for the download. Zero turns it off.            |
 | `HAND_HISTORY_TTL_MS`        | 2592000000 | Seeds the Server tab: how long a game's hands are kept (thirty days).      |
 | `HAND_HISTORY_MAX_GAMES`     | 200        | Seeds the Server tab: how many games' hands are kept at once.              |
