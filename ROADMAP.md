@@ -433,12 +433,17 @@ Suggested, for the split:
 2. ~~The elimination and tournament-complete webhooks~~ (done, with re-entry)
 3. ~~The JWT bridge and the redirect flow~~ (done)
 4. ~~The blind-level event~~ (done, with started, paused and resumed)
-5. The online event type in Game Night
+5. ~~The online event type in Game Night~~ (done, as Game Night v1.2.0 on
+   2026-09-21: a poker tournament marked _Played: Online at FinalTable_ is
+   set up from its event page, and the bust-outs, re-entries and standings
+   come back into the session)
 6. ~~Cancel and pause, the heartbeat, and seat-move requests~~ (done, with
    start, remove and sign-out)
 
-The game-side work above is independent of all six and can be picked up in any
-order.
+**The split is finished.** Both live hosts are paired - test.isorg.com holds
+the API key, gamenight.poker holds it encrypted on its Connected Apps row -
+and a game can be made, played and recorded end to end. The game-side work
+above is independent of all six and can be picked up in any order.
 
 ## From the table
 

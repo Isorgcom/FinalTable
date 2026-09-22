@@ -591,6 +591,11 @@ go on) or `empty`. `standings` is who had gone out by then; `started_at` is
 
 ## Not here yet
 
-Nothing on the roadmap's list for this side. What comes next is on
-GameNight's: the online event type that makes the game, keeps the key,
-receives the webhooks. See the [roadmap](../ROADMAP.md).
+Nothing on the roadmap's list for this side, and nothing waiting on the
+other: GameNight's online event type shipped on 2026-09-21 (its v1.2.0), so
+every route and every event on this page has a caller. A poker tournament
+marked _Played: Online at FinalTable_ over there is made here from its event
+page, played here, and reported back into that night's record.
+
+What a new caller needs is on this page; the [roadmap](../ROADMAP.md) has
+what either side might grow next.
