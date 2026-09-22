@@ -29,6 +29,41 @@ discard phase that has no equivalent anywhere in the code. Worth doing as one
 deliberate piece of work on the engine's shape rather than as four special
 cases bolted to a Hold'em loop.
 
+### Hardening the API, from the review
+
+The security review of 0.23.0-0.26.0 on 2026-09-22 raised three things it
+then ruled out as vulnerabilities - the only party who can reach any of them
+is the administrator's own integration key - and each is worth closing
+anyway, because the key is documented to make and drive games and these let
+it do more than that.
+
+- **Pin where a webhook may be sent.** `webhook.url` is checked for
+  parseability, scheme and length and nothing else, so the key holder can
+  aim the server's POST at any host it can route to, and read back a
+  per-destination `lastError` (`ECONNREFUSED`, `no answer in 8 s`,
+  `answered 401`) through `GET /api/games/:id`, which is a port scanner. The
+  server already knows the paired Game Night origin, so pin to it with an
+  environment override for the odd case; failing that, deny loopback,
+  link-local, private and reserved ranges, re-checked at connect time so a
+  rebinding answer cannot slip past. Either way collapse `lastError` to
+  delivered or failed before it reaches `apiView`. Redirects are already not
+  followed and the secret is already never returned.
+- **Scope the API to the games it made.** `gameOr404` resolves an id against
+  the whole registry, so the seven routes apply to games a player made in
+  the browser: their join code and roster can be read, and they can be
+  cancelled or have a player removed. A private game's id never reaches a
+  non-registrant, so the reach is public games - but the rule the documents
+  state ("the key that made the game") should be the rule the code enforces.
+  Tag an entry at creation and answer 404 for the rest, the same answer a
+  wrong id gets. `webhook` is optional, so it is not the marker to use.
+- **Delivery ids must not repeat.** `nextId` is rebuilt as the highest
+  persisted id plus one, and the prune clears delivered rows after a week,
+  so a quiet server eventually restarts at 1 - and a receiver doing what
+  [docs/API.md](./docs/API.md) tells it to do, deduping on `delivery_id`,
+  would then drop real bust-outs and completions. A persisted counter, or a
+  random id, closes it. Integrity rather than security, and the cheapest of
+  the three.
+
 ### Trust, but verify
 
 Moved down deliberately, not abandoned. The first reply to the announcement
