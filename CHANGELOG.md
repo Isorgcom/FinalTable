@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.26.1 - 2026-09-22
+
 ### Changed
 
 - **A game reports only to the GameNight this server is paired with.** The
