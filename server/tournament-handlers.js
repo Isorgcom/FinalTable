@@ -11,6 +11,7 @@
 
 const { createTournamentRegistry } = require('./tournament-registry');
 const { sameString } = require('./password');
+const { originOf } = require('./webhook-origins');
 
 // How many wrong passwords a single socket may offer before it stops being
 // asked. Low, because there is nothing to guess at but one string, and a
@@ -108,7 +109,16 @@ function registerTournamentHandlers(deps) {
       // The set the strip draws, or null when the surface does not exist.
       reactions: registry.reactions,
       gamenight: live
-        ? { connectUrl: live.config.connectUrl, audience: live.config.audience }
+        ? {
+            connectUrl: live.config.connectUrl,
+            audience: live.config.audience,
+            // Where a member's photo is fetched from. The issuer first: it is
+            // what GameNight calls itself and what the browser has just come
+            // back from; `url` is what an administrator typed, and the two can
+            // differ. Nothing is stored against this, so re-pairing a
+            // GameNight moves every face at the table with it.
+            origin: originOf(live.config.issuer) || originOf(live.config.url) || '',
+          }
         : null,
     };
   }
@@ -268,7 +278,14 @@ function registerTournamentHandlers(deps) {
         ident = identity.identifyFromGameNight({
           sub: result.claims.sub,
           name: result.claims.name,
+          // The emoji the browser picked is still theirs to choose: it is what
+          // shows when there is no photo, and what it falls back to when the
+          // photo cannot be fetched.
           avatar: payload.avatar,
+          // The photo is not. Only the verified claim reaches this, and null
+          // is a value rather than an absence - it is how "I removed my photo
+          // on GameNight" arrives here.
+          avatarPath: result.claims.avatarPath,
           userAgent: userAgentOf(socket),
         });
         if (!ident)

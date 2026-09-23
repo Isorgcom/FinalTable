@@ -494,6 +494,9 @@ function getPlayerIdentityKey(players) {
         p.id,
         p.name,
         p.avatar || '',
+        // A photo that changes mid-tournament is a new face on a seat, so the
+        // seat has to be built again for it.
+        p.avatarPath || '',
         p.isReady ? 'ready' : '',
         p.autoPlay ? 'auto' : '',
         p.isConnected === false ? 'offline' : 'online',
@@ -805,7 +808,14 @@ function getPlayerDisplayName(player) {
 }
 
 function appendPlayerIdentity(info, text, player) {
-  info.appendChild(createTextElement('span', 'seat-avatar', player.avatar || '🧑'));
+  // The hero: the face, and the turn clock ringing it. Two elements rather
+  // than one because the face is clipped to a circle to hold a photograph,
+  // and a ring drawn inside that clip would have its outer half cut away.
+  const hero = document.createElement('span');
+  hero.className = 'seat-hero';
+  hero.appendChild(Avatars.element('seat-avatar', player));
+  hero.appendChild(buildSeatClock());
+  info.appendChild(hero);
 
   const name = document.createElement('div');
   name.className = 'player-name';
@@ -1010,22 +1020,26 @@ function renderPlayersFull(container) {
 // pathLength normalises the perimeter to 100, so one dash figure draws the same
 // proportion whatever size the cards are; non-scaling-stroke keeps the line even
 // despite the box being stretched by preserveAspectRatio="none".
-function buildHoleClock() {
+// The turn clock, drawn as a ring round the player's own face rather than a
+// rectangle round their cards. The clock belongs to the person whose turn it
+// is, so it is on the person: at a table of eight, whose ring is draining is
+// legible from across the room in a way that a rectangle in a row of eight
+// card pairs never was.
+//
+// pathLength=100 makes the circumference a hundred units whatever the radius,
+// so the dash arithmetic that drove the rectangle drives this unchanged.
+function buildSeatClock() {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('class', 'hole-clock hidden');
+  svg.setAttribute('class', 'seat-clock hidden');
   svg.setAttribute('viewBox', '0 0 100 100');
-  svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('aria-hidden', 'true');
-  const rect = document.createElementNS(ns, 'rect');
-  rect.setAttribute('x', '1');
-  rect.setAttribute('y', '1');
-  rect.setAttribute('width', '98');
-  rect.setAttribute('height', '98');
-  rect.setAttribute('rx', '4');
-  rect.setAttribute('pathLength', '100');
-  rect.setAttribute('vector-effect', 'non-scaling-stroke');
-  svg.appendChild(rect);
+  const circle = document.createElementNS(ns, 'circle');
+  circle.setAttribute('cx', '50');
+  circle.setAttribute('cy', '50');
+  circle.setAttribute('r', '46');
+  circle.setAttribute('pathLength', '100');
+  svg.appendChild(circle);
   return svg;
 }
 
@@ -1091,14 +1105,10 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
     holeCardsDiv.appendChild(b1);
     holeCardsDiv.appendChild(b2);
   }
-  // The turn clock, round the cards. Part of the skeleton so it needs no
-  // rebuild trigger of its own: updateTurnClocks shows and hides it rather than
-  // building and destroying it every turn.
-  holeCardsDiv.appendChild(buildHoleClock());
   seat.appendChild(holeCardsDiv);
 
-  // The plate: a square avatar beside a text column of name, caption, and
-  // the stack (or the status line that stands in for it).
+  // The plate: a round avatar capping a pill, beside a text column of name,
+  // caption, and the stack (or the status line that stands in for it).
   const info = document.createElement('div');
   info.className = 'player-info seat-plate';
   const text = document.createElement('div');
@@ -1114,24 +1124,28 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   });
   info.appendChild(text);
 
-  // D/SB/BB chips
+  // The button hangs off the plate. The blinds go on the face, so they are
+  // children of the hero rather than of the plate - which is also what keeps
+  // them in place when the hero changes size, since one corner of a circle is
+  // the same corner at every diameter.
   if (player.originalIndex === gameState.dealerIndex) {
     const dc = document.createElement('div');
     dc.className = 'dealer-chip';
     dc.textContent = 'D';
     info.appendChild(dc);
   }
-  if (gameState.sbIndex !== undefined && player.originalIndex === gameState.sbIndex) {
+  const hero = info.querySelector('.seat-hero');
+  if (hero && gameState.sbIndex !== undefined && player.originalIndex === gameState.sbIndex) {
     const sc = document.createElement('div');
     sc.className = 'sb-chip';
     sc.textContent = 'SB';
-    info.appendChild(sc);
+    hero.appendChild(sc);
   }
-  if (gameState.bbIndex !== undefined && player.originalIndex === gameState.bbIndex) {
+  if (hero && gameState.bbIndex !== undefined && player.originalIndex === gameState.bbIndex) {
     const bc = document.createElement('div');
     bc.className = 'bb-chip';
     bc.textContent = 'BB';
-    info.appendChild(bc);
+    hero.appendChild(bc);
   }
 
   // Where a chat line surfaces on the felt. Part of the skeleton, like the
@@ -1343,15 +1357,23 @@ function createCardElement(card, animClass) {
   front.className = 'card-front';
 
   const suitSym = SUIT_SYMBOLS[card.suit];
-  const corner = document.createElement('div');
-  corner.className = 'card-corner';
-  corner.append(document.createTextNode(card.rank), document.createElement('br'), suitSym);
-  const rank = createTextElement('div', 'card-rank', card.rank);
-  const suit = createTextElement('div', 'card-suit', suitSym);
-  const cornerBr = document.createElement('div');
-  cornerBr.className = 'card-corner-br';
-  cornerBr.append(document.createTextNode(card.rank), document.createElement('br'), suitSym);
-  front.append(corner, rank, suit, cornerBr);
+  // Laid out like a card with an oversized index: the rank with its suit under
+  // it at the top left, big, and the same mark turned upside down at the
+  // bottom right. Nothing in the middle. A pip there is the thing that decides
+  // how big the index may be - the two meet long before the index is the size
+  // this is for - and what it buys is a mark nobody reads. A hole card half
+  // behind the plate loses its far index and keeps the one that says what it
+  // is, and nothing on the face moves to accommodate that.
+  const index = (extra) => {
+    const el = document.createElement('div');
+    el.className = extra;
+    el.append(
+      createTextElement('span', 'card-rank', card.rank),
+      createTextElement('span', 'card-index-suit', suitSym)
+    );
+    return el;
+  };
+  front.append(index('card-corner'), index('card-corner-br'));
   el.appendChild(front);
   return el;
 }
@@ -1748,7 +1770,7 @@ function updateTurnClocks(orderedPlayers) {
 
   ordered.forEach((player) => {
     const seat = seatElementForPlayer(player.id);
-    const clock = seat && seat.querySelector('.hole-clock');
+    const clock = seat && seat.querySelector('.seat-clock');
     if (!clock) return;
     const shouldShow =
       !!currentSeat &&
@@ -1763,14 +1785,14 @@ function updateTurnClocks(orderedPlayers) {
     clock.classList.toggle('hidden', !shouldShow);
     if (!shouldShow) return;
 
-    const rect = clock.querySelector('rect');
-    if (rect) {
-      // The gap opens at the top-left and travels clockwise, so the top edge -
-      // the one being looked at - starts going immediately. Drawing the
-      // remaining arc forward from the start instead ate the left edge first,
-      // which read as the clock not moving for the first several seconds.
-      rect.style.strokeDasharray = `${ratio * 100} 100`;
-      rect.style.strokeDashoffset = `${ratio * 100 - 100}`;
+    const ring = clock.querySelector('circle');
+    if (ring) {
+      // The ring is rotated in CSS so the gap opens at twelve o'clock and
+      // travels clockwise, which is where an eye looks for a clock. The dash
+      // arithmetic is the rectangle's, unchanged: pathLength=100 means the
+      // circumference is a hundred units whatever size the face is drawn at.
+      ring.style.strokeDasharray = `${ratio * 100} 100`;
+      ring.style.strokeDashoffset = `${ratio * 100 - 100}`;
     }
     clock.classList.toggle('is-warning', remainingMs <= CLOCK_WARNING_MS);
     clock.classList.toggle('is-urgent', remainingMs <= CLOCK_URGENT_MS);

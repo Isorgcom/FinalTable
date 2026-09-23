@@ -103,35 +103,36 @@
   --hand-clubs: #63c96b;
 }
 
-/* The face, and only the rank moves.
-   A card is 84px tall at its biggest here, and the rank, the suit under it and
-   the two corner indices are each about 22px of that already. Multiplying all
-   four by one number is how the heart ended up sitting on the index below it:
-   measured on the felt, the suit's box clears the corner's by a single pixel
-   at the ordinary size, so there is nothing there to give away. The corners
-   therefore keep their size, the suit keeps its size, and the rank - the thing
-   a large index is actually for - is the one that grows. It is lifted as it
-   grows, because it grows about its own middle and would otherwise come down
-   onto the suit; --rank-lift multiplies the offset that holds it above the
-   card's centre.
-
-   The numbers are measured rather than chosen. A two-digit rank is the widest
-   thing on the card, and on a 55px board card the span between the two corner
-   indices is about 27px, so past 1.2 the 10 starts touching the index at the
-   top left however far up it is lifted. What the measuring bought: the heart
-   clears the bottom index by 5px, the rank clears the heart by 4px - four
-   times the clearance the ordinary face has - and the 10 clears the top index
-   by 1.5px, against 4px ordinarily. */
+/* The face, and what a large one means.
+   The index is a fraction of the card's own height, which is the only thing it
+   has to fit inside. Sizing it per context instead - a value for the board,
+   another for a seat, another again at each width - is what let it drift from
+   a seventh of one card to a third of another. A fraction cannot drift: every
+   card on the table is the same shape, so one number draws all of them and the
+   shape does the rest.
+   How big that number can be is set by the index and its mirror, which is why
+   there is no pip in the middle of a card here. A centred pip meets the index
+   at about an eighth of the card's height; two marks on opposite corners only
+   have to clear each other on one axis, and that is worth a quarter. The pip
+   was the smaller thing, so the pip went. */
+:root {
+  /* The rank, as a fraction of the card's height. Measured, not picked: the
+     limit is the index and its mirror meeting on the smallest card the table
+     draws, which is a seat's hole card on a phone held sideways at the large
+     face. A twentieth off this is what pays for the suit below being half
+     again the size, which is the better half of the bargain - the suit is
+     the part that was reading as a speck. */
+  --index-scale: 0.25;
+}
 :root,
 [data-face='standard'] {
   --rank-scale: 1;
-  --rank-lift: 1;
-  --index-scale: 1;
 }
+/* The large face. There is less room to give than there looks: growing the
+   index grows its mirror too, so the card's height pays twice for every
+   step. A tenth again is what is left once both have it. */
 [data-face='large'] {
-  --rank-scale: 1.2;
-  --rank-lift: 1.22;
-  --index-scale: 0.85;
+  --rank-scale: 1.1;
 }
 
 @media (min-width: 1024px) {
@@ -153,6 +154,19 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+/* A photograph fills whatever round box it is put in - the seat's hero, the
+   roster's circle, the status line's. border-radius: inherit rather than a
+   value of its own, so one rule serves every size and shape it is dropped
+   into, and object-fit crops a picture that is not square the way every other
+   place that draws one already does. */
+.avatar-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
 }
 
 body {

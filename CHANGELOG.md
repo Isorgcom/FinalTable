@@ -13,6 +13,67 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **Your GameNight picture is your face at the table.** Signing in with
+  GameNight now brings your profile photo with it, and that is the portrait on
+  your seat, in the waiting room's list and beside your name in the lobby.
+  Nobody uploads anything here: the photo stays on GameNight and your browser
+  fetches it from there, so changing it there changes it here at your next
+  sign-in, and removing it there removes it here. A player with no photo keeps
+  the emoji they picked, and so does everybody on a server with no GameNight
+  paired - which is also what a seat falls back to if the picture cannot be
+  fetched. Needs GameNight 1.3.0 or newer at the other end; an older one sends
+  no photo and nothing changes.
+
+### Changed
+
+- **A seat is a face with a plate behind it.** The avatar was a small square
+  tile sitting inside a rounded box. It is now a round portrait, half again
+  the size, hanging off the left end of a pill and over its top and bottom
+  edges, with the name over the stack beside it. Your two cards sit behind
+  the plate rather than above it, with about half of each one showing, the way
+  they do when somebody has picked them up off the felt. What is showing is
+  the whole index, which is the part that says what the card is. The small blind and big
+  blind markers have moved onto the face, at its lower right; they used to
+  hang off the plate's bottom-left corner, into whatever was next to it. The
+  dealer button still hangs off the plate, pulled in to sit against its new
+  curve. A player is round in the waiting room too, so they look the same in
+  the lobby as at the table. The same name, stack, bet and status are in the
+  same places, at every screen size.
+- **A card is a big index and nothing else.** It used to carry a small rank
+  and suit in each of two opposite corners and then a large rank _and_ a large
+  suit in the middle, which is four things fighting for a card the size of a
+  postage stamp. A card now carries one mark and its mirror: the rank with its
+  suit close underneath, a quarter of the card tall, at the top left, and the
+  same thing upside down at the bottom right. The middle is empty, and that is
+  what buys the size - a pip in the centre meets the index at about an eighth
+  of the card, while two marks on opposite corners only have to clear each
+  other on one axis. The index is drawn as a fraction of the card it is on, so
+  it is the same index on your own cards, on somebody else's and on the board,
+  at every screen size. A hole card half behind the plate loses its far corner
+  and keeps the one that says what it is. **Large index** in the card settings
+  grows both a tenth again on top of that.
+- **The four suits are one size.** Inter has no spade, heart, diamond or club
+  in it, so every suit on every card was falling through to whatever the
+  machine happened to offer for them - which drew a heart nearly twice the
+  width of a diamond, and drew all four differently on a Mac, a Windows box
+  and a phone. They now come from the same monospaced face the chip counts
+  use, which ships with the server, has all four and draws them on one width.
+- **The clock for whose turn it is rings their face.** It was a rectangle
+  drawn round that player's two cards, which at a table of eight meant
+  finding one card pair in a row of eight. It is now a ring round the
+  portrait, draining clockwise from twelve, and it keeps the colours it had:
+  green, amber under fifteen seconds, red under nine, with the same pulse and
+  the same one warning per turn on your own seat.
+
+### Fixed
+
+- **A small card gets a small index.** The rank in a card's corner was drawn
+  at one size whatever the card was, so the index that suits a board card on
+  a desktop was landing whole on the little cards a phone deals. It is a
+  fraction of the card now, so it shrinks with one.
+
 ## 0.26.1 - 2026-09-22
 
 ### Changed

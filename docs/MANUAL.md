@@ -52,7 +52,10 @@ costs a retry rather than a name. After that, **Sign in** from any browser.
 
 If the server is paired with a GameNight site, there is a **Sign in with
 GameNight** button instead, and no second account to make: signing in there
-seats you here under your GameNight username. **Sign out** is in the corner
+seats you here under your GameNight username, with your GameNight profile
+photo as your face at the table. The photo is not copied here - your browser
+fetches it from GameNight, so changing it there changes it here, and a member
+with none keeps the emoji they picked. **Sign out** is in the corner
 menu; it signs out this browser only, and ends that session here as well as
 clearing the browser.
 
@@ -486,8 +489,8 @@ you read the cards rather than about the game:
 - **The suits**: the classic two colours, or four, where the diamond is blue
   and the club is green. The spade stays black and the heart stays red. It is
   what stops a club being taken for a spade at a glance.
-- **The face**: standard, or a large index, which makes the rank and the suit
-  bigger on every card. Worth it on a phone.
+- **The face**: standard, or a large index, which grows the rank and its suit
+  a tenth again. Worth it on a phone.
 
 Nobody else sees any of it. Two people at the same table can be looking at
 different backs and neither can tell, because the cards are the same cards and

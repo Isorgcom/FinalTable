@@ -98,6 +98,18 @@ function createIdentityStore(options = {}) {
         .trim()
         .slice(0, 16),
     sanitizeAvatar = (v) => String(v || '🧑').slice(0, 4),
+    // A photo on the paired GameNight, and nothing else. The shape is
+    // GameNight's own save-time regex, which is what defines what an avatar
+    // path can be. Deliberately not "any URL", and deliberately not reachable
+    // from a client payload: a browser that could set this would be choosing
+    // the origin every other player at the table fetches an image from, which
+    // turns a seat at a poker table into a beacon.
+    sanitizeAvatarPath = (v) => {
+      const path = String(v || '');
+      return /^\/uploads\/(avatars\/u\d+_)?[a-f0-9]{32}\.(jpg|png|gif|webp)$/.test(path)
+        ? path
+        : '';
+    },
     // Asked of the accounts store: does an account own this name? A guest may
     // not identify as a name somebody has taken, and the store here cannot
     // know that on its own. Always null on a server with no accounts, which
@@ -284,6 +296,7 @@ function createIdentityStore(options = {}) {
       uid: fields.uid,
       name: fields.name || '',
       avatar: fields.avatar || '🧑',
+      avatarPath: fields.avatarPath || null,
       // Two providers, and no third. A guest used to be the default and the
       // commonest kind; now an identity is an account, and an account came
       // either from here or from GameNight.
@@ -318,6 +331,7 @@ function createIdentityStore(options = {}) {
           uid: row.uid,
           name: row.name,
           avatar: row.avatar,
+          avatarPath: row.avatarPath || null,
           provider: row.provider,
           gnUserId: row.gnUserId,
           role: row.role,
@@ -360,6 +374,7 @@ function createIdentityStore(options = {}) {
       name: rec.name,
       nameKey: nameKeyOf(rec.name),
       avatar: rec.avatar,
+      avatarPath: rec.avatarPath || null,
       provider: rec.provider,
       role: rec.role,
       disabledAt: rec.disabledAt,
@@ -442,6 +457,7 @@ function createIdentityStore(options = {}) {
       token,
       name: rec.name,
       avatar: rec.avatar,
+      avatarPath: rec.avatarPath || null,
       provider: rec.provider,
       prefs: { ...rec.prefs },
     };
@@ -638,11 +654,21 @@ function createIdentityStore(options = {}) {
   // The record for a GameNight person, made or refreshed: the middle of both
   // doors below. The uid is a function of GameNight's user id, so a record
   // made before they ever arrive is the one they land on when they do.
-  function gameNightRecord({ sub, name, avatar, at }) {
+  // `avatarPath` is tri-state, and the three states each mean something:
+  //   undefined  leave whatever the record has. This is reserveFromGameNight,
+  //              which knows a member's id and name off a roster and nothing
+  //              about their photo, and must not erase one.
+  //   a path     set it.
+  //   null       clear it. A verified sign-in saying there is no photo is how
+  //              "I removed it on GameNight" arrives here, and without this a
+  //              deleted photo would live on this server for ever.
+  function gameNightRecord({ sub, name, avatar, avatarPath, at }) {
     if (sub === undefined || sub === null || String(sub) === '') return null;
     const safeName = sanitizeName(name);
     if (!safeName) return null;
     const safeAvatar = avatar ? sanitizeAvatar(avatar) : '';
+    const knowsPhoto = avatarPath !== undefined;
+    const safePath = avatarPath ? sanitizeAvatarPath(avatarPath) || null : null;
     const uid = `gn_${sub}`;
     let rec = identities.get(uid);
     let isNew = false;
@@ -650,7 +676,14 @@ function createIdentityStore(options = {}) {
     if (!rec) {
       if (!claim.name) return null;
       rec = newRecord(
-        { uid, name: claim.name, avatar: safeAvatar, provider: 'gamenight', gnUserId: sub },
+        {
+          uid,
+          name: claim.name,
+          avatar: safeAvatar,
+          avatarPath: knowsPhoto ? safePath : null,
+          provider: 'gamenight',
+          gnUserId: sub,
+        },
         at
       );
       hold(rec);
@@ -658,6 +691,7 @@ function createIdentityStore(options = {}) {
     } else {
       if (claim.name && claim.name !== rec.name) setName(rec, claim.name);
       if (safeAvatar) rec.avatar = safeAvatar;
+      if (knowsPhoto) rec.avatarPath = safePath;
     }
     if (claim.adjusted) {
       log({
@@ -670,12 +704,12 @@ function createIdentityStore(options = {}) {
     return { rec, isNew, wanted: safeName, adjusted: claim.adjusted };
   }
 
-  function identifyFromGameNight({ sub, name, avatar, userAgent } = {}) {
+  function identifyFromGameNight({ sub, name, avatar, avatarPath, userAgent } = {}) {
     if (sub === undefined || sub === null || String(sub) === '') return null;
     const existing = identities.get(`gn_${sub}`);
     if (existing && existing.disabledAt) return { error: 'disabled' };
     const at = now();
-    const made = gameNightRecord({ sub, name, avatar, at });
+    const made = gameNightRecord({ sub, name, avatar, avatarPath, at });
     if (!made) return null;
     const { rec, isNew, wanted, adjusted } = made;
     if (!isNew) rec.lastSeenAt = at;
@@ -707,6 +741,7 @@ function createIdentityStore(options = {}) {
       uid: rec.uid,
       name: rec.name,
       avatar: rec.avatar,
+      avatarPath: rec.avatarPath || null,
       provider: rec.provider,
       isNew,
       nameAdjusted: adjusted ? wanted : null,
@@ -751,7 +786,13 @@ function createIdentityStore(options = {}) {
   function get(uid) {
     const rec = identities.get(uid);
     return rec
-      ? { uid: rec.uid, name: rec.name, avatar: rec.avatar, provider: rec.provider }
+      ? {
+          uid: rec.uid,
+          name: rec.name,
+          avatar: rec.avatar,
+          avatarPath: rec.avatarPath || null,
+          provider: rec.provider,
+        }
       : null;
   }
 
@@ -972,6 +1013,7 @@ function createIdentityStore(options = {}) {
         uid: rec.uid,
         name: rec.name,
         avatar: rec.avatar,
+        avatarPath: rec.avatarPath || null,
         provider: rec.provider,
         role: rec.role,
         disabled: !!rec.disabledAt,

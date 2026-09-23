@@ -442,7 +442,7 @@ function renderInfoHost() {
   for (const r of seated) {
     const line = document.createElement('div');
     line.className = 'wr-row';
-    line.appendChild(createTextElement('span', 'wr-avatar', r.avatar || (r.isBot ? '🤖' : '🙂')));
+    line.appendChild(Avatars.element('wr-avatar', r, r.isBot ? '🤖' : '🙂'));
     line.appendChild(createTextElement('span', 'wr-name', r.name));
     line.appendChild(createTextElement('span', 'host-seat', `T${r.table} · ${fmtNum(r.chips)}`));
     const others = tables.filter((t) => t !== r.table && (counts.get(t) || 0) < field.tableSize);
@@ -1390,10 +1390,18 @@ function createReplayCardElement(card) {
   cardEl.className = `card replay-card ${color} suit-${card.suit}`;
   const front = document.createElement('div');
   front.className = 'card-front';
-  front.append(
-    createTextElement('div', 'card-rank', card.rank),
-    createTextElement('div', 'card-suit', suitSym)
-  );
+  // The same face the felt draws: the index and its mirror. A card in the
+  // replay is a card.
+  const index = (extra) => {
+    const el = document.createElement('div');
+    el.className = extra;
+    el.append(
+      createTextElement('span', 'card-rank', card.rank),
+      createTextElement('span', 'card-index-suit', suitSym)
+    );
+    return el;
+  };
+  front.append(index('card-corner'), index('card-corner-br'));
   cardEl.appendChild(front);
   return cardEl;
 }

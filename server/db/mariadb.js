@@ -170,7 +170,7 @@ function createMariaDatabase(options = {}) {
       // join would send every identity once per device it has.
       async all() {
         const [people] = await pool.query(
-          'SELECT uid, name, name_key, avatar, provider, role, disabled_at, gn_user_id, ' +
+          'SELECT uid, name, name_key, avatar, avatar_path, provider, role, disabled_at, gn_user_id, ' +
             'created_at, last_seen_at, prefs FROM identities'
         );
         const [devices] = await pool.query(
@@ -183,6 +183,7 @@ function createMariaDatabase(options = {}) {
             name: row.name,
             nameKey: row.name_key,
             avatar: row.avatar,
+            avatarPath: row.avatar_path || null,
             provider: row.provider,
             role: row.role,
             disabledAt: num(row.disabled_at),
@@ -216,11 +217,12 @@ function createMariaDatabase(options = {}) {
         try {
           await conn.beginTransaction();
           await conn.query(
-            'INSERT INTO identities (uid, name, name_key, avatar, provider, role, ' +
+            'INSERT INTO identities (uid, name, name_key, avatar, avatar_path, provider, role, ' +
               'disabled_at, gn_user_id, created_at, last_seen_at, prefs) ' +
-              'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+              'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
               'ON DUPLICATE KEY UPDATE name = VALUES(name), name_key = VALUES(name_key), ' +
-              'avatar = VALUES(avatar), provider = VALUES(provider), role = VALUES(role), ' +
+              'avatar = VALUES(avatar), avatar_path = VALUES(avatar_path), ' +
+              'provider = VALUES(provider), role = VALUES(role), ' +
               'disabled_at = VALUES(disabled_at), ' +
               'gn_user_id = VALUES(gn_user_id), last_seen_at = VALUES(last_seen_at), ' +
               'prefs = VALUES(prefs)',
@@ -229,6 +231,7 @@ function createMariaDatabase(options = {}) {
               record.name || '',
               record.nameKey || '',
               record.avatar || '🧑',
+              record.avatarPath || null,
               record.provider || 'local',
               record.role || 'player',
               Number.isFinite(record.disabledAt) ? record.disabledAt : null,

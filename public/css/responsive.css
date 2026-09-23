@@ -43,9 +43,9 @@
     /* The last term keeps a plate at the seat ring's widest point inside the
        stage. The chairs sit 16% of a radius past the felt edge, and a plate is
        only as wide as what it carries - a full-length name with the badges and
-       status a disconnected seat shows reaches the 140px cap. It reserves that
+       status a disconnected seat shows reaches the 212px cap. It reserves that
        whole plate a side, not the narrow one a quiet table happens to draw. */
-    width: min(74%, 760px, var(--table-fit-height), calc(92% - 230px));
+    width: min(74%, 760px, var(--table-fit-height), calc(92% - 340px));
   }
   .poker-table-wrapper::after {
     top: 80%;
@@ -54,27 +54,51 @@
     filter: blur(24px);
     transform: translateX(-50%) scaleY(0.56);
   }
+  .player-seat {
+    --hole-h: 67px;
+  }
   .player-hole-cards .card {
-    width: 42px;
-    height: 59px;
-  }
-  .player-hole-cards .card-rank {
-    --rank-size: 0.85rem;
-  }
-  .player-hole-cards .card-suit {
-    --suit-size: 0.95rem;
+    width: 48px;
   }
   .player-hole-cards .card-back {
-    width: 42px;
-    height: 59px;
+    width: 48px;
   }
+  /* The felt is capped at 760px and the chairs ride outside it, so the slack
+     at this width goes to the plates rather than sitting empty. The felt's own
+     width term below reserves the wider plate a side. */
   .player-info {
-    min-width: 108px;
-    max-width: 140px;
-    padding: 4px 7px 4px 5px;
+    --hero: 58px;
+    --hero-out: 14px;
+    min-width: 158px;
+    max-width: 212px;
+    padding-block: 6px;
+    padding-right: 15px;
+  }
+  .seat-empty-plate {
+    min-height: 54px;
+    padding-left: 15px;
   }
   .player-name {
-    font-size: 0.75rem;
+    font-size: 0.98rem;
+  }
+  .player-chips {
+    font-size: 1.05rem;
+  }
+  .seat-caption {
+    font-size: 0.72rem;
+  }
+  .player-totalbet {
+    font-size: 0.76rem;
+  }
+  .dealer-chip {
+    width: 25px;
+    height: 25px;
+    font-size: 0.66rem;
+  }
+  .sb-chip,
+  .bb-chip {
+    width: 20px;
+    height: 20px;
   }
   .player-host-badge {
     font-size: 0.45rem;
@@ -94,6 +118,58 @@
     --board-card-h: 77px;
   }
 }
+/* Between a big screen and a tablet there is a shape the plate above does not
+   fit: a laptop wide enough to keep the side panel docked and short enough
+   that the chairs are already close together. 1024x640 is the one the suite
+   measures, and at the 182px cap the upper chairs touch their neighbours. The
+   plate steps back to what it was before it grew. */
+@media (max-width: 1200px) {
+  .player-info {
+    --hero: 46px;
+    --hero-out: 11px;
+    min-width: 118px;
+    max-width: 152px;
+    padding-block: 4px;
+    padding-right: 11px;
+  }
+  .seat-empty-plate {
+    min-height: 44px;
+    padding-left: 11px;
+  }
+  .player-name {
+    font-size: 0.82rem;
+  }
+  .player-chips {
+    font-size: 0.88rem;
+  }
+  .seat-caption {
+    font-size: 0.6rem;
+  }
+  .player-totalbet {
+    font-size: 0.66rem;
+  }
+  .dealer-chip {
+    width: 20px;
+    height: 20px;
+    font-size: 0.55rem;
+  }
+  .sb-chip,
+  .bb-chip {
+    width: 16px;
+    height: 16px;
+  }
+  .player-seat {
+    --hole-h: 59px;
+  }
+  .player-hole-cards .card,
+  .player-hole-cards .card-back {
+    width: 42px;
+  }
+  .poker-table-wrapper {
+    width: min(74%, 760px, var(--table-fit-height), calc(92% - 240px));
+  }
+}
+
 @media (max-width: 768px) {
   .login-container {
     max-width: 400px;
@@ -139,15 +215,15 @@
     --seat-rx: 34;
   }
   .player-info {
-    padding: 3px 5px;
-    gap: 4px;
+    --hero: 32px;
+    --hero-out: 8px;
+    padding-block: 3px;
+    padding-right: 7px;
     min-width: 88px;
     max-width: 110px;
   }
-  .seat-avatar {
-    width: 22px;
-    height: 22px;
-    font-size: 0.8rem;
+  .seat-empty-plate {
+    padding-left: 7px;
   }
   .seat-caption {
     display: none;
@@ -180,23 +256,14 @@
   .player-chips {
     font-size: 0.65rem;
   }
+  .player-seat {
+    --hole-h: 42px;
+  }
   .player-hole-cards .card {
     width: 30px;
-    height: 42px;
-  }
-  .player-hole-cards .card-rank {
-    --rank-size: 0.6rem;
-  }
-  .player-hole-cards .card-suit {
-    --suit-size: 0.65rem;
-  }
-  .player-hole-cards .card-corner,
-  .player-hole-cards .card-corner-br {
-    display: none;
   }
   .player-hole-cards .card-back {
     width: 30px;
-    height: 42px;
   }
   .player-hole-cards {
     gap: 2px;
@@ -204,9 +271,6 @@
   :root {
     --board-card-w: 40px;
     --board-card-h: 56px;
-    --board-rank: 0.9rem;
-    --board-suit: 1rem;
-    --board-corner: 0.35rem;
     --board-gap: 4px;
   }
   /* The three bars share this slot, and on a phone with a home indicator the
@@ -310,12 +374,16 @@
     min-width: 52px;
     max-width: 108px;
   }
-  .dealer-chip,
-  .sb-chip,
-  .bb-chip {
+  .dealer-chip {
     width: 16px;
     height: 16px;
     font-size: 0.4rem;
+  }
+  .sb-chip,
+  .bb-chip {
+    width: 13px;
+    height: 13px;
+    font-size: 0.34rem;
   }
   .tournament-banner {
     font-size: 0.55rem;
@@ -371,10 +439,15 @@
     visibility: hidden;
   }
   .player-info {
+    --hero: 27px;
+    --hero-out: 6px;
     min-width: 72px;
     max-width: 94px;
-    padding: 2px 4px;
-    gap: 3px;
+    padding-block: 2px;
+    padding-right: 6px;
+  }
+  .seat-empty-plate {
+    padding-left: 6px;
   }
   /* Your own cards are the size of the board's, which is taller than the seat
      had spare here: the plate below them gives the height back rather than the
@@ -387,11 +460,6 @@
   }
   .player-seat.is-me .player-hole-cards {
     margin-bottom: 2px;
-  }
-  .seat-avatar {
-    width: 18px;
-    height: 18px;
-    font-size: 0.66rem;
   }
   .player-name {
     font-size: 0.58rem;
@@ -423,8 +491,6 @@
   :root {
     --board-card-w: 70px;
     --board-card-h: 98px;
-    --board-rank: 1.8rem;
-    --board-suit: 1.8rem;
   }
 }
 /* Landscape phones: tight vertical space */
@@ -505,23 +571,24 @@
   :root {
     --board-card-w: 34px;
     --board-card-h: 48px;
-    --board-rank: 0.78rem;
-    --board-suit: 0.86rem;
-    --board-corner: 0.3rem;
   }
   .pot-amount {
     font-size: 0.82rem;
   }
+  /* The one viewport where the hero cannot hang off the plate: the banner is
+     200px of a 844px screen and the top two chairs clear its edge by two
+     pixels. The circle still overflows the plate's top and bottom, which is
+     most of what it is for. */
   .player-info {
+    --hero: 27px;
+    --hero-out: 1px;
     min-width: 84px;
     max-width: 104px;
-    padding: 2px 5px;
-    gap: 4px;
+    padding-block: 2px;
+    padding-right: 7px;
   }
-  .seat-avatar {
-    width: 20px;
-    height: 20px;
-    font-size: 0.72rem;
+  .seat-empty-plate {
+    padding-left: 7px;
   }
   .seat-caption {
     display: none;
@@ -540,16 +607,12 @@
   .player-hole-cards {
     gap: 1px;
   }
+  .player-seat {
+    --hole-h: 36px;
+  }
   .player-hole-cards .card,
   .player-hole-cards .card-back {
     width: 26px;
-    height: 36px;
-  }
-  .player-hole-cards .card-rank {
-    --rank-size: 0.5rem;
-  }
-  .player-hole-cards .card-suit {
-    --suit-size: 0.54rem;
   }
   .player-action-badge {
     top: -16px;
@@ -558,12 +621,16 @@
     min-width: 46px;
     max-width: 94px;
   }
-  .dealer-chip,
-  .sb-chip,
-  .bb-chip {
+  .dealer-chip {
     width: 14px;
     height: 14px;
     font-size: 0.36rem;
+  }
+  .sb-chip,
+  .bb-chip {
+    width: 12px;
+    height: 12px;
+    font-size: 0.32rem;
   }
   .top-bar {
     min-height: 28px;

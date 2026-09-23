@@ -105,7 +105,7 @@ describe('GameNight sign-in over the socket', () => {
       unclaimed: expect.any(Boolean),
       // No token in this environment, so no claim; the pairing is the door.
       claim: false,
-      gamenight: { connectUrl: `${ISSUER}/connect.php`, audience: AUDIENCE },
+      gamenight: { connectUrl: `${ISSUER}/connect.php`, audience: AUDIENCE, origin: ISSUER },
     });
     const r = await identify(s, { gnToken: token(), avatar: '🦊' });
     expect(r.kind).toBe('identified');

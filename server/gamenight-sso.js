@@ -121,6 +121,10 @@ function createGameNightVerifier(options = {}) {
         sub: claims.sub,
         name: claims.name,
         tier: typeof claims.tier === 'string' ? claims.tier : null,
+        // Copied without judging its shape, the way `name` is: there is one
+        // place that decides what an avatar path may be, and it is the
+        // identity store's sanitiser, not here.
+        avatarPath: typeof claims.avatar_path === 'string' ? claims.avatar_path : null,
         iss: claims.iss,
         aud: audience,
         iat: claims.iat,

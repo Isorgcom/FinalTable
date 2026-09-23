@@ -157,6 +157,9 @@ describe('pairing with GameNight from the Admin page', () => {
     expect((await heard).gamenight).toEqual({
       connectUrl: `${gn.url}/connect.php`,
       audience: 'finaltable',
+      // Where a member's photo is fetched from, so a re-pair moves every face
+      // at the table without anybody reloading anything.
+      origin: gn.url,
     });
 
     const { s: player } = await connect();
@@ -177,6 +180,9 @@ describe('pairing with GameNight from the Admin page', () => {
     expect((await info).gamenight).toEqual({
       connectUrl: `${gn.url}/connect.php`,
       audience: 'finaltable',
+      // Where a member's photo is fetched from, so a re-pair moves every face
+      // at the table without anybody reloading anything.
+      origin: gn.url,
     });
   });
 

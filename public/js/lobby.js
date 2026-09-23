@@ -220,6 +220,10 @@
   function onServerInfo(info) {
     serverInfo = info || null;
     window.__serverInfo = serverInfo;
+    // Where a GameNight photo is fetched from, refreshed on every serverInfo -
+    // which the server sends again the moment an admin pairs or re-pairs, so
+    // the faces follow a pairing without anybody reloading anything.
+    Avatars.setOrigin(serverInfo && serverInfo.gamenight ? serverInfo.gamenight.origin : '');
     renderIdentityRow();
     const version = serverInfo && serverInfo.version;
     $('lobbyMenuVersion').textContent = version ? `FinalTable v${version}` : 'FinalTable';
@@ -227,6 +231,19 @@
     // serverInfo only ever arrives over a live connection.
     setConnection(true);
     noticeStaleAssets(serverInfo ? serverInfo.assetVersion : '');
+  }
+
+  // "Playing as <face> <name>", built as a row rather than a sentence, because
+  // a face can be a photograph now and a string cannot hold one.
+  function setIdentityStatus(lead, ident) {
+    const el = $('identityStatus');
+    if (!el) return;
+    el.textContent = '';
+    el.append(
+      document.createTextNode(lead + ' '),
+      Avatars.element('status-avatar', ident),
+      document.createTextNode(' ' + ident.name)
+    );
   }
 
   function onIdentified(ident) {
@@ -237,10 +254,10 @@
     $('playerName').value = ident.name;
     if (ident.provider === 'gamenight') {
       store.set(PROVIDER_KEY, 'gamenight');
-      $('identityStatus').textContent = `Signed in with GameNight as ${ident.avatar} ${ident.name}`;
+      setIdentityStatus('Signed in with GameNight as', ident);
     } else {
       store.set(PROVIDER_KEY, 'local');
-      $('identityStatus').textContent = `Playing as ${ident.avatar} ${ident.name}`;
+      setIdentityStatus('Playing as', ident);
     }
     // A GameNight name that was already somebody's here. They are playing, but
     // not under the name they expected, and being told beats wondering.
@@ -625,7 +642,10 @@
 
     const name = document.createElement('div');
     name.className = 'session-name';
-    name.textContent = `${row.avatar || '🧑'} ${row.name}`;
+    // A row, not a sentence: the face is drawn beside the name rather than
+    // spelled into it, so a photograph can take the emoji's place.
+    name.textContent = '';
+    name.append(Avatars.element('session-avatar', row), document.createTextNode(row.name));
     what.appendChild(name);
 
     const tags = [];
@@ -2880,9 +2900,7 @@
     const dot = document.createElement('span');
     dot.className = 'wr-dot' + (row.connected ? ' on' : '');
     dot.title = row.connected ? 'Connected' : 'Not connected';
-    const avatar = document.createElement('span');
-    avatar.className = 'wr-avatar';
-    avatar.textContent = row.avatar || '🧑';
+    const avatar = Avatars.element('wr-avatar', row);
     const name = document.createElement('span');
     name.className = 'wr-name';
     name.textContent = row.name;
@@ -2942,9 +2960,7 @@
     const dot = document.createElement('span');
     dot.className = 'wr-dot' + (row.connected ? ' on' : '');
     dot.title = row.connected ? 'Connected' : 'Not connected';
-    const avatar = document.createElement('span');
-    avatar.className = 'wr-avatar';
-    avatar.textContent = row.avatar || '🧑';
+    const avatar = Avatars.element('wr-avatar', row);
     const name = document.createElement('span');
     name.className = 'wr-name';
     name.textContent = row.name;

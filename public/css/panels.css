@@ -393,10 +393,11 @@
   height: 50px;
   flex: none;
 }
+/* The height again as the number the face is a fraction of. It is said once
+   and the box reads it back, so the two cannot come apart. */
 .cards-mini {
-  --rank-size: 0.78rem;
-  --suit-size: 0.84rem;
-  --corner-size: 0.36rem;
+  --card-h: 50px;
+  height: var(--card-h);
 }
 .cards-mini .card-front {
   display: block;
@@ -413,19 +414,19 @@
   gap: 3px;
 }
 .cards-pip {
+  /* No index on these, so the pip is drawn bigger than it is on a real card:
+     it is the whole of what the preview is showing. Its own --pip-scale also
+     means the face setting cannot reach in and resize it, which would be two
+     things changing at once in a preview about one of them. */
+  --card-h: 34px;
+  --pip-scale: 0.32;
   display: block;
   width: 24px;
-  height: 34px;
+  height: var(--card-h);
   flex: none;
-  --suit-size: 0.72rem;
 }
 .cards-pip .card-front {
   display: block;
-}
-/* The pips say which suits move, so the face setting must not also resize
-   them: two things changing at once in one preview is neither of them. */
-.cards-pip .card-suit {
-  font-size: var(--suit-size);
 }
 .result-separator {
   margin: 10px 0;
@@ -678,9 +679,10 @@
   opacity: 0.75;
 }
 .replay-card {
+  --card-h: 56px;
   display: inline-block;
   width: 40px;
-  height: 56px;
+  height: var(--card-h);
 }
 /* A card that was never turned over, beside one that was. */
 .replay-card-back {
@@ -698,13 +700,7 @@
 }
 .replay-card .card-front {
   width: 40px;
-  height: 56px;
-}
-.replay-card .card-rank {
-  --rank-size: 0.9rem;
-}
-.replay-card .card-suit {
-  --suit-size: 1rem;
+  height: var(--card-h);
 }
 .replay-hand-list {
   max-height: 350px;

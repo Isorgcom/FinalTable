@@ -1017,15 +1017,37 @@
   background: #7bca95;
   box-shadow: 0 0 6px rgba(123, 202, 149, 0.6);
 }
+/* The roster's copy of .seat-avatar. It follows the felt: a player who is a
+   circle at the table should not be a square in the waiting room. */
+.status-avatar,
+.session-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.status-avatar {
+  width: 1.15em;
+  height: 1.15em;
+}
+.session-avatar {
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+}
 .wr-avatar {
   width: 30px;
   height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  overflow: hidden;
+  border-radius: 50%;
   background: rgba(201, 168, 76, 0.1);
-  border: 1px solid rgba(201, 168, 76, 0.22);
+  border: 1px solid rgba(201, 168, 76, 0.28);
   font-size: 1.05rem;
   flex-shrink: 0;
 }

@@ -75,6 +75,16 @@ const STEPS = [
       ]);
     },
   },
+  // A GameNight member has a face here now. It sits beside the emoji rather
+  // than replacing it: the emoji is what a local account picked, what a bot
+  // has, and what anybody falls back to when the picture cannot be fetched -
+  // which is every seat at the table the moment a pairing goes away. A path
+  // rather than a URL, so re-pairing a GameNight moves every face with it and
+  // nothing written down can outlive the pairing that made it true.
+  {
+    name: '004-identities-avatar-path',
+    sql: ['ALTER TABLE identities ADD COLUMN IF NOT EXISTS avatar_path VARCHAR(128) NULL'],
+  },
 ];
 
 async function runMigrations(options = {}) {

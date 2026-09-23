@@ -52,6 +52,9 @@ describe('identity store', () => {
       uid: me.uid,
       name: 'Bryce',
       avatar: '🦊',
+      // A local account has no GameNight photo, and the field says so rather
+      // than being absent: the client tells "no photo" from "not told".
+      avatarPath: null,
       provider: 'local',
     });
 

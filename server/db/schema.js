@@ -36,6 +36,7 @@ const SCHEMA = [
      name         VARCHAR(64)  NOT NULL,
      name_key     VARCHAR(64)  NOT NULL,
      avatar       VARCHAR(16)  NOT NULL DEFAULT '🧑',
+     avatar_path  VARCHAR(128) NULL,
      provider     VARCHAR(16)  NOT NULL DEFAULT 'local',
      role         VARCHAR(16)  NOT NULL DEFAULT 'player',
      disabled_at  BIGINT       NULL,

@@ -34,6 +34,7 @@ module.exports = [
         clearTimeout: 'readonly',
         window: 'readonly',
         THREE: 'readonly',
+        Avatars: 'readonly',
         describe: 'readonly',
         test: 'readonly',
         expect: 'readonly',

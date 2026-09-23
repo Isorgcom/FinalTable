@@ -262,6 +262,7 @@ function createTournamentRegistry(deps = {}) {
         uid: e.uid,
         name: e.name,
         avatar: e.avatar || null,
+        avatarPath: e.avatarPath || null,
         provider: e.provider || 'guest',
         isBot: !!e.isBot,
       })),
@@ -1266,6 +1267,7 @@ function createTournamentRegistry(deps = {}) {
       uid,
       name: who.name,
       avatar: who.avatar,
+      avatarPath: who.avatarPath || null,
       provider: who.provider || 'guest',
     });
     entry.registrations.set(uid, {
@@ -1570,6 +1572,7 @@ function createTournamentRegistry(deps = {}) {
       uid,
       name: who.name,
       avatar: who.avatar,
+      avatarPath: who.avatarPath || null,
       provider: who.provider || 'guest',
     };
     if (entry.status === 'registering') {
@@ -1623,6 +1626,7 @@ function createTournamentRegistry(deps = {}) {
         uid,
         name: who ? who.name : 'Player',
         avatar: who ? who.avatar : null,
+        avatarPath: who ? who.avatarPath || null : null,
         provider: who ? who.provider || 'guest' : 'guest',
         askedAt: row.askedAt,
         connected: !!row.socketId,
@@ -2844,6 +2848,7 @@ function createTournamentRegistry(deps = {}) {
           uid: e.uid,
           name: e.name,
           avatar: e.avatar || null,
+          avatarPath: e.avatarPath || null,
           provider: e.provider || 'guest',
           isBot: !!e.isBot,
         });

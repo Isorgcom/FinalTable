@@ -355,9 +355,6 @@
 :root {
   --board-card-w: 60px;
   --board-card-h: 84px;
-  --board-rank: 1.4rem;
-  --board-suit: 1.4rem;
-  --board-corner: 0.6rem;
   --board-gap: 8px;
 }
 .community-cards {
@@ -369,15 +366,8 @@
   width: var(--board-card-w);
   height: var(--board-card-h);
 }
-.community-cards .card-rank {
-  --rank-size: var(--board-rank);
-}
-.community-cards .card-suit {
-  --suit-size: var(--board-suit);
-}
-.community-cards .card-corner,
-.community-cards .card-corner-br {
-  --corner-size: var(--board-corner);
+.community-cards .card {
+  --card-h: var(--board-card-h);
 }
 .pot-display {
   position: absolute;
@@ -452,8 +442,12 @@
 
 /* ═══ CARDS ═══ */
 .card {
+  /* The height twice over: once as the box, once as the number the index and
+     the pip are a fraction of. Every context below resets --card-h and the
+     face follows without a size of its own. */
+  --card-h: 84px;
   width: 60px;
-  height: 84px;
+  height: var(--card-h);
   border-radius: 6px;
   position: relative;
   font-family: var(--font-body);
@@ -522,59 +516,91 @@
     linear-gradient(180deg, rgba(0, 0, 0, 0) 62%, rgba(82, 58, 22, 0.08) 100%);
   pointer-events: none;
 }
-/* The rank, the suit and the two corner indices. Every context that draws a
-   card - the board, a seat, your own board-sized pair, the replay - sets the
-   three sizes below as variables rather than as font-size, so that the
-   player's face setting multiplies them in one place each instead of at every
-   breakpoint that ever resizes a card. The fallbacks are the board's.
-   The suit is deliberately not multiplied by anything: see the face scales in
-   tokens.css for why it is the one that stays put. */
-.card-rank {
+/* The index, and the same index upside down. Every context that draws a card
+   - the board, a seat, your own board-sized pair, the replay - says how tall
+   its card is in --card-h and says nothing about the face at all: the index is
+   a fraction of that one number, so a context that resizes its cards resizes
+   what is on them and cannot leave a board's index on a card a phone deals.
+   The fallback is the board's.
+   The two are on opposite corners, so they need clear of each other on one
+   axis and not both, which is what lets the index be a quarter of the card
+   rather than the eighth a centred pip would have allowed. */
+.card-corner,
+.card-corner-br {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, calc(-65% * var(--rank-lift, 1)));
-  font-size: calc(var(--rank-size, 1.4rem) * var(--rank-scale));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Big enough to read from across a table, which is the whole job of an
+     index, and a fraction of the card so that it is the same index on every
+     card the table draws. The fraction is in tokens.css. */
+  font-size: calc(var(--card-h, 84px) * var(--index-scale, 0.25) * var(--rank-scale, 1));
   font-weight: 600;
-  line-height: 1;
+  /* Tight, because the rank and the suit beneath it are one mark rather than
+     two lines of a list. It is also the cheapest room on the card: the index
+     is two lines tall and the card pays for it twice, once here and once in
+     the mirror, so a tenth off the leading is worth a tenth more index at the
+     same clearance. */
+  line-height: 0.78;
 }
+.card-corner {
+  top: 2%;
+  left: 3%;
+}
+/* The same index the other way up, as a card has. It is the first thing a
+   tucked hole card loses behind the plate, which is the right thing to lose:
+   nothing on the face moves to keep it. */
+.card-corner-br {
+  bottom: 2%;
+  right: 3%;
+  transform: rotate(180deg);
+}
+.card-rank {
+  font-size: 1em;
+}
+/* The pips come from the vendored mono face, not from whatever the machine
+   happens to offer for U+2660..2663. Inter has no suits, so they were falling
+   through to a system font that differs by platform and does not draw the four
+   at one size: measured at 27px in that stack the heart's ink was 24 wide and
+   the diamond's 13, which is why a row of them looked ragged. JetBrains Mono
+   ships with this server, has all four, and draws them on one advance. */
+.card-index-suit,
+.card-suit {
+  font-family: var(--font-mono);
+}
+/* As tall as the rank above it, near enough. A suit drawn as a speck under a
+   big number is what makes an index look timid: on a real card with an
+   oversized index the two are one mark, of a size.
+   The line-height is the trick that pays for it. A suit glyph inks about
+   three fifths of its em, so a box a whole em tall is mostly air - and it was
+   that air, not the glyph, deciding how big the suit could be. Sized well
+   below one, the glyph draws past its own line, where there is nothing to
+   hit: the card is empty from here to the mirror. At 1.3em on a line of
+   0.62 the suit is drawn half again the size it was and still sits in less
+   room than it used to take. */
+.card-index-suit {
+  font-size: 1.3em;
+  line-height: 0.62;
+}
+/* The centre pip. Nothing on the felt draws one any more - see the renderer
+   for why - and what is left of it is the deck preview in the card settings,
+   which is four suits and no ranks and sets its own --pip-scale. */
 .card-suit {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, 20%);
-  font-size: var(--suit-size, 1.4rem);
+  transform: translate(-50%, -50%);
+  font-size: calc(var(--card-h, 84px) * var(--pip-scale, 0.2));
   line-height: 1;
 }
-.card-corner {
-  position: absolute;
-  top: 3px;
-  left: 4px;
-  font-size: calc(var(--corner-size, 0.6rem) * var(--index-scale, 1));
-  font-weight: 600;
-  line-height: 1.15;
-  text-align: center;
-}
-.card-corner-br {
-  position: absolute;
-  bottom: 3px;
-  right: 4px;
-  font-size: calc(var(--corner-size, 0.6rem) * var(--index-scale, 1));
-  font-weight: 600;
-  line-height: 1.15;
-  text-align: center;
-  transform: rotate(180deg);
-}
-.card.red .card-rank,
-.card.red .card-suit,
 .card.red .card-corner,
-.card.red .card-corner-br {
+.card.red .card-corner-br,
+.card.red .card-suit {
   color: #b53535;
 }
-.card.black .card-rank,
-.card.black .card-suit,
 .card.black .card-corner,
-.card.black .card-corner-br {
+.card.black .card-corner-br,
+.card.black .card-suit {
   color: #2a2a2a;
 }
 
@@ -583,16 +609,14 @@
    chose - tokens.css holds both sets - so this says only which suits are the
    ones in question. The spade and the heart never are, and the red and black
    rules above still draw them. */
-.card.suit-diamonds .card-rank,
-.card.suit-diamonds .card-suit,
 .card.suit-diamonds .card-corner,
-.card.suit-diamonds .card-corner-br {
+.card.suit-diamonds .card-corner-br,
+.card.suit-diamonds .card-suit {
   color: var(--suit-diamonds);
 }
-.card.suit-clubs .card-rank,
-.card.suit-clubs .card-suit,
 .card.suit-clubs .card-corner,
-.card.suit-clubs .card-corner-br {
+.card.suit-clubs .card-corner-br,
+.card.suit-clubs .card-suit {
   color: var(--suit-clubs);
 }
 
@@ -767,6 +791,13 @@
 
 /* ═══ PLAYER SEATS ═══ */
 .player-seat {
+  --hole-h: 78px;
+  /* How much of a hole card the plate covers. The ceiling is not taste: the
+     index has to clear the plate or the card stops saying what it is, and at
+     the large face that index reaches 46% of the way down. Past 0.54 the suit
+     goes behind the plate and the card is a rank with nothing under it. */
+  --tuck: calc(var(--hole-h) * 0.5);
+  padding-top: calc(var(--tuck) + 6px);
   position: absolute;
   display: flex;
   flex-direction: column;
@@ -1067,36 +1098,72 @@
 .player-seat.spectating .player-info {
   border-color: rgba(113, 132, 164, 0.34);
 }
-/* The plate: a square avatar beside a column of name, caption and stack. */
+/* The plate: a round avatar capping a pill, beside a column of name, caption
+   and stack.
+   The outer box is the one thing that may not move: e2e/table.spec.js sweeps
+   every .player-info at six viewports for collisions with its neighbours, the
+   action panel and the felt bets, and responsive.css reserves a measured
+   230px of stage for one plate a side. So the bigger circle is paid for out
+   of the left padding rather than added outside it - 3 + 32 + 6 + 9 is 50px
+   of furniture against the 6 + 30 + 7 + 8 that the square tile cost, and the
+   name keeps the pixel. */
 .player-info {
+  --hero: 66px;
+  --hero-out: 16px;
+  /* The hero is absolutely placed, so the plate reserves its width as padding
+     and never takes its height at all. Doing it with a negative margin instead
+     meant the plate's own content height had to be known in advance, and at
+     the widths where the text column is shorter than the circle that margin
+     turned positive and grew the plate into the banner above it. */
+  padding-left: calc(var(--hero) - var(--hero-out));
   display: flex;
   align-items: center;
-  gap: 7px;
   text-align: left;
-  background: rgba(13, 31, 18, 0.85);
+  /* Opaque, and no longer frosted. The cards now sit behind the plate rather
+     than above it, and a translucent plate smeared them through its own blur
+     instead of cutting them off cleanly. */
+  background: #102616;
   border: 1px solid rgba(92, 61, 26, 0.3);
-  border-radius: 6px;
-  padding: 5px 8px 5px 6px;
-  min-width: 118px;
-  max-width: 152px;
-  backdrop-filter: blur(8px);
+  border-radius: 999px;
+  padding-block: 8px;
+  padding-right: 18px;
+  min-width: 180px;
+  max-width: 250px;
   transition:
     box-shadow 0.3s,
     border-color 0.3s;
   position: relative;
   cursor: default;
 }
+/* The hero: bigger than the plate is tall, hanging off its left end and over
+   its top and bottom edges. The negative margins are what keep that free -
+   they shrink the flex item's margin box back to nothing, so the plate's own
+   height and width are still set by the text column beside it and the box the
+   collision sweep measures does not move. What the sweep does have to learn is
+   that the seat is now wider than its plate; e2e/table.spec.js measures the
+   union of the two. */
+.seat-hero {
+  position: absolute;
+  left: calc(var(--hero-out) * -1);
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--hero);
+  height: var(--hero);
+  z-index: 1;
+}
+/* The face itself, inset far enough to leave the ring its own track. Clipped
+   to a circle because it holds a photograph from GameNight. */
 .seat-avatar {
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  position: absolute;
+  inset: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  background: rgba(201, 168, 76, 0.1);
-  border: 1px solid rgba(201, 168, 76, 0.22);
-  font-size: 1.05rem;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #17331f;
+  border: 1px solid rgba(201, 168, 76, 0.28);
+  font-size: calc(var(--hero) * 0.52);
   line-height: 1;
   opacity: 1;
 }
@@ -1118,7 +1185,7 @@
   gap: 4px;
   min-width: 0;
   font-family: var(--font-body);
-  font-size: 0.85rem;
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--cream);
   line-height: 1.2;
@@ -1146,7 +1213,7 @@
   text-overflow: ellipsis;
 }
 .seat-caption {
-  font-size: 0.6rem;
+  font-size: 0.8rem;
   color: var(--smoke);
   white-space: nowrap;
   overflow: hidden;
@@ -1161,7 +1228,7 @@
   border-radius: 4px;
   background: rgba(201, 168, 76, 0.12);
   color: var(--gold);
-  font-size: 0.5rem;
+  font-size: 0.64rem;
   font-weight: 600;
   line-height: 1.1;
   text-transform: uppercase;
@@ -1176,7 +1243,7 @@
   border-radius: 4px;
   background: rgba(74, 122, 90, 0.14);
   color: #9bd8ae;
-  font-size: 0.5rem;
+  font-size: 0.64rem;
   font-weight: 600;
   line-height: 1.1;
   text-transform: uppercase;
@@ -1191,7 +1258,7 @@
   border-radius: 4px;
   background: rgba(74, 122, 90, 0.16);
   color: #b6e7c3;
-  font-size: 0.5rem;
+  font-size: 0.64rem;
   font-weight: 600;
   line-height: 1.1;
   text-transform: uppercase;
@@ -1206,7 +1273,7 @@
   border-radius: 4px;
   background: rgba(73, 92, 125, 0.16);
   color: #c3d4f1;
-  font-size: 0.5rem;
+  font-size: 0.64rem;
   font-weight: 600;
   line-height: 1.1;
   text-transform: uppercase;
@@ -1221,7 +1288,7 @@
   border-radius: 4px;
   background: rgba(110, 71, 49, 0.18);
   color: #e2c1af;
-  font-size: 0.5rem;
+  font-size: 0.64rem;
   font-weight: 600;
   line-height: 1.1;
   text-transform: uppercase;
@@ -1229,20 +1296,20 @@
 }
 .player-chips {
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: 1.2rem;
   font-weight: 600;
   color: var(--gold);
 }
 .player-totalbet {
   color: #e88;
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.84rem;
   font-weight: 600;
 }
 /* Stands in for the stack while it applies (see seatStatus). */
 .seat-status {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1258,10 +1325,12 @@
   font-style: italic;
 }
 
-/* An open seat before the first deal. */
+/* An open seat before the first deal. No avatar to cap it, so the lopsided
+   padding the occupied plate needs would push the label off centre. */
 .seat-empty-plate {
   justify-content: center;
-  min-height: 42px;
+  min-height: 62px;
+  padding-left: 18px;
   background: none;
   border: 1px dashed rgba(201, 168, 76, 0.22);
   backdrop-filter: none;
@@ -1326,50 +1395,46 @@
    The depletion is a dash pattern set from JS on every tick, not a CSS
    animation. Under prefers-reduced-motion every animation-duration collapses to
    0.01ms, and an animated outline would jump straight to empty. */
-.hole-clock {
+/* The ring round the face. Its own element over the clipped circle, so the
+   stroke is not cut in half by the face's own overflow:hidden.
+   Set from JS rather than animated in CSS: prefers-reduced-motion collapses
+   every animation-duration to 0.01ms, and an animated ring would jump straight
+   to empty rather than simply stop sweeping. */
+.seat-clock {
   position: absolute;
-  /* Sized explicitly rather than by four insets. An svg with a viewBox is a
-     replaced element with an intrinsic 1:1 ratio, so `height: auto` took the
-     width instead of the box - 96x96 around a 88x59 card row, hanging 27px over
-     the plate below. */
-  top: -5px;
-  left: -5px;
-  width: calc(100% + 10px);
-  height: calc(100% + 10px);
+  inset: 0;
   overflow: visible;
   fill: none;
   pointer-events: none;
+  /* Twelve o'clock, clockwise: where an eye looks for a clock. */
+  transform: rotate(-90deg);
   z-index: 2;
 }
-.hole-clock.hidden {
+.seat-clock.hidden {
   display: none;
 }
-.hole-clock rect {
+.seat-clock circle {
   stroke: #7bca95;
-  /* Thick enough to read as a tube round the cards rather than a hairline, with
-     round caps so the shrinking end stays blunt instead of tapering. */
-  stroke-width: 6;
+  stroke-width: 7;
   stroke-linecap: round;
   filter: drop-shadow(0 0 3px rgba(123, 202, 149, 0.55));
-  /* The clock is set from JS every 250ms; this carries it between ticks so it
-     reads as a sweep rather than a staircase. Collapses under
-     prefers-reduced-motion, which leaves the steps - the right trade there. */
+  /* Carried between the 250ms ticks so it reads as a sweep rather than a
+     staircase. Collapses under reduced motion, which leaves the steps. */
   transition:
     stroke-dashoffset 260ms linear,
     stroke-dasharray 260ms linear;
 }
 /* Fifteen seconds. Amber, the same warning tone the bubble banner uses. */
-.hole-clock.is-warning rect {
+.seat-clock.is-warning circle {
   stroke: #ffb74d;
   filter: drop-shadow(0 0 4px rgba(255, 183, 77, 0.6));
   animation: clockPulse 1.1s ease-in-out infinite;
 }
-/* Nine. The red the old pill used at its own critical threshold, so nothing new
-   enters the felt's vocabulary. */
-.hole-clock.is-urgent rect {
+/* Nine. Red, thicker, and twice the pulse. */
+.seat-clock.is-urgent circle {
   stroke: #d97059;
-  stroke-width: 7;
-  filter: drop-shadow(0 0 6px rgba(217, 112, 89, 0.7));
+  stroke-width: 8;
+  filter: drop-shadow(0 0 5px rgba(217, 112, 89, 0.7));
   animation: clockPulse 0.55s ease-in-out infinite;
 }
 @keyframes clockPulse {
@@ -1378,17 +1443,16 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.45;
+    opacity: 0.55;
   }
 }
-/* A pulsing outline is an accessibility problem for some people, and the colour
-   carries the message on its own - the same call panels.css makes for the
-   bubble badge, which is the app's only other looping pulse. */
 @media (prefers-reduced-motion: reduce) {
-  .hole-clock rect {
+  .seat-clock.is-warning circle,
+  .seat-clock.is-urgent circle {
     animation: none;
   }
 }
+
 .player-action-badge {
   position: absolute;
   top: -26px;
@@ -1448,126 +1512,108 @@
   }
 }
 
+/* The cards tuck behind the plate and poke up by half. The overlap
+   is a fraction of the card rather than a pixel count, so it holds at every
+   size and on the viewer's own seat, whose cards are board-sized. --hole-h is
+   the one number a breakpoint moves.
+   The seat pays the overlap back as padding at the top, which is what keeps
+   the plate where it has always been. A chair is placed on the ring by its own
+   centre, so anything that changes a seat's height moves its plate across the
+   felt: tucking the cards without this lifted the two top plates into the
+   tournament banner, and taking the cards out of flow altogether lifted every
+   plate by half a card. The seat's height is what it was, the plate has not
+   moved, and the cards have come down over it. */
 .player-hole-cards {
   position: relative;
   display: flex;
   gap: 4px;
-  margin-bottom: 6px;
+  margin-bottom: calc(var(--tuck) * -1);
 }
 .player-hole-cards .card {
-  width: 48px;
-  height: 67px;
+  --card-h: var(--hole-h);
+  width: 56px;
+  height: var(--card-h);
 }
 .player-hole-cards .card-front {
   width: 100%;
   height: 100%;
 }
-.player-hole-cards .card-rank {
-  --rank-size: 1rem;
-}
-.player-hole-cards .card-suit {
-  --suit-size: 1.1rem;
-}
-.player-hole-cards .card-corner {
-  --corner-size: 0.45rem;
-  top: 2px;
-  left: 3px;
-}
-.player-hole-cards .card-corner-br {
-  --corner-size: 0.45rem;
-  bottom: 2px;
-  right: 3px;
-}
 .player-hole-cards .card-back {
-  width: 48px;
-  height: 67px;
+  width: 56px;
+  height: var(--hole-h);
 }
 
 /* Your own two cards, the size of the board. One class deeper than the rules
    above, so it wins at every width without a breakpoint of its own: the
    variables do the travelling. The base .card is untouched, which is what
    keeps the replay panel's cards - they carry .card too - out of all this. */
+/* Your own cards are the size of the board's, so the same fraction of them is
+   half again as many pixels - enough to reach down over your own name. They
+   tuck by less, and still tuck. */
+.player-seat.is-me {
+  --hole-h: var(--board-card-h);
+  --tuck: calc(var(--hole-h) * 0.32);
+}
 .player-seat.is-me .player-hole-cards {
   gap: var(--board-gap);
 }
 .player-seat.is-me .player-hole-cards .card,
 .player-seat.is-me .player-hole-cards .card-back {
   width: var(--board-card-w);
-  height: var(--board-card-h);
-}
-.player-seat.is-me .player-hole-cards .card-rank {
-  --rank-size: var(--board-rank);
-}
-.player-seat.is-me .player-hole-cards .card-suit {
-  --suit-size: var(--board-suit);
-}
-.player-seat.is-me .player-hole-cards .card-corner,
-.player-seat.is-me .player-hole-cards .card-corner-br {
-  /* A board-sized card carries its corner indices, including at the widths
-     where a small hole card gives them up for want of room. */
-  display: block;
-  --corner-size: var(--board-corner);
-}
-.player-seat.is-me .player-hole-cards .card-corner {
-  top: 3px;
-  left: 4px;
-}
-.player-seat.is-me .player-hole-cards .card-corner-br {
-  bottom: 3px;
-  right: 4px;
+  height: var(--hole-h);
 }
 
-/* D/SB/BB chips */
+/* D/SB/BB chips.
+   The button hangs off the plate's bottom right, pulled in from the -10px it
+   sat at against a 6px corner: the pill's corner is a half circle, so the old
+   offset left it floating in space beside the edge instead of biting it.
+   The blinds have moved. They used to share that -10px bottom left, which is
+   now where the avatar's circle is, so they sit on the avatar's lower right
+   the way the badge does on the reference - the seat's own furniture, on the
+   seat's own face. */
 .dealer-chip {
   position: absolute;
-  right: -10px;
-  bottom: -10px;
-  width: 20px;
-  height: 20px;
+  right: -5px;
+  bottom: -6px;
+  width: 28px;
+  height: 28px;
   background: var(--card-white);
   border: 1.5px solid var(--gold);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.55rem;
+  font-size: 0.74rem;
   font-weight: 700;
   color: var(--gold);
   font-family: var(--font-mono);
 }
-.sb-chip {
+/* On the face, at its lower right, the way the reference puts a flag there.
+   Children of the hero, so right:0 bottom:0 is the circle's own corner at
+   every diameter and no breakpoint has to re-guess a coordinate. */
+.sb-chip,
+.bb-chip {
   position: absolute;
-  bottom: -10px;
-  left: -10px;
-  width: 20px;
-  height: 20px;
-  background: var(--success);
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  right: 0;
+  bottom: 0;
+  width: 23px;
+  height: 23px;
+  border: 1.5px solid rgba(13, 31, 18, 0.9);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.5rem;
   font-weight: 700;
   color: #fff;
   font-family: var(--font-mono);
 }
+.sb-chip {
+  background: var(--success);
+  font-size: 0.62rem;
+}
 .bb-chip {
-  position: absolute;
-  bottom: -10px;
-  left: -10px;
-  width: 20px;
-  height: 20px;
   background: var(--danger);
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.45rem;
-  font-weight: 700;
-  color: #fff;
-  font-family: var(--font-mono);
+  font-size: 0.56rem;
 }
 
 /* ═══ ACTIONS PANEL ═══ */

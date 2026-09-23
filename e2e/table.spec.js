@@ -1548,10 +1548,30 @@ async function seatCollisions(page) {
       Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y) > 1;
     const stage = r(document.querySelector('.table-stage'));
     const seats = [...document.querySelectorAll('#playerSeats .player-seat')];
-    const plates = seats.map((el) => ({
-      slot: el.dataset.slot,
-      box: r(el.querySelector('.player-info')),
-    }));
+    // The plate is no longer the whole of what a seat paints: the hero hangs
+    // off its left end and over its top and bottom. Measuring the plate alone
+    // would let a chair sit on its neighbour's face and report nothing, so
+    // every check below is against the union of the two.
+    const union = (a, b) => {
+      if (!b) return a;
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
+      return {
+        x,
+        y,
+        width: Math.max(a.right, b.right) - x,
+        height: Math.max(a.bottom, b.bottom) - y,
+        right: Math.max(a.right, b.right),
+        bottom: Math.max(a.bottom, b.bottom),
+      };
+    };
+    const plates = seats.map((el) => {
+      const hero = el.querySelector('.seat-hero');
+      return {
+        slot: el.dataset.slot,
+        box: union(r(el.querySelector('.player-info')), hero ? r(hero) : null),
+      };
+    });
     // A bet and its own seat are drawn on the same bearing from the middle of
     // the felt and separated only by the difference in ring radius, so on a
     // narrow screen a bet can land inside the chair that made it - and the
@@ -1630,6 +1650,45 @@ async function seatCollisions(page) {
   });
 }
 
+// The hero is meant to overflow the plate, so the question is not whether it
+// spills but whether anything spills past the seat itself. Two things have to
+// hold at every width: the turn ring is exactly the hero's box, because a ring
+// drawn to any other box is ringing the wrong thing; and the blind marker
+// stays on the face it belongs to. The dealer button is deliberately not in
+// this - it has always hung off the plate's bottom right corner on purpose,
+// and that is the seat's one licensed overhang.
+async function heroOverflow(page) {
+  return page.evaluate(() => {
+    const r = (el) => el.getBoundingClientRect();
+    const outside = (child, host) =>
+      child.x < host.x - 1 ||
+      child.right > host.right + 1 ||
+      child.y < host.y - 1 ||
+      child.bottom > host.bottom + 1;
+    const spills = [];
+    for (const seat of document.querySelectorAll('#playerSeats .player-seat')) {
+      const hero = seat.querySelector('.seat-hero');
+      if (!hero) continue;
+      const box = r(hero);
+      if (Math.abs(box.width - box.height) > 1) {
+        spills.push(`slot ${seat.dataset.slot} hero is not round`);
+      }
+      const ring = seat.querySelector('.seat-clock');
+      if (ring && !ring.classList.contains('hidden')) {
+        const rb = r(ring);
+        if (Math.abs(rb.width - box.width) > 1 || Math.abs(rb.height - box.height) > 1) {
+          spills.push(`slot ${seat.dataset.slot} ring is not the hero's box`);
+        }
+      }
+      for (const sel of ['.sb-chip', '.bb-chip']) {
+        const el = seat.querySelector(sel);
+        if (el && outside(r(el), box)) spills.push(`slot ${seat.dataset.slot} ${sel}`);
+      }
+    }
+    return spills;
+  });
+}
+
 for (const vp of SEAT_VIEWPORTS) {
   test.describe(`eight seats on ${vp.name}`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
@@ -1651,6 +1710,7 @@ for (const vp of SEAT_VIEWPORTS) {
         betUnderPlate: [],
         betNotMeasurable: [],
       });
+      expect(await heroOverflow(page)).toEqual([]);
       expect(pageErrors).toEqual([]);
     });
   });
@@ -1962,75 +2022,73 @@ const DECK_COLOURS = {
   four: { spades: BLACK, clubs: 'rgb(12, 122, 30)', hearts: RED, diamonds: 'rgb(11, 78, 168)' },
 };
 
-// The large face grew the rank, the suit under it and both corner indices by
-// one number, and on a 84px card there is not room for all four: the heart
-// ended up sitting on the index below it, which is how it was reported. The
-// fix is that only the rank grows, and it is lifted as it does. This measures
-// the ink rather than the boxes, because the boxes overlap at both settings
-// and always have - the rank's box and the suit's box share about 3px - and it
-// is whether the glyphs inside them meet that decides how the card looks.
-//
-// The glyphs measured are 10 and a heart whatever is actually dealt: the
-// widest rank and the fullest-inked suit, which is the pair that has to fit.
-test('the large face leaves the suit and the indices room', async ({ page }) => {
+// A card is laid out the way a card is: an index at the top left, the same
+// index upside down at the bottom right, and the pip in the middle. The thing
+// that used to go wrong - a large face multiplying four glyphs on an 84px card
+// until the heart sat on the index below it - cannot happen now, because a
+// large face grows the index and the pip is the one mark that does not move
+// with it. What has to hold is that none of the three ever touches another and
+// none leaves the card, at both faces and at two widths.
+test('the index and its mirror keep off each other and off the edge', async ({ page }) => {
   const pageErrors = await seatAtTournamentTable(page, 'Roomy');
   await deal(page);
   await page.mouse.click(5, 5);
 
+  // How much of a tucked hole card is left showing. What has to survive the
+  // tuck is the whole index - a rank with nothing under it does not say
+  // whether it is a heart or a diamond - so this is the suit's bottom edge
+  // against the top of the plate in front of it, for every seat drawing a
+  // card face up. Mid-hand that is the viewer's own seat; at a showdown it is
+  // everyone still in, whose cards tuck deeper than the viewer's do.
+  const tuck = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll('#playerSeats .player-seat')).flatMap((seat) => {
+        const plate = seat.querySelector('.player-info');
+        if (!plate) return [];
+        const p = plate.getBoundingClientRect();
+        // The top left index only. The mirror at the bottom right is the part
+        // a tucked card is supposed to lose.
+        return Array.from(
+          seat.querySelectorAll('.player-hole-cards .card-corner .card-index-suit')
+        ).flatMap((suit) => {
+          const s = suit.getBoundingClientRect();
+          return s.height ? [+(p.top - s.bottom).toFixed(2)] : [];
+        });
+      })
+    );
+
   const gaps = () =>
     page.evaluate(() => {
-      const ctx = document.createElement('canvas').getContext('2d');
-      // Where a glyph's ink actually falls, from the element's own box and the
-      // font it is drawn in.
-      const ink = (el, text) => {
-        const cs = getComputedStyle(el);
-        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-        const m = ctx.measureText(text);
-        const box = el.getBoundingClientRect();
-        const fontPx = parseFloat(cs.fontSize);
-        const lineH = cs.lineHeight === 'normal' ? fontPx * 1.2 : parseFloat(cs.lineHeight);
-        const half = (lineH - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)) / 2;
-        const baseline = box.top + half + m.fontBoundingBoxAscent;
-        const originX = box.left + (box.width - m.width) / 2;
-        return {
-          left: originX - m.actualBoundingBoxLeft,
-          right: originX + m.actualBoundingBoxRight,
-          top: baseline - m.actualBoundingBoxAscent,
-          bottom: baseline + m.actualBoundingBoxDescent,
-        };
-      };
-      const card = document.querySelector('#playerSeats .player-seat.is-me .card');
+      const card = document.querySelector('#playerSeats .player-seat.is-me .card .card-front');
       if (!card) return null;
-      const rank = ink(card.querySelector('.card-rank'), '10');
-      const suit = ink(card.querySelector('.card-suit'), '\u2665');
-      // The corner indices hold whatever was dealt, so their boxes are as wide
-      // as that card's rank happens to be - an A is narrow and a 10 is not.
-      // Measured against the edge they are anchored to and the width a 10
-      // would take, so this asks the same question whatever turns up.
-      const widest = (el) => {
-        const cs = getComputedStyle(el);
-        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-        return ctx.measureText('10').width;
+      const r = (sel) => {
+        const el = card.querySelector(sel);
+        return el ? el.getBoundingClientRect() : null;
       };
-      const tlEl = card.querySelector('.card-corner');
-      const brEl = card.querySelector('.card-corner-br');
-      const tl = { right: tlEl.getBoundingClientRect().left + widest(tlEl) };
-      const br = { left: brEl.getBoundingClientRect().right - widest(brEl) };
-      const round = (n) => Math.round(n * 10) / 10;
+      const face = card.getBoundingClientRect();
+      const index = r('.card-corner');
+      const mirror = r('.card-corner-br');
+      if (!index || !mirror) return null;
+      const hit = (a, b) =>
+        Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0 &&
+        Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0;
+      const inside = (b) =>
+        b.left >= face.left - 1 &&
+        b.right <= face.right + 1 &&
+        b.top >= face.top - 1 &&
+        b.bottom <= face.bottom + 1;
       return {
-        // The heart, against the index in the corner below it.
-        suitToIndex: round(br.left - suit.right),
-        // The rank, against the heart beneath it.
-        rankToSuit: round(suit.top - rank.bottom),
-        // And the rank against the index above it, which is what stops the
-        // rank simply being made bigger and bigger.
-        indexToRank: round(rank.left - tl.right),
-        suitPx: parseFloat(getComputedStyle(card.querySelector('.card-suit')).fontSize),
+        overlap: hit(index, mirror),
+        indexInside: inside(index),
+        mirrorInside: inside(mirror),
+        // Nothing is drawn in the middle of a card: a pip there is what caps
+        // how big the index may be, so its absence is part of the contract.
+        pips: card.querySelectorAll('.card-suit').length,
+        indexPx: parseFloat(getComputedStyle(card.querySelector('.card-rank')).fontSize),
+        suitPx: parseFloat(getComputedStyle(card.querySelector('.card-index-suit')).fontSize),
       };
     });
 
-  // A card still in flight carries the deal's transform, and measuring one
-  // mid-flight reads a box that is not where the card comes to rest.
   const settled = async () => {
     await expect(page.locator('#playerSeats .card.dealing')).toHaveCount(0, { timeout: 10000 });
     await expect(page.locator('#playerSeats .card.deal-pending')).toHaveCount(0, {
@@ -2038,44 +2096,78 @@ test('the large face leaves the suit and the indices room', async ({ page }) => 
     });
   };
 
+  // A resize relays the seats on a 150ms debounce and the seat is rebuilt
+  // wholesale, so a measurement taken the instant after one finds a card that
+  // is half there. Wait for both marks to exist and have a box before reading
+  // them, rather than for a number of milliseconds.
+  const drawn = () =>
+    page.waitForFunction(() => {
+      const card = document.querySelector('#playerSeats .player-seat.is-me .card .card-front');
+      if (!card) return false;
+      const index = card.querySelector('.card-corner');
+      const mirror = card.querySelector('.card-corner-br');
+      if (!index || !mirror) return false;
+      return index.getBoundingClientRect().width > 0 && mirror.getBoundingClientRect().width > 0;
+    });
+
   const setFace = async (face) => {
     await page.evaluate((f) => CardLook.set('cardFace', f), face);
     await expect(page.locator('body')).toHaveAttribute('data-face', face);
     await settled();
+    await drawn();
     return gaps();
   };
 
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 720 });
+  // A phone held sideways is in here on purpose: it draws the shortest card
+  // the table has, so it is where an index that is a fraction of its card has
+  // the least room to be wrong in.
+  for (const [width, height] of [
+    [1280, 720],
+    [390, 844],
+    [844, 390],
+  ]) {
+    await page.setViewportSize({ width, height });
     await page.waitForTimeout(250);
     await settled();
+    await drawn();
 
     const standard = await setFace('standard');
     const large = await setFace('large');
     expect(standard).not.toBeNull();
+    expect(large).not.toBeNull();
 
     for (const [face, m] of [
       ['standard', standard],
       ['large', large],
     ]) {
       const where = `${face} at ${width}px`;
-      expect(`${where} suit/index ${m.suitToIndex > 0 ? 'clear' : 'tight'}`).toBe(
-        `${where} suit/index clear`
+      expect(`${where} ${m.overlap ? 'touching' : 'apart'}`).toBe(`${where} apart`);
+      expect(`${where} index ${m.indexInside ? 'inside' : 'over the edge'}`).toBe(
+        `${where} index inside`
       );
-      expect(`${where} rank/suit ${m.rankToSuit > 0 ? 'clear' : 'tight'}`).toBe(
-        `${where} rank/suit clear`
+      expect(`${where} mirror ${m.mirrorInside ? 'inside' : 'over the edge'}`).toBe(
+        `${where} mirror inside`
       );
-      expect(`${where} index/rank ${m.indexToRank > 0 ? 'clear' : 'tight'}`).toBe(
-        `${where} index/rank clear`
-      );
+      expect(`${where} pips on the face: ${m.pips}`).toBe(`${where} pips on the face: 0`);
+      // The suit under the rank is the other half of the index, not a mark
+      // beside it: a face that draws it as a speck is the one this replaced.
+      expect(m.suitPx).toBeGreaterThan(m.indexPx * 0.6);
     }
 
-    // The pip is the one that does not grow - that is where the room comes
-    // from, and it is the whole of the fix.
-    expect(large.suitPx).toBe(standard.suitPx);
-    // And the rank, which does grow, ends up further from the suit than it
-    // ever was at the ordinary size rather than nearer to it.
-    expect(large.rankToSuit).toBeGreaterThan(standard.rankToSuit);
+    // A large face is a larger index, and the mirror grows with it - which is
+    // why there is less room in the setting than there looks, and why the loop
+    // above checks the large face at every shape rather than trusting it.
+    expect(large.indexPx).toBeGreaterThan(standard.indexPx);
+    expect(large.suitPx).toBeGreaterThan(standard.suitPx);
+
+    // And the tuck, at the face that leaves it least room.
+    const clearances = await tuck();
+    expect(clearances.length).toBeGreaterThan(0);
+    for (const clear of clearances) {
+      expect(`${width}px index clears the plate: ${clear > 0}`).toBe(
+        `${width}px index clears the plate: true`
+      );
+    }
   }
 
   expect(pageErrors).toEqual([]);
@@ -2105,6 +2197,11 @@ test('the back, the four-colour deck and the large face are chosen and then kept
         chosen: { ...document.body.dataset },
         backGround: back ? getComputedStyle(back).backgroundImage : null,
         rankPx: rank ? parseFloat(getComputedStyle(rank).fontSize) : null,
+        // Read rather than hardcoded: what a large face multiplies the index
+        // by is a design decision that has moved once already, and a test that
+        // spells the number out goes red for a look change rather than for a
+        // broken one.
+        faceScale: parseFloat(getComputedStyle(document.body).getPropertyValue('--rank-scale')),
       };
     });
 
@@ -2166,7 +2263,8 @@ test('the back, the four-colour deck and the large face are chosen and then kept
   const after = await look();
   expect(after.chosen).toEqual({ back: 'blue', deck: 'four', face: 'large' });
   expect(after.backGround).not.toBe(before.backGround);
-  expect(after.rankPx).toBeCloseTo(before.rankPx * 1.2, 1);
+  expect(after.faceScale).toBeGreaterThan(before.faceScale);
+  expect(after.rankPx).toBeCloseTo(before.rankPx * (after.faceScale / before.faceScale), 1);
   await drawnAs('four');
 
   // And the dialog says which one is chosen, for a screen reader as well as
@@ -2296,7 +2394,7 @@ test('the turn clock waits for the cards to land before it is drawn', async ({ p
         if (window.__seen.armedAt === null && gs.turnExpiresAt) {
           window.__seen.armedAt = performance.now();
         }
-        const ring = document.querySelector('#playerSeats .hole-clock:not(.hidden)');
+        const ring = document.querySelector('#playerSeats .seat-clock:not(.hidden)');
         if (window.__seen.ringAt === null && ring) {
           window.__seen.ringAt = performance.now();
           window.__seen.dealingWhenRingShown = document.querySelectorAll(
@@ -2317,7 +2415,7 @@ test('the turn clock waits for the cards to land before it is drawn', async ({ p
   await page.click('#btnCreateSubmit');
   await page.click('#btnStartNow');
   await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 15000 });
-  await expect(page.locator('#playerSeats .hole-clock:not(.hidden)')).toHaveCount(1, {
+  await expect(page.locator('#playerSeats .seat-clock:not(.hidden)')).toHaveCount(1, {
     timeout: 15000,
   });
 
@@ -2331,7 +2429,7 @@ test('the turn clock waits for the cards to land before it is drawn', async ({ p
   expect(pageErrors).toEqual([]);
 });
 
-test('the clock is an outline round the cards that escalates and warns once', async ({ page }) => {
+test('the clock is a ring round the face that escalates and warns once', async ({ page }) => {
   const pageErrors = await seatAtTournamentTable(page, 'Clock');
   await deal(page);
   await page.mouse.click(5, 5); // unlock the audio context
@@ -2344,14 +2442,14 @@ test('the clock is an outline round the cards that escalates and warns once', as
     // than waiting out an animation it is not measuring.
     _dealSettledAt = 0;
     const clockFor = (id) =>
-      document.querySelector(`#playerSeats .player-seat[data-player-id="${id}"] .hole-clock`);
+      document.querySelector(`#playerSeats .player-seat[data-player-id="${id}"] .seat-clock`);
     const shownCount = () =>
-      document.querySelectorAll('#playerSeats .hole-clock:not(.hidden)').length;
+      document.querySelectorAll('#playerSeats .seat-clock:not(.hidden)').length;
     const read = (id) => {
       const c = clockFor(id);
       return {
-        dash: c.querySelector('rect').style.strokeDasharray,
-        offset: c.querySelector('rect').style.strokeDashoffset,
+        dash: c.querySelector('circle').style.strokeDasharray,
+        offset: c.querySelector('circle').style.strokeDashoffset,
         cls: c.getAttribute('class'),
         shown: shownCount(),
       };
@@ -2394,7 +2492,8 @@ test('the clock is an outline round the cards that escalates and warns once', as
       return { top: r.top, bottom: r.bottom, w: r.width, h: r.height };
     };
     const fit = {
-      clock: box('.hole-clock'),
+      clock: box('.seat-clock'),
+      hero: box('.seat-hero'),
       row: box('.player-hole-cards'),
       plate: box('.player-info'),
     };
@@ -2449,9 +2548,16 @@ test('the clock is an outline round the cards that escalates and warns once', as
   expect(seen.theirs.shown).toBe(1);
 
   // It hugs the cards and stops short of the plate.
-  expect(seen.fit.clock.h).toBeLessThan(seen.fit.row.h + 14);
-  expect(seen.fit.clock.w).toBeLessThan(seen.fit.row.w + 14);
-  expect(seen.fit.clock.bottom).toBeLessThanOrEqual(seen.fit.plate.top);
+  // The ring is the hero's box exactly, and round. It used to be a rectangle
+  // round the card row, sized by four insets, which an svg with a viewBox
+  // turned into its own width as a height; the assertion that caught that is
+  // now the one that says the ring and the face are the same square.
+  expect(Math.abs(seen.fit.clock.w - seen.fit.clock.h)).toBeLessThan(2);
+  expect(Math.abs(seen.fit.clock.w - seen.fit.hero.w)).toBeLessThan(2);
+  expect(Math.abs(seen.fit.clock.h - seen.fit.hero.h)).toBeLessThan(2);
+  // And it rings the face rather than the seat: a ring as tall as the cards
+  // above it would be back to circling the wrong thing.
+  expect(seen.fit.hero.h).toBeLessThan(seen.fit.row.h);
 
   // The gap opens on the top edge and travels clockwise. Drawing the remaining
   // arc forward from the start instead eats the left edge first, which reads as
@@ -2512,8 +2618,8 @@ test('the clock measures the turn, not the gap between two clocks', async ({ pag
     });
     updateTurnClocks();
     const rect = document
-      .querySelector(`#playerSeats .player-seat[data-player-id="${myId}"] .hole-clock`)
-      .querySelector('rect');
+      .querySelector(`#playerSeats .player-seat[data-player-id="${myId}"] .seat-clock`)
+      .querySelector('circle');
     return { dash: parseFloat(rect.style.strokeDasharray) };
   });
 
