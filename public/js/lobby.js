@@ -3541,7 +3541,13 @@
       else if (adminTab === 'log' && !adminLogPaged) askForAdminLog({ fresh: true, quiet: true });
     }, ADMIN_POLL_MS);
     ensureSocket();
-    if ((fromLink || railLink) && !store.get(TOKEN_KEY) && !pendingGnToken) {
+    // Don't force sign-in if showing invite entry screen (autoApprove game)
+    if (
+      (fromLink || railLink) &&
+      !store.get(TOKEN_KEY) &&
+      !pendingGnToken &&
+      view !== 'inviteEntry'
+    ) {
       needSignIn('Sign in to join this game.');
     }
   }
