@@ -545,7 +545,6 @@ app.get('/api/games', (req, res) => {
   if (!code) return res.status(400).json({ ok: false, error: 'code is required' });
   const entry = tournamentLayer.registry.byCode(code);
   if (!entry) return res.status(404).json({ ok: false, error: 'Game not found' });
-  const shared = tournamentLayer.registry.stateFor(entry, null).field;
   res.json({
     ok: true,
     name: entry.name,
@@ -553,10 +552,12 @@ app.get('/api/games', (req, res) => {
     startsAt: entry.startsAt,
     autoApprove: !!entry.autoApprove,
     visibility: entry.settings.visibility,
-    entrants: shared.seats.size,
+    entrants: entry.director.entrants.length,
     settings: {
       tableSize: entry.settings.tableSize,
-      structure: { name: entry.settings.structure ? entry.settings.structure.name : 'Standard' },
+      structure: {
+        name: entry.settings.structure ? entry.settings.structure.name : 'Standard',
+      },
     },
   });
 });
