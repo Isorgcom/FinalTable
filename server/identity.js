@@ -1025,6 +1025,32 @@ function createIdentityStore(options = {}) {
     };
   }
 
+  // Create a guest account on-the-fly with just a name (for invite links)
+  function createGuest({ name } = {}) {
+    const safeName = sanitizeName(name) || 'Guest';
+    if (nameHeldBy(safeName)) {
+      return { error: 'That name is taken' };
+    }
+    const uid = `guest_${randomId('').slice(0, 12)}`;
+    const token = randomId('');
+    const at = now();
+    const rec = newRecord(
+      {
+        uid,
+        name: safeName,
+        avatar: '',
+        provider: 'local',
+      },
+      at
+    );
+    identities.set(uid, rec);
+    rec.tokens.add(token);
+    byNameKey.set(nameKeyOf(safeName), uid);
+    mark(uid);
+    scheduleFlush('material');
+    return { ...publicView(token, rec), isNew: true };
+  }
+
   return {
     identify,
     identifyFromGameNight,
@@ -1047,6 +1073,7 @@ function createIdentityStore(options = {}) {
     create,
     setRole,
     promoteByName,
+    createGuest,
     setDisabled,
     adminCount,
     wouldOrphan,

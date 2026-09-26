@@ -724,6 +724,52 @@ function registerTournamentHandlers(deps) {
       if (error) fail(socket, error);
     });
 
+    // Guest join via invite code: create account, identify, and join in one step
+    socket.on('guestJoinViaCode', (payload = {}) => {
+      const name = payload.name ? String(payload.name).trim() : '';
+      const code = payload.code ? String(payload.code).trim() : '';
+      if (!name || !code) {
+        return fail(socket, 'Name and code are required');
+      }
+      // Create a guest account with the provided name
+      const ident = identity.createGuest({ name });
+      if (!ident || ident.error) {
+        return fail(socket, ident?.error || 'Could not create account');
+      }
+      socket.data.uid = ident.uid;
+      socket.data.token = ident.token;
+      socket.data.isAdmin = false;
+      // Now join the tournament with the code
+      const { error } = registry.join(ident.uid, { code }, socket);
+      if (error) {
+        return fail(socket, error);
+      }
+      // Send identify success response
+      const entry = registry.findByUid(ident.uid);
+      let resume = null;
+      if (entry) {
+        resume = { id: entry.id, code: entry.code, name: entry.name, status: entry.status };
+      }
+      socket.emit('identified', {
+        uid: ident.uid,
+        name: ident.name,
+        avatar: ident.avatar,
+        token: ident.token,
+        provider: 'guest',
+        isAdmin: false,
+        isNew: ident.isNew,
+        resume,
+      });
+      if (adminLog) {
+        adminLog.recordSignIn({
+          uid: ident.uid,
+          name: ident.name,
+          provider: 'guest',
+          isNew: ident.isNew,
+        });
+      }
+    });
+
     function startNow() {
       const entry = entryFor(socket);
       if (!entry) return;

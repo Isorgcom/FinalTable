@@ -2149,6 +2149,7 @@
     view = name;
     // Nothing behind the door is drawn until somebody is through it. The
     // sign-in card sits outside this list, so it stays where it is.
+    // Exception: inviteEntry can show without authentication.
     const through = !!identity;
     [
       'home',
@@ -2162,9 +2163,11 @@
       'password',
     ].forEach((v) => {
       const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
-      if (node) node.classList.toggle('hidden', !through || v !== name);
+      const allowWithout = v === 'inviteEntry';
+      if (node)
+        node.classList.toggle('hidden', (!through && !allowWithout) || v !== name);
     });
-    if (!through) return;
+    if (!through && name !== 'inviteEntry') return;
     if (name === 'waiting') renderWaiting();
     if (name === 'home') renderList();
   }
@@ -2976,7 +2979,26 @@
     }
     const { code } = inviteEntryInfo;
     store.set(NAME_KEY, name);
-    return requestJoin({ code });
+
+    // If already logged in, just join
+    if (identity && socket && socket.connected) {
+      socket.emit('joinTournament', { code });
+      return true;
+    }
+
+    // Not logged in: create guest account automatically
+    if (!identity) {
+      $('ieStatus').textContent = 'Joining...';
+      // Use a guest sign-in: send a special socket event to create and join
+      if (socket && socket.connected) {
+        socket.emit('guestJoinViaCode', { name, code });
+      } else {
+        pendingJoin = { code };
+        // Need to identify but with guest name
+        identify();
+      }
+      return true;
+    }
   }
 
   function cancelInviteEntry() {
