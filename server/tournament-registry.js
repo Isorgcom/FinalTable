@@ -278,6 +278,8 @@ function createTournamentRegistry(deps = {}) {
       guests: [...entry.guests],
       webhook: entry.webhook ? { ...entry.webhook } : null,
       viaApi: !!entry.viaApi,
+      // Invite-only games with autoApprove=true: guests join without host approval.
+      autoApprove: !!entry.autoApprove,
       status: entry.status,
       // How many times this field has been seated again without getting a hand
       // out. See the guard in restore().
@@ -1152,6 +1154,7 @@ function createTournamentRegistry(deps = {}) {
     const structure = clampStructure(payload.structure, levelDuration);
     return {
       startsAt,
+      autoApprove: !!payload.autoApprove,
       settings: {
         tableSize: Math.max(2, Math.min(8, int(payload.tableSize, 8))),
         startChips: START_CHIPS.includes(startChips) ? startChips : 5000,
@@ -1244,7 +1247,7 @@ function createTournamentRegistry(deps = {}) {
     unwatchAll(uid);
 
     const name = sanitizeName(payload.name || 'Tournament', 24) || 'Tournament';
-    const { startsAt, settings } = clampSettings(payload);
+    const { startsAt, autoApprove, settings } = clampSettings(payload);
     // A guest list makes the game invite-only whatever was asked, and the
     // host is on it: the list is who may walk in, and the host already has.
     const guests = clampGuests(payload.guests);
@@ -1261,6 +1264,7 @@ function createTournamentRegistry(deps = {}) {
       guests,
       webhook: clampWebhook(webhook),
       viaApi,
+      autoApprove,
     });
     entry.director.register({
       id: socket ? socket.id : null,
@@ -1321,6 +1325,9 @@ function createTournamentRegistry(deps = {}) {
     // may read and drive the games it made and no others, so this is what
     // the routes check - see gameOr404 in server.js.
     viaApi = false,
+    // Invite-only games with autoApprove=true: guests join immediately after
+    // entering their name, without host approval.
+    autoApprove = false,
   }) {
     const entry = {
       id,
@@ -1376,6 +1383,8 @@ function createTournamentRegistry(deps = {}) {
       // lets people in. Written to the file with the rest.
       guests: new Set(guests),
       viaApi: !!viaApi,
+      // Invite-only games with autoApprove=true: guests bypass the knock flow.
+      autoApprove: !!autoApprove,
       // Where GameNight asked to be told, or null: { url, secret, externalId }.
       // The secret is in it, so it never leaves through a view - every view
       // names its fields - and rides only serialize() and the outbox.
@@ -1556,8 +1565,12 @@ function createTournamentRegistry(deps = {}) {
     // A watcher who presents the code is done watching: they are coming in.
     unwatchAll(uid);
     // Invite-only: ask at the door - unless the guest list says they may
-    // come straight in, which is what the list is for.
+    // come straight in, which is what the list is for. Or if autoApprove is
+    // set, they may join immediately without host approval.
     if (entry.settings.visibility === 'invite' && !entry.guests.has(uid)) {
+      if (entry.autoApprove) {
+        return enter(entry, uid, who, socket);
+      }
       return ask(entry, uid, socket);
     }
     return enter(entry, uid, who, socket);
@@ -2836,6 +2849,7 @@ function createTournamentRegistry(deps = {}) {
         // one is the same answer. Drop the fallback once no such file can
         // still be on disk.
         viaApi: saved.viaApi === undefined ? !!saved.webhook : !!saved.viaApi,
+        autoApprove: !!saved.autoApprove,
       });
       for (const e of saved.entrants || []) {
         // A file written before the bots were removed carries them; skip those

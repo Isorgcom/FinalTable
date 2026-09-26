@@ -66,6 +66,7 @@ Where both are given, GameNight's wins.
 | `webhook_url` + `webhook_secret`  | `webhook: { url, secret }`  | where to send the game's events, and what to sign them with: both or neither. The address must be at the paired GameNight's origin, or one this server was given in `WEBHOOK_ORIGINS`; see Webhooks below |
 | `event_id`                        | `external_id`               | GameNight's own id for the event, up to 64 characters, echoed on every webhook                                                                                                                            |
 |                                   | `bots`                      | 0-40 seats the server plays, for trying it out                                                                                                                                                            |
+| `auto_approve`                    | `autoApprove`               | `true` to let guests join via the link without host approval; default `false`. Guests on the roster always join without approval, regardless of this setting                                                |
 
 `visibility` is ignored: a game with a roster is invite-only, and the roster
 is the door.

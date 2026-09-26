@@ -13,6 +13,14 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **Guests can join your invite link without approval.** When creating an
+  invite-only game, check _Guests can join freely with the link_ to let
+  invitees join by entering their name, with no host approval needed. The host's
+  invite link works the same way - one code, one click, one name. Without the
+  checkbox, invites work as they did: the host approves each person individually.
+
 ## 0.27.0 - 2026-09-23
 
 ### Added

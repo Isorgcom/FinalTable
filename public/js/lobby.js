@@ -45,6 +45,7 @@
   let pendingCreate = null;
   let pendingLastCheck = null; // a tournament we were in before this page load
   let pendingRequest = null; // asked to join an invite-only game, not yet answered
+  let inviteEntryInfo = null; // game accessed via ?t=code with autoApprove=true
   const seenPending = new Set(); // uids the host has already been told about
   let view = 'home';
 
@@ -298,6 +299,10 @@
       const payload = pendingCreate;
       pendingCreate = null;
       socket.emit('createTournament', payload);
+      return;
+    }
+    if (inviteEntryInfo) {
+      showInviteEntry(inviteEntryInfo.code, inviteEntryInfo.gameInfo);
       return;
     }
     if (pendingJoin) {
@@ -2145,12 +2150,20 @@
     // Nothing behind the door is drawn until somebody is through it. The
     // sign-in card sits outside this list, so it stays where it is.
     const through = !!identity;
-    ['home', 'create', 'waiting', 'pending', 'admin', 'sessions', 'games', 'password'].forEach(
-      (v) => {
-        const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
-        if (node) node.classList.toggle('hidden', !through || v !== name);
-      }
-    );
+    [
+      'home',
+      'create',
+      'waiting',
+      'pending',
+      'inviteEntry',
+      'admin',
+      'sessions',
+      'games',
+      'password',
+    ].forEach((v) => {
+      const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
+      if (node) node.classList.toggle('hidden', !through || v !== name);
+    });
     if (!through) return;
     if (name === 'waiting') renderWaiting();
     if (name === 'home') renderList();
@@ -2447,6 +2460,10 @@
       b.classList.toggle('active', b.dataset.vis === vis);
     });
     $('tVisibilityHint').textContent = VISIBILITY_HINT[vis] || '';
+    const autoApproveRow = $('tAutoApproveRow');
+    if (autoApproveRow) {
+      autoApproveRow.classList.toggle('hidden', vis !== 'invite');
+    }
   }
 
   function currentVisibility() {
@@ -2842,6 +2859,7 @@
       bots: $('tBots').checked ? parseInt($('tBotCount').value, 10) || 5 : 0,
       visibility: currentVisibility(),
       structure: structurePayload(),
+      autoApprove: $('tAutoApprove') && $('tAutoApprove').checked,
     };
     if (identity && socket && socket.connected) {
       socket.emit('createTournament', payload);
@@ -2890,6 +2908,80 @@
       identify();
     }
     return true;
+  }
+
+  // Fetch game info to check if autoApprove is enabled
+  async function fetchGameInfo(code) {
+    try {
+      const resp = await fetch(`/api/games?code=${encodeURIComponent(code)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        return data;
+      }
+      return null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function formatStartTime(timestamp) {
+    if (!timestamp) return null;
+    const date = new Date(timestamp);
+    const now = Date.now();
+    if (timestamp <= now) return 'Starting…';
+    const diff = timestamp - now;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return 'Starting…';
+    if (minutes < 60) return `in ${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `in ${hours}h`;
+    const days = Math.floor(hours / 24);
+    return `in ${days}d`;
+  }
+
+  function showInviteEntry(code, gameInfo) {
+    inviteEntryInfo = { code, gameInfo };
+    const name = gameInfo.name || 'Game';
+    const playerCount = gameInfo.entrants ? gameInfo.entrants.length : 0;
+
+    $('ieGameName').textContent = name;
+    $('iePlayerCount').textContent = playerCount;
+
+    const startTimeRow = $('ieStartTimeRow');
+    if (startTimeRow && gameInfo.startsAt) {
+      startTimeRow.classList.remove('hidden');
+      $('ieStartTime').textContent = formatStartTime(gameInfo.startsAt);
+    }
+
+    const structureRow = $('ieStructureRow');
+    if (structureRow && gameInfo.settings && gameInfo.settings.structure) {
+      structureRow.classList.remove('hidden');
+      $('ieStructure').textContent = gameInfo.settings.structure.name || 'Standard';
+    }
+
+    const savedName = store.get(NAME_KEY);
+    $('iePlayerName').value = savedName || '';
+    $('iePlayerName').focus();
+    $('ieStatus').textContent = '';
+
+    showView('inviteEntry');
+  }
+
+  function submitInviteEntry() {
+    if (!inviteEntryInfo) return false;
+    const name = sanitizeLobbyPlayerName($('iePlayerName').value);
+    if (!name) {
+      $('ieStatus').textContent = 'Please enter your name';
+      return false;
+    }
+    const { code } = inviteEntryInfo;
+    store.set(NAME_KEY, name);
+    return requestJoin({ code });
+  }
+
+  function cancelInviteEntry() {
+    inviteEntryInfo = null;
+    showView('home');
   }
 
   // ── Waiting room ─────────────────────────────────────────────────────────
@@ -3307,6 +3399,11 @@
     $('btnPasswordBack').addEventListener('click', () => showView('home'));
     $('btnMyGamesRefresh').addEventListener('click', askForMyGames);
     $('btnMyGamesBack').addEventListener('click', () => showView('home'));
+    $('btnJoinGame').addEventListener('click', submitInviteEntry);
+    $('btnCancelJoin').addEventListener('click', cancelInviteEntry);
+    $('iePlayerName').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitInviteEntry();
+    });
     // Whatever the page that reloaded this one had to say.
     const waiting = store.get(NOTICE_KEY);
     if (waiting) {
@@ -3380,8 +3477,21 @@
     const fromLink = params.get('t');
     if (fromLink) {
       const code = fromLink.trim().toUpperCase();
-      pendingJoin = { code };
-      $('joinCodeInput').value = code;
+      // Try to fetch game info to check if autoApprove is enabled
+      fetchGameInfo(code).then((gameInfo) => {
+        if (gameInfo && gameInfo.autoApprove) {
+          // Auto-approve game: show invite entry screen
+          if (identity) {
+            showInviteEntry(code, gameInfo);
+          } else {
+            inviteEntryInfo = { code, gameInfo };
+          }
+        } else {
+          // Normal join flow
+          pendingJoin = { code };
+          $('joinCodeInput').value = code;
+        }
+      });
     }
     // A rail link arms a watch the way a join link arms a join.
     const railLink = params.get('w');

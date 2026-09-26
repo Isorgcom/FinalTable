@@ -537,6 +537,30 @@ function apiAnswer(entry) {
   return { ...tournamentLayer.registry.apiView(entry), links: apiLinks(entry) };
 }
 
+// Public endpoint: basic game info by code (for invite link flows)
+app.get('/api/games', (req, res) => {
+  const code = String(req.query.code || '')
+    .trim()
+    .toUpperCase();
+  if (!code) return res.status(400).json({ ok: false, error: 'code is required' });
+  const entry = tournamentLayer.registry.byCode(code);
+  if (!entry) return res.status(404).json({ ok: false, error: 'Game not found' });
+  const shared = tournamentLayer.registry.stateFor(entry, null).field;
+  res.json({
+    ok: true,
+    name: entry.name,
+    status: entry.status,
+    startsAt: entry.startsAt,
+    autoApprove: !!entry.autoApprove,
+    visibility: entry.settings.visibility,
+    entrants: shared.seats.size,
+    settings: {
+      tableSize: entry.settings.tableSize,
+      structure: { name: entry.settings.structure ? entry.settings.structure.name : 'Standard' },
+    },
+  });
+});
+
 app.post('/api/games', apiKeys.guard, jsonBody, (req, res) => {
   const registry = tournamentLayer.registry;
   const read = readCreateBody(req.body, { sanitizeName, webhookOrigins: webhookOrigins() });

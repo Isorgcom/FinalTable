@@ -728,6 +728,10 @@
               <button type="button" data-vis="invite">Invite-only</button>
             </div>
             <div class="seg-hint" id="tVisibilityHint">Unlisted; join by code or link.</div>
+            <label class="check-row hidden" id="tAutoApproveRow" for="tAutoApprove">
+              <input type="checkbox" id="tAutoApprove" />
+              <span> Guests can join freely with the link <em>no host approval needed</em> </span>
+            </label>
           </div>
           <div class="form-group">
             <label for="tStartAt">Starts</label>
@@ -954,6 +958,42 @@
             <button class="btn-secondary" id="btnCancelRequest" type="button">
               Cancel request
             </button>
+          </div>
+        </section>
+
+        <!-- Join via invite link with name entry -->
+        <section class="lobby-view lobby-card hidden" id="lobbyInviteEntry" aria-label="Join game">
+          <div class="wr-head">
+            <div class="wr-title" id="ieGameName"></div>
+          </div>
+          <div class="form-group">
+            <label for="iePlayerName">Your name</label>
+            <input
+              type="text"
+              id="iePlayerName"
+              placeholder="Enter your name"
+              maxlength="16"
+              autocomplete="username"
+            />
+          </div>
+          <div class="game-info" id="ieGameInfo">
+            <div class="info-row">
+              <span class="info-label">Players:</span>
+              <span class="info-value" id="iePlayerCount">0</span>
+            </div>
+            <div class="info-row hidden" id="ieStartTimeRow">
+              <span class="info-label">Starts:</span>
+              <span class="info-value" id="ieStartTime"></span>
+            </div>
+            <div class="info-row hidden" id="ieStructureRow">
+              <span class="info-label">Structure:</span>
+              <span class="info-value" id="ieStructure"></span>
+            </div>
+          </div>
+          <div class="ie-status" id="ieStatus" aria-live="polite"></div>
+          <div class="lobby-actions">
+            <button class="btn-enter" id="btnJoinGame" type="button">Join game</button>
+            <button class="btn-secondary" id="btnCancelJoin" type="button">Cancel</button>
           </div>
         </section>
 

@@ -100,6 +100,8 @@ function readCreateBody(
   const buyIn = pick('buyin_amount', 'poker_buyin', 'buyIn');
   if (buyIn !== undefined) payload.buyIn = buyIn;
   if (has(body.bots)) payload.bots = body.bots;
+  const autoApprove = pick('auto_approve', 'autoApprove');
+  if (autoApprove !== undefined) payload.autoApprove = truthy(autoApprove);
 
   // The blinds: GameNight's rows, or a preset key, or this server's own
   // shape, which goes through untouched for clampStructure to judge.
