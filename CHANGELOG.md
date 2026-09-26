@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.28.0 - 2026-09-26
+
 ### Added
 
 - **Guests can join your invite link without approval.** When creating an
