@@ -15,8 +15,10 @@
 // field.
 //
 // There used to be a third kind - a guest, which was a name typed into a box
-// and a token, and nothing else. Nothing mints one here any more: an identity
-// is made by signing in to an account, and by nothing else.
+// and a token, and nothing else. One door still mints from a name alone:
+// createGuest, for somebody arriving by an invite link whose host said the
+// link is enough. What it makes is a full identity like the other two, not the
+// old month-long guest - the name is theirs here from then on.
 //
 // Which means an identity is permanent. Devices still expire after a month of
 // not being used, but the person behind them does not: their name is theirs,
@@ -1025,28 +1027,37 @@ function createIdentityStore(options = {}) {
     };
   }
 
-  // Create a guest account on-the-fly with just a name (for invite links)
-  function createGuest({ name } = {}) {
-    const safeName = sanitizeName(name) || 'Guest';
-    if (nameHeldBy(safeName)) {
-      return { error: 'That name is taken' };
-    }
-    const uid = `guest_${randomId('').slice(0, 12)}`;
-    const token = randomId('');
+  // Somebody arriving by an invite link whose host let the link do the
+  // letting-in: a name, and nothing else to sign in with. The one path that
+  // mints an identity without an account. The handler only takes it for a
+  // game that is actually open to that (guestJoinViaCode), and looks the game
+  // up first, so a code that names no such game makes nobody. What comes out
+  // is an identity like any other - permanent, the name held on this server
+  // from now on - so the browser that comes back with the token is the same
+  // person.
+  //
+  // Never the first person here. The first record through hold() runs the
+  // server, and that is for whoever set it up, not whoever followed a link
+  // before they did.
+  function createGuest({ name, avatar, userAgent } = {}) {
+    const safeName = sanitizeName(name);
+    if (!safeName) return { error: 'Pick a name first.' };
+    if (bornEmpty && !admins.size) return { error: 'This server has no administrator yet.' };
+    if (nameHeldBy(safeName, null)) return { error: 'That name is taken on this server.' };
     const at = now();
     const rec = newRecord(
       {
-        uid,
+        uid: `g_${crypto.randomBytes(6).toString('hex')}`,
         name: safeName,
-        avatar: '',
+        avatar: sanitizeAvatar(avatar),
         provider: 'local',
       },
       at
     );
-    identities.set(uid, rec);
-    rec.tokens.add(token);
-    byNameKey.set(nameKeyOf(safeName), uid);
-    mark(uid);
+    hold(rec);
+    const token = mintToken();
+    attachToken(rec, token, at, userAgent);
+    mark(rec.uid);
     scheduleFlush('material');
     return { ...publicView(token, rec), isNew: true };
   }

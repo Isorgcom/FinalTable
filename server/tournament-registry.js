@@ -1235,6 +1235,22 @@ function createTournamentRegistry(deps = {}) {
     return entry.settings.visibility === 'public';
   }
 
+  // Whether a stranger with the code walks straight in on the strength of the
+  // link, made somebody from the name they give: an invite-only game whose
+  // host ticked the box, with no guest list (a roster is its own door, and
+  // join() refuses anybody not on it before the box is consulted), while there
+  // is still a seat to be had. What guestJoinViaCode asks before it makes
+  // anybody, so a refusal leaves no identity behind.
+  function openToGuestByLink(entry) {
+    return (
+      entry.settings.visibility === 'invite' &&
+      !!entry.autoApprove &&
+      entry.guests.size === 0 &&
+      entry.status !== 'finished' &&
+      (entry.status === 'registering' || entry.director.lateRegOpen())
+    );
+  }
+
   // The fourth argument is the API route's alone: a browser's payload reaches
   // here as it was sent, and a webhook is not a thing a player attaches to
   // their own game.
@@ -2998,6 +3014,7 @@ function createTournamentRegistry(deps = {}) {
     pastGameFor,
     findPendingByUid,
     byCode,
+    openToGuestByLink,
     requireHost,
     admit,
     decline,

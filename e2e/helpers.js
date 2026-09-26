@@ -134,13 +134,22 @@ async function openAs(browser, name, { join = null, watch = null } = {}) {
 // is what every caller wants next.
 async function createTournament(
   page,
-  { name = 'Friday Night', minutes = 15, bots = false, visibility = null, tableSize = null } = {}
+  {
+    name = 'Friday Night',
+    minutes = 15,
+    bots = false,
+    visibility = null,
+    tableSize = null,
+    autoApprove = false,
+  } = {}
 ) {
   await page.click('#btnCreateTournament');
   await expect(page.locator('#lobbyCreate')).toBeVisible();
   await page.fill('#tName', name);
   // Private is the default; a test that wants a listed game says so.
   if (visibility) await page.click(`#tVisibility button[data-vis="${visibility}"]`);
+  // Only offered once Invite-only is picked; the caller has said both.
+  if (autoApprove) await page.check('#tAutoApprove');
   if (tableSize) await page.selectOption('#tTableSize', String(tableSize));
   await page.click(`#tStartQuick button[data-min="${minutes}"]`);
   if (bots) await page.check('#tBots');

@@ -637,6 +637,54 @@ test('the way back in stays put across hand boundaries', async ({ browser, page 
 // The Stats tab used to draw the table's own record: at one table that is the
 // same list, but it said nothing at all until a hand had finished, and across
 // several tables it listed whoever had sat at yours and nobody else.
+// The invite link, for a game whose host said the link is enough: a browser
+// that has never been anybody here opens it, sees a name box and not the
+// sign-in card, and is seated on the name alone. Then reloads, and is still
+// that person.
+test('a guest joins from the invite link on a name alone, and is the same person after a reload', async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  // An administrator, because the helper demotes everybody it makes and a
+  // guest may not be the first person to run a server: createGuest refuses
+  // while nobody does, which on a real server is only before it is claimed.
+  await helpers.signInAs(page, 'Host', { admin: true });
+  // The box is offered for an invite-only game and for nothing else.
+  await page.click('#btnCreateTournament');
+  await expect(page.locator('#tAutoApproveRow')).toBeHidden();
+  await page.click('#tVisibility button[data-vis="invite"]');
+  await expect(page.locator('#tAutoApproveRow')).toBeVisible();
+  await page.click('#btnCreateCancel');
+  const code = await helpers.createTournament(page, {
+    name: 'Open Door',
+    visibility: 'invite',
+    autoApprove: true,
+  });
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await guest.goto(`${helpers.baseUrl}/?t=${code}`);
+  await expect(guest.locator('#lobbyInviteEntry')).toBeVisible();
+  await expect(guest.locator('#identityCard')).toBeHidden();
+  await expect(guest.locator('#ieGameName')).toHaveText('Open Door');
+  await expect(guest.locator('#ieBlurb')).toContainText('1 player so far');
+  await guest.fill('#iePlayerName', 'Walkin');
+  await guest.click('#btnJoinGame');
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await expect(guest.locator('#identityStatus')).toContainText('Playing as');
+  await expect(guest.locator('#identityStatus')).toContainText('Walkin');
+  await expect(page.locator('#wrRoster')).toContainText('Walkin');
+
+  await guest.reload();
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await expect(guest.locator('#wrRoster')).toContainText('Walkin');
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
 test('the Stats tab is the whole field, from the first deal', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));

@@ -250,6 +250,9 @@
   function onIdentified(ident) {
     identity = ident;
     window.__identity = ident;
+    // Somebody now, whichever door they came through; the link's own door is
+    // no longer the screen to fall back to.
+    inviteEntryInfo = null;
     store.set(TOKEN_KEY, ident.token);
     store.set(NAME_KEY, ident.name);
     $('playerName').value = ident.name;
@@ -299,10 +302,6 @@
       const payload = pendingCreate;
       pendingCreate = null;
       socket.emit('createTournament', payload);
-      return;
-    }
-    if (inviteEntryInfo) {
-      showInviteEntry(inviteEntryInfo.code, inviteEntryInfo.gameInfo);
       return;
     }
     if (pendingJoin) {
@@ -1948,6 +1947,12 @@
     store.set(PROVIDER_KEY, null);
     $('identityStatus').textContent = '';
     renderIdentityRow();
+    // A dead token on a browser that arrived by an open invite link: the door
+    // the link opens is still the right screen, not the sign-in card.
+    if (reason === 'no-account' && inviteEntryInfo) {
+      showInviteEntry(inviteEntryInfo.code, inviteEntryInfo.gameInfo);
+      return;
+    }
     // The ordinary case, and not worth a dialog: this browser has never signed
     // in, or its token has been signed out from somewhere else. The sign-in
     // card is already in front of them, so it says so and that is all.
@@ -2134,6 +2139,11 @@
 
   function onError(message) {
     if (tableShowing()) return;
+    // A refused guest join leaves the door up for another try.
+    if (view === 'inviteEntry') {
+      $('btnJoinGame').disabled = false;
+      $('ieStatus').textContent = '';
+    }
     if (typeof window.showNoticeDialog === 'function') {
       window.showNoticeDialog({ title: 'Lobby', message, confirmLabel: 'OK' });
     }
@@ -2148,9 +2158,11 @@
   function showView(name) {
     view = name;
     // Nothing behind the door is drawn until somebody is through it. The
-    // sign-in card sits outside this list, so it stays where it is.
-    // Exception: inviteEntry can show without authentication.
+    // sign-in card sits outside this list, so it stays where it is - except
+    // for the invite link's own door, which is drawn for a browser that is
+    // nobody yet and stands in for the card while it is up.
     const through = !!identity;
+    const door = name === 'inviteEntry';
     [
       'home',
       'create',
@@ -2163,11 +2175,11 @@
       'password',
     ].forEach((v) => {
       const node = $('lobby' + v.charAt(0).toUpperCase() + v.slice(1));
-      const allowWithout = v === 'inviteEntry';
-      if (node)
-        node.classList.toggle('hidden', (!through && !allowWithout) || v !== name);
+      const drawn = v === name && (through || door);
+      if (node) node.classList.toggle('hidden', !drawn);
     });
-    if (!through && name !== 'inviteEntry') return;
+    $('identityCard').classList.toggle('hidden', door && !through);
+    if (!through && !door) return;
     if (name === 'waiting') renderWaiting();
     if (name === 'home') renderList();
   }
@@ -2913,93 +2925,75 @@
     return true;
   }
 
-  // Fetch game info to check if autoApprove is enabled
+  // ── The invite link's door ───────────────────────────────────────────────
+  //
+  // A game whose host ticked "guests can join freely" is entered from a name
+  // alone: no account first. The link lands here, the name goes up with the
+  // code, and the server makes the identity and the seat in one go (see
+  // guestJoinViaCode). Which games work that way is asked over HTTP before
+  // anything is drawn, because the answer decides which screen this is.
+
   async function fetchGameInfo(code) {
     try {
       const resp = await fetch(`/api/games?code=${encodeURIComponent(code)}`);
-      if (resp.ok) {
-        const data = await resp.json();
-        return data;
-      }
-      return null;
+      return resp.ok ? await resp.json() : null;
     } catch (_err) {
       return null;
     }
   }
 
-  function formatStartTime(timestamp) {
-    if (!timestamp) return null;
-    const date = new Date(timestamp);
-    const now = Date.now();
-    if (timestamp <= now) return 'Starting…';
-    const diff = timestamp - now;
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'Starting…';
-    if (minutes < 60) return `in ${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `in ${hours}h`;
-    const days = Math.floor(hours / 24);
-    return `in ${days}d`;
+  function inviteBlurb(info) {
+    const parts = [];
+    const n = Number(info.entrants) || 0;
+    parts.push(`${n} ${n === 1 ? 'player' : 'players'} so far`);
+    if (info.status === 'running') parts.push('under way, late registration open');
+    else if (info.startsAt) {
+      const wait = info.startsAt - Date.now();
+      parts.push(wait > 60000 ? `starts in ${fmtCountdown(wait)}` : 'starting soon');
+    }
+    const structure = info.settings && info.settings.structure && info.settings.structure.name;
+    if (structure) parts.push(`${structure} blinds`);
+    return parts.join(' · ');
   }
 
-  function showInviteEntry(code, gameInfo) {
-    inviteEntryInfo = { code, gameInfo };
-    const name = gameInfo.name || 'Game';
-    const playerCount = gameInfo.entrants ? gameInfo.entrants.length : 0;
-
-    $('ieGameName').textContent = name;
-    $('iePlayerCount').textContent = playerCount;
-
-    const startTimeRow = $('ieStartTimeRow');
-    if (startTimeRow && gameInfo.startsAt) {
-      startTimeRow.classList.remove('hidden');
-      $('ieStartTime').textContent = formatStartTime(gameInfo.startsAt);
-    }
-
-    const structureRow = $('ieStructureRow');
-    if (structureRow && gameInfo.settings && gameInfo.settings.structure) {
-      structureRow.classList.remove('hidden');
-      $('ieStructure').textContent = gameInfo.settings.structure.name || 'Standard';
-    }
-
-    const savedName = store.get(NAME_KEY);
-    $('iePlayerName').value = savedName || '';
-    $('iePlayerName').focus();
+  function showInviteEntry(code, info) {
+    inviteEntryInfo = { code, gameInfo: info };
+    $('ieGameName').textContent = info.name || 'Game';
+    $('ieBlurb').textContent = inviteBlurb(info);
     $('ieStatus').textContent = '';
-
+    $('btnJoinGame').disabled = false;
+    const input = $('iePlayerName');
+    if (!input.value) input.value = store.get(NAME_KEY) || '';
     showView('inviteEntry');
+    input.focus();
   }
 
   function submitInviteEntry() {
     if (!inviteEntryInfo) return false;
-    const name = sanitizeLobbyPlayerName($('iePlayerName').value);
+    const input = $('iePlayerName');
+    const name = sanitizeLobbyPlayerName(input.value);
     if (!name) {
-      $('ieStatus').textContent = 'Please enter your name';
+      $('ieStatus').textContent = 'Pick a name to play under.';
+      input.classList.add('input-invalid');
+      input.focus();
       return false;
     }
+    input.classList.remove('input-invalid');
     const { code } = inviteEntryInfo;
     store.set(NAME_KEY, name);
-
-    // If already logged in, just join
-    if (identity && socket && socket.connected) {
-      socket.emit('joinTournament', { code });
-      return true;
+    // Signed in after all - a second tab, say. Their name is their name.
+    if (identity) return requestJoin({ code });
+    if (!socket || !socket.connected) {
+      $('ieStatus').textContent = 'Still connecting - try again in a moment.';
+      return false;
     }
-
-    // Not logged in: create guest account automatically
-    if (!identity) {
-      $('ieStatus').textContent = 'Joining...';
-      // Wait for socket to be ready, then emit guest join
-      const checkSocket = setInterval(() => {
-        if (socket && socket.connected) {
-          clearInterval(checkSocket);
-          socket.emit('guestJoinViaCode', { name, code });
-        }
-      }, 100);
-      // Timeout after 10 seconds
-      setTimeout(() => clearInterval(checkSocket), 10000);
-      return true;
-    }
+    // The join rides the guest sign-in, so the code must not also ride the
+    // identify that answers it.
+    pendingJoin = null;
+    $('ieStatus').textContent = 'Joining…';
+    $('btnJoinGame').disabled = true;
+    socket.emit('guestJoinViaCode', { name, code });
+    return true;
   }
 
   function cancelInviteEntry() {
@@ -3500,19 +3494,20 @@
     const fromLink = params.get('t');
     if (fromLink) {
       const code = fromLink.trim().toUpperCase();
-      // Try to fetch game info to check if autoApprove is enabled
-      fetchGameInfo(code).then((gameInfo) => {
-        if (gameInfo && gameInfo.autoApprove) {
-          // Auto-approve game: show invite entry screen
-          if (identity) {
-            showInviteEntry(code, gameInfo);
-          } else {
-            inviteEntryInfo = { code, gameInfo };
-          }
-        } else {
-          // Normal join flow
-          pendingJoin = { code };
-          $('joinCodeInput').value = code;
+      pendingJoin = { code };
+      $('joinCodeInput').value = code;
+      const nobody = !store.get(TOKEN_KEY) && !pendingGnToken;
+      // Which door the link opens is the server's to say. A game whose host
+      // ticked the box is entered from a name alone, so a browser that is
+      // nobody yet is shown that rather than the sign-in card; any other game
+      // asks them to sign in, with the code kept for afterwards. Somebody
+      // already goes the way a link always went: the code rides the identify.
+      fetchGameInfo(code).then((info) => {
+        if (info && info.autoApprove) {
+          inviteEntryInfo = { code, gameInfo: info };
+          if (nobody && !identity) showInviteEntry(code, info);
+        } else if (nobody && !identity) {
+          needSignIn('Sign in to join this game.');
         }
       });
     }
@@ -3541,13 +3536,9 @@
       else if (adminTab === 'log' && !adminLogPaged) askForAdminLog({ fresh: true, quiet: true });
     }, ADMIN_POLL_MS);
     ensureSocket();
-    // Don't force sign-in if showing invite entry screen (autoApprove game)
-    if (
-      (fromLink || railLink) &&
-      !store.get(TOKEN_KEY) &&
-      !pendingGnToken &&
-      view !== 'inviteEntry'
-    ) {
+    // A rail link asks for a sign-in straight away. A join link asks once the
+    // server has said which door it opens, above.
+    if (railLink && !fromLink && !store.get(TOKEN_KEY) && !pendingGnToken) {
       needSignIn('Sign in to join this game.');
     }
   }

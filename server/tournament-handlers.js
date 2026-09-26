@@ -724,50 +724,55 @@ function registerTournamentHandlers(deps) {
       if (error) fail(socket, error);
     });
 
-    // Guest join via invite code: create account, identify, and join in one step
+    // The other way through the door, for a link whose host said the link is
+    // enough. A browser with nothing to sign in as sends a name and the code;
+    // if the code names a game that lets a guest straight in, an identity is
+    // made from the name and the join happens in the same breath, `identified`
+    // first so the client knows who it is when tournamentJoined lands. The
+    // game is looked up before anybody is made, so a mistyped link - or a
+    // door the host kept - gets the answer a wrong code gets and makes nobody.
+    // A socket that is already somebody joins the ordinary way.
     socket.on('guestJoinViaCode', (payload = {}) => {
-      const name = payload.name ? String(payload.name).trim() : '';
-      const code = payload.code ? String(payload.code).trim() : '';
-      if (!name || !code) {
-        return fail(socket, 'Name and code are required');
+      if (socket.data.uid) {
+        fail(socket, 'You are already signed in');
+        return;
       }
-      // Create a guest account with the provided name
-      const ident = identity.createGuest({ name });
+      const code = String(payload.code || '')
+        .trim()
+        .toUpperCase();
+      const entry = registry.byCode(code);
+      if (!entry || !registry.openToGuestByLink(entry)) {
+        fail(socket, 'Tournament not found');
+        return;
+      }
+      const ident = identity.createGuest({
+        name: payload.name,
+        avatar: payload.avatar,
+        userAgent: userAgentOf(socket),
+      });
       if (!ident || ident.error) {
-        return fail(socket, ident?.error || 'Could not create account');
+        fail(socket, (ident && ident.error) || 'Could not sign you in');
+        return;
       }
       socket.data.uid = ident.uid;
+      socket.data.isAdmin = identity.isAdmin(ident.uid);
       socket.data.token = ident.token;
-      socket.data.isAdmin = false;
-      // Now join the tournament with the code
-      const { error } = registry.join(ident.uid, { code }, socket);
-      if (error) {
-        return fail(socket, error);
-      }
-      // Send identify success response
-      const entry = registry.findByUid(ident.uid);
-      let resume = null;
-      if (entry) {
-        resume = { id: entry.id, code: entry.code, name: entry.name, status: entry.status };
-      }
-      socket.emit('identified', {
-        uid: ident.uid,
-        name: ident.name,
-        avatar: ident.avatar,
-        token: ident.token,
-        provider: 'guest',
-        isAdmin: false,
-        isNew: ident.isNew,
-        resume,
-      });
       if (adminLog) {
         adminLog.recordSignIn({
           uid: ident.uid,
           name: ident.name,
-          provider: 'guest',
-          isNew: ident.isNew,
+          provider: ident.provider,
+          isNew: true,
         });
       }
+      socket.emit('identified', {
+        ...ident,
+        resume: null,
+        pending: null,
+        isAdmin: !!socket.data.isAdmin,
+      });
+      const { error } = registry.join(ident.uid, { code }, socket);
+      if (error) fail(socket, error);
     });
 
     function startNow() {

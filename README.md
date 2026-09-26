@@ -143,8 +143,10 @@ the host works. Identity is now shared with Game Night, optionally: a server pai
 and a player who signs in there is seated here under their Game Night
 username, the same player on every device. A server with no Game Night is
 still whole: it keeps accounts of its own, a name and a password with an
-address confirmed by a link. Either way everybody who plays here has an
-account - there is no way to sit down without one. The same Admin page lists every game the
+address confirmed by a link. Either way everybody who plays here is somebody
+the server knows: an account, or - on an invite-only game whose host ticked
+_Guests can join freely with the link_ - a name given at the link, which is
+theirs here from then on. There is no other way to sit down. The same Admin page lists every game the
 server holds, listed or not, with its code, and can end one.
 
 A blind structure is chosen when a game is made, Turbo, Standard or Deep, or

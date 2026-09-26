@@ -573,6 +573,71 @@ describe('Tournament socket layer', () => {
     await cancelGame(host);
   });
 
+  // The same door, when the host said the link is enough. A browser that is
+  // nobody yet sends a name with the code and is made somebody and seated in
+  // one breath - and comes back on the token like anyone else.
+  test('an invite link the host opened to guests: a name at the door is a seat', async () => {
+    const host = await connectClient();
+    const created = await createTournament(host, { visibility: 'invite', autoApprove: true });
+    const walkin = await connectClient();
+    const identified = waitFor(walkin, 'identified');
+    const joined = waitFor(walkin, 'tournamentJoined');
+    walkin.emit('guestJoinViaCode', { name: 'Walkin', code: created.code });
+    const ident = await identified;
+    expect(ident.uid).toMatch(/^g_/);
+    expect(ident.name).toBe('Walkin');
+    expect(ident.provider).toBe('local');
+    expect(ident.isAdmin).toBe(false);
+    expect(ident.resume).toBeNull();
+    expect(ident.token).toBeTruthy();
+    const seat = await joined;
+    expect(seat.id).toBe(created.id);
+    expect(seat.uid).toBe(ident.uid);
+    expect(seat.host).toBe(false);
+    const entry = serverModule.tournaments.get(created.id);
+    expect(entry.director.entrants.some((e) => e.uid === ident.uid && e.name === 'Walkin')).toBe(
+      true
+    );
+
+    // Back on the token, as a device that signed in would be.
+    const again = await connectClient();
+    const resumed = waitFor(again, 'identified');
+    const rebound = waitFor(again, 'tournamentJoined');
+    again.emit('identify', { token: ident.token });
+    expect((await resumed).resume).toMatchObject({ id: created.id });
+    expect((await rebound).resumed).toBe(true);
+  });
+
+  test('a held name at the door, and a door the host did not open, make nobody', async () => {
+    const host = await connectClient();
+    const open = await createTournament(host, { visibility: 'invite', autoApprove: true });
+    const before = serverModule.identity.list({ limit: 50 }).rows.length;
+
+    // The host's own name is held, and the refusal says so.
+    const taken = await connectClient();
+    const refused = waitFor(taken, 'error');
+    taken.emit('guestJoinViaCode', { name: 'Host', code: open.code });
+    expect((await refused).message).toBe('That name is taken on this server.');
+
+    // A code the link would not have opened for a guest gets the answer a
+    // wrong code gets, and no identity is made for it.
+    const wrong = await connectClient();
+    const nothing = waitFor(wrong, 'error');
+    wrong.emit('guestJoinViaCode', { name: 'Stranger', code: 'ZZZZZ' });
+    expect((await nothing).message).toBe('Tournament not found');
+    expect(serverModule.identity.list({ limit: 50 }).rows.length).toBe(before);
+  });
+
+  test('a door the host kept: the link alone still only knocks', async () => {
+    const host = await connectClient();
+    const kept = await createTournament(host, { visibility: 'invite' });
+    const stranger = await connectClient();
+    const refused = waitFor(stranger, 'error');
+    stranger.emit('guestJoinViaCode', { name: 'Stranger', code: kept.code });
+    expect((await refused).message).toBe('Tournament not found');
+    expect(serverModule.identity.nameHeldBy('Stranger', null)).toBeNull();
+  });
+
   test('an invite-only game: turned away, and giving up', async () => {
     const host = await connectClient();
     const created = await createTournament(host, { visibility: 'invite' });

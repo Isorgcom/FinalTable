@@ -13,6 +13,17 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Fixed
+
+- **The invite link's name-and-join screen now actually appears.** In 0.28.0
+  a browser that was not signed in was shown the sign-in card instead of the
+  name box, so the "no approval needed" link still needed an account at the
+  other end. It opens on the name box now, and the name is enough: it makes
+  the guest a player on this server - the same person on that browser from
+  then on, with that name held for them - and seats them in the game. A game
+  whose host did not tick the box, and a browser that is already signed in,
+  work as they did.
+
 ## 0.28.0 - 2026-09-26
 
 ### Added
