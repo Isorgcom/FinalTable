@@ -2989,14 +2989,15 @@
     // Not logged in: create guest account automatically
     if (!identity) {
       $('ieStatus').textContent = 'Joining...';
-      // Use a guest sign-in: send a special socket event to create and join
-      if (socket && socket.connected) {
-        socket.emit('guestJoinViaCode', { name, code });
-      } else {
-        pendingJoin = { code };
-        // Need to identify but with guest name
-        identify();
-      }
+      // Wait for socket to be ready, then emit guest join
+      const checkSocket = setInterval(() => {
+        if (socket && socket.connected) {
+          clearInterval(checkSocket);
+          socket.emit('guestJoinViaCode', { name, code });
+        }
+      }, 100);
+      // Timeout after 10 seconds
+      setTimeout(() => clearInterval(checkSocket), 10000);
       return true;
     }
   }
