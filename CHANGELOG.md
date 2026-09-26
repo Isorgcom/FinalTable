@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.28.1 - 2026-09-26
+
 ### Fixed
 
 - **The invite link's name-and-join screen now actually appears.** In 0.28.0
