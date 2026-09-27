@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.29.0 - 2026-09-27
+
 ### Added
 
 - **Omaha and Seven-Card Stud, with pot-limit and fixed-limit betting.** The
