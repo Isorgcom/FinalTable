@@ -103,7 +103,7 @@ describe('the webhook outbox', () => {
       event: 'player.eliminated',
       delivery_id: 1,
       sent_at: t,
-      game: { id: 't_one', name: 'Thursday', external_id: 'ev_1' },
+      game: { id: 't_one', name: 'Thursday', external_id: 'ev_1', variant: 'holdem', limit: 'no' },
       place: 4,
     });
     expect(sent.headers['Content-Type']).toBe('application/json');

@@ -15,6 +15,8 @@
 // not so far off that the registry would silently move it to now.
 
 const { webhookAllowed, refusalFor } = require('./webhook-origins');
+const { GAMES, isGame } = require('../games');
+const { LIMITS } = require('../betting-limits');
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ROSTER = 200;
@@ -102,6 +104,24 @@ function readCreateBody(
   if (has(body.bots)) payload.bots = body.bots;
   const autoApprove = pick('auto_approve', 'autoApprove');
   if (autoApprove !== undefined) payload.autoApprove = truthy(autoApprove);
+
+  // Which game, and how it is bet. Refused rather than defaulted: a caller
+  // that asked for a game this server does not play should be told so, not
+  // handed Hold'em.
+  const game = pick('game', 'variant');
+  if (game !== undefined) {
+    const key = String(game).toLowerCase();
+    if (!isGame(key)) return { error: `game must be one of ${Object.keys(GAMES).join(', ')}.` };
+    payload.game = key;
+  }
+  const limit = pick('limit', 'betting');
+  if (limit !== undefined) {
+    const key = String(limit)
+      .toLowerCase()
+      .replace(/[-_ ]?limit$/, '');
+    if (!LIMITS.includes(key)) return { error: `limit must be one of ${LIMITS.join(', ')}.` };
+    payload.limit = key;
+  }
 
   // The blinds: GameNight's rows, or a preset key, or this server's own
   // shape, which goes through untouched for clampStructure to judge.

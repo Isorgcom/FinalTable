@@ -31,10 +31,16 @@ class HandHistory {
     };
   }
 
-  startHand(handNum, players, dealerIdx, sbIdx, bbIdx, blinds) {
+  // `game` is which game and how it was bet - { game, limit, bets } - kept so
+  // a replay reads a stud hand as one. Older records have none and read as
+  // no-limit Hold'em, which is all they could have been.
+  startHand(handNum, players, dealerIdx, sbIdx, bbIdx, blinds, game = {}) {
     this.current = {
       handNum,
       timestamp: Date.now(),
+      game: game.game || 'holdem',
+      limit: game.limit || 'no',
+      bets: game.bets ? { ...game.bets } : null,
       players: players.map((p) => ({
         id: p.id,
         // The identity behind the seat. Everything else here is keyed by the
@@ -52,11 +58,11 @@ class HandHistory {
       smallBlind: blinds.sb,
       bigBlind: blinds.bb,
       ante: blinds.ante || 0,
-      holeCards: {}, // playerId → [card, card], every seat, server-side
+      holeCards: {}, // playerId → [card, ...], every seat, server-side
       shownPlayerIds: [], // who turned anything face up
-      // playerId -> which of their two cards were turned over. A showdown
-      // records both; a winner showing after an uncontested pot may record
-      // one. Everybody in shownPlayerIds has an entry here.
+      // playerId -> which of their cards were turned over. A showdown records
+      // all of them; a winner showing after an uncontested pot may record one.
+      // Everybody in shownPlayerIds has an entry here.
       shownCards: {},
       communityCards: [],
       actions: [], // {phase, playerId, playerName, action, amount, pot}
@@ -66,8 +72,16 @@ class HandHistory {
     // Every hand in full, for the server's own use. What may leave the server
     // is decided per viewer in getStateForPlayer, not here: cards a player was
     // never made to show are never anyone else's to see.
+    this.recordHoleCards(players);
+  }
+
+  // Each seat's cards as they stand. Called at the deal, and again on every
+  // street that deals to the seats rather than the board - a stud hand grows
+  // a card at a time, and the record has to grow with it.
+  recordHoleCards(players) {
+    if (!this.current) return;
     for (const p of players) {
-      if (p.holeCards && p.holeCards.length === 2) {
+      if (p.holeCards && p.holeCards.length >= 2) {
         this.current.holeCards[p.id] = p.holeCards.map((card) => HandHistory.cloneCard(card));
       }
     }
@@ -77,9 +91,8 @@ class HandHistory {
   // a holding public, so it is the only thing that unlocks it in the replay: a
   // fold takes the cards to the muck unseen, and they stay unseen afterwards.
   //
-  // indices says which of the two were turned over, because a winner who takes
-  // a pot uncontested may show one and keep the other. A showdown passes both
-  // and reads exactly as it always did.
+  // indices says which cards were turned over, because a winner who takes a
+  // pot uncontested may show one and keep the rest. A showdown passes them all.
   recordShown(playerId, indices = [0, 1]) {
     if (!this.current || !playerId) return;
     this._markShown(this.current, playerId, indices);
@@ -103,7 +116,7 @@ class HandHistory {
   _markShown(hand, playerId, indices) {
     const wanted = (Array.isArray(indices) ? indices : [indices])
       .map((i) => Number(i))
-      .filter((i) => i === 0 || i === 1);
+      .filter((i) => Number.isInteger(i) && i >= 0);
     if (!wanted.length) return;
     if (!hand.shownPlayerIds.includes(playerId)) hand.shownPlayerIds.push(playerId);
     if (!hand.shownCards) hand.shownCards = {};
@@ -382,6 +395,9 @@ function exportRowFor(row, uid) {
     smallBlind: hand.smallBlind,
     bigBlind: hand.bigBlind,
     ante: hand.ante || 0,
+    game: hand.game || 'holdem',
+    limit: hand.limit || 'no',
+    bets: hand.bets || null,
   };
 }
 

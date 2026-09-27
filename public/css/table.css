@@ -792,6 +792,7 @@
 /* ═══ PLAYER SEATS ═══ */
 .player-seat {
   --hole-h: 78px;
+  --hole-w: 56px;
   /* How much of a hole card the plate covers. The ceiling is not taste: the
      index has to clear the plate or the card stops saying what it is, and at
      the large face that index reaches 46% of the way down. Past 0.54 the suit
@@ -1531,7 +1532,7 @@
 }
 .player-hole-cards .card {
   --card-h: var(--hole-h);
-  width: 56px;
+  width: var(--hole-w);
   height: var(--card-h);
 }
 .player-hole-cards .card-front {
@@ -1539,8 +1540,34 @@
   height: 100%;
 }
 .player-hole-cards .card-back {
-  width: 56px;
+  width: var(--hole-w);
   height: var(--hole-h);
+}
+/* More than two cards fan: every card after the first slides under the one
+   before it by a share of the width, so four Omaha cards or seven stud cards
+   take little more room than two did. The share grows with the count, and
+   --hole-w is what makes it hold at every breakpoint and on the viewer's own
+   board-sized cards. Two cards fan by nothing and sit as they always have. */
+.player-hole-cards[data-cards='3'] {
+  --fan: 0.4;
+}
+.player-hole-cards[data-cards='4'] {
+  --fan: 0.5;
+}
+.player-hole-cards[data-cards='5'] {
+  --fan: 0.58;
+}
+.player-hole-cards[data-cards='6'] {
+  --fan: 0.64;
+}
+.player-hole-cards[data-cards='7'] {
+  --fan: 0.68;
+}
+.player-hole-cards > .card + .card,
+.player-hole-cards > .card + .card-back,
+.player-hole-cards > .card-back + .card,
+.player-hole-cards > .card-back + .card-back {
+  margin-left: calc(var(--hole-w) * var(--fan, 0) * -1);
 }
 
 /* Your own two cards, the size of the board. One class deeper than the rules
@@ -1552,6 +1579,7 @@
    tuck by less, and still tuck. */
 .player-seat.is-me {
   --hole-h: var(--board-card-h);
+  --hole-w: var(--board-card-w);
   --tuck: calc(var(--hole-h) * 0.32);
 }
 .player-seat.is-me .player-hole-cards {
@@ -1559,7 +1587,7 @@
 }
 .player-seat.is-me .player-hole-cards .card,
 .player-seat.is-me .player-hole-cards .card-back {
-  width: var(--board-card-w);
+  width: var(--hole-w);
   height: var(--hole-h);
 }
 

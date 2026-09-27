@@ -1157,6 +1157,7 @@
       // A game holding for an empty room is the one an admin might want to
       // end by hand rather than wait out, so the card says since when.
       t.held ? `holding since ${fmtWhen(t.heldSince)}` : null,
+      t.game ? gameLine(t) : null,
       `${t.tableSize}-max`,
       fmtChips(t.startChips),
       t.startedAt ? `started ${fmtWhen(t.startedAt)}` : `created ${fmtWhen(t.createdAt)}`,
@@ -2309,6 +2310,7 @@
     const parts = [
       t.hostName ? `Host ${t.hostName}` : null,
       players,
+      t.game ? gameLine(t) : null,
       `${t.tableSize}-max`,
       fmtChips(t.startChips),
       t.structure || null,
@@ -2470,6 +2472,79 @@
     invite: 'Unlisted; the link lets people ask, and you let them in.',
   };
 
+  // ── The game, and how it is bet ──────────────────────────────────────────
+  // Mirrors games.js and betting-limits.js on the server, which decide what
+  // is actually dealt; this is the words on the form and the summaries.
+  const GAME_NAMES = { holdem: "Hold'em", omaha: 'Omaha', stud: 'Seven-Card Stud' };
+  const LIMIT_NAMES = { no: 'No-limit', pot: 'Pot-limit', fixed: 'Fixed-limit' };
+  const GAME_HINT = {
+    holdem: 'Two cards each and five on the board.',
+    omaha: 'Four cards each; exactly two of them play, with three from the board.',
+    stud: 'Seven cards each, four face up, no board. Everyone antes and the low card brings in. Tables of seven.',
+  };
+  const LIMIT_HINT = {
+    no: 'A raise is anything up to the stack.',
+    pot: 'A raise is at most the size of the pot.',
+    fixed:
+      "Every bet is the level's bet, doubled on the later streets, and a street closes after four raises.",
+  };
+  const GAME_DEFAULT_LIMIT = { holdem: 'no', omaha: 'pot', stud: 'fixed' };
+  const GAME_MAX_SEATS = { holdem: 8, omaha: 8, stud: 7 };
+
+  function setGame(key) {
+    document.querySelectorAll('#tGame button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.game === key);
+    });
+    $('tGameHint').textContent = GAME_HINT[key] || '';
+    // A stud table seats seven: the deck holds no more with no burn.
+    const size = $('tTableSize');
+    const max = GAME_MAX_SEATS[key] || 8;
+    for (const opt of size.options) opt.disabled = Number(opt.value) > max;
+    if (Number(size.value) > max) size.value = String(max);
+    setLimit(GAME_DEFAULT_LIMIT[key] || 'no');
+  }
+
+  function currentGame() {
+    const active = document.querySelector('#tGame button.active');
+    return active ? active.dataset.game : 'holdem';
+  }
+
+  function setLimit(key) {
+    document.querySelectorAll('#tLimit button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.limit === key);
+    });
+    $('tLimitHint').textContent = LIMIT_HINT[key] || '';
+    refreshStructureHint();
+  }
+
+  function currentLimit() {
+    const active = document.querySelector('#tLimit button.active');
+    return active ? active.dataset.limit : 'no';
+  }
+
+  // "Omaha · Pot-limit", for the summaries. A game made before there were
+  // other games has neither field and is what it always was.
+  function gameLine(s) {
+    return `${GAME_NAMES[s.game] || GAME_NAMES.holdem} · ${LIMIT_NAMES[s.limit] || LIMIT_NAMES.no}`;
+  }
+
+  // What the first level posts in the chosen game, so a host picking stud or
+  // fixed-limit sees what the blind rows turn into. The arithmetic is
+  // games.js's: a stud level is ante half the small blind, bring-in the small
+  // blind, bets the big blind and twice it.
+  function levelOneLine(rows) {
+    const row = (rows || []).find((r) => !r.break);
+    if (!row) return '';
+    const sb = row.sb || 0;
+    const bb = row.bb || 0;
+    if (currentGame() === 'stud') {
+      return ` · Level 1: ante ${Math.max(1, Math.round(sb / 2))} · bring-in ${sb} · bets ${bb}/${bb * 2} · every hand antes`;
+    }
+    let line = ` · Level 1: blinds ${sb}/${bb}`;
+    if (currentLimit() === 'fixed') line += ` · bets ${bb}/${bb * 2}`;
+    return line;
+  }
+
   function setVisibility(vis) {
     document.querySelectorAll('#tVisibility button').forEach((b) => {
       b.classList.toggle('active', b.dataset.vis === vis);
@@ -2581,7 +2656,9 @@
     const def = presetDef(currentStructureKey());
     if (structureEdited && levelsDraft) {
       const from = def ? def.name : 'a preset';
-      hint.textContent = `Custom, edited from ${from} · ${structureLine(summarizeRows(levelsDraft))}`;
+      hint.textContent =
+        `Custom, edited from ${from} · ${structureLine(summarizeRows(levelsDraft))}` +
+        levelOneLine(levelsDraft);
       refreshAddOnRow(levelsDraft);
       return;
     }
@@ -2591,7 +2668,7 @@
       return;
     }
     const rows = materializeRows(def, levelLengthSeconds());
-    hint.textContent = `${def.hint} ${structureLine(summarizeRows(rows))}`;
+    hint.textContent = `${def.hint} ${structureLine(summarizeRows(rows))}${levelOneLine(rows)}`;
     refreshAddOnRow(rows);
   }
 
@@ -2846,6 +2923,7 @@
   function openCreate() {
     if (!$('tName').value) $('tName').value = 'Game Night';
     setVisibility('private');
+    setGame('holdem');
     resetLevelsEditor();
     setStructure('standard');
     loadPresets();
@@ -2873,6 +2951,8 @@
       buyIn: Math.max(0, Math.min(10000, parseInt($('tBuyIn').value, 10) || 0)),
       bots: $('tBots').checked ? parseInt($('tBotCount').value, 10) || 5 : 0,
       visibility: currentVisibility(),
+      game: currentGame(),
+      limit: currentLimit(),
       structure: structurePayload(),
       autoApprove: $('tAutoApprove') && $('tAutoApprove').checked,
     };
@@ -2951,6 +3031,7 @@
       const wait = info.startsAt - Date.now();
       parts.push(wait > 60000 ? `starts in ${fmtCountdown(wait)}` : 'starting soon');
     }
+    if (info.settings && info.settings.game) parts.push(gameLine(info.settings));
     const structure = info.settings && info.settings.structure && info.settings.structure.name;
     if (structure) parts.push(`${structure} blinds`);
     return parts.join(' · ');
@@ -3134,6 +3215,7 @@
     hint.classList.toggle('hidden', !(invite && t.isHost));
     const parts = [
       VISIBILITY_LINE[s.visibility] || null,
+      gameLine(s),
       `${s.tableSize}-max tables`,
       `${fmtChips(s.startChips)} starting stack`,
       s.structure && s.structure.name
@@ -3361,6 +3443,12 @@
     });
     document.querySelectorAll('#tStartQuick button').forEach((b) => {
       b.addEventListener('click', () => setQuick(Number(b.dataset.min)));
+    });
+    document.querySelectorAll('#tGame button').forEach((b) => {
+      b.addEventListener('click', () => setGame(b.dataset.game));
+    });
+    document.querySelectorAll('#tLimit button').forEach((b) => {
+      b.addEventListener('click', () => setLimit(b.dataset.limit));
     });
     document.querySelectorAll('#tVisibility button').forEach((b) => {
       b.addEventListener('click', () => setVisibility(b.dataset.vis));

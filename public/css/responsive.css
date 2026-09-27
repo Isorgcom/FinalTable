@@ -56,12 +56,7 @@
   }
   .player-seat {
     --hole-h: 67px;
-  }
-  .player-hole-cards .card {
-    width: 48px;
-  }
-  .player-hole-cards .card-back {
-    width: 48px;
+    --hole-w: 48px;
   }
   /* The felt is capped at 760px and the chairs ride outside it, so the slack
      at this width goes to the plates rather than sitting empty. The felt's own
@@ -160,10 +155,7 @@
   }
   .player-seat {
     --hole-h: 59px;
-  }
-  .player-hole-cards .card,
-  .player-hole-cards .card-back {
-    width: 42px;
+    --hole-w: 42px;
   }
   .poker-table-wrapper {
     width: min(74%, 760px, var(--table-fit-height), calc(92% - 240px));
@@ -258,12 +250,7 @@
   }
   .player-seat {
     --hole-h: 42px;
-  }
-  .player-hole-cards .card {
-    width: 30px;
-  }
-  .player-hole-cards .card-back {
-    width: 30px;
+    --hole-w: 30px;
   }
   .player-hole-cards {
     gap: 2px;
@@ -609,10 +596,7 @@
   }
   .player-seat {
     --hole-h: 36px;
-  }
-  .player-hole-cards .card,
-  .player-hole-cards .card-back {
-    width: 26px;
+    --hole-w: 26px;
   }
   .player-action-badge {
     top: -16px;

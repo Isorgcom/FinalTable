@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
-      content="Self-hosted multiplayer Texas Hold'em with 22 literary AI opponents and Monte Carlo engine"
+      content="Self-hosted multi-table poker tournaments: Hold'em, Omaha and Seven-Card Stud"
     />
     <meta name="finaltable-asset-version" content="__ASSET_VERSION__" />
     <meta property="og:title" content="FinalTable" />
@@ -733,6 +733,27 @@
               <span> Guests can join freely with the link <em>no host approval needed</em> </span>
             </label>
           </div>
+          <!-- Which game, and how it is bet. Each game has the limit it is
+               usually played at; picking a game picks that, and the host can
+               pick another. -->
+          <div class="form-group">
+            <label>Game</label>
+            <div class="seg" id="tGame" role="group" aria-label="Game">
+              <button type="button" data-game="holdem" class="active">Hold'em</button>
+              <button type="button" data-game="omaha">Omaha</button>
+              <button type="button" data-game="stud">Seven-Card Stud</button>
+            </div>
+            <div class="seg-hint" id="tGameHint"></div>
+          </div>
+          <div class="form-group">
+            <label>Betting</label>
+            <div class="seg" id="tLimit" role="group" aria-label="Betting">
+              <button type="button" data-limit="no" class="active">No-limit</button>
+              <button type="button" data-limit="pot">Pot-limit</button>
+              <button type="button" data-limit="fixed">Fixed-limit</button>
+            </div>
+            <div class="seg-hint" id="tLimitHint"></div>
+          </div>
           <div class="form-group">
             <label for="tStartAt">Starts</label>
             <div class="seg" id="tStartQuick" role="group" aria-label="Start time">
@@ -750,6 +771,7 @@
               <select id="tTableSize">
                 <option value="2">Heads-up</option>
                 <option value="6">6-max</option>
+                <option value="7">7-max</option>
                 <option value="8" selected>8-max</option>
               </select>
             </div>
@@ -1188,10 +1210,10 @@
                winner may turn a card over. It lives here rather than on the
                seat because this row is the one thing on the felt that is still
                up between hands, which is exactly when the offer stands. Tap a
-               card on your own seat for one; these are for both, or neither. -->
+               card on your own seat for one; these are for all of them, or none. -->
           <div class="preaction-show hidden" id="showRow" role="group" aria-label="Show your hand">
             <span class="preaction-show-label" id="showRowLabel">Show?</span>
-            <button class="preaction-btn" type="button" id="btnShowBoth">both</button>
+            <button class="preaction-btn" type="button" id="btnShowBoth">all</button>
             <button class="preaction-btn" type="button" id="btnShowNo">no</button>
           </div>
           <!-- Filled in by reactions.js from the server's set; absent when off. -->
@@ -1524,7 +1546,7 @@
           <div class="replay-title" id="replayTitle"></div>
           <div class="replay-winner-summary" id="replayWinnerSummary"></div>
           <div class="replay-player-cards" id="replayPlayerCards"></div>
-          <div class="replay-section-label">Community Cards:</div>
+          <div class="replay-section-label" id="replayCommunityLabel">Community Cards:</div>
           <div class="replay-cards" id="replayCommunity"></div>
           <div class="replay-section-label">Action Log:</div>
           <div class="replay-actions" id="replayActions"></div>

@@ -554,6 +554,8 @@ app.get('/api/games', (req, res) => {
     visibility: entry.settings.visibility,
     entrants: entry.director.entrants.length,
     settings: {
+      game: entry.settings.game || 'holdem',
+      limit: entry.settings.limit || 'no',
       tableSize: entry.settings.tableSize,
       structure: {
         name: entry.settings.structure ? entry.settings.structure.name : 'Standard',

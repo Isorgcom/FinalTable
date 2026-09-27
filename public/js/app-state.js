@@ -677,7 +677,9 @@ function setSitOut(enabled) {
 // server might have refused.
 function showMyCards(indices) {
   if (!socket || !gameState || !gameState.myShow) return;
-  const cards = (Array.isArray(indices) ? indices : [indices]).filter((i) => i === 0 || i === 1);
+  const cards = (Array.isArray(indices) ? indices : [indices]).filter(
+    (i) => Number.isInteger(i) && i >= 0
+  );
   if (!cards.length) return;
   socket.emit('showCards', { cards });
 }
@@ -685,6 +687,28 @@ function showMyCards(indices) {
 function declineShowMyCards() {
   if (!socket || !gameState || !gameState.myShow) return;
   socket.emit('declineShow');
+}
+
+// A street's name, as the game the table plays calls it. The server sends the
+// list with every state; the fallback covers a record older than that, and
+// the two phases that are not streets.
+const STREET_FALLBACK = {
+  waiting: 'Waiting',
+  preflop: 'Preflop',
+  flop: 'Flop',
+  turn: 'Turn',
+  river: 'River',
+  third: 'Third street',
+  fourth: 'Fourth street',
+  fifth: 'Fifth street',
+  sixth: 'Sixth street',
+  seventh: 'Seventh street',
+  showdown: 'Showdown',
+};
+function streetLabel(key) {
+  const streets = gameState && gameState.game && gameState.game.streets;
+  const found = Array.isArray(streets) ? streets.find((s) => s.key === key) : null;
+  return found ? found.label : STREET_FALLBACK[key] || key || '';
 }
 
 function armPreAction(kind) {

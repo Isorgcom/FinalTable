@@ -307,8 +307,25 @@ their stacks stay, and the middle of the table reads **On break** with the
 time to the end of it and the blinds play resumes at.
 
 On the felt: the pot, the community cards, the seats with each player's stack
-and last action, and your own two cards. A **You have …** line under the
-action buttons names your hand as the board develops.
+and last action, and your own cards - two in Hold'em, four in Omaha, up to
+seven in stud, fanned once there are more than two. A **You have …** line
+under the action buttons names your hand as it develops: in Omaha the hand
+that exactly two of your four make, in stud what your cards have made so far.
+
+Which game a table plays is the host's choice on the create form: **Hold'em**,
+**Omaha** (four cards, and exactly two of them play with three from the board)
+or **Seven-Card Stud** (seven cards each, no board; everyone antes and the
+low card showing brings in; the third, fourth, fifth and sixth cards are dealt
+face up for the whole table to see, and the strongest cards showing open each
+street). A stud table seats seven. Beside the game is the betting:
+**no-limit**, **pot-limit** (a raise is at most the pot) or **fixed-limit**
+(every bet is the level's bet, doubled from the turn or from fifth street, and
+a street closes after four raises). Each game comes up at the limit it is
+usually played at - Hold'em no-limit, Omaha pot-limit, Stud fixed-limit - and
+the host can pick another. The blind rows are the same for every game; a stud
+level reads its small blind as the bring-in, half of that as the ante, and its
+big blind and twice it as the two bets, and the form says what level one
+turns into.
 
 You can choose which chair you are drawn in. It is a preference for your
 screen only; the table's real seats do not move.
@@ -359,6 +376,11 @@ When it is your turn the action bar appears: **fold**, **check**, **call**,
 **Pot** presets), and **all in**. **fold** is dimmed while checking is free,
 because giving the hand up when it costs nothing to stay is never what
 anybody means to do; it comes back the moment there is a bet to fold to.
+Under pot-limit the slider stops at the pot, and **all in** reads **pot**
+when your stack is bigger than that: the most you may raise is a pot raise.
+Under fixed-limit there is nothing to size, so the one button reads the bet
+
+- **bet 20**, **raise to 40** - and there is no slider.
 
 On a phone held upright there is room for three decisions and no more, so the
 bar is **fold**, **check** or **call**, and **raise**, each the width of a
@@ -390,8 +412,9 @@ to, and anybody who folded, whether the hand went to a showdown or not: showing
 what you laid down is as much a part of the game as showing what won.
 
 Your own cards go gold when you are being asked. **Tap one** to turn just that
-one over, tap the other as well for both, or use **both** in the row beside sit
-out. **no** puts it away.
+one over, tap another as well, or use **all** in the row beside sit out. **no**
+puts it away. A stud card that was dealt face up is already everybody's and
+is not on offer.
 
 A card you turn over goes where a showdown's cards go: face up on the felt for
 everyone, named in the dealer's log, and in the replay afterwards. A card you
@@ -926,7 +949,9 @@ to change a setting on a server that is running:
 Your hole cards are sent to your browser and nobody else's; every other seat
 receives a view with them blanked, and they are shown only at a showdown, at
 a run-out with two or more live hands, or where you turn one over yourself
-after taking a pot nobody contested. The deck is shuffled with the
+after taking a pot nobody contested. The exception is by design: a stud card
+dealt face up is sent to every seat, because that is what an up-card is, and
+the cards dealt down stay as private as any other. The deck is shuffled with the
 operating system's random source. Unlisted games are not on any list or in
 the public API, and a game's id without its code gets "Tournament not found".
 A watcher on the rail gets the same blanked view as any other seat, is never

@@ -3022,6 +3022,7 @@ describe('re-entry and the add-on in the registry', () => {
         level: 1,
         on_break: false,
         blinds: { sb: expect.any(Number), bb: expect.any(Number), ante: expect.any(Number) },
+        bets: { sb: 25, bb: 50, ante: 0, smallBet: 50, bigBet: 100 },
         duration: 60,
         next_level_in: expect.any(Number),
         levels: 2,

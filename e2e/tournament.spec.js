@@ -685,6 +685,98 @@ test('a guest joins from the invite link on a name alone, and is the same person
   await guestContext.close();
 });
 
+// Which of two browsers holds the action bar: whoever the server says is to
+// act. Heads-up that can be either seat.
+async function whoActs(a, b) {
+  await expect
+    .poll(
+      async () =>
+        (await a.locator('#actionsPanel').isVisible()) ||
+        (await b.locator('#actionsPanel').isVisible()),
+      { timeout: 10000 }
+    )
+    .toBe(true);
+  return (await a.locator('#actionsPanel').isVisible()) ? a : b;
+}
+
+// Omaha from the create form: four cards in your hand, four backs across the
+// table, a board, and "pot" where "all in" was.
+test('an Omaha game deals four cards and bets pot-limit', async ({ browser, page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(page, 'Host');
+  await page.click('#btnCreateTournament');
+  await page.click('#tGame button[data-game="omaha"]');
+  // Picking the game picks the limit it is played at.
+  await expect(page.locator('#tLimit button[data-limit="pot"]')).toHaveClass(/active/);
+  await page.click('#btnCreateCancel');
+  const code = await helpers.createTournament(page, { name: 'Four Cards', game: 'omaha' });
+  await expect(page.locator('#wrSettings')).toContainText('Omaha · Pot-limit');
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(guest, 'Guest', { join: code });
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(4);
+  await expect(page.locator('.player-seat:not(.is-me) .player-hole-cards .card-back')).toHaveCount(
+    4
+  );
+  await expect(page.locator('#communityCards')).toBeVisible();
+  await expect(page.locator('#topInfo')).toContainText('Preflop');
+  // The stack is bigger than the pot, so the most is a pot raise, not all in.
+  const actor = await whoActs(page, guest);
+  await expect(actor.locator('#btnAllIn')).toHaveText('pot');
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
+// Stud from the create form: a table of seven, no board, three cards each with
+// one face up on every seat, and a bet button that says the bet with no slider.
+test('a Seven-Card Stud game shows the up-cards and bets fixed-limit', async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(page, 'Host');
+  await page.click('#btnCreateTournament');
+  await page.click('#tGame button[data-game="stud"]');
+  await expect(page.locator('#tLimit button[data-limit="fixed"]')).toHaveClass(/active/);
+  // A stud table seats seven: the pick moves down from eight.
+  await expect(page.locator('#tTableSize')).toHaveValue('7');
+  await expect(page.locator('#tStructureHint')).toContainText('ante 5 · bring-in 10 · bets 20/40');
+  await page.click('#btnCreateCancel');
+  const code = await helpers.createTournament(page, { name: 'Up Cards', game: 'stud' });
+  await expect(page.locator('#wrSettings')).toContainText('Seven-Card Stud · Fixed-limit');
+  await expect(page.locator('#wrSettings')).toContainText('7-max');
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(guest, 'Guest', { join: code });
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('#communityCards')).toBeHidden();
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(3);
+  // The other seat: two backs, and the one card everybody can see.
+  const theirs = page.locator('.player-seat:not(.is-me) .player-hole-cards');
+  await expect(theirs.locator('.card-back')).toHaveCount(2);
+  await expect(theirs.locator('.card')).toHaveCount(1);
+  await expect(page.locator('#topInfo')).toContainText('Third street');
+  // Fixed-limit: the button says the bet, and there is nothing to size.
+  const actor = await whoActs(page, guest);
+  await expect(actor.locator('#btnRaise')).toHaveText(/^(bet|raise to) 20$/);
+  await expect(actor.locator('#raiseSlider')).toBeHidden();
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
 test('the Stats tab is the whole field, from the first deal', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));

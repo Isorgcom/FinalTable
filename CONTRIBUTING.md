@@ -26,7 +26,7 @@ All checks must pass before submitting a PR.
 
 ## Project Structure
 
-- **Poker**: `engine.js` (one table), `director.js` (many tables on one clock), `tournament.js` (blind clock and ledger), `hand-eval.js`, `hand-describe.js`
+- **Poker**: `engine.js` (one table), `games.js` (what each game deals, who opens, how it scores), `betting-limits.js` (no-, pot- and fixed-limit), `director.js` (many tables on one clock), `tournament.js` (blind clock and ledger), `hand-eval.js`, `hand-describe.js`
 - **Tournament lifecycle**: `server/tournament-registry.js` (the state machine), `server/tournament-handlers.js` (socket shim), `server/identity.js` (who a player is), `server/tournament-store.js` (what survives a restart)
 - **Chat**: `server/chat-rooms.js` (who may say what, and what is kept), `server/chat-store.js` (chat that survives a restart), `public/js/chat.js` (the composer and the message rows)
 - **Server & networking**: `server.js`, `server/config.js`, `server/http-middleware.js`, `server/api-keys.js` and `server/api-games.js` (the door GameNight uses)

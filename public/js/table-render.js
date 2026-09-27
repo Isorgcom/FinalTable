@@ -393,6 +393,10 @@ function renderTable(oldCommunityLen) {
   const cc = document.getElementById('communityCards');
   const curCount = gameState.communityCards.length;
   const prevCount = oldCommunityLen !== undefined ? oldCommunityLen : prevCommunityCount;
+  // A stud table has no board, and drawing five backs where one would be
+  // says otherwise.
+  const hasBoard = !gameState.game || gameState.game.hasBoard !== false;
+  cc.classList.toggle('hidden', !hasBoard);
 
   // Rebuilt only when the board itself changes. Two pushes land back to back
   // when a street opens, and a blind rebuild on the second one would re-render
@@ -412,7 +416,7 @@ function renderTable(oldCommunityLen) {
     _builtBoardKey = boardKey;
     const heardOnBoard = [];
     cc.textContent = '';
-    if (gameState.isRunning || gameState.phase === 'showdown') {
+    if (hasBoard && (gameState.isRunning || gameState.phase === 'showdown')) {
       for (let i = 0; i < 5; i++) {
         if (i < curCount) {
           const isNew = i >= prevCount;
@@ -940,7 +944,10 @@ function applyDealFlight(ordered) {
   const origin = wrapRect ? dealOrigin(ordered, dealerSlot, wrapRect) : null;
 
   const plan = [];
-  for (let pass = 0; pass < 2; pass++) {
+  // As many passes as the game's first deal: two for Hold'em, four for Omaha,
+  // three for stud.
+  const passes = (gameState.game && gameState.game.firstDeal) || 2;
+  for (let pass = 0; pass < passes; pass++) {
     for (const slot of slots) {
       const seat = seatElementForPlayer(ordered[slot].id);
       const node = seat ? holeCardNodes(seat)[pass] : null;
@@ -967,7 +974,7 @@ function applyDealFlight(ordered) {
     const cy = item.rect.top + item.rect.height / 2 - wrapRect.top;
     item.node.style.setProperty('--deal-dx', Math.round(origin.x - cx) + 'px');
     item.node.style.setProperty('--deal-dy', Math.round(origin.y - cy) + 'px');
-    item.node.style.setProperty('--deal-rot', (item.pass ? 16 : -20) + 'deg');
+    item.node.style.setProperty('--deal-rot', (item.pass % 2 ? 16 : -20) + 'deg');
     item.node.style.setProperty('--deal-dur', DEAL_DUR_S + 's');
     const at = DEAL_LEAD_S + i * step;
     setAnimationDelay(item.node, Number(at.toFixed(3)));
@@ -995,7 +1002,7 @@ function renderPlayersFull(container) {
   const seatPositions = getSeatPositions(capacity, viewerSlot(capacity));
   const animateDeal =
     _dealAnimationRound === gameState.roundCount &&
-    gameState.phase === 'preflop' &&
+    gameState.streetIndex === 0 &&
     gameState.communityCards.length === 0;
   const ctx = seatRenderContext();
 
@@ -1083,11 +1090,18 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   // where they will land, then releases them. visibility rather than display,
   // so they still have a box to measure.
   const anim = animateDeal ? ' deal-pending' : '';
-  if (player.holeCards && player.holeCards.length === 2) {
+  // How many a seat holds: what was sent, or the game's first deal drawn as
+  // backs for a hand nobody may see. The count goes on the row so the CSS can
+  // fan more than two.
+  const firstDeal = (gameState.game && gameState.game.firstDeal) || 2;
+  const sent = Array.isArray(player.holeCards) && player.holeCards.length >= 2;
+  holeCardsDiv.dataset.cards = String(sent ? player.holeCards.length : firstDeal);
+  if (sent) {
     const winners = winningCardKeys();
     for (const card of player.holeCards) {
       // A null here is a card that stayed down: its owner took the pot
-      // uncontested and turned the other one over. A back, not a gap.
+      // uncontested and turned another over, or it is a stud card that is
+      // not theirs to see. A back, not a gap.
       if (!card) {
         const back = document.createElement('div');
         back.className = 'card-back' + anim;
@@ -1098,12 +1112,11 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
       holeCardsDiv.appendChild(createCardElement(card, marks));
     }
   } else if (gameState.isRunning && !player.folded) {
-    const b1 = document.createElement('div');
-    b1.className = 'card-back' + anim;
-    const b2 = document.createElement('div');
-    b2.className = 'card-back' + anim;
-    holeCardsDiv.appendChild(b1);
-    holeCardsDiv.appendChild(b2);
+    for (let i = 0; i < firstDeal; i++) {
+      const back = document.createElement('div');
+      back.className = 'card-back' + anim;
+      holeCardsDiv.appendChild(back);
+    }
   }
   seat.appendChild(holeCardsDiv);
 
@@ -1146,6 +1159,17 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
     bc.className = 'bb-chip';
     bc.textContent = 'BB';
     hero.appendChild(bc);
+  }
+  // A stud hand has no blinds; the seat that brought in wears the chip instead.
+  if (
+    hero &&
+    Number.isInteger(gameState.bringInIndex) &&
+    player.originalIndex === gameState.bringInIndex
+  ) {
+    const bi = document.createElement('div');
+    bi.className = 'bb-chip';
+    bi.textContent = 'BI';
+    hero.appendChild(bi);
   }
 
   // Where a chat line surfaces on the felt. Part of the skeleton, like the
@@ -1411,7 +1435,12 @@ function updateActionsPanel() {
   }
 
   const toCall = gameState.currentBet - me.bet;
-  const minRaise = gameState.currentBet + gameState.minRaise;
+  // The least and the most a raise may be, as the table's limit has it. The
+  // server works it out; the bar only draws it.
+  const betting = gameState.betting || null;
+  const minRaise = betting ? betting.minTo : gameState.currentBet + gameState.minRaise;
+  const stackTo = me.chips + me.bet;
+  panel.classList.toggle('is-fixed', !!(betting && betting.fixed));
 
   // Show/hide check vs call
   document.getElementById('btnCheck').style.display = toCall === 0 ? '' : 'none';
@@ -1443,7 +1472,7 @@ function updateActionsPanel() {
   // Update raise slider
   if (canRaise) {
     const slider = document.getElementById('raiseSlider');
-    const maxRaiseTo = me.chips + me.bet; // most many can add to
+    const maxRaiseTo = betting ? Math.min(betting.maxTo, stackTo) : stackTo;
 
     if (minRaise > maxRaiseTo) {
       // Chips below min raise threshold: can only call or all-in, hide raise
@@ -1485,6 +1514,25 @@ function updateActionsPanel() {
       syncRaiseLabel();
     }
   }
+  // Under a limit the bar says what the rule allows. Fixed-limit has nothing
+  // to size: the one button reads the bet, and all-in is only offered to a
+  // stack too short to make it. Pot-limit sizes up to the pot, and a stack
+  // past that is a pot raise rather than an all-in, which the button says.
+  const raiseBtn = document.getElementById('btnRaise');
+  const allInBtn = document.getElementById('btnAllIn');
+  if (betting && betting.fixed) {
+    document.querySelector('.raise-slider-group').style.display = 'none';
+    if (presetGroup) presetGroup.style.display = 'none';
+    raiseBtn.textContent = gameState.currentBet > 0 ? `raise to ${minRaise}` : `bet ${minRaise}`;
+    if (canRaise) allInBtn.style.display = stackTo <= minRaise ? '' : 'none';
+    panel.classList.remove('is-sizing');
+  } else {
+    // The label is syncRaiseLabel's: "raise", or "raise N" while the phone
+    // bar is sizing. Said again here so a fixed-limit label never outlives
+    // the table that set it.
+    syncRaiseLabel();
+    allInBtn.textContent = betting && betting.maxTo < stackTo ? 'pot' : 'all in';
+  }
   // Nothing left to size: the way in should not be a door to an empty room.
   if (document.getElementById('btnRaise').style.display === 'none') {
     panel.classList.remove('is-sizing');
@@ -1522,10 +1570,10 @@ function updatePreActionPanel() {
     showRow.classList.toggle('hidden', !offer);
     if (offer) {
       const label = document.getElementById('showRowLabel');
-      // Said differently once one is over: the question left is the other.
-      if (label) label.textContent = offer.shown.length ? 'Show the other?' : 'Show?';
+      // Said differently once one is over: the question left is the rest.
+      if (label) label.textContent = offer.shown.length ? 'Show another?' : 'Show?';
       const both = document.getElementById('btnShowBoth');
-      if (both) both.textContent = offer.shown.length ? 'yes' : 'both';
+      if (both) both.textContent = offer.shown.length ? 'yes' : 'all';
     }
   }
 
@@ -1585,7 +1633,7 @@ function computeRaisePresets(me, minRaiseTo, maxRaiseTo) {
   const potAfterCall = (gameState.pot || 0) + toCall;
   const fraction = (f) => gameState.currentBet + Math.round(f * potAfterCall);
   const specs =
-    gameState.phase === 'preflop'
+    gameState.streetIndex === 0
       ? [
           { id: '3bb', label: '3bb', to: 3 * bb },
           { id: '4bb', label: '4bb', to: 4 * bb },
@@ -1811,14 +1859,6 @@ function updateTurnClocks(orderedPlayers) {
 
 function updateTopBar() {
   if (!gameState) return;
-  const phaseNames = {
-    waiting: 'Waiting',
-    preflop: 'Preflop',
-    flop: 'Flop',
-    turn: 'Turn',
-    river: 'River',
-    showdown: 'Showdown',
-  };
   const me = gameState.players.find((p) => p.id === myId);
   const topInfo = document.getElementById('topInfo');
   if (!topInfo) return;
@@ -1852,7 +1892,7 @@ function updateTopBar() {
     // "Hand complete" wording announced a pause that does not exist, since the
     // server deals the next hand on its own timer.
     text =
-      `Round ${gameState.roundCount} · ${phaseNames[gameState.phase] || gameState.phase}` +
+      `Round ${gameState.roundCount} · ${streetLabel(gameState.phase)}` +
       (me ? ` · ${me.chips}` : '');
   }
 

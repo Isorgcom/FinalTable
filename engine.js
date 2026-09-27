@@ -1,12 +1,13 @@
-// engine.js - Texas Hold'em game engine
+// engine.js - the poker engine: one table, one hand loop, betting and
+// showdown, for whichever game the table was made for (games.js).
 const { createDeck, shuffle } = require('./deck');
-const { evaluateHand, compareHands } = require('./hand-eval');
+const { compareHands } = require('./hand-eval');
 const { describeHand, describeBest } = require('./hand-describe');
+const { gameFor, limitFor, suitRank } = require('./games');
+const { raiseBounds, openingRaises, limitName } = require('./betting-limits');
 const random = require('./random');
 const { createStructuredLogger } = require('./server/logger');
 const { HandHistory, Leaderboard, visibleCardsFor } = require('./hand-history');
-
-const PHASES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 
 // ── Configuration Constants ──
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info'; // 'debug' | 'info' | 'warn' | 'error'
@@ -49,6 +50,15 @@ class PokerGame {
     this.ante = options.ante || 0;
     this.startChips = options.startChips || 1000;
     this.maxPlayers = options.maxPlayers || DEFAULT_MAX_PLAYERS;
+    // Which game, and how it is bet. Everything the hand loop does with cards
+    // and forced bets is read off the definition (games.js); the limit is the
+    // rule every raise is sized by (betting-limits.js).
+    this.game = gameFor(options.game);
+    this.limit = limitFor(this.game, options.limit);
+    this.maxPlayers = Math.min(this.maxPlayers, this.game.maxSeats);
+    // The seat that brought in, in a stud hand; null in a blinds game.
+    this.bringInIndex = null;
+    this.applyLevel({ sb: this.smallBlind, bb: this.bigBlind, ante: this.ante });
     this.timeBankGrantMs = options.timeBankGrantMs || TIME_BANK_GRANT_MS;
     this.players = [];
     this.deck = [];
@@ -467,16 +477,13 @@ class PokerGame {
     this.sidePots = [];
     this.anteTotal = 0;
     this.currentBet = 0;
-    // Tournament: update blinds from current level
+    // Tournament: the level the clock is on, as this game posts it.
     if (this.tournament && this.tournament.isActive) {
-      const blinds = this.tournament.getCurrentBlinds();
-      this.smallBlind = blinds.sb;
-      this.bigBlind = blinds.bb;
-      this.ante = blinds.ante || 0;
+      this.applyLevel(this.tournament.getCurrentBlinds());
     }
     this.minRaise = this.bigBlind;
     this.roundBets = {};
-    this.raiseCount = 0; // Raise cap: max 4 raises per betting round
+    this.raiseCount = 0;
 
     this.handStartPlayerCount = 0;
     this.handStartStacks = {};
@@ -519,47 +526,31 @@ class PokerGame {
       this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
     }
 
-    // Post blinds — heads-up special rule: dealer posts SB
     const activePlayers = this.players.filter((p) => p.chips > 0);
     this.handStartPlayerCount = activePlayers.length;
     this.handStartStacks = Object.fromEntries(
       activePlayers.map((player) => [player.id, player.chips])
     );
-    let sbIdx, bbIdx;
-    if (activePlayers.length === 2) {
-      // Heads-up: dealer IS the small blind
-      sbIdx = this.dealerIndex;
-      bbIdx = this.getNextActiveIndex(this.dealerIndex);
-    } else {
-      // 3+ players: standard order
-      sbIdx = this.getNextActiveIndex(this.dealerIndex);
-      bbIdx = this.getNextActiveIndex(sbIdx);
-    }
-    this.sbIndex = sbIdx;
-    this.bbIndex = bbIdx;
-    // The ante first and the blind out of what is left: a short stack in the
-    // big blind covers the ante before the blind, which is the order the
-    // rules give it.
-    this.postAnte(bbIdx, this.ante);
-    this.postBlind(sbIdx, this.smallBlind);
-    this.postBlind(bbIdx, this.bigBlind);
-    this.currentBet = this.bigBlind;
 
-    // Deal hole cards
-    for (const p of this.players) {
-      if (!p.folded) {
-        p.holeCards = [this.deck.pop(), this.deck.pop()];
-      }
-    }
-
-    this.phase = 'preflop';
-    // Heads-up preflop: SB (dealer) acts first
-    if (activePlayers.length === 2) {
-      this.currentPlayerIndex = sbIdx;
-    } else {
-      this.currentPlayerIndex = this.getNextActiveIndex(bbIdx);
-    }
-    this.lastRaiserIndex = bbIdx;
+    // The game's first street: what is posted before the deal, the deal, and
+    // who opens. A blinds game posts its blinds and deals. A stud game antes,
+    // deals, and only then knows who brings in, because that is the low card
+    // showing.
+    const opening = this.game.streets[0];
+    this.phase = opening.key;
+    this.minRaise = this._betUnit();
+    this.sbIndex = null;
+    this.bbIndex = null;
+    this.bringInIndex = null;
+    const blinds = this.game.forced === 'blinds';
+    if (blinds) this._postBlinds();
+    else this._postAntes();
+    this._dealHole(opening);
+    if (!blinds) this._postBringIn();
+    this.currentPlayerIndex = this._firstToAct(opening);
+    // A blind is the opening bet of its street. A bring-in is less than one,
+    // and completing it is.
+    this.raiseCount = openingRaises(blinds);
     this.isRunning = true;
 
     // Hand history recording
@@ -567,31 +558,43 @@ class PokerGame {
       this.roundCount,
       this.players.filter((p) => !p.folded),
       this.dealerIndex,
-      sbIdx,
-      bbIdx,
-      { sb: this.smallBlind, bb: this.bigBlind, ante: this.ante }
+      this.sbIndex,
+      this.bbIndex,
+      { sb: this.smallBlind, bb: this.bigBlind, ante: this.ante },
+      { game: this.game.key, limit: this.limit, bets: { ...this.bets } }
     );
 
     const dealer = this.players[this.dealerIndex];
-    const sbPlayer = this.players[sbIdx];
-    const bbPlayer = this.players[bbIdx];
+    const sbPlayer = blinds ? this.players[this.sbIndex] : null;
+    const bbPlayer = blinds ? this.players[this.bbIndex] : null;
     this.emitMessage(
-      `🃏 Hand ${this.roundCount} starts! Dealer: ${this.players[this.dealerIndex].name}` +
-        ` | blinds ${this.smallBlind}/${this.bigBlind}` +
-        (this.ante ? ` ante ${this.ante}` : ''),
+      `🃏 Hand ${this.roundCount} starts! Dealer: ${dealer.name}` +
+        (blinds
+          ? ` | blinds ${this.smallBlind}/${this.bigBlind}` +
+            (this.ante ? ` ante ${this.ante}` : '')
+          : ` | ${this.game.forcedText(this.bets, this.limit).toLowerCase()}`),
       { kind: 'handStart', handNum: this.roundCount }
     );
-    if (bbPlayer.ante > 0) {
-      this.emitMessage(`${this.getPublicName(bbPlayer)} posts the ante ${bbPlayer.ante}`, {
+    if (blinds) {
+      if (bbPlayer.ante > 0) {
+        this.emitMessage(`${this.getPublicName(bbPlayer)} posts the ante ${bbPlayer.ante}`, {
+          kind: 'blind',
+        });
+      }
+      this.emitMessage(`${this.getPublicName(sbPlayer)} posts small blind ${sbPlayer.bet}`, {
+        kind: 'blind',
+      });
+      this.emitMessage(`${this.getPublicName(bbPlayer)} posts big blind ${bbPlayer.bet}`, {
+        kind: 'blind',
+      });
+    } else {
+      const anted = this.players.filter((p) => p.ante > 0).length;
+      this.emitMessage(`${anted} players ante ${this.bets.ante}`, { kind: 'blind' });
+      const bringIn = this.players[this.bringInIndex];
+      this.emitMessage(`${this.getPublicName(bringIn)} brings in for ${bringIn.bet}`, {
         kind: 'blind',
       });
     }
-    this.emitMessage(`${this.getPublicName(sbPlayer)} posts small blind ${sbPlayer.bet}`, {
-      kind: 'blind',
-    });
-    this.emitMessage(`${this.getPublicName(bbPlayer)} posts big blind ${bbPlayer.bet}`, {
-      kind: 'blind',
-    });
     // After the blinds, not from inside the reset loop: the deal reads as the
     // deal, and a seat that stepped out this hand reads as a consequence of it.
     for (const p of sittingOutNow) {
@@ -602,6 +605,8 @@ class PokerGame {
       {
         durationMs: Math.round((Number(process.hrtime.bigint()) / 1e6 - startedAt) * 100) / 100,
         dealer: this.getPublicName(dealer),
+        game: this.game.key,
+        limit: this.limit,
         smallBlindPlayer: this.getPublicName(sbPlayer),
         bigBlindPlayer: this.getPublicName(bbPlayer),
         smallBlind: this.smallBlind,
@@ -620,11 +625,13 @@ class PokerGame {
 
     // Log deal: dealer, blinds, hole cards
     this._log(
-      `🎰 D:${dealer.name} SB:${sbPlayer.name}(${this.smallBlind}) BB:${bbPlayer.name}(${this.bigBlind})` +
-        (this.ante ? ` A:${this.ante}` : '')
+      blinds
+        ? `🎰 D:${dealer.name} SB:${sbPlayer.name}(${this.smallBlind}) BB:${bbPlayer.name}(${this.bigBlind})` +
+            (this.ante ? ` A:${this.ante}` : '')
+        : `🎰 D:${dealer.name} ${this.game.forcedText(this.bets, this.limit)}`
     );
     for (const p of this.players) {
-      if (!p.folded && p.holeCards.length === 2) {
+      if (!p.folded && p.holeCards.length >= 2) {
         this._log(`🃏 ${p.name}: [hidden]`);
       }
     }
@@ -675,6 +682,182 @@ class PokerGame {
       return (fromIndex + 1) % this.players.length;
     }
     return idx;
+  }
+
+  // ── The game the table plays ─────────────────────────────────────────────
+
+  // The level the table is on, as this game posts it. A blinds game posts the
+  // row as written. A stud game reads it as an ante, a bring-in and two bets,
+  // and its "blinds" are those bets, so that everything sized against the big
+  // blind - a no-limit minimum raise, the war report's idea of a big pot -
+  // has a number to work from. Called on every deal from the clock, and by
+  // the director between hands so the felt shows the new level first.
+  applyLevel(level) {
+    this.bets = this.game.forcedBets(level || {});
+    const blinds = this.game.forced === 'blinds';
+    this.smallBlind = blinds ? this.bets.sb : this.bets.smallBet;
+    this.bigBlind = blinds ? this.bets.bb : this.bets.bigBet;
+    this.ante = this.bets.ante;
+  }
+
+  // Where the hand is in the game's streets, read off the phase: -1 between
+  // hands and at showdown. Read rather than kept, because the phase is the
+  // wire's word for the street, and a test that sets it expects the street
+  // to follow.
+  get streetIndex() {
+    return this.game.streets.findIndex((s) => s.key === this.phase);
+  }
+
+  // What a bet is sized in on this street: the big blind, or under
+  // fixed-limit the street's bet - the small bet until the game's big-bet
+  // street and the big bet from there.
+  _betUnit() {
+    if (this.limit !== 'fixed') return this.bigBlind;
+    return this.streetIndex >= this.game.bigBetFrom ? this.bets.bigBet : this.bets.smallBet;
+  }
+
+  // The least and the most this seat may raise to, under the table's limit.
+  _raiseBounds(player) {
+    return raiseBounds(this.limit, {
+      currentBet: this.currentBet,
+      minRaise: this.minRaise,
+      pot: this.pot,
+      playerBet: player.bet,
+      playerChips: player.chips,
+      betSize: this._betUnit(),
+      headsUp: this.players.filter((p) => !p.folded).length === 2,
+    });
+  }
+
+  // The blinds, heads-up rule included: with two in the hand the dealer posts
+  // the small blind. The ante first and the blind out of what is left: a
+  // short stack in the big blind covers the ante before the blind, which is
+  // the order the rules give it.
+  _postBlinds() {
+    let sbIdx, bbIdx;
+    if (this.handStartPlayerCount === 2) {
+      sbIdx = this.dealerIndex;
+      bbIdx = this.getNextActiveIndex(this.dealerIndex);
+    } else {
+      sbIdx = this.getNextActiveIndex(this.dealerIndex);
+      bbIdx = this.getNextActiveIndex(sbIdx);
+    }
+    this.sbIndex = sbIdx;
+    this.bbIndex = bbIdx;
+    this.postAnte(bbIdx, this.ante);
+    this.postBlind(sbIdx, this.smallBlind);
+    this.postBlind(bbIdx, this.bigBlind);
+    this.currentBet = this.bigBlind;
+    this.lastRaiserIndex = bbIdx;
+  }
+
+  // Everyone antes. A seat the ante puts all in is dealt in regardless: the
+  // ante bought a hand.
+  _postAntes() {
+    this.players.forEach((p, i) => {
+      if (!p.folded) this.postAnte(i, this.bets.ante);
+    });
+    this.currentBet = 0;
+  }
+
+  // The low card showing brings in, posted for them like a blind. Completing
+  // it to a full bet is the first raise of the street, and the difference is
+  // what that raise has to be; after it, a raise is a bet again.
+  _postBringIn() {
+    const idx = this._bringInSeat();
+    this.bringInIndex = idx;
+    this.postBlind(idx, this.bets.bringIn);
+    this.currentBet = this.bets.bringIn;
+    this.lastRaiserIndex = idx;
+    this.minRaise = Math.max(1, this.bets.smallBet - this.bets.bringIn);
+  }
+
+  // Which seat brings in: the lowest card face up, or the highest when the
+  // game says so, ties broken by suit.
+  _bringInSeat() {
+    const high = this.game.bringInBy === 'high';
+    let best = -1;
+    let bestKey = null;
+    this.players.forEach((p, i) => {
+      if (p.folded) return;
+      const up = p.holeCards.find((c) => c.up);
+      if (!up) return;
+      const key = up.value * 4 + suitRank(up.suit);
+      if (bestKey === null || (high ? key > bestKey : key < bestKey)) {
+        best = i;
+        bestKey = key;
+      }
+    });
+    return best === -1 ? this.getNextActiveIndex(this.dealerIndex) : best;
+  }
+
+  // Whoever has the strongest cards showing opens the street, ties to the
+  // seat nearest the dealer's left. That seat may be all in, in which case
+  // the action starts at the first seat after it that can act.
+  _bestShowingIndex() {
+    const low = this.game.showingOrder === 'low';
+    const n = this.players.length;
+    let best = -1;
+    let bestHand = null;
+    for (let step = 1; step <= n; step++) {
+      const i = (this.dealerIndex + step) % n;
+      const p = this.players[i];
+      if (p.folded) continue;
+      const hand = this.game.showing(p.holeCards.filter((c) => c.up));
+      if (!hand) continue;
+      const cmp = bestHand ? compareHands(hand, bestHand) : 0;
+      if (!bestHand || (low ? cmp < 0 : cmp > 0)) {
+        best = i;
+        bestHand = hand;
+      }
+    }
+    if (best === -1) return this.getNextActiveIndex(this.dealerIndex);
+    const seat = this.players[best];
+    return seat.allIn || seat.chips <= 0 ? this.getNextActiveIndex(best) : best;
+  }
+
+  // Who opens the betting on a street, as the game has it.
+  _firstToAct(step) {
+    switch (step.first) {
+      case 'afterBlinds':
+        // Heads-up the dealer is the small blind and acts first.
+        return this.handStartPlayerCount === 2
+          ? this.sbIndex
+          : this.getNextActiveIndex(this.bbIndex);
+      case 'bringIn':
+        return this.getNextActiveIndex(this.bringInIndex);
+      case 'bestShowing':
+        return this._bestShowingIndex();
+      default:
+        return this.getNextActiveIndex(this.dealerIndex);
+    }
+  }
+
+  // The cards a street deals to each seat still in the hand, the last `up`
+  // of them face up. A card dealt face up carries `up: true` for the rest of
+  // the hand: it is what every other seat is allowed to see of a holding.
+  // Answers with what was turned up, seat by seat, for the log.
+  _dealHole(step) {
+    const n = (step.deal && step.deal.hole) || 0;
+    const up = (step.deal && step.deal.up) || 0;
+    const turned = [];
+    if (!n) return turned;
+    for (const p of this.players) {
+      if (p.folded) continue;
+      const shown = [];
+      for (let i = 0; i < n; i++) {
+        const card = this.deck.pop();
+        if (i >= n - up) {
+          const faceUp = { ...card, up: true };
+          p.holeCards.push(faceUp);
+          shown.push(faceUp);
+        } else {
+          p.holeCards.push(card);
+        }
+      }
+      if (shown.length) turned.push({ player: p, cards: shown });
+    }
+    return turned;
   }
 
   handleAction(playerId, action, amount = 0) {
@@ -734,10 +917,10 @@ class PokerGame {
         recordedAmount = callAmount;
         break;
 
-      case 'raise':
-        // Enforce raise cap (max 4 raises per betting round)
-        if (this.raiseCount >= 4) {
-          // Cap reached, convert to call
+      case 'raise': {
+        const bounds = this._raiseBounds(player);
+        // The street's raises are spent: under a cap, a raise is a call.
+        if (this.raiseCount >= bounds.cap) {
           const capCall = Math.min(this.currentBet - player.bet, player.chips);
           if (capCall > 0) {
             player.chips -= capCall;
@@ -753,7 +936,7 @@ class PokerGame {
           action = 'call';
           break;
         }
-        const minRaiseTotal = this.currentBet + this.minRaise;
+        const minRaiseTotal = bounds.minTo;
         const maxReachableTotal = player.bet + player.chips;
         if (maxReachableTotal <= this.currentBet) {
           const forcedCall = Math.min(toCall, player.chips);
@@ -780,7 +963,7 @@ class PokerGame {
             this.currentBet = player.bet;
             if (isFullRaise) {
               this.lastRaiserIndex = playerIdx;
-              this.minRaise = Math.max(this.bigBlind, raiseIncrement);
+              this.minRaise = Math.max(this._betUnit(), raiseIncrement);
             }
           }
           this.emitMessage(`${this.getPublicName(player)} all-in ${shortAllInAmount}!`, {
@@ -791,7 +974,9 @@ class PokerGame {
           break;
         }
         this.raiseCount++;
-        const raiseTotal = Math.max(amount, minRaiseTotal);
+        // Sized by the table's limit: no-limit takes the amount asked for,
+        // pot-limit clamps it to the pot, fixed-limit ignores it.
+        const raiseTotal = Math.min(Math.max(amount, minRaiseTotal), bounds.maxTo);
         const raiseAmount = Math.min(raiseTotal - player.bet, player.chips);
         player.chips -= raiseAmount;
         player.bet += raiseAmount;
@@ -799,7 +984,7 @@ class PokerGame {
         this.pot += raiseAmount;
         const prevBet = this.currentBet;
         this.currentBet = player.bet;
-        this.minRaise = Math.max(this.bigBlind, player.bet - prevBet);
+        this.minRaise = Math.max(this._betUnit(), player.bet - prevBet);
         this.lastRaiserIndex = playerIdx;
         if (player.chips === 0) {
           player.allIn = true;
@@ -814,8 +999,15 @@ class PokerGame {
           recordedAmount = player.bet;
         }
         break;
+      }
 
-      case 'allin':
+      case 'allin': {
+        // Under a limit, a stack bigger than the most the rule allows is not
+        // an all-in: it is a raise to that most.
+        const bounds = this._raiseBounds(player);
+        if (player.bet + player.chips > bounds.maxTo && bounds.maxTo > this.currentBet) {
+          return this.handleAction(playerId, 'raise', bounds.maxTo);
+        }
         const allInAmount = player.chips;
         player.bet += allInAmount;
         player.totalBet += allInAmount;
@@ -829,7 +1021,7 @@ class PokerGame {
           if (isFullRaise) {
             // Full raise: reopen action, all players get to act again
             this.lastRaiserIndex = playerIdx;
-            this.minRaise = Math.max(this.bigBlind, raiseIncrement);
+            this.minRaise = Math.max(this._betUnit(), raiseIncrement);
           }
           // If NOT a full raise: currentBet updates (so others know the call price)
           // but lastRaiserIndex stays unchanged (doesn't reopen action for
@@ -840,6 +1032,7 @@ class PokerGame {
         });
         recordedAmount = player.bet;
         break;
+      }
 
       default:
         return false;
@@ -922,7 +1115,8 @@ class PokerGame {
   // the last aggressive action and close the street on top of them.
   _isLiveBlindOption(player) {
     return (
-      this.phase === 'preflop' &&
+      this.game.liveOption &&
+      this.streetIndex === 0 &&
       !!player &&
       player.seatIndex === this.bbIndex &&
       !player.lastAction &&
@@ -945,7 +1139,11 @@ class PokerGame {
     // a whole second orbit. If the option was checked rather than raised,
     // everybody has matched and the street is finished here. A raise leaves
     // seats owing chips, and those seats get their turn through the walk.
-    if (this.phase === 'preflop' && this.currentPlayerIndex === this.bbIndex) {
+    if (
+      this.game.liveOption &&
+      this.streetIndex === 0 &&
+      this.currentPlayerIndex === this.bbIndex
+    ) {
       const blind = this.players[this.bbIndex];
       if (blind && blind.lastAction && this.lastRaiserIndex === this.bbIndex) {
         const owed = this.players.some(
@@ -1014,9 +1212,7 @@ class PokerGame {
 
     if (canAct.length === 1 && canAct[0].bet >= this.currentBet) {
       // Preflop live blind: BB gets option to raise even if everyone limped/folded
-      const isBBLiveBlind =
-        this.phase === 'preflop' && canAct[0].seatIndex === this.bbIndex && !canAct[0].lastAction; // BB hasn't acted yet this hand
-      if (isBBLiveBlind) {
+      if (this._isLiveBlindOption(canAct[0])) {
         this.currentPlayerIndex = canAct[0].seatIndex;
         // beginCurrentTurn rather than emitUpdate + processAutoTurn: an
         // automated seat takes the same path either way, but a human big blind
@@ -1052,7 +1248,7 @@ class PokerGame {
   // all-in run-out deals through here too, so a board nobody could bet on
   // comes out exactly like one that was played - three cards for the flop,
   // one burn a street, and the same line in the log and the replay.
-  _dealStreet(street) {
+  _dealStreet(step) {
     // The bubble over a chair says what that seat just did, and "just" ends
     // with the street it did it on. Cleared here rather than in _openStreet
     // because an all-in runout deals its remaining streets without ever
@@ -1060,34 +1256,40 @@ class PokerGame {
     // while the river lands reads as a fold on the river.
     for (const p of this.players) p.lastAction = null;
 
-    this.deck.pop(); // burn
-    if (street === 'flop') {
-      this.communityCards.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
-    } else {
-      this.communityCards.push(this.deck.pop());
-    }
-    this.phase = street;
+    if (this.game.burn) this.deck.pop();
+    const board = (step.deal && step.deal.board) || 0;
+    for (let i = 0; i < board; i++) this.communityCards.push(this.deck.pop());
+    const turned = this._dealHole(step);
+    this.phase = step.key;
 
     // A flop is read as a whole; a turn or river is the one new card, against
-    // the board that was already sitting there.
-    const dealt =
-      street === 'flop'
-        ? this._cards(this.communityCards)
-        : this._card(this.communityCards[this.communityCards.length - 1]);
-    const label = street[0].toUpperCase() + street.slice(1);
-    this.emitMessage(`── ${label} ── ${dealt}`, { kind: 'street', street });
+    // the board that was already sitting there. A stud street is what came up
+    // in front of each seat.
+    let dealt = '';
+    if (board > 1) dealt = this._cards(this.communityCards);
+    else if (board === 1) dealt = this._card(this.communityCards[this.communityCards.length - 1]);
+    else if (turned.length) {
+      dealt = turned
+        .map((t) => `${this.getPublicName(t.player)} ${this._cards(t.cards)}`)
+        .join(' · ');
+    }
+    this.emitMessage(`── ${step.label} ──${dealt ? ' ' + dealt : ''}`, {
+      kind: 'street',
+      street: step.key,
+    });
     this._log(
-      street === 'flop'
-        ? `🂠 flop: ${dealt} (pot:${this.pot})`
-        : `🂠 ${street}: ${dealt} → ${this._cards(this.communityCards)} (pot:${this.pot})`
+      `🂠 ${step.key}: ${dealt || 'dealt'} → ${this._cards(this.communityCards)} (pot:${this.pot})`
     );
     this._logEvent(
       'street_advance',
-      { street, communityCards: this.communityCards.map((card) => this._card(card)) },
+      { street: step.key, communityCards: this.communityCards.map((card) => this._card(card)) },
       'info',
-      `Street advanced to ${street}`
+      `Street advanced to ${step.key}`
     );
-    this.handHistory.recordCommunityCards(this.communityCards);
+    if (board) this.handHistory.recordCommunityCards(this.communityCards);
+    if (step.deal && step.deal.hole) {
+      this.handHistory.recordHoleCards(this.players.filter((p) => !p.folded));
+    }
   }
 
   // Betting is over for good: nobody left in the hand can put another chip in,
@@ -1113,13 +1315,12 @@ class PokerGame {
   // the moment of the hand going past too fast to watch.
   dealRemainingCards() {
     this._exposeHands();
-    if (this.communityCards.length >= 5) {
+    if (this.streetIndex < 0 || this.streetIndex >= this.game.streets.length - 1) {
       this.phase = 'showdown';
       this.showdown();
       return;
     }
-    const n = this.communityCards.length;
-    this._dealStreet(n === 0 ? 'flop' : n === 3 ? 'turn' : 'river');
+    this._dealStreet(this.game.streets[this.streetIndex + 1]);
     this.emitUpdate();
     this._afterStreetPause(() => this.dealRemainingCards());
   }
@@ -1147,8 +1348,7 @@ class PokerGame {
     // The street is closing. If it closed the betting for the whole hand, this
     // is the frame the hands come up on - whichever route got here.
     this._exposeHands();
-    const phaseIdx = PHASES.indexOf(this.phase);
-    if (phaseIdx >= 4) {
+    if (this.streetIndex < 0 || this.streetIndex >= this.game.streets.length - 1) {
       // The river's betting is over. Hold the same beat before the cards are
       // turned up: this is the last money to go in, and the showdown landing
       // on top of it is the moment of the hand nobody gets to see.
@@ -1170,12 +1370,12 @@ class PokerGame {
     // they are swept in.
     this.clearActionTimeout();
     this.emitUpdate();
-    this._afterStreetPause(() => this._openStreet(phaseIdx));
+    this._afterStreetPause(() => this._openStreet(this.streetIndex + 1));
   }
 
   // Everything the new street brings: the bets go to the middle, the cards
   // come out, and somebody is to act again.
-  _openStreet(phaseIdx) {
+  _openStreet(idx) {
     // Reset bets for new betting round
     for (const p of this.players) {
       p.bet = 0;
@@ -1184,19 +1384,19 @@ class PokerGame {
       p.preAction = null;
     }
     this.currentBet = 0;
-    this.minRaise = this.bigBlind;
     this.raiseCount = 0;
 
-    this._dealStreet(PHASES[phaseIdx + 1]);
+    const step = this.game.streets[idx];
+    this._dealStreet(step);
+    this.minRaise = this._betUnit();
 
-    // First to act is after dealer
-    this.currentPlayerIndex = this.getNextActiveIndex(this.dealerIndex);
+    this.currentPlayerIndex = this._firstToAct(step);
     this.lastRaiserIndex = this.currentPlayerIndex;
 
     // Check if only all-in players remain
     const canAct = this.players.filter((p) => !p.folded && !p.allIn && p.chips > 0);
     if (canAct.length <= 1) {
-      if (this.communityCards.length < 5) {
+      if (this.streetIndex < this.game.streets.length - 1) {
         // This street has just been dealt and nobody can bet on it. It gets
         // its own frame regardless: handing straight to the run-out puts the
         // flop and the turn on the felt together and the flop is never seen.
@@ -1223,12 +1423,11 @@ class PokerGame {
       return;
     }
 
-    // Evaluate hands
-    const results = contenders.map((p) => {
-      const allCards = [...p.holeCards, ...this.communityCards];
-      const hand = evaluateHand(allCards);
-      return { player: p, hand };
-    });
+    // Evaluate hands, the way this game scores them.
+    const results = contenders.map((p) => ({
+      player: p,
+      hand: this.game.evaluate(p.holeCards, this.communityCards),
+    }));
 
     // Sort by hand strength
     results.sort((a, b) => compareHands(b.hand, a.hand));
@@ -1241,7 +1440,10 @@ class PokerGame {
         `${this.getPublicName(r.player)} shows ${this._cards(r.player.holeCards)} · ${describeBest(r.hand)}`,
         { kind: 'show' }
       );
-      this.handHistory.recordShown(r.player.id, [0, 1]);
+      this.handHistory.recordShown(
+        r.player.id,
+        r.player.holeCards.map((_, i) => i)
+      );
     }
 
     // Handle side pots and main pot
@@ -1440,7 +1642,7 @@ class PokerGame {
     const offers = {};
     for (const p of this.players) {
       if (facedUp && !p.folded) continue;
-      if (!p.holeCards || p.holeCards.length !== 2) continue;
+      if (!p.holeCards || p.holeCards.length < 2) continue;
       if (this.isAutomatedPlayer(p) || !p.isConnected) continue;
       offers[p.id] = [];
     }
@@ -1480,11 +1682,13 @@ class PokerGame {
   showHoleCards(playerId, indices) {
     if (!this.showWindowOpen(playerId)) return false;
     const player = this.players.find((p) => p.id === playerId);
-    if (!player || !player.holeCards || player.holeCards.length !== 2) return false;
+    if (!player || !player.holeCards || player.holeCards.length < 2) return false;
     const already = this.showWindow.offers[playerId] || [];
+    // Any card of theirs that is not already face up.
     const wanted = (Array.isArray(indices) ? indices : [indices])
       .map((i) => Number(i))
-      .filter((i) => i === 0 || i === 1)
+      .filter((i) => Number.isInteger(i) && i >= 0 && i < player.holeCards.length)
+      .filter((i) => !player.holeCards[i].up)
       .filter((i) => !already.includes(i));
     if (!wanted.length) return false;
     const shown = [...already, ...wanted].sort();
@@ -1516,14 +1720,41 @@ class PokerGame {
   }
 
   // What another seat is allowed to see of a holding: everything at a
-  // showdown, nothing after a fold, and exactly what was turned over in
-  // between. A null in the array is a card that stayed down.
+  // showdown, the cards dealt face up while the hand is live, exactly what
+  // was turned over afterwards, and nothing after a fold beyond that. A null
+  // in the array is a card that stayed down; no array is nothing to see.
   _visibleHoleCards(player, handsFaceUp) {
     if (handsFaceUp && !player.folded) return player.holeCards;
-    const shown = this.showWindow && this.showWindow.offers[player.id];
-    if (!shown || !shown.length) return null;
-    if (!player.holeCards || player.holeCards.length !== 2) return null;
-    return player.holeCards.map((c, i) => (shown.includes(i) ? c : null));
+    const cards = player.holeCards;
+    if (!cards || cards.length < 2) return null;
+    const shown = (this.showWindow && this.showWindow.offers[player.id]) || [];
+    const visible = cards.map((c, i) => ((c.up && !player.folded) || shown.includes(i) ? c : null));
+    return visible.some(Boolean) ? visible : null;
+  }
+
+  // The game as the client needs to know it: enough to draw the felt and name
+  // the streets, and nothing that is the server's business.
+  _gameView() {
+    const g = this.game;
+    return {
+      key: g.key,
+      name: g.name,
+      family: g.family,
+      holeCards: g.holeCards,
+      firstDeal: g.streets[0].deal.hole,
+      hasBoard: g.streets.some((s) => s.deal && s.deal.board > 0),
+      streets: g.streets.map((s) => ({ key: s.key, label: s.label })),
+      limit: this.limit,
+      limitName: limitName(this.limit),
+      bets: { ...this.bets },
+    };
+  }
+
+  // The least and most the viewer may raise to under the table's limit, so
+  // the client sizes nothing itself.
+  _bettingFor(viewer) {
+    const { minTo, maxTo, fixed } = this._raiseBounds(viewer);
+    return { minTo, maxTo, fixed };
   }
 
   awardPot(winners) {
@@ -1949,6 +2180,9 @@ class PokerGame {
     return {
       id: this.id,
       phase: this.phase,
+      streetIndex: this.streetIndex,
+      game: this._gameView(),
+      bringInIndex: this.bringInIndex,
       pot: this.pot,
       communityCards: this.communityCards,
       currentBet: this.currentBet,
@@ -2004,6 +2238,7 @@ class PokerGame {
         ? this.players.some((p) => p.id !== playerId && !p.folded && !p.allIn && p.chips > 0)
         : false,
       toCall: viewer ? this.currentBet - (viewer.bet || 0) : 0,
+      betting: viewer ? this._bettingFor(viewer) : null,
       // Viewer-private, and it has to stay that way: knowing an opponent has
       // armed "call any" is a read they are not entitled to. Never in players[].
       // The viewer can be absent here — a busted watcher is sent state too.
@@ -2042,9 +2277,9 @@ class PokerGame {
         viewer &&
         !viewer.folded &&
         Array.isArray(viewer.holeCards) &&
-        viewer.holeCards.length === 2 &&
+        viewer.holeCards.length >= 2 &&
         (this.isRunning || this.phase === 'showdown')
-          ? describeHand(viewer.holeCards, this.communityCards)
+          ? describeHand(this.game, viewer.holeCards, this.communityCards)
           : null,
       timeBank: viewer
         ? { extensionsLeft: viewer.timeExtensionsLeft || 0, grantMs: this.timeBankGrantMs }
@@ -2111,6 +2346,9 @@ class PokerGame {
       smallBlind: h.smallBlind,
       bigBlind: h.bigBlind,
       ante: h.ante || 0,
+      game: h.game || 'holdem',
+      limit: h.limit || 'no',
+      bets: h.bets || null,
     }));
     this._historyCache.set(playerId, built);
     return built;

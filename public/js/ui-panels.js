@@ -169,8 +169,7 @@ function paintBreakPlate() {
   // Frozen while the table holds, because the clock it counts is stopped too.
   document.getElementById('feltBreakClock').textContent = formatClock(_blindClockRemaining);
   const paused = !!(t.paused || (window.mttField && window.mttField.paused));
-  const blinds =
-    t.blinds.sb + '/' + t.blinds.bb + (t.blinds.ante ? ' · ante ' + t.blinds.ante : '');
+  const blinds = stakesText(t.blinds);
   const addOns = window.mttField && window.mttField.addOnOpen ? ' · add-ons open' : '';
   document.getElementById('feltBreakNote').textContent = held
     ? 'Waiting for players to come back · your chips are safe'
@@ -199,8 +198,7 @@ function updateBlindClock() {
   // "Level 6 · 75/150 · ante 150"; on a break, "Break · back at 100/200".
   // The number counts levels of play, which is what the structure shows.
   const levelNumber = t.levelNumber || t.currentLevel + 1;
-  const blindsText =
-    t.blinds.sb + '/' + t.blinds.bb + (t.blinds.ante ? ' · ante ' + t.blinds.ante : '');
+  const blindsText = stakesText(t.blinds);
   // The field summary is pushed every tick, so it knows a pause first.
   const paused = !!(t.paused || (window.mttField && window.mttField.paused));
   // Held for an empty room reads as its own thing. A table that says "paused"
@@ -289,6 +287,21 @@ function updateBlindClock() {
 //  INFO TAB
 // ============================================================
 const INFO_MODE_LABELS = { cash: 'Cash Game', tournament: 'Tournament', practice: 'Practice' };
+
+// A level in words, as the game the table plays posts it. A stud game reads
+// the row as an ante, a bring-in and two bets - the arithmetic is games.js's
+// on the server, repeated here for the level the clock is about to reach,
+// which the table has not been dealt yet.
+function stakesText(blinds) {
+  const b = blinds || {};
+  const game = gameState && gameState.game;
+  if (game && game.family === 'stud') {
+    const sb = b.sb || 0;
+    const bb = b.bb || 0;
+    return `ante ${Math.max(1, Math.round(sb / 2))} · bring-in ${sb} · ${bb}/${bb * 2}`;
+  }
+  return (b.sb || 0) + '/' + (b.bb || 0) + (b.ante ? ' · ante ' + b.ante : '');
+}
 
 function infoSection(title) {
   const section = document.createElement('div');
@@ -678,8 +691,10 @@ function renderInfoTab() {
       room = field.myTable ? `Table ${field.myTable}` : watched ? `Table ${watched}` : 'Tournament';
     } else if (gameState.gameMode === 'practice') room = 'Practice table';
 
+    const g = gameState.game;
     const tableRows = [
       ['Room', room],
+      ['Game', g ? `${g.name} · ${g.limitName || ''}`.trim() : "Texas Hold'em"],
       [
         'Mode',
         field ? 'Multi-table' : INFO_MODE_LABELS[gameState.gameMode] || gameState.gameMode || '-',
@@ -694,15 +709,25 @@ function renderInfoTab() {
     body.appendChild(table);
 
     const bb = gameState.bigBlind || 0;
+    const stud = !!(g && g.family === 'stud');
     const rows = [
-      [
-        'Blinds',
-        `${gameState.smallBlind} / ${gameState.bigBlind}` +
-          (gameState.ante ? ` · ante ${gameState.ante}` : ''),
-      ],
+      stud && g.bets
+        ? [
+            'Bets',
+            `ante ${g.bets.ante} · bring-in ${g.bets.bringIn} · ${g.bets.smallBet} / ${g.bets.bigBet}`,
+          ]
+        : [
+            'Blinds',
+            `${gameState.smallBlind} / ${gameState.bigBlind}` +
+              (gameState.ante ? ` · ante ${gameState.ante}` : ''),
+          ],
     ];
-    if (me && bb)
-      rows.push(['Your stack', `${fmtNum(me.chips)} · ${(me.chips / bb).toFixed(1)} bb`]);
+    if (me && bb) {
+      rows.push([
+        'Your stack',
+        `${fmtNum(me.chips)} · ${(me.chips / bb).toFixed(1)} ${stud ? 'big bets' : 'bb'}`,
+      ]);
+    }
     if (t) {
       rows.push(['Level', t.onBreak ? 'Break' : String(t.levelNumber || t.currentLevel + 1)]);
       rows.push(['Next level', formatClock(_blindClockRemaining), 'infoNextLevel']);
@@ -713,7 +738,7 @@ function renderInfoTab() {
       rows.push(['Level', field.onBreak ? 'Break' : String(field.level)]);
       rows.push(['Next level', formatClock(field.nextLevelIn)]);
     }
-    const blinds = infoSection('Blinds');
+    const blinds = infoSection(stud ? 'Bets' : 'Blinds');
     blinds.appendChild(infoGrid(rows));
     body.appendChild(blinds);
 
@@ -843,8 +868,14 @@ function renderStatsTab() {
   if (!hands.length) {
     recent.appendChild(createTextElement('div', 'panel-empty', 'No hands yet'));
   } else {
-    const mine = (h) =>
-      (h.actions || []).filter((a) => a.playerId === myId && a.phase === 'preflop');
+    // The opening street, whatever the game calls it: preflop, or third.
+    const opening =
+      gameState.game && gameState.game.streets && gameState.game.streets[0]
+        ? gameState.game.streets[0].key
+        : 'preflop';
+    const openingName =
+      opening === 'preflop' ? 'preflop' : `on ${streetLabel(opening).toLowerCase()}`;
+    const mine = (h) => (h.actions || []).filter((a) => a.playerId === myId && a.phase === opening);
     const vpip = hands.filter((h) =>
       mine(h).some((a) => ['call', 'raise', 'allin'].includes(a.action))
     ).length;
@@ -858,8 +889,8 @@ function renderStatsTab() {
       infoGrid([
         ['Hands', String(hands.length)],
         ['Won', pct(won.length)],
-        ['Chips in preflop', pct(vpip)],
-        ['Raised preflop', pct(pfr)],
+        [`Chips in ${openingName}`, pct(vpip)],
+        [`Raised ${openingName}`, pct(pfr)],
         ['Biggest pot won', biggest ? fmtNum(biggest) : '-'],
       ])
     );
@@ -1010,8 +1041,28 @@ const EXPORT_PHASES = {
   flop: 'Flop',
   turn: 'Turn',
   river: 'River',
+  third: 'Third',
+  fourth: 'Fourth',
+  fifth: 'Fifth',
+  sixth: 'Sixth',
+  seventh: 'Seventh',
   showdown: 'Showdown',
 };
+// The streets a recorded hand was played over, in order. A stud hand has no
+// board and five streets of its own; anything else is the four of Hold'em.
+const COMMUNITY_STREETS = ['preflop', 'flop', 'turn', 'river'];
+const STUD_STREETS = ['third', 'fourth', 'fifth', 'sixth', 'seventh'];
+function handStreets(hand) {
+  return hand && hand.game === 'stud' ? STUD_STREETS : COMMUNITY_STREETS;
+}
+// "blinds 10/20 ante 20", or a stud hand's ante, bring-in and bets.
+function handStakes(hand) {
+  if (hand.game === 'stud' && hand.bets) {
+    const b = hand.bets;
+    return `ante ${b.ante} · bring-in ${b.bringIn} · bets ${b.smallBet}/${b.bigBet}`;
+  }
+  return `blinds ${hand.smallBlind}/${hand.bigBlind}` + (hand.ante ? ` ante ${hand.ante}` : '');
+}
 const EXPORT_ACTIONS = {
   fold: 'folds',
   check: 'checks',
@@ -1126,8 +1177,7 @@ function handHistoryBlock(hand) {
     `Hand ${hand.handNum}` +
     (hand.tableNumber ? ` · Table ${hand.tableNumber}` : '') +
     (hand.level ? ` · Level ${hand.level}` : '') +
-    ` · blinds ${hand.smallBlind}/${hand.bigBlind}` +
-    (hand.ante ? ` ante ${hand.ante}` : '');
+    ` · ${handStakes(hand)}`;
   out.push(`── ${head} ${'─'.repeat(Math.max(2, EXPORT_WRAP - head.length))}`);
   const seats = (hand.players || []).length;
   out.push(` ${seats} player${seats === 1 ? '' : 's'}`);
@@ -1149,7 +1199,7 @@ function handHistoryBlock(hand) {
     if (!byPhase.has(a.phase)) byPhase.set(a.phase, []);
     byPhase.get(a.phase).push(a);
   }
-  for (const phase of ['preflop', 'flop', 'turn', 'river']) {
+  for (const phase of handStreets(hand)) {
     const acts = byPhase.get(phase) || [];
     const cards = boardFor[phase] || [];
     if (!acts.length && !cards.length) continue;
@@ -1218,7 +1268,17 @@ function handHistoryText(game, who) {
 // ============================================================
 //  HAND REPLAY
 // ============================================================
-const PHASE_NAMES = { preflop: 'Preflop', flop: 'Flop', turn: 'Turn', river: 'River' };
+const PHASE_NAMES = {
+  preflop: 'Preflop',
+  flop: 'Flop',
+  turn: 'Turn',
+  river: 'River',
+  third: 'Third street',
+  fourth: 'Fourth street',
+  fifth: 'Fifth street',
+  sixth: 'Sixth street',
+  seventh: 'Seventh street',
+};
 
 // The modal's list view. The History tab renders the same list into its own
 // container with its own pick handler.
@@ -1279,9 +1339,7 @@ function renderReplayDetail(hand) {
   replayTitle.append(
     backBtn,
     document.createTextNode(
-      `Hand ${hand.handNum} · Pot ${hand.pot} · Blinds ${hand.smallBlind}/${hand.bigBlind}` +
-        (hand.ante ? ` ante ${hand.ante}` : '') +
-        ` · Ended on ${phaseLabel}`
+      `Hand ${hand.handNum} · Pot ${hand.pot} · ${handStakes(hand)} · Ended on ${phaseLabel}`
     )
   );
   const replayWinnerSummary = document.getElementById('replayWinnerSummary');
@@ -1328,27 +1386,33 @@ function renderReplayDetail(hand) {
     cardsDiv.appendChild(div);
   }
 
-  // Community cards
+  // Community cards. A stud hand has none, and the section says nothing.
   const commDiv = document.getElementById('replayCommunity');
+  const commLabel = document.getElementById('replayCommunityLabel');
+  const hasBoard = hand.game !== 'stud';
   commDiv.textContent = '';
-  for (let i = 0; i < 5; i++) {
-    const card = hand.communityCards[i];
-    if (card) {
-      commDiv.appendChild(createReplayCardElement(card));
-    } else {
-      const placeholder = document.createElement('div');
-      placeholder.className = 'card-back replay-card replay-card-placeholder';
-      commDiv.appendChild(placeholder);
+  commDiv.classList.toggle('hidden', !hasBoard);
+  if (commLabel) commLabel.classList.toggle('hidden', !hasBoard);
+  if (hasBoard) {
+    for (let i = 0; i < 5; i++) {
+      const card = hand.communityCards[i];
+      if (card) {
+        commDiv.appendChild(createReplayCardElement(card));
+      } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'card-back replay-card replay-card-placeholder';
+        commDiv.appendChild(placeholder);
+      }
     }
-  }
-  if (hand.communityCards.length < 5) {
-    commDiv.appendChild(
-      createTextElement(
-        'div',
-        'replay-community-note',
-        `This hand ended on the ${phaseLabel.toLowerCase()}, so the remaining board cards were never dealt.`
-      )
-    );
+    if (hand.communityCards.length < 5) {
+      commDiv.appendChild(
+        createTextElement(
+          'div',
+          'replay-community-note',
+          `This hand ended on the ${phaseLabel.toLowerCase()}, so the remaining board cards were never dealt.`
+        )
+      );
+    }
   }
 
   // Actions

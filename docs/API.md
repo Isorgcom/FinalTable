@@ -54,7 +54,9 @@ Where both are given, GameNight's wins.
 | --------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `title`                           | `name`                      | up to 24 characters; `Tournament` if missing                                                                                                                                                              |
 | `start_at` (ISO-8601)             | `startsAt` (ms since epoch) | up to seven days out, or 400; missing or past means now                                                                                                                                                   |
-| `seats_per_table`, `poker_seats`  | `tableSize`                 | 2-8, default 8                                                                                                                                                                                            |
+| `game`, `variant`                 | `game`                      | `holdem` (default), `omaha` or `stud`; anything else is a 400                                                                                                                                             |
+| `limit`, `betting`                | `limit`                     | `no`, `pot` or `fixed` (`no-limit` and the like are read too); default is the game's own - Hold'em `no`, Omaha `pot`, Stud `fixed`; anything else is a 400                                                |
+| `seats_per_table`, `poker_seats`  | `tableSize`                 | 2-8, default 8; a stud table holds seven, so 8 becomes 7                                                                                                                                                  |
 | `starting_chips`                  | `startChips`                | one of 1000, 2000, 5000, 10000 - anything else becomes 5000                                                                                                                                               |
 |                                   | `levelDuration` (s)         | 30-3600, default 300; a level without its own duration takes this                                                                                                                                         |
 |                                   | `lateRegLevels`             | 0-8, default 3                                                                                                                                                                                            |
@@ -154,6 +156,8 @@ The answer, `201`:
       }
     ],
     "settings": {
+      "game": "holdem",
+      "limit": "no",
       "tableSize": 8,
       "startChips": 5000,
       "levelDuration": 900,
@@ -361,9 +365,22 @@ Every body carries the event, the delivery, when it was sent, and the game:
   "event": "player.eliminated",
   "delivery_id": 41,
   "sent_at": 1790000000000,
-  "game": { "id": "t_3f9a1c2b4", "name": "Thursday", "external_id": "ev_812" }
+  "game": {
+    "id": "t_3f9a1c2b4",
+    "name": "Thursday",
+    "external_id": "ev_812",
+    "variant": "holdem",
+    "limit": "no"
+  }
 }
 ```
+
+`variant` is which game is played (`holdem`, `omaha`, `stud`) and `limit`
+how it is bet (`no`, `pot`, `fixed`), as they were given when the game was
+made. The clock events below also carry `bets`: what the level posts in that
+game - `{ sb, bb, ante, smallBet, bigBet }` for a blinds game, `{ ante,
+bringIn, smallBet, bigBet }` for stud, where a level's small blind is the
+bring-in, half of it the ante, and its big blind and twice it the two bets.
 
 A player is named three ways: this server's `uid`, GameNight's `user_id`
 (the `sub` its sign-in token carries, `null` for a bot), and the `name` as it

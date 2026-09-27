@@ -337,7 +337,12 @@ function init() {
   // sizing is already on screen it stays one tap, as it always was.
   document.getElementById('btnRaise').addEventListener('click', () => {
     const panel = document.getElementById('actionsPanel');
-    if (panel.classList.contains('is-compact') && !panel.classList.contains('is-sizing')) {
+    // Fixed-limit has nothing to size, so the button sends on the first tap.
+    if (
+      panel.classList.contains('is-compact') &&
+      !panel.classList.contains('is-sizing') &&
+      !panel.classList.contains('is-fixed')
+    ) {
       panel.classList.add('is-sizing');
       if (typeof updateActionsPanel === 'function') updateActionsPanel();
       return;
@@ -485,8 +490,14 @@ function init() {
   document.getElementById('btnSitOutNextHand').addEventListener('click', () => {
     setSitOutNextHand(!(gameState && gameState.mySitOutNextHand));
   });
-  // Both of them, or neither. One at a time is tapped on the card itself.
-  document.getElementById('btnShowBoth').addEventListener('click', () => showMyCards([0, 1]));
+  // All of them, or none. One at a time is tapped on the card itself. A card
+  // already face up - a stud up-card - is not on offer, and the server would
+  // refuse it anyway.
+  document.getElementById('btnShowBoth').addEventListener('click', () => {
+    const me = gameState ? gameState.players.find((p) => p.id === myId) : null;
+    const mine = me && Array.isArray(me.holeCards) ? me.holeCards : [];
+    showMyCards(mine.map((c, i) => (c && c.up ? -1 : i)).filter((i) => i >= 0));
+  });
   document.getElementById('btnShowNo').addEventListener('click', () => declineShowMyCards());
   // Tapping your own hole card turns that one over, which is the whole point
   // of being allowed to show one. Delegated from the seat container, which
@@ -502,7 +513,7 @@ function init() {
       (n) => n.classList.contains('card') || n.classList.contains('card-back')
     );
     const idx = cards.indexOf(card);
-    if (idx === 0 || idx === 1) showMyCards([idx]);
+    if (idx >= 0) showMyCards([idx]);
   });
   document.getElementById('btnCloseReplay').addEventListener('click', () => {
     closeReplayPanel();

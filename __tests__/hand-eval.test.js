@@ -1,5 +1,5 @@
 // __tests__/hand-eval.test.js — Hand evaluation unit tests
-const { evaluateHand, compareHands, HAND_RANKS } = require('../hand-eval');
+const { evaluateHand, bestOf, evaluatePartial, compareHands, HAND_RANKS } = require('../hand-eval');
 
 function card(rank, suit) {
   const vals = {
@@ -171,5 +171,99 @@ describe('Edge Cases', () => {
   test('5-card hand evaluation works', () => {
     const h = evaluateHand(hand7('As', 'Ks', 'Qs', 'Js', '10s').slice(0, 5));
     expect(h.rank).toBe(HAND_RANKS.ROYAL_FLUSH);
+  });
+});
+
+// Omaha's rule, and the one that catches most people: the board is not
+// yours, only three of it is.
+describe('bestOf — which cards may play', () => {
+  const omaha = { useHole: { min: 2, max: 2 } };
+
+  test('with no rule it is the best five of everything, as evaluateHand has it', () => {
+    const hole = hand7('Ah', '3h');
+    const board = hand7('9h', 'Jh', '4h', '2c', '7s');
+    const a = bestOf(hole, board);
+    const b = evaluateHand([...hole, ...board]);
+    expect(a.rank).toBe(HAND_RANKS.FLUSH);
+    expect(compareHands(a, b)).toBe(0);
+  });
+
+  test('Omaha: a board flush with one suited hole card is not a flush', () => {
+    const hole = hand7('Ah', '2c', '9d', 'Ks');
+    const board = hand7('Kh', 'Qh', 'Jh', '3h', '2d');
+    expect(evaluateHand([...hole, ...board]).rank).toBe(HAND_RANKS.FLUSH);
+    const h = bestOf(hole, board, omaha);
+    expect(h.rank).toBe(HAND_RANKS.TWO_PAIR);
+    expect(h.kickers.slice(0, 2)).toEqual([13, 2]);
+  });
+
+  test('Omaha: four of a kind on the board does not play', () => {
+    const hole = hand7('Ah', 'Qc', 'Jd', '9s');
+    const board = hand7('Kh', 'Kd', 'Kc', 'Ks', '2d');
+    expect(evaluateHand([...hole, ...board]).rank).toBe(HAND_RANKS.FOUR_OF_A_KIND);
+    expect(bestOf(hole, board, omaha).rank).toBe(HAND_RANKS.THREE_OF_A_KIND);
+  });
+
+  test('Omaha: a wheel from exactly two', () => {
+    const h = bestOf(hand7('Ah', '2c', 'Kd', 'Ks'), hand7('3d', '4s', '5h', '9c', 'Jh'), omaha);
+    expect(h.rank).toBe(HAND_RANKS.STRAIGHT);
+    expect(h.kickers).toEqual([5]);
+  });
+
+  test('Omaha: a straight that needs three hole cards does not play', () => {
+    const hole = hand7('6h', '7c', '8d', 'Ks');
+    const board = hand7('9h', '10s', 'Ad', 'Ac', '2h');
+    expect(evaluateHand([...hole, ...board]).rank).toBe(HAND_RANKS.STRAIGHT);
+    const h = bestOf(hole, board, omaha);
+    expect(h.rank).toBe(HAND_RANKS.ONE_PAIR);
+    expect(h.kickers[0]).toBe(14);
+  });
+
+  test('Omaha: two from the hand and three from a short board still makes five', () => {
+    const h = bestOf(hand7('Ah', 'Kh', 'Qh', 'Jh'), hand7('10h', '9h', '8h'), omaha);
+    expect(h.rank).toBe(HAND_RANKS.STRAIGHT_FLUSH);
+    expect(h.kickers).toEqual([12]);
+  });
+
+  test('Omaha: nothing before there are three on the board', () => {
+    expect(bestOf(hand7('Ah', 'Kh', 'Qh', 'Jh'), hand7('10h', '9h'), omaha)).toBeNull();
+  });
+});
+
+// A stud hand is ranked on its early streets by what is face up, and read
+// out to its owner by what it has made so far. Neither is five cards yet.
+describe('evaluatePartial — fewer than five cards', () => {
+  test('pair, high card, and the higher of two pairs', () => {
+    const pair = evaluatePartial(hand7('Ks', 'Kh', '9d'));
+    expect(pair.rank).toBe(HAND_RANKS.ONE_PAIR);
+    expect(pair.kickers).toEqual([13, 9]);
+    expect(pair.cards.map((c) => c.rank)).toEqual(['K', 'K']);
+    const high = evaluatePartial(hand7('As', 'Jh', '9d'));
+    expect(high.rank).toBe(HAND_RANKS.HIGH_CARD);
+    expect(high.kickers).toEqual([14, 11, 9]);
+    expect(high.cards.map((c) => c.rank)).toEqual(['A']);
+    expect(compareHands(pair, high)).toBeGreaterThan(0);
+    expect(compareHands(pair, evaluatePartial(hand7('Qs', 'Qh', '9d')))).toBeGreaterThan(0);
+  });
+
+  test('three of a kind, two pair and four of a kind', () => {
+    expect(evaluatePartial(hand7('Js', 'Jh', 'Jd', '9c')).rank).toBe(HAND_RANKS.THREE_OF_A_KIND);
+    const two = evaluatePartial(hand7('As', 'Ah', '8d', '8c'));
+    expect(two.rank).toBe(HAND_RANKS.TWO_PAIR);
+    expect(two.kickers).toEqual([14, 8]);
+    expect(two.cards).toHaveLength(4);
+    expect(evaluatePartial(hand7('Ks', 'Kh', 'Kd', 'Kc')).rank).toBe(HAND_RANKS.FOUR_OF_A_KIND);
+  });
+
+  test('on the same scale as a full hand, so the two compare', () => {
+    const deuces = evaluatePartial(hand7('2s', '2h', '9d'));
+    const aceHigh = evaluateHand(hand7('As', 'Jh', '9d', '7c', '4s', '3h', '2d'));
+    expect(compareHands(deuces, aceHigh)).toBeGreaterThan(0);
+  });
+
+  test('five or more cards go the ordinary way, and none is nothing', () => {
+    expect(evaluatePartial(hand7('As', 'Ks', 'Qs', 'Js', '10s')).rank).toBe(HAND_RANKS.ROYAL_FLUSH);
+    expect(evaluatePartial([])).toBeNull();
+    expect(evaluatePartial(null)).toBeNull();
   });
 });

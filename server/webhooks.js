@@ -126,7 +126,14 @@ function createWebhooks(options = {}) {
       event,
       url: entry.webhook.url,
       secret: entry.webhook.secret,
-      game: { id: entry.id, name: entry.name, external_id: entry.webhook.externalId || null },
+      // Which game it is, beside the id: GameNight labels the event with it.
+      game: {
+        id: entry.id,
+        name: entry.name,
+        external_id: entry.webhook.externalId || null,
+        variant: (entry.settings && entry.settings.game) || 'holdem',
+        limit: (entry.settings && entry.settings.limit) || 'no',
+      },
       payload: payload || {},
       attempts: 0,
       nextAt: at,

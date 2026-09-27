@@ -1,4 +1,5 @@
-// hand-eval.js - Texas Hold'em hand evaluation
+// hand-eval.js - poker hand evaluation: the best five cards out of whatever a
+// game puts in front of a player, and the same scale for fewer than five.
 
 const HAND_RANKS = {
   ROYAL_FLUSH: 10,
@@ -38,6 +39,58 @@ function evaluateHand(cards) {
     }
   }
   return bestHand;
+}
+
+// The best five when the game says how many must come from the player's own
+// cards: Omaha's exactly two from the hand with three from the board. A game
+// with no such rule is evaluateHand over everything together. Null when the
+// cards cannot make five under the rule.
+function bestOf(hole, board, { useHole } = {}) {
+  const hand = Array.isArray(hole) ? hole : [];
+  const table = Array.isArray(board) ? board : [];
+  if (!useHole) return evaluateHand([...hand, ...table]);
+  let bestHand = null;
+  for (let k = useHole.min; k <= useHole.max; k++) {
+    if (k < 0 || k > hand.length || 5 - k > table.length) continue;
+    for (const fromHand of getCombinations(hand, k)) {
+      for (const fromBoard of getCombinations(table, 5 - k)) {
+        const result = evaluate5Cards([...fromHand, ...fromBoard]);
+        if (!bestHand || compareHands(result, bestHand) > 0) bestHand = result;
+      }
+    }
+  }
+  return bestHand;
+}
+
+// Fewer than five cards on the same scale, so that a stud hand on third
+// street can be ranked against another and read out in words. Nothing below
+// five can be a straight or a flush, so it is the groups and the high card.
+// `cards` is what makes the hand rather than everything in it, which is what
+// a reader lights up.
+function evaluatePartial(cards) {
+  if (!Array.isArray(cards) || !cards.length) return null;
+  if (cards.length >= 5) return evaluateHand(cards);
+  const sorted = [...cards].sort((a, b) => b.value - a.value);
+  const values = sorted.map((c) => c.value);
+  const groups = getGroups(values);
+  const made = (rank, kickers, playing) => ({
+    rank,
+    kickers,
+    cards: playing,
+    name: HAND_NAMES[rank],
+  });
+  const ofValue = (...vals) => sorted.filter((c) => vals.includes(c.value));
+  const [first, second] = groups;
+  if (first.count === 4) {
+    return made(HAND_RANKS.FOUR_OF_A_KIND, [first.value], ofValue(first.value));
+  }
+  const byGroup = groups.map((g) => g.value);
+  if (first.count === 3) return made(HAND_RANKS.THREE_OF_A_KIND, byGroup, ofValue(first.value));
+  if (first.count === 2 && second && second.count === 2) {
+    return made(HAND_RANKS.TWO_PAIR, byGroup, ofValue(first.value, second.value));
+  }
+  if (first.count === 2) return made(HAND_RANKS.ONE_PAIR, byGroup, ofValue(first.value));
+  return made(HAND_RANKS.HIGH_CARD, values, sorted.slice(0, 1));
 }
 
 function getCombinations(arr, size) {
@@ -162,4 +215,12 @@ function compareHands(a, b) {
   return 0;
 }
 
-module.exports = { evaluateHand, compareHands, HAND_RANKS, HAND_NAMES };
+module.exports = {
+  evaluateHand,
+  evaluate5Cards,
+  bestOf,
+  evaluatePartial,
+  compareHands,
+  HAND_RANKS,
+  HAND_NAMES,
+};

@@ -20,14 +20,20 @@ Settled:
 
 None of this waits on the split below, and all of it is visible to a player.
 
-### Games other than Hold'em
+### ~~Games other than Hold'em~~ (done in 0.29.0)
 
-The largest of these by far. The engine deals two cards and makes the best five
-from seven, and `hand-eval.js` assumes exactly that. Omaha changes the deal and
-the must-use-two rule; stud changes the whole street structure; draw needs a
-discard phase that has no equivalent anywhere in the code. Worth doing as one
-deliberate piece of work on the engine's shape rather than as four special
-cases bolted to a Hold'em loop.
+Omaha and Seven-Card Stud, with pot-limit and fixed-limit betting, shipped as
+one game-definition layer rather than as special cases: `games.js` says what
+a game deals and which cards come up, whether there is a board, what is
+posted before the deal, who opens each street and how a hand is scored;
+`betting-limits.js` says how much a bet may be; and the engine reads both.
+What is left is what no definition has needed yet, and each has its seam:
+a discard step for Five-Card Draw and Pineapple (a `deal: { draw }` step
+kind, one client control), a low evaluator for Razz (`evaluateLow`, and the
+definition's `bringInBy`/`showingOrder` flipped), a split pot for Hi-Lo
+(`_rankSlice` in the engine becomes the definition's award rule), and a game
+that changes by the level for HORSE (a `game` on the level row, applied
+between hands).
 
 ### ~~Hardening the API, from the review~~ (done in 0.26.1)
 

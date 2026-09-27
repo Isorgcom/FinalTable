@@ -5,9 +5,11 @@ A self-hosted multi-table tournament poker server.
 FinalTable is a fork of [LONICERA](https://github.com/Evostructs/LONICERA), a
 single-table Texas Hold'em engine, extended to run tournaments across several
 tables at once: seating a field, balancing and breaking tables as players bust,
-and merging down to a final table. See [FORK.md](./FORK.md) for lineage, what
-was removed, and an important licence caution, and
-[CHANGELOG.md](./CHANGELOG.md) for what has changed since.
+and merging down to a final table. It plays Texas Hold'em, Omaha and
+Seven-Card Stud, at no-limit, pot-limit or fixed-limit, with the game and the
+betting chosen per tournament. See [FORK.md](./FORK.md) for lineage, what was
+removed, and an important licence caution, and [CHANGELOG.md](./CHANGELOG.md)
+for what has changed since.
 
 There is a [user manual](./docs/MANUAL.md) for players, hosts and admins, and
 an [API reference](./docs/API.md) for the one caller that is not a person.
@@ -99,23 +101,24 @@ as the memory ceiling and watch the clock separately on a small box.
 
 ## Layout
 
-| Path                                                         | Purpose                                                                                      |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| `server.js`                                                  | Express + Socket.IO host; wires the identity store, the tournament registry and the handlers |
-| `server/tournament-registry.js`                              | A tournament's life: codes, scheduled start, registrations, host, late entry, rejoin, reaper |
-| `server/tournament-handlers.js`                              | Socket events for tournaments, a thin shim over the registry                                 |
-| `server/identity.js`                                         | Who a player is: an account here, or a GameNight one, behind device tokens                   |
-| `server/gamenight-sso.js`                                    | Checks the signed token a player brings back from GameNight, with only the public key        |
-| `server/gamenight-pairing.js`, `settings-store.js`           | The pairing itself: fetched from GameNight by the admin, kept in the settings table          |
-| `server/tournament-store.js`                                 | Registering tournaments persisted as JSON so a restart keeps them                            |
-| `director.js`                                                | `TournamentDirector`: N tables on one clock, seating, balancing, breaking, payouts           |
-| `engine.js`                                                  | `PokerGame`: one table, one hand loop, betting and showdown                                  |
-| `tournament.js`                                              | Blind schedule, level timer, elimination ledger                                              |
-| `blind-structures.js`                                        | The Turbo, Standard and Deep presets, the clamp on a hand-edited structure, the rung rule    |
-| `hand-eval.js`, `hand-describe.js`                           | Hand ranking, and the hand in words for the table's readout                                  |
-| `public/js/lobby.js`, `socket-client.js`                     | The lobby and the one socket for the life of the page                                        |
-| `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Log / Info / Stats / History panel            |
-| `__tests__/`, `e2e/`                                         | Jest suites and Playwright specs                                                             |
+| Path                                                         | Purpose                                                                                         |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `server.js`                                                  | Express + Socket.IO host; wires the identity store, the tournament registry and the handlers    |
+| `server/tournament-registry.js`                              | A tournament's life: codes, scheduled start, registrations, host, late entry, rejoin, reaper    |
+| `server/tournament-handlers.js`                              | Socket events for tournaments, a thin shim over the registry                                    |
+| `server/identity.js`                                         | Who a player is: an account here, or a GameNight one, behind device tokens                      |
+| `server/gamenight-sso.js`                                    | Checks the signed token a player brings back from GameNight, with only the public key           |
+| `server/gamenight-pairing.js`, `settings-store.js`           | The pairing itself: fetched from GameNight by the admin, kept in the settings table             |
+| `server/tournament-store.js`                                 | Registering tournaments persisted as JSON so a restart keeps them                               |
+| `director.js`                                                | `TournamentDirector`: N tables on one clock, seating, balancing, breaking, payouts              |
+| `engine.js`                                                  | `PokerGame`: one table, one hand loop, betting and showdown, for whichever game it was made for |
+| `games.js`, `betting-limits.js`                              | What a game deals, who opens and how a hand scores; and how much a bet may be                   |
+| `tournament.js`                                              | Blind schedule, level timer, elimination ledger                                                 |
+| `blind-structures.js`                                        | The Turbo, Standard and Deep presets, the clamp on a hand-edited structure, the rung rule       |
+| `hand-eval.js`, `hand-describe.js`                           | Hand ranking, and the hand in words for the table's readout                                     |
+| `public/js/lobby.js`, `socket-client.js`                     | The lobby and the one socket for the life of the page                                           |
+| `public/js/table-render.js`, `ui-panels.js`, `side-panel.js` | The table: felt, seats, action bar, the Chat / Log / Info / Stats / History panel               |
+| `__tests__/`, `e2e/`                                         | Jest suites and Playwright specs                                                                |
 
 ## Roadmap
 

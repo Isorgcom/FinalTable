@@ -998,7 +998,9 @@ function registerTournamentHandlers(deps) {
       if (!seat) return;
       const raw = payload && payload.cards;
       const cards = (Array.isArray(raw) ? raw : [raw]).map((n) => parseInt(n, 10));
-      if (!cards.length || cards.some((n) => n !== 0 && n !== 1)) return;
+      // Any index a hand can have - seven is the most any game deals. The
+      // engine knows which of them are theirs and not already face up.
+      if (!cards.length || cards.some((n) => !Number.isInteger(n) || n < 0 || n > 6)) return;
       seat.table.showHoleCards(seat.player.id, cards);
     });
 

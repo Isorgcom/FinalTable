@@ -1,7 +1,8 @@
 // hand-describe.js - a plain-English description of a player's hand for the
 // table's "You have ..." readout. Server-side, because hand-eval.js is not
 // loaded in the browser and a second evaluator would only drift from it.
-const { evaluateHand, HAND_RANKS } = require('./hand-eval');
+const { evaluatePartial, HAND_RANKS } = require('./hand-eval');
+const { gameFor, DEFAULT_GAME } = require('./games');
 
 const VALUE_NAMES = {
   14: 'Ace',
@@ -40,6 +41,30 @@ function describePreflop(hole) {
   };
 }
 
+// Four cards before the flop, in the words Omaha players use: what is paired,
+// and how many suits two of the cards share. Double-suited is the holding
+// that matters, so it is said even when nothing is paired.
+function describeOmahaStart(hole) {
+  const sorted = [...hole].sort((x, y) => y.value - x.value);
+  const byValue = new Map();
+  const bySuit = new Map();
+  for (const c of sorted) {
+    byValue.set(c.value, (byValue.get(c.value) || 0) + 1);
+    bySuit.set(c.suit, (bySuit.get(c.suit) || 0) + 1);
+  }
+  const pairs = [...byValue.entries()].filter(([, n]) => n >= 2).map(([v]) => v);
+  const suitedRuns = [...bySuit.values()].filter((n) => n >= 2).length;
+  const suits = suitedRuns >= 2 ? 'double-suited' : suitedRuns === 1 ? 'single-suited' : 'rainbow';
+  if (pairs.length >= 2) {
+    return { name: 'Two pairs', detail: `${plural(pairs[0])} and ${plural(pairs[1])}, ${suits}` };
+  }
+  if (pairs.length === 1) {
+    return { name: 'Pair', detail: `Pair of ${plural(pairs[0])}, ${suits}` };
+  }
+  const name = suits[0].toUpperCase() + suits.slice(1);
+  return { name, detail: `${sorted.map((c) => single(c.value)).join('-')}, ${suits}` };
+}
+
 // The made hand in words, from an evaluateHand() result.
 function describeBest(best) {
   const k = best.kickers;
@@ -67,24 +92,31 @@ function describeBest(best) {
   }
 }
 
-// Returns { name, detail, text, rank, cards } or null without two hole cards.
-// Before the flop there is no five-card hand, so the hole cards are described
-// on their own (Pocket Kings, Ace-King suited).
-function describeHand(holeCards, communityCards) {
-  if (!Array.isArray(holeCards) || holeCards.length !== 2) return null;
+// Returns { name, detail, text, rank, cards } or null without a hand to
+// describe. A community game before the flop has no five-card hand, so the
+// hole cards are described on their own (Pocket Kings, Ace-King suited,
+// Aces and Kings double-suited). Fewer than five cards anywhere else - a
+// stud hand on its early streets - is read for what it has made so far. The
+// game says how the made hand is scored, which is what makes an Omaha readout
+// an Omaha hand rather than the best five of nine.
+function describeHand(game, holeCards, communityCards) {
+  if (!Array.isArray(holeCards) || holeCards.length < 2) return null;
+  const def = game || gameFor(DEFAULT_GAME);
   const board = Array.isArray(communityCards) ? communityCards : [];
-  if (board.length < 3) {
-    const pre = describePreflop(holeCards);
+  if (def.family === 'community' && board.length < 3) {
+    const pre = holeCards.length === 2 ? describePreflop(holeCards) : describeOmahaStart(holeCards);
     return { ...pre, text: `You have ${pre.detail}`, rank: 0 };
   }
-  const best = evaluateHand([...holeCards, ...board]);
+  const partial = holeCards.length + board.length < 5;
+  const best = partial ? evaluatePartial([...holeCards, ...board]) : def.evaluate(holeCards, board);
   if (!best) return null;
   const detail = describeBest(best);
-  // The five that actually play, so the readout can show the hand rather than
-  // only name it. evaluateHand picks them out of the seven and this is the
-  // line that used to drop them. Mapped down to what the client draws: the
-  // internal sort value is no business of the wire.
-  const cards = (best.cards || []).map((c) => ({ rank: c.rank, suit: c.suit }));
+  // The cards that actually play, so the readout can show the hand rather
+  // than only name it. Mapped down to what the client draws: the internal
+  // sort value is no business of the wire. A high card short of five cards
+  // has nothing to show.
+  const showing = partial && best.rank === HAND_RANKS.HIGH_CARD ? [] : best.cards || [];
+  const cards = showing.map((c) => ({ rank: c.rank, suit: c.suit }));
   return { name: best.name, detail, text: `You have ${detail}`, rank: best.rank, cards };
 }
 

@@ -31,6 +31,7 @@ const MAX_WATCHERS = 50;
 const MAX_GUESTS = 200;
 const random = require('../random');
 const { clampStructure, summary: structureSummary } = require('../blind-structures');
+const { isGame, gameFor, limitFor } = require('../games');
 const payloads = require('./webhook-payloads');
 
 const TICK_MS = 1200;
@@ -579,6 +580,8 @@ function createTournamentRegistry(deps = {}) {
       finishedAt: entry.finishedAt,
       hostName: hostName(entry),
       visibility: entry.settings.visibility,
+      game: entry.settings.game || 'holdem',
+      limit: entry.settings.limit || 'no',
       entrants: { humans, total },
       tableSize: d.tableSize,
       startChips: d.startChips,
@@ -720,6 +723,8 @@ function createTournamentRegistry(deps = {}) {
         isHost: !!row.isHost,
       })),
       settings: {
+        game: s.game || 'holdem',
+        limit: s.limit || 'no',
         tableSize: s.tableSize,
         startChips: s.startChips,
         levelDuration: s.levelDuration,
@@ -1152,11 +1157,19 @@ function createTournamentRegistry(deps = {}) {
     const startChips = int(payload.startChips, 5000);
     const levelDuration = Math.max(30, Math.min(3600, int(payload.levelDuration, 300)));
     const structure = clampStructure(payload.structure, levelDuration);
+    // Which game, and how it is bet: Hold'em, no-limit, unless the host said
+    // otherwise. A file written before there were other games reads as the
+    // only one there was.
+    const game = isGame(payload.game) ? payload.game : 'holdem';
+    const def = gameFor(game);
     return {
       startsAt,
       autoApprove: !!payload.autoApprove,
       settings: {
-        tableSize: Math.max(2, Math.min(8, int(payload.tableSize, 8))),
+        game,
+        limit: limitFor(def, payload.limit),
+        // Eight is the felt; a game that seats fewer holds the table to that.
+        tableSize: Math.max(2, Math.min(8, def.maxSeats, int(payload.tableSize, 8))),
         startChips: START_CHIPS.includes(startChips) ? startChips : 5000,
         levelDuration,
         // A preset's key, or the host's own levels; anything else runs
@@ -1418,7 +1431,12 @@ function createTournamentRegistry(deps = {}) {
       addOn: settings.addOn,
       handPauseMs,
       historyMax,
-      gameOptions: { gameMode: 'tournament', ...tableOptions },
+      gameOptions: {
+        gameMode: 'tournament',
+        ...tableOptions,
+        game: settings.game,
+        limit: settings.limit,
+      },
       onTableCreated: (table) => {
         wireTable(entry, table);
         sendChatField(entry); // the host's strip gains a table

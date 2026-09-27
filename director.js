@@ -10,6 +10,7 @@
 // three tables simply stalls at three separate survivors and never finishes.
 
 const { PokerGame, DEFAULT_MAX_PLAYERS } = require('./engine');
+const { gameFor, limitFor } = require('./games');
 const { Tournament } = require('./tournament');
 const { Leaderboard, exportHandsFor } = require('./hand-history');
 const random = require('./random');
@@ -50,6 +51,12 @@ class TournamentDirector {
     this.startChips = options.startChips || 5000;
     this.buyIn = options.buyIn || 0;
     this.gameOptions = options.gameOptions || {};
+    // The game every table plays, and how it is bet. Known here as well as
+    // in the engine, for the seat cap and for the line that says the level
+    // went up.
+    this.game = gameFor(this.gameOptions.game);
+    this.limit = limitFor(this.game, this.gameOptions.limit);
+    this.tableSize = Math.min(this.tableSize, this.game.maxSeats);
     this.payoutPct = options.payoutPct || null; // override the default structure
     this._payoutOverride = !!options.payoutPct;
     // Late registration stays open through this many levels (0 = closes at start).
@@ -359,10 +366,7 @@ class TournamentDirector {
       table = this._createTable(this.tables.length);
       // A late table breaks first: break order is otherwise fixed at start.
       this.breakOrder.unshift(table.tableNumber);
-      const blinds = this.tournament.getCurrentBlinds();
-      table.smallBlind = blinds.sb;
-      table.bigBlind = blinds.bb;
-      table.ante = blinds.ante;
+      table.applyLevel(this.tournament.getCurrentBlinds());
     }
     this._expectedChips += this.startChips;
     const seated = table.addPlayer({
@@ -1507,12 +1511,13 @@ class TournamentDirector {
         const row = this.tournament.blindSchedule[level];
         const addOns = this.addOnOpen() ? ' · add-ons open' : '';
         this._say(
-          `Break: ${fmtLength(row.duration)} · play resumes at ${blindsText(blinds)}${addOns}`
+          `Break: ${fmtLength(row.duration)} · play resumes at ${this._levelText(blinds)}${addOns}`
         );
       } else {
         this._stampBlinds(blinds);
-        const verb = info.back ? 'Blinds back to' : 'Blinds up:';
-        this._say(`${verb} ${blindsText(blinds)} (level ${number})`);
+        const what = this.game.forced === 'blinds' ? 'Blinds' : 'Bets';
+        const verb = info.back ? `${what} back to` : `${what} up:`;
+        this._say(`${verb} ${this._levelText(blinds)} (level ${number})`);
       }
       // The felt reads the level off the table's own state, which otherwise
       // moves only with the hand: push it now, so the banner changes with
@@ -1541,15 +1546,19 @@ class TournamentDirector {
     };
   }
 
-  // Every table takes the level's blinds, so a player moved at level 6 does
-  // not find themselves playing level 3 blinds. The engine re-reads the
-  // clock at each deal anyway; this is what the table shows between hands.
+  // Every table takes the level, so a player moved at level 6 does not find
+  // themselves playing level 3 blinds. The engine re-reads the clock at each
+  // deal anyway; this is what the table shows between hands.
   _stampBlinds(blinds) {
-    for (const table of this.tables) {
-      table.smallBlind = blinds.sb;
-      table.bigBlind = blinds.bb;
-      table.ante = blinds.ante;
-    }
+    for (const table of this.tables) table.applyLevel(blinds);
+  }
+
+  // The level in words, as this game posts it: "75/150 ante 150" for a blinds
+  // game, "ante 5 · bring-in 10 · bets 20/40" for stud.
+  _levelText(blinds) {
+    if (this.game.forced === 'blinds') return blindsText(blinds);
+    const bets = this.game.forcedBets(blinds);
+    return `ante ${bets.ante} · bring-in ${bets.bringIn} · bets ${bets.smallBet}/${bets.bigBet}`;
   }
 
   // A table is only worth recording between hands: mid-hand its stacks are

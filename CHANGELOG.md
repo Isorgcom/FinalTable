@@ -13,6 +13,36 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **Omaha and Seven-Card Stud, with pot-limit and fixed-limit betting.** The
+  create form has a _Game_ row - Hold'em, Omaha or Seven-Card Stud - and a
+  _Betting_ row - no-limit, pot-limit or fixed-limit. Each game comes up at
+  the limit it is usually played at, and the host can pick another. Omaha
+  deals four cards and scores exactly two of them with three from the board.
+  Stud deals seven with no board: everyone antes, the low card showing brings
+  in, four of the seven come face up for the table to see, the strongest
+  cards showing open each street, and a stud table seats seven. Under
+  pot-limit a raise is capped at the pot, and the all-in button reads _pot_
+  when the stack is bigger than that. Under fixed-limit the one button reads
+  the bet - the level's big blind, doubled from the turn, or from fifth
+  street in stud - and a street closes after four raises. The level rows are
+  the same for every game: a stud level reads its small blind as the
+  bring-in, half of that as the ante, and its big blind and twice it as the
+  two bets, and the form says what level one turns into. The felt fans more
+  than two cards; the top bar, the history and the replay call the streets
+  what the game calls them; the lobby, the waiting room and the invite screen
+  say which game it is. Over the API, `game` (`holdem`, `omaha`, `stud`) and
+  `limit` (`no`, `pot`, `fixed`) on the create body; every webhook's game
+  block carries `variant` and `limit`, and the clock events carry `bets`.
+
+### Changed
+
+- **No-limit no longer caps a street at four raises.** The cap was a
+  fixed-limit rule that had been applied to every table; a no-limit or
+  pot-limit street now takes as many raises as the players have chips for.
+  Fixed-limit keeps the cap, and lifts it heads-up, as the rules have it.
+
 ## 0.28.1 - 2026-09-26
 
 ### Fixed
