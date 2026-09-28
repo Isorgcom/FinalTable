@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.32.0 - 2026-09-28
+
 ### Added
 
 - **HORSE.** Five games in turn, one a level: Hold'em, then Omaha Hi-Lo,
