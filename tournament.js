@@ -216,17 +216,30 @@ class Tournament {
     return this._row().break;
   }
 
-  // The blinds in play: this level's, or on a break, the level play resumes
-  // at, so a table stamped during the break is stamped with what it will deal.
-  getCurrentBlinds() {
-    let row = this._row();
-    if (row.break) {
-      const i = this.currentLevel;
-      row =
-        this.blindSchedule.slice(i + 1).find((r) => !r.break) ||
-        [...this.blindSchedule.slice(0, i)].reverse().find((r) => !r.break) ||
-        row;
+  // The row whose blinds are in play: this one, or on a break the next level
+  // of play (the one before it, after a trailing break), so a table stamped
+  // during the break is stamped with what it will deal.
+  _indexInPlay() {
+    const last = this.blindSchedule.length - 1;
+    const i = Math.min(Math.max(0, this.currentLevel), last);
+    if (!this.blindSchedule[i].break) return i;
+    for (let j = i + 1; j <= last; j++) if (!this.blindSchedule[j].break) return j;
+    for (let j = i - 1; j >= 0; j--) if (!this.blindSchedule[j].break) return j;
+    return i;
+  }
+
+  // How many levels of play there are up to and including a row.
+  _playNumberAt(index) {
+    let n = 0;
+    for (let i = 0; i <= Math.min(index, this.blindSchedule.length - 1); i++) {
+      if (!this.blindSchedule[i].break) n++;
     }
+    return n;
+  }
+
+  // The blinds in play: this level's, or on a break, the level play resumes at.
+  getCurrentBlinds() {
+    const row = this.blindSchedule[this._indexInPlay()];
     return { sb: row.sb, bb: row.bb, ante: row.ante };
   }
 
@@ -234,11 +247,13 @@ class Tournament {
   // number of the level before it, so "through level 3" reaches the end of
   // the break that follows level 3.
   levelNumber() {
-    let n = 0;
-    for (let i = 0; i <= Math.min(this.currentLevel, this.blindSchedule.length - 1); i++) {
-      if (!this.blindSchedule[i].break) n++;
-    }
-    return n;
+    return this._playNumberAt(this.currentLevel);
+  }
+
+  // The number of the level whose blinds are in play - this one, or on a
+  // break the one play resumes at: what a mixed game deals by.
+  levelInPlay() {
+    return this._playNumberAt(this._indexInPlay());
   }
 
   playLevelCount() {

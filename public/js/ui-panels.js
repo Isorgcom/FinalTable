@@ -172,7 +172,7 @@ function paintBreakPlate() {
   // Frozen while the table holds, because the clock it counts is stopped too.
   document.getElementById('feltBreakClock').textContent = formatClock(_blindClockRemaining);
   const paused = !!(t.paused || (window.mttField && window.mttField.paused));
-  const blinds = stakesText(t.blinds);
+  const blinds = stakesText(t.blinds, t.game);
   const addOns = window.mttField && window.mttField.addOnOpen ? ' · add-ons open' : '';
   document.getElementById('feltBreakNote').textContent = held
     ? 'Waiting for players to come back · your chips are safe'
@@ -201,7 +201,7 @@ function updateBlindClock() {
   // "Level 6 · 75/150 · ante 150"; on a break, "Break · back at 100/200".
   // The number counts levels of play, which is what the structure shows.
   const levelNumber = t.levelNumber || t.currentLevel + 1;
-  const blindsText = stakesText(t.blinds);
+  const blindsText = stakesText(t.blinds, t.game);
   // The field summary is pushed every tick, so it knows a pause first.
   const paused = !!(t.paused || (window.mttField && window.mttField.paused));
   // Held for an empty room reads as its own thing. A table that says "paused"
@@ -291,19 +291,22 @@ function updateBlindClock() {
 // ============================================================
 const INFO_MODE_LABELS = { cash: 'Cash Game', tournament: 'Tournament', practice: 'Practice' };
 
-// A level in words, as the game the table plays posts it. A stud game reads
-// the row as an ante, a bring-in and two bets - the arithmetic is games.js's
-// on the server, repeated here for the level the clock is about to reach,
-// which the table has not been dealt yet.
-function stakesText(blinds) {
+// A level in words, as the game posts it. A stud game reads the row as an
+// ante, a bring-in and two bets - the arithmetic is games.js's on the
+// server, repeated here for the level the clock is about to reach, which the
+// table has not been dealt yet. `game` is the level's game when the wire
+// names one (a mix, where it can differ from the table's while the last hand
+// of the old game finishes) and is said by name; otherwise the table's.
+function stakesText(blinds, game) {
   const b = blinds || {};
-  const game = gameState && gameState.game;
-  if (game && game.family === 'stud') {
+  const g = game || (gameState && gameState.game);
+  const named = game && game.name ? `${game.name} · ` : '';
+  if (g && g.family === 'stud') {
     const sb = b.sb || 0;
     const bb = b.bb || 0;
-    return `ante ${Math.max(1, Math.round(sb / 2))} · bring-in ${sb} · ${bb}/${bb * 2}`;
+    return `${named}ante ${Math.max(1, Math.round(sb / 2))} · bring-in ${sb} · ${bb}/${bb * 2}`;
   }
-  return (b.sb || 0) + '/' + (b.bb || 0) + (b.ante ? ' · ante ' + b.ante : '');
+  return named + (b.sb || 0) + '/' + (b.bb || 0) + (b.ante ? ' · ante ' + b.ante : '');
 }
 
 function infoSection(title) {
@@ -697,7 +700,15 @@ function renderInfoTab() {
     const g = gameState.game;
     const tableRows = [
       ['Room', room],
-      ['Game', g ? `${g.name} · ${g.limitName || ''}`.trim() : "Texas Hold'em"],
+      // A mix is named as itself, with the round it is on.
+      [
+        'Game',
+        g
+          ? g.mix
+            ? `${g.mix.name} · ${g.limitName || ''} · now ${g.name}`
+            : `${g.name} · ${g.limitName || ''}`.trim()
+          : "Texas Hold'em",
+      ],
       [
         'Mode',
         field ? 'Multi-table' : INFO_MODE_LABELS[gameState.gameMode] || gameState.gameMode || '-',
@@ -758,7 +769,10 @@ function renderInfoTab() {
         : field && field.isRunning
           ? { number: field.level, onBreak: !!field.onBreak }
           : null;
-      Lobby.structureRows(structure.levels, where).forEach((row) => list.appendChild(row));
+      const rotation = g && g.mix ? g.mix.rotation : null;
+      Lobby.structureRows(structure.levels, where, rotation).forEach((row) =>
+        list.appendChild(row)
+      );
       section.appendChild(list);
       body.appendChild(section);
     }
@@ -878,7 +892,11 @@ function renderStatsTab() {
         : 'preflop';
     const openingName =
       opening === 'preflop' ? 'preflop' : `on ${streetLabel(opening).toLowerCase()}`;
-    const mine = (h) => (h.actions || []).filter((a) => a.playerId === myId && a.phase === opening);
+    // Each hand's own opening street: in a mix the last ten hands may span
+    // two games.
+    const openingOf = (h) => (GAME_STREETS[h.game] || COMMUNITY_STREETS)[0];
+    const mine = (h) =>
+      (h.actions || []).filter((a) => a.playerId === myId && a.phase === openingOf(h));
     const vpip = hands.filter((h) =>
       mine(h).some((a) => ['call', 'raise', 'allin'].includes(a.action))
     ).length;

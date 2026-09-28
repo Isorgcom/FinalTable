@@ -7,8 +7,9 @@ single-table Texas Hold'em engine, extended to run tournaments across several
 tables at once: seating a field, balancing and breaking tables as players bust,
 and merging down to a final table. It plays Texas Hold'em, Omaha, Omaha
 Hi-Lo, Seven-Card Stud, Stud Hi-Lo, Razz, Five-Card Draw and Crazy
-Pineapple, at no-limit, pot-limit or fixed-limit, with the game and the
-betting chosen per tournament. See
+Pineapple, at no-limit, pot-limit or fixed-limit, and HORSE, which plays
+five of them in turn, with the game and the betting chosen per tournament.
+See
 [FORK.md](./FORK.md) for lineage, what was
 removed, and an important licence caution, and [CHANGELOG.md](./CHANGELOG.md)
 for what has changed since.

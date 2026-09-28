@@ -21,6 +21,12 @@
 // low showing opens each street. `showing` is what fewer than five cards are
 // read as - the up-cards that decide who opens, and a short hand's readout.
 //
+// A mixed game (HORSE) is a definition with a `rotation` of game keys and no
+// streets or evaluator of its own: it plays one of them a level, round and
+// round, and `gameAtLevel` is the one way to ask which. Its `maxSeats` is
+// the smallest over the rotation and its `defaultLimit` the limit the whole
+// mix plays at; everything else about a hand is the round's game's.
+//
 // A street is what is dealt, and then a round of betting unless it says not:
 //   { key, label, deal, first, bet? }
 //   deal: { hole, up } | { board } | { draw: { min, max, replace } } | null
@@ -281,6 +287,16 @@ const GAMES = {
     forcedBets: studBets,
     forcedText: studText,
   },
+  horse: {
+    key: 'horse',
+    name: 'HORSE',
+    family: 'mixed',
+    // Level 1 Hold'em, 2 Omaha Hi-Lo, 3 Razz, 4 Stud, 5 Stud Hi-Lo, then
+    // round again. Seven seats, since three of the five are stud games.
+    rotation: ['holdem', 'omahahl', 'razz', 'stud', 'studhl'],
+    maxSeats: 7,
+    defaultLimit: 'fixed',
+  },
 };
 
 const DEFAULT_GAME = 'holdem';
@@ -293,9 +309,31 @@ function isGame(key) {
   return Object.prototype.hasOwnProperty.call(GAMES, key);
 }
 
+function isMix(def) {
+  return !!(def && Array.isArray(def.rotation));
+}
+
+// The game a level of play deals: the definition itself, or in a mix the
+// rotation's entry for that level, round and round.
+function gameAtLevel(def, number) {
+  if (!isMix(def)) return def;
+  const n = Number.isInteger(number) && number > 0 ? number : 1;
+  return GAMES[def.rotation[(n - 1) % def.rotation.length]];
+}
+
 // The limit a game plays, unless the host picked another that exists.
 function limitFor(game, value) {
   return LIMITS.includes(value) ? value : game.defaultLimit;
 }
 
-module.exports = { GAMES, DEFAULT_GAME, SUIT_ORDER, suitRank, gameFor, isGame, limitFor };
+module.exports = {
+  GAMES,
+  DEFAULT_GAME,
+  SUIT_ORDER,
+  suitRank,
+  gameFor,
+  isGame,
+  isMix,
+  gameAtLevel,
+  limitFor,
+};

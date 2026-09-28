@@ -2484,6 +2484,7 @@
     razz: 'Razz',
     omahahl: 'Omaha Hi-Lo',
     studhl: 'Stud Hi-Lo',
+    horse: 'HORSE',
   };
   const LIMIT_NAMES = { no: 'No-limit', pot: 'Pot-limit', fixed: 'Fixed-limit' };
   const GAME_HINT = {
@@ -2497,10 +2498,14 @@
       'Omaha with the pot halved between the best high and the best low - five different cards, eight or lower, aces low. No low, and the high takes it all.',
     studhl:
       'Seven-Card Stud with the pot halved between the best high and the best low - five different cards, eight or lower. Tables of seven.',
+    horse:
+      "Five games in turn, one a level: Hold'em, Omaha Hi-Lo, Razz, Seven-Card Stud, Stud Hi-Lo, then round again. Fixed-limit. Tables of seven.",
   };
   // The games that ante every hand and bring in, whose level row reads as
   // stud's does.
   const ANTE_GAMES = new Set(['stud', 'studhl', 'razz']);
+  // A mixed game's rotation, one game a level, as games.js has it.
+  const GAME_ROTATION = { horse: ['holdem', 'omahahl', 'razz', 'stud', 'studhl'] };
   const LIMIT_HINT = {
     no: 'A raise is anything up to the stack.',
     pot: 'A raise is at most the size of the pot.',
@@ -2516,6 +2521,7 @@
     razz: 'fixed',
     omahahl: 'pot',
     studhl: 'fixed',
+    horse: 'fixed',
   };
   const GAME_MAX_SEATS = {
     holdem: 8,
@@ -2526,6 +2532,7 @@
     razz: 7,
     omahahl: 8,
     studhl: 7,
+    horse: 7,
   };
 
   function setGame(key) {
@@ -2575,7 +2582,10 @@
     if (ANTE_GAMES.has(currentGame())) {
       return ` · Level 1: ante ${Math.max(1, Math.round(sb / 2))} · bring-in ${sb} · bets ${bb}/${bb * 2} · every hand antes`;
     }
-    let line = ` · Level 1: blinds ${sb}/${bb}`;
+    // A mix names the game level one plays, which is a blinds game.
+    const rotation = GAME_ROTATION[currentGame()];
+    const first = rotation ? `${GAME_NAMES[rotation[0]]} · ` : '';
+    let line = ` · Level 1: ${first}blinds ${sb}/${bb}`;
     if (currentLimit() === 'fixed') line += ` · bets ${bb}/${bb * 2}`;
     return line;
   }
@@ -2916,7 +2926,8 @@
 
   // The ladder as lines, for the waiting room and the Info tab. `current`
   // marks a row: `{ number, onBreak }` from the field, or null before start.
-  function structureRows(levels, current) {
+  // In a mix, `rotation` names the game each level of play deals.
+  function structureRows(levels, current, rotation) {
     const rows = [];
     let n = 0;
     (levels || []).forEach((row) => {
@@ -2931,7 +2942,11 @@
       num.textContent = row.break ? '' : `L${n}`;
       const blinds = document.createElement('span');
       blinds.className = 's-blinds';
-      blinds.textContent = row.break ? 'Break' : `${row.sb}/${row.bb}`;
+      const game =
+        !row.break && Array.isArray(rotation) && rotation.length
+          ? `${GAME_NAMES[rotation[(n - 1) % rotation.length]] || ''} · `
+          : '';
+      blinds.textContent = row.break ? 'Break' : `${game}${row.sb}/${row.bb}`;
       const ante = document.createElement('span');
       ante.className = 's-ante';
       ante.textContent = row.ante ? `ante ${row.ante}` : '';
@@ -2952,7 +2967,8 @@
     const list = $('wrStructureList');
     list.textContent = '';
     const current = t.status === 'running' ? { number: t.level, onBreak: !!t.onBreak } : null;
-    structureRows(s.levels, current).forEach((row) => list.appendChild(row));
+    const rotation = GAME_ROTATION[(t.settings && t.settings.game) || ''] || null;
+    structureRows(s.levels, current, rotation).forEach((row) => list.appendChild(row));
   }
 
   function openCreate() {

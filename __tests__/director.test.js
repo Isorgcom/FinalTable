@@ -1269,6 +1269,7 @@ describe('blind structures', () => {
       {
         level: 1,
         blinds: { sb: 20, bb: 40, ante: 40 },
+        game: 'holdem',
         onBreak: true,
         nextLevelIn: expect.any(Number),
         manual: false,
@@ -1277,6 +1278,7 @@ describe('blind structures', () => {
       {
         level: 2,
         blinds: { sb: 20, bb: 40, ante: 40 },
+        game: 'holdem',
         onBreak: false,
         nextLevelIn: expect.any(Number),
         manual: false,
@@ -1310,6 +1312,99 @@ describe('blind structures', () => {
     expect(revived.tournament.currentLevel).toBe(2);
     expect(revived.tables[0].ante).toBe(40);
     expect(revived.fieldSummary().level).toBe(2);
+    revived.stop();
+    d.stop();
+  });
+});
+
+// ============================================================
+//  HORSE: the game turns with the level
+// ============================================================
+describe('HORSE', () => {
+  const SCHEDULE = [
+    { sb: 10, bb: 20, ante: 0, duration: 99999 },
+    { break: true, duration: 99999 },
+    { sb: 20, bb: 40, ante: 40, duration: 99999 },
+    { sb: 30, bb: 60, ante: 60, duration: 99999 },
+  ];
+  const HORSE = { actionTimeoutMs: 0, game: 'horse' };
+
+  function levelUp(d, level) {
+    d.tournament.currentLevel = level;
+    d.tournament.onLevelUp(level, d.tournament.getCurrentBlinds());
+  }
+
+  test("tables seat seven, start as Hold'em, and the level line names the game it turns into", () => {
+    const said = [];
+    const changes = [];
+    const d = makeDirector(6, {
+      tableSize: 8,
+      blindSchedule: SCHEDULE,
+      gameOptions: HORSE,
+      onMessage: (m) => said.push(m),
+      onLevelChange: (info) => changes.push(info),
+    });
+    expect(d.tableSize).toBe(7);
+    d.start();
+    const [a] = d.tables;
+    expect(a.mix.key).toBe('horse');
+    expect(a.game.key).toBe('holdem');
+    expect(a.limit).toBe('fixed');
+    expect(a.maxPlayers).toBe(7);
+
+    // The break names the game play resumes in.
+    levelUp(d, 1);
+    expect(said).toContain('Break: 99999s · play resumes at Omaha Hi-Lo · 20/40 ante 40');
+    // An idle table with nothing on the felt takes the new game at once.
+    levelUp(d, 2);
+    expect(said).toContain('Blinds up: Omaha Hi-Lo · 20/40 ante 40 (level 2)');
+    expect(a.game.key).toBe('omahahl');
+    expect(changes[changes.length - 1]).toMatchObject({ level: 2, game: 'omahahl' });
+    levelUp(d, 3);
+    expect(said).toContain('Bets up: Razz · ante 15 · bring-in 30 · bets 60/120 (level 3)');
+    expect(a.game.key).toBe('razz');
+    expect(a.bets).toMatchObject({ ante: 15, bringIn: 30, smallBet: 60, bigBet: 120 });
+    d.stop();
+  });
+
+  test('a hand running when the level turns finishes as its game; the next deal is the new one', () => {
+    const d = makeDirector(6, { tableSize: 7, blindSchedule: SCHEDULE, gameOptions: HORSE });
+    d.start();
+    const [a] = d.tables;
+    a.startRound();
+    expect(a.game.key).toBe('holdem');
+    levelUp(d, 2);
+    expect(a.isRunning).toBe(true);
+    expect(a.game.key).toBe('holdem');
+    for (let guard = 0; a.isRunning && guard < 20; guard++) {
+      a.handleAction(a.players[a.currentPlayerIndex].id, 'fold');
+    }
+    expect(a.isRunning).toBe(false);
+    expect(a.game.key).toBe('holdem');
+    a.startRound();
+    expect(a.game.key).toBe('omahahl');
+    for (const p of a.players) expect(p.holeCards).toHaveLength(4);
+    d.stop();
+  });
+
+  test('a restore at level three deals Razz', () => {
+    const d = makeDirector(4, { tableSize: 7, blindSchedule: SCHEDULE, gameOptions: HORSE });
+    d.start();
+    levelUp(d, 3);
+    const snap = d.snapshot();
+    const revived = new TournamentDirector({
+      id: snap.id,
+      tableSize: snap.tableSize,
+      startChips: snap.startChips,
+      levelDuration: 300,
+      gameOptions: HORSE,
+    });
+    revived.restoreFrom(snap);
+    expect(revived.tournament.currentLevel).toBe(3);
+    expect(revived.tables[0].game.key).toBe('razz');
+    expect(revived.tables[0].bets.bringIn).toBe(30);
+    expect(revived.tables[0].startRound()).toBe(true);
+    expect(revived.tables[0].phase).toBe('third');
     revived.stop();
     d.stop();
   });

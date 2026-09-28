@@ -33,10 +33,15 @@ was the last new step kind the layer needed. 0.31.0 added the last two
 evaluators: a low (`bestLow` in `hand-eval.js`, ace-to-five, with a
 qualifier) and a pot that splits on it (`distributePot` halves every slice
 when the definition has `low`), which is Razz, Omaha Hi-Lo and Stud Hi-Lo.
-What is left is the one thing that changes between hands rather than within
-one: HORSE, a game that rotates by the level - a `game` on the level row,
-swapped in `applyLevel` between hands, with the felt relabelling itself off
-`gameState.game`, which it already does on every push.
+0.32.0 added the one thing that changes between hands rather than within
+one: HORSE, a mixed game - a definition with a `rotation` and no hand of its
+own, `gameAtLevel` saying which of its games a level deals, the engine
+taking the level's game at each deal (never mid-hand, never over a felt
+still showing the last hand) and the felt relabelling itself off
+`gameState.game`, which it already did on every push. The layer is
+complete; what remains is off it: eight-handed stud (a shared seventh card
+when the deck runs short, as casinos deal it) and a game and limit picker
+on GameNight's side.
 
 ### ~~Hardening the API, from the review~~ (done in 0.26.1)
 

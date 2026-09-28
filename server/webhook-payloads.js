@@ -7,7 +7,7 @@
 // the name as it was at the table. Bots take places too, and are sent
 // flagged so the stream and the standings agree.
 
-const { gameFor } = require('../games');
+const { gameFor, gameAtLevel } = require('../games');
 
 function userId(uid) {
   return typeof uid === 'string' && uid.startsWith('gn_') ? uid.slice(3) : null;
@@ -131,14 +131,16 @@ function clock(entry) {
   const row = t.blindSchedule[t.currentLevel] || {};
   const blinds = t.getCurrentBlinds();
   const settings = entry.settings || {};
-  const game = gameFor(settings.game);
+  // The game the level in play deals - in a mix, that level's round; the
+  // mix itself rides the envelope's game block, beside the id.
+  const game = gameAtLevel(gameFor(settings.game), t.levelInPlay());
   return {
     level: t.levelNumber(),
     on_break: t.onBreak(),
     blinds: { sb: blinds.sb, bb: blinds.bb, ante: blinds.ante || 0 },
-    // What the level posts in this game: a stud game reads the row as an
-    // ante, a bring-in and two bets rather than as blinds. Which game it is
-    // rides the envelope's game block, beside the id.
+    // Which game the level deals, and what it posts in it: a stud game reads
+    // the row as an ante, a bring-in and two bets rather than as blinds.
+    variant: game.key,
     bets: game.forcedBets(blinds),
     duration: Number.isFinite(row.duration) ? row.duration : null,
     next_level_in: t.getTimeUntilNextLevel(),

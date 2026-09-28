@@ -3,7 +3,7 @@
 const { createDeck, shuffle } = require('./deck');
 const { compareHands, lowValue } = require('./hand-eval');
 const { describeHand, describeBest } = require('./hand-describe');
-const { gameFor, limitFor, suitRank } = require('./games');
+const { gameFor, limitFor, gameAtLevel, suitRank } = require('./games');
 const { raiseBounds, openingRaises, limitName } = require('./betting-limits');
 const random = require('./random');
 const { createStructuredLogger } = require('./server/logger');
@@ -52,10 +52,15 @@ class PokerGame {
     this.maxPlayers = options.maxPlayers || DEFAULT_MAX_PLAYERS;
     // Which game, and how it is bet. Everything the hand loop does with cards
     // and forced bets is read off the definition (games.js); the limit is the
-    // rule every raise is sized by (betting-limits.js).
-    this.game = gameFor(options.game);
-    this.limit = limitFor(this.game, options.limit);
-    this.maxPlayers = Math.min(this.maxPlayers, this.game.maxSeats);
+    // rule every raise is sized by (betting-limits.js). A mixed game (HORSE)
+    // is kept as `mix`, and `game` is whichever of its rotation the level in
+    // play calls for - always a real game; the seat cap and the limit are the
+    // mix's, the same for every round.
+    const def = gameFor(options.game);
+    this.mix = def.rotation ? def : null;
+    this.game = gameAtLevel(def, 1);
+    this.limit = limitFor(def, options.limit);
+    this.maxPlayers = Math.min(this.maxPlayers, def.maxSeats);
     // The seat that brought in, in a stud hand; null in a blinds game.
     this.bringInIndex = null;
     // The draw in progress - { min, max, replace, first, step } - or null.
@@ -498,7 +503,9 @@ class PokerGame {
     this.sidePots = [];
     this.anteTotal = 0;
     this.currentBet = 0;
-    // Tournament: the level the clock is on, as this game posts it.
+    // Tournament: in a mix, the game the level calls for; and the level the
+    // clock is on, as that game posts it.
+    this._takeGame();
     if (this.tournament && this.tournament.isActive) {
       this.applyLevel(this.tournament.getCurrentBlinds());
     }
@@ -714,11 +721,37 @@ class PokerGame {
   // has a number to work from. Called on every deal from the clock, and by
   // the director between hands so the felt shows the new level first.
   applyLevel(level) {
+    // A mix changes game with the level, but only onto a clear felt: a hand
+    // that is running finishes as the game it was dealt, and one whose cards
+    // are still showing is not redrawn as another game - the next deal reads
+    // the clock. A fresh, restored or late-opened table takes it at once.
+    if (!this.isRunning && !this._cardsOut()) this._takeGame();
     this.bets = this.game.forcedBets(level || {});
     const blinds = this.game.forced === 'blinds';
     this.smallBlind = blinds ? this.bets.sb : this.bets.smallBet;
     this.bigBlind = blinds ? this.bets.bb : this.bets.bigBet;
     this.ante = this.bets.ante;
+  }
+
+  // The game this table deals next: in a mix, the rotation's entry for the
+  // level in play (level one until a clock runs); otherwise the one it was
+  // made with.
+  _gameInPlay() {
+    if (!this.mix) return this.game;
+    const clock = this.tournament;
+    return gameAtLevel(this.mix, clock && clock.isActive ? clock.levelInPlay() : 1);
+  }
+
+  _takeGame() {
+    if (this.mix) this.game = this._gameInPlay();
+  }
+
+  // Whether any card of the last hand is still on the felt.
+  _cardsOut() {
+    return (
+      (this.players || []).some((p) => p.holeCards && p.holeCards.length > 0) ||
+      (this.communityCards || []).length > 0
+    );
   }
 
   // Where the hand is in the game's streets, read off the phase: -1 between
@@ -2001,7 +2034,21 @@ class PokerGame {
       limit: this.limit,
       limitName: limitName(this.limit),
       bets: { ...this.bets },
+      // The mix this table plays, when it plays one; a plain game has none.
+      mix: this.mix
+        ? { key: this.mix.key, name: this.mix.name, rotation: [...this.mix.rotation] }
+        : null,
     };
+  }
+
+  // The clock's state and, in a mix, the game the level in play calls for -
+  // read off the clock rather than the table, so it names the next game
+  // while the last hand of the old one finishes.
+  _tournamentView() {
+    const state = this.tournament.getState();
+    if (!this.mix) return state;
+    const g = this._gameInPlay();
+    return { ...state, game: { key: g.key, name: g.name, family: g.family } };
   }
 
   // The least and most the viewer may raise to under the table's limit, so
@@ -2523,7 +2570,7 @@ class PokerGame {
       leaderboard: this.leaderboard.getRankings(),
       ...(includeHistory ? { recentHands: this._recentHandsFor(playerId) } : {}),
       // Tournament
-      tournament: this.tournament ? this.tournament.getState() : null,
+      tournament: this.tournament ? this._tournamentView() : null,
       gameOver: this.gameOver,
       viewerIsSpectator: this.isSpectatorPlayer(viewer),
       // No clock runs while the street beat is held: nobody is to act, and a

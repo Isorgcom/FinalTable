@@ -160,7 +160,8 @@ Press **Create a tournament**. The form:
   exact date and time. A scheduled game deals itself when the time comes,
   provided two people are registered. With only one it waits, and after
   thirty minutes with nobody else it is cancelled.
-- **Table size**: heads-up, 6-max or 8-max. Fields larger than one table are
+- **Table size**: heads-up, 6-max, 7-max or 8-max; a stud or mixed game
+  holds the table to seven. Fields larger than one table are
   spread across as many tables as it takes. At heads-up an odd number left in
   cannot be seated in pairs, so one player waits for a seat until a match
   somewhere else ends; their table says "Waiting for a seat" while they do.
@@ -298,8 +299,9 @@ The **banner** over the felt shows the level, the blinds and the ante when
 there is one, the time until the next level and how many players are left. On
 a break it reads Break and the blinds play resumes at; paused, it reads
 Paused and the clock stands still; on the final level there is nothing left
-to count down to. When something about the moment changes, the bubble for
-instance, the banner says so.
+to count down to. In HORSE it names the game the level plays beside its
+stakes. When something about the moment changes, the bubble for instance,
+the banner says so.
 
 On a break the felt itself is cleared once the last hand's result has been
 up for a few seconds: the cards, the pot and the button go, the seats and
@@ -319,9 +321,10 @@ with three cards, one of which you must throw away after the flop's betting),
 **Seven-Card Stud** (seven cards each, no board; everyone antes and the low
 card showing brings in; the third, fourth, fifth and sixth cards are dealt face
 up for the whole table to see, and the strongest cards showing open each
-street), **Stud Hi-Lo**, **Razz** and **Five-Card Draw** (five cards each, no
+street), **Stud Hi-Lo**, **Razz**, **Five-Card Draw** (five cards each, no
 board; a bet, then the draw - throw away up to five and get as many back, or
-stand pat - then a bet). A stud table seats seven.
+stand pat - then a bet) and **HORSE**, which plays five of these in turn. A
+stud table seats seven, and so does a HORSE table.
 
 **Razz** is Seven-Card Stud played for low: the lowest hand wins, the ace is
 the lowest card, and straights and flushes count for nothing, so 5-4-3-2-A -
@@ -342,6 +345,16 @@ the host can pick another. The blind rows are the same for every game; a stud
 level reads its small blind as the bring-in, half of that as the ante, and its
 big blind and twice it as the two bets, and the form says what level one
 turns into.
+
+**HORSE** is five of these in turn, one a level: Hold'em, then Omaha Hi-Lo,
+Razz, Seven-Card Stud and Stud Hi-Lo, and round again from level six. A hand
+already running when the level turns finishes as the game it was dealt; the
+next deal is the new one. The banner names the game the level plays beside
+its stakes, the log says which game the level went up into ("Bets up: Razz ·
+ante 5 · bring-in 10 · bets 20/40 (level 3)"), the structure ladder in the
+waiting room and the Info tab says which game each level is, and the host's
+Level ▶ turns the game as it turns the blinds. It comes up at fixed-limit,
+as HORSE is played, and its tables seat seven.
 
 You can choose which chair you are drawn in. It is a preference for your
 screen only; the table's real seats do not move.

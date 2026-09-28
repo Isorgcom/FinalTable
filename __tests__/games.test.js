@@ -6,6 +6,8 @@ const {
   suitRank,
   gameFor,
   isGame,
+  isMix,
+  gameAtLevel,
   limitFor,
 } = require('../games');
 const { HAND_RANKS } = require('../hand-eval');
@@ -13,7 +15,7 @@ const { HAND_RANKS } = require('../hand-eval');
 const c = (rank, suit, value) => ({ rank, suit, value });
 
 describe('the registry', () => {
-  test("eight games, and Hold'em when asked for one that is not there", () => {
+  test("nine games, and Hold'em when asked for one that is not there", () => {
     expect(Object.keys(GAMES)).toEqual([
       'holdem',
       'omaha',
@@ -23,6 +25,7 @@ describe('the registry', () => {
       'razz',
       'omahahl',
       'studhl',
+      'horse',
     ]);
     expect(DEFAULT_GAME).toBe('holdem');
     expect(gameFor('omaha').key).toBe('omaha');
@@ -36,6 +39,8 @@ describe('the registry', () => {
     for (const game of Object.values(GAMES)) {
       expect(game.key).toBeTruthy();
       expect(game.name).toBeTruthy();
+      // A mix has no hand of its own; its shape is checked below.
+      if (isMix(game)) continue;
       expect(['community', 'stud', 'draw']).toContain(game.family);
       expect(game.holeCards).toBeGreaterThanOrEqual(2);
       expect(game.maxSeats).toBeGreaterThanOrEqual(2);
@@ -72,6 +77,33 @@ describe('the registry', () => {
     for (const key of Object.keys(GAMES)) {
       expect(typeof GAMES[key].low === 'function').toBe(key === 'omahahl' || key === 'studhl');
     }
+  });
+
+  test('HORSE is a mix: five games a level in turn, at fixed-limit, tables of seven', () => {
+    const h = GAMES.horse;
+    expect(isMix(h)).toBe(true);
+    expect(isMix(GAMES.holdem)).toBe(false);
+    expect(h.family).toBe('mixed');
+    expect(h.rotation).toEqual(['holdem', 'omahahl', 'razz', 'stud', 'studhl']);
+    for (const key of h.rotation) expect(isGame(key) && !isMix(GAMES[key])).toBe(true);
+    expect(h.maxSeats).toBe(Math.min(...h.rotation.map((k) => GAMES[k].maxSeats)));
+    expect(h.defaultLimit).toBe('fixed');
+    expect(limitFor(h, undefined)).toBe('fixed');
+    expect(limitFor(h, 'no')).toBe('no');
+    expect(h.streets).toBeUndefined();
+    expect(h.evaluate).toBeUndefined();
+    expect([1, 2, 3, 4, 5, 6, 11].map((n) => gameAtLevel(h, n).key)).toEqual([
+      'holdem',
+      'omahahl',
+      'razz',
+      'stud',
+      'studhl',
+      'holdem',
+      'holdem',
+    ]);
+    expect(gameAtLevel(h, 0).key).toBe('holdem');
+    expect(gameAtLevel(h, undefined).key).toBe('holdem');
+    expect(gameAtLevel(GAMES.razz, 4)).toBe(GAMES.razz);
   });
 
   test("Hold'em is exactly what the engine always dealt", () => {

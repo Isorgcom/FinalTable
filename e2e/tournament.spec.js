@@ -956,6 +956,68 @@ test("Razz from the drop-down: fixed-limit, seven seats, and stud's deal", async
   await guestContext.close();
 });
 
+// HORSE: one game a level. The form holds it to fixed-limit and seven seats
+// and names level one's game; the ladder names every level's. Play starts as
+// Hold'em; the host turning the level by hand makes the banner and the log
+// name Omaha Hi-Lo at once, the hand in play finishes as Hold'em, and the
+// next deal is four cards.
+test("HORSE from the drop-down: Hold'em first, and the level turns the game at the next deal", async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(page, 'Host');
+  await page.click('#btnCreateTournament');
+  await page.selectOption('#tGame', 'horse');
+  await expect(page.locator('#tLimit button[data-limit="fixed"]')).toHaveClass(/active/);
+  await expect(page.locator('#tTableSize')).toHaveValue('7');
+  await expect(page.locator('#tGameHint')).toContainText('one a level');
+  await expect(page.locator('#tStructureHint')).toContainText(
+    "Level 1: Hold'em · blinds 10/20 · bets 20/40"
+  );
+  await page.click('#btnCreateCancel');
+  const code = await helpers.createTournament(page, { name: 'Mixed Night', game: 'horse' });
+  await expect(page.locator('#wrSettings')).toContainText('HORSE · Fixed-limit');
+  await expect(page.locator('#wrSettings')).toContainText('7-max');
+  await expect(page.locator('#wrStructureList')).toContainText('Razz');
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(guest, 'Guest', { join: code });
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(2);
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 1');
+  await expect(page.locator('#tbBlinds')).toContainText("Hold'em · 10/20");
+
+  // The host turns the level by hand.
+  await page.click('#tabInfo');
+  await page.locator('#panelInfoHost button', { hasText: 'Level ▶' }).click();
+  await expect(page.locator('#tbLevelLabel')).toContainText('Level 2');
+  await expect(page.locator('#tbBlinds')).toContainText('Omaha Hi-Lo');
+  await expect(page.locator('#panelLogBody')).toContainText('Blinds up: Omaha Hi-Lo');
+  // The hand in play is still Hold'em.
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(2);
+  const actor = await whoActs(page, guest);
+  await actor.click('#btnFold');
+  // The next deal is Omaha Hi-Lo: four cards, after the show window.
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(4, {
+    timeout: 15000,
+  });
+  await expect(guest.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(4, {
+    timeout: 15000,
+  });
+  await page.click('#tabChat');
+  await page.click('#tabInfo');
+  await expect(page.locator('#panelInfo')).toContainText('HORSE · Fixed-limit · now Omaha Hi-Lo');
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
 test('the Stats tab is the whole field, from the first deal', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));

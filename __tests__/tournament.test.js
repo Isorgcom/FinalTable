@@ -70,6 +70,34 @@ describe('the blind clock', () => {
     expect(t.getCurrentBlinds()).toEqual({ sb: 30, bb: 60, ante: 60 });
   });
 
+  test('the level in play is the one whose blinds are: this one, or on a break the next', () => {
+    const t = clock({ blindSchedule: SCHEDULE });
+    t.start(6);
+    expect(t.levelInPlay()).toBe(1);
+    at(t, 61);
+    expect(t.levelInPlay()).toBe(2);
+    expect(t.levelInPlay()).toBe(t.levelNumber());
+    at(t, 181);
+    expect(t.onBreak()).toBe(true);
+    expect(t.levelNumber()).toBe(2);
+    expect(t.levelInPlay()).toBe(3);
+    at(t, 211);
+    expect(t.levelInPlay()).toBe(3);
+    // A trailing break, which the structure clamp never lets through, falls
+    // back to the level before it, as the blinds do.
+    const tail = clock({
+      blindSchedule: [
+        { sb: 10, bb: 20, duration: 60 },
+        { break: true, duration: 30 },
+      ],
+    });
+    tail.start(6);
+    at(tail, 61);
+    expect(tail.onBreak()).toBe(true);
+    expect(tail.levelInPlay()).toBe(1);
+    expect(tail.getCurrentBlinds()).toEqual({ sb: 10, bb: 20, ante: 0 });
+  });
+
   test('the final level holds and counts down to nothing', () => {
     const t = clock({ blindSchedule: SCHEDULE });
     t.start(6);

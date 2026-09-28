@@ -752,6 +752,117 @@ describe('Hi-Lo split pots', () => {
   });
 });
 
+describe('HORSE', () => {
+  // A clock stood at a level of play, answering what the engine asks of one.
+  function clockAt(number) {
+    const rows = {
+      1: { sb: 10, bb: 20, ante: 0 },
+      2: { sb: 20, bb: 40, ante: 0 },
+      3: { sb: 30, bb: 60, ante: 0 },
+    };
+    return {
+      isActive: true,
+      level: number,
+      levelInPlay() {
+        return this.level;
+      },
+      getCurrentBlinds() {
+        return { ...rows[this.level] };
+      },
+      getState: () => ({ isActive: true }),
+      checkTournamentEnd: () => null,
+      recordElimination: () => 0,
+    };
+  }
+  const foldOut = (game) => {
+    for (let guard = 0; game.isRunning && guard < 20; guard++) act(game, 'fold');
+  };
+
+  test("a HORSE table is built as Hold'em, at fixed-limit, seating seven, and says so", () => {
+    const { game } = table({ game: 'horse', maxPlayers: 8 });
+    expect(game.mix.key).toBe('horse');
+    expect(game.game.key).toBe('holdem');
+    expect(game.limit).toBe('fixed');
+    expect(game.maxPlayers).toBe(7);
+    const view = game._gameView();
+    expect(view.key).toBe('holdem');
+    expect(view.mix).toEqual({
+      key: 'horse',
+      name: 'HORSE',
+      rotation: ['holdem', 'omahahl', 'razz', 'stud', 'studhl'],
+    });
+    expect(table({ game: 'omaha' }).game._gameView().mix).toBeNull();
+  });
+
+  test('each deal is the game the level in play calls for, and the hand is written down as it', () => {
+    const { game, players } = table({ game: 'horse' });
+    game.tournament = clockAt(2);
+    expect(game.startRound()).toBe(true);
+    expect(game.game.key).toBe('omahahl');
+    expect(game.phase).toBe('preflop');
+    for (const p of players) expect(p.holeCards).toHaveLength(4);
+    expect(game.bets).toEqual({ sb: 20, bb: 40, ante: 0, smallBet: 40, bigBet: 80 });
+    foldOut(game);
+    expect(game.handHistory.hands[0]).toMatchObject({ game: 'omahahl', limit: 'fixed' });
+
+    game.tournament.level = 3;
+    expect(game.startRound()).toBe(true);
+    expect(game.game.key).toBe('razz');
+    expect(game.phase).toBe('third');
+    for (const p of players) {
+      expect(p.holeCards).toHaveLength(3);
+      expect(p.holeCards.filter((c) => c.up)).toHaveLength(1);
+    }
+    expect(game.bringInIndex).not.toBeNull();
+    expect(game.bets).toMatchObject({ ante: 15, bringIn: 30, smallBet: 60, bigBet: 120 });
+    foldOut(game);
+    expect(game.handHistory.hands[1].game).toBe('razz');
+  });
+
+  test('a level that turns mid-hand, or over a felt still showing the last hand, waits for the deal', () => {
+    const { game, players } = table({ game: 'horse' });
+    game.tournament = clockAt(1);
+    game.startRound();
+    expect(game.game.key).toBe('holdem');
+    // The clock moves on while the hand runs: the stamp changes nothing.
+    game.tournament.level = 3;
+    game.applyLevel(game.tournament.getCurrentBlinds());
+    expect(game.game.key).toBe('holdem');
+    expect(game.isRunning).toBe(true);
+    foldOut(game);
+    expect(game.isRunning).toBe(false);
+    // The cards are still on the felt: still nothing.
+    expect(players.some((p) => p.holeCards.length > 0)).toBe(true);
+    game.applyLevel(game.tournament.getCurrentBlinds());
+    expect(game.game.key).toBe('holdem');
+    // The deal reads the clock.
+    game.startRound();
+    expect(game.game.key).toBe('razz');
+  });
+
+  test('a table with nothing on the felt takes the level at once, and the state names it', () => {
+    const { game } = table({ game: 'horse' });
+    game.tournament = clockAt(3);
+    game.applyLevel(game.tournament.getCurrentBlinds());
+    expect(game.game.key).toBe('razz');
+    expect(game.bets.bringIn).toBe(30);
+    const state = game.getStateForPlayer('A');
+    expect(state.game.key).toBe('razz');
+    expect(state.game.mix.key).toBe('horse');
+    expect(state.tournament.game).toEqual({ key: 'razz', name: 'Razz', family: 'stud' });
+    // The clock's word, not the table's: the next game while the last hand
+    // of the old one finishes.
+    game.startRound();
+    game.tournament.level = 4;
+    expect(game.getStateForPlayer('A').tournament.game.key).toBe('stud');
+    expect(game.game.key).toBe('razz');
+    // A plain game's state carries no such thing.
+    const plain = table({ game: 'stud' }).game;
+    plain.tournament = clockAt(2);
+    expect(plain.getStateForPlayer('A').tournament.game).toBeUndefined();
+  });
+});
+
 describe('Crazy Pineapple', () => {
   test('three cards; after the flop each seat throws exactly one away and gets none back; then the turn', () => {
     const { game, players } = table({ game: 'pineapple' });

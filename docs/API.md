@@ -50,25 +50,25 @@ Makes a game. The body is JSON, up to 64 KB, and is understood in two
 vocabularies - GameNight's, and the one this server's own create form sends.
 Where both are given, GameNight's wins.
 
-| GameNight                         | this server                 | notes                                                                                                                                                                                                     |
-| --------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `title`                           | `name`                      | up to 24 characters; `Tournament` if missing                                                                                                                                                              |
-| `start_at` (ISO-8601)             | `startsAt` (ms since epoch) | up to seven days out, or 400; missing or past means now                                                                                                                                                   |
-| `game`, `variant`                 | `game`                      | `holdem` (default), `omaha`, `omahahl` (Omaha Hi-Lo), `stud`, `studhl` (Stud Hi-Lo), `razz`, `draw` (Five-Card Draw) or `pineapple` (Crazy Pineapple); anything else is a 400                             |
-| `limit`, `betting`                | `limit`                     | `no`, `pot` or `fixed` (`no-limit` and the like are read too); default is the game's own - Hold'em `no`, Omaha `pot`, Stud `fixed`; anything else is a 400                                                |
-| `seats_per_table`, `poker_seats`  | `tableSize`                 | 2-8, default 8; a stud-family table (`stud`, `studhl`, `razz`) holds seven, so 8 becomes 7                                                                                                                |
-| `starting_chips`                  | `startChips`                | one of 1000, 2000, 5000, 10000 - anything else becomes 5000                                                                                                                                               |
-|                                   | `levelDuration` (s)         | 30-3600, default 300; a level without its own duration takes this                                                                                                                                         |
-|                                   | `lateRegLevels`             | 0-8, default 3                                                                                                                                                                                            |
-|                                   | `reentryLevels`             | 0-8, default 0 (a freezeout). Re-entry here is a window of levels, not a count, so `max_rebuys` is not read                                                                                               |
-| `addon_allowed`                   | `addOn`                     | only takes if the structure has a break                                                                                                                                                                   |
-| `buyin_amount`, `poker_buyin`     | `buyIn`                     | 0-10000                                                                                                                                                                                                   |
-| `blind_levels` + `structure_name` | `structure`                 | see below                                                                                                                                                                                                 |
-| `invitees`                        | `roster`                    | see below                                                                                                                                                                                                 |
-| `webhook_url` + `webhook_secret`  | `webhook: { url, secret }`  | where to send the game's events, and what to sign them with: both or neither. The address must be at the paired GameNight's origin, or one this server was given in `WEBHOOK_ORIGINS`; see Webhooks below |
-| `event_id`                        | `external_id`               | GameNight's own id for the event, up to 64 characters, echoed on every webhook                                                                                                                            |
-|                                   | `bots`                      | 0-40 seats the server plays, for trying it out                                                                                                                                                            |
-| `auto_approve`                    | `autoApprove`               | `true` lets anybody with the link in on a name alone, no account and no host approval; default `false`. Ignored on a game with a roster, where the roster is the door                                     |
+| GameNight                         | this server                 | notes                                                                                                                                                                                                                             |
+| --------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`                           | `name`                      | up to 24 characters; `Tournament` if missing                                                                                                                                                                                      |
+| `start_at` (ISO-8601)             | `startsAt` (ms since epoch) | up to seven days out, or 400; missing or past means now                                                                                                                                                                           |
+| `game`, `variant`                 | `game`                      | `holdem` (default), `omaha`, `omahahl` (Omaha Hi-Lo), `stud`, `studhl` (Stud Hi-Lo), `razz`, `draw` (Five-Card Draw), `pineapple` (Crazy Pineapple) or `horse` (HORSE: five of them in turn, one a level); anything else is a 400 |
+| `limit`, `betting`                | `limit`                     | `no`, `pot` or `fixed` (`no-limit` and the like are read too); default is the game's own - Hold'em `no`, Omaha `pot`, Stud `fixed`; anything else is a 400                                                                        |
+| `seats_per_table`, `poker_seats`  | `tableSize`                 | 2-8, default 8; a stud-family or mixed table (`stud`, `studhl`, `razz`, `horse`) holds seven, so 8 becomes 7                                                                                                                      |
+| `starting_chips`                  | `startChips`                | one of 1000, 2000, 5000, 10000 - anything else becomes 5000                                                                                                                                                                       |
+|                                   | `levelDuration` (s)         | 30-3600, default 300; a level without its own duration takes this                                                                                                                                                                 |
+|                                   | `lateRegLevels`             | 0-8, default 3                                                                                                                                                                                                                    |
+|                                   | `reentryLevels`             | 0-8, default 0 (a freezeout). Re-entry here is a window of levels, not a count, so `max_rebuys` is not read                                                                                                                       |
+| `addon_allowed`                   | `addOn`                     | only takes if the structure has a break                                                                                                                                                                                           |
+| `buyin_amount`, `poker_buyin`     | `buyIn`                     | 0-10000                                                                                                                                                                                                                           |
+| `blind_levels` + `structure_name` | `structure`                 | see below                                                                                                                                                                                                                         |
+| `invitees`                        | `roster`                    | see below                                                                                                                                                                                                                         |
+| `webhook_url` + `webhook_secret`  | `webhook: { url, secret }`  | where to send the game's events, and what to sign them with: both or neither. The address must be at the paired GameNight's origin, or one this server was given in `WEBHOOK_ORIGINS`; see Webhooks below                         |
+| `event_id`                        | `external_id`               | GameNight's own id for the event, up to 64 characters, echoed on every webhook                                                                                                                                                    |
+|                                   | `bots`                      | 0-40 seats the server plays, for trying it out                                                                                                                                                                                    |
+| `auto_approve`                    | `autoApprove`               | `true` lets anybody with the link in on a name alone, no account and no host approval; default `false`. Ignored on a game with a roster, where the roster is the door                                                             |
 
 `visibility` is ignored: a game with a roster is invite-only, and the roster
 is the door.
@@ -376,12 +376,15 @@ Every body carries the event, the delivery, when it was sent, and the game:
 ```
 
 `variant` is which game is played (`holdem`, `omaha`, `omahahl`, `stud`,
-`studhl`, `razz`, `draw`, `pineapple`) and `limit`
-how it is bet (`no`, `pot`, `fixed`), as they were given when the game was
-made. The clock events below also carry `bets`: what the level posts in that
-game - `{ sb, bb, ante, smallBet, bigBet }` for a blinds game, `{ ante,
-bringIn, smallBet, bigBet }` for stud, where a level's small blind is the
-bring-in, half of it the ante, and its big blind and twice it the two bets.
+`studhl`, `razz`, `draw`, `pineapple`, `horse`) and `limit` how it is bet
+(`no`, `pot`, `fixed`), as they were given when the game was made. The clock
+events below also carry their own `variant` - the game the level in play
+deals, which is the envelope's for every game but HORSE, where it is that
+level's round (`omahahl` at level 2, `razz` at level 3, and so on round the
+five) - and `bets`: what the level posts in that game - `{ sb, bb, ante,
+smallBet, bigBet }` for a blinds game, `{ ante, bringIn, smallBet, bigBet }`
+for stud, where a level's small blind is the bring-in, half of it the ante,
+and its big blind and twice it the two bets.
 
 A player is named three ways: this server's `uid`, GameNight's `user_id`
 (the `sub` its sign-in token carries, `null` for a bot), and the `name` as it
@@ -395,6 +398,8 @@ was at the table. Bots take places and are sent like anybody else, flagged
   "level": 1,
   "on_break": false,
   "blinds": { "sb": 25, "bb": 50, "ante": 0 },
+  "variant": "holdem",
+  "bets": { "sb": 25, "bb": 50, "ante": 0, "smallBet": 50, "bigBet": 100 },
   "duration": 900,
   "next_level_in": 900,
   "levels": 18,
@@ -427,6 +432,8 @@ again and does not send this again.
   "level": 3,
   "on_break": true,
   "blinds": { "sb": 100, "bb": 200, "ante": 200 },
+  "variant": "holdem",
+  "bets": { "sb": 100, "bb": 200, "ante": 200, "smallBet": 200, "bigBet": 400 },
   "duration": 600,
   "next_level_in": 600,
   "levels": 18,
@@ -451,8 +458,8 @@ again and does not send this again.
 Sent when the clock moves to a new level or into or out of a break, and
 when the host steps a level by hand (`manual: true`; `back: true` when they
 stepped backwards, which is a correction). On a break, `level` is the level
-just finished and `blinds` are the ones play resumes at; `duration` is the
-break's. `next_level_in` is seconds, `0` on the final level. The host adding
+just finished and `blinds`, `variant` and `bets` are the ones play resumes
+at; `duration` is the break's. `next_level_in` is seconds, `0` on the final level. The host adding
 or taking a minute does not send this; the level change it may bring
 forward does.
 

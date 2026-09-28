@@ -13,6 +13,19 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **HORSE.** Five games in turn, one a level: Hold'em, then Omaha Hi-Lo,
+  Razz, Seven-Card Stud and Stud Hi-Lo, and round again from level six. A
+  hand already running when the level turns finishes as the game it was
+  dealt; the next deal is the new one. The banner names the game the level
+  plays beside its stakes, the log says which game the level went up into,
+  the structure ladder in the waiting room and the Info tab says which
+  game each level is, and the host's Level ▶ turns the game with the
+  blinds. Fixed-limit by default, tables of seven. Over the API the game is
+  `horse`, and the clock events say which game the level deals in
+  `variant`.
+
 ## 0.31.0 - 2026-09-28
 
 ### Added

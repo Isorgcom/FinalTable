@@ -10,7 +10,7 @@
 // three tables simply stalls at three separate survivors and never finishes.
 
 const { PokerGame, DEFAULT_MAX_PLAYERS } = require('./engine');
-const { gameFor, limitFor } = require('./games');
+const { gameFor, limitFor, gameAtLevel } = require('./games');
 const { Tournament } = require('./tournament');
 const { Leaderboard, exportHandsFor } = require('./hand-history');
 const random = require('./random');
@@ -1505,19 +1505,23 @@ class TournamentDirector {
     this.tournament.onLevelUp = (level, blinds, info = {}) => {
       const onBreak = this.tournament.onBreak();
       const number = this.tournament.levelNumber();
+      // The game the level plays - on a break, the one play resumes at - and
+      // in a mix its name on the line, since that is what changed.
+      const game = this._gameInPlay();
+      const named = this.game.rotation ? `${game.name} · ` : '';
       if (onBreak) {
         // The tables keep the blinds they have: a hand still running plays
         // out at its own level, and nothing deals until the break is over.
         const row = this.tournament.blindSchedule[level];
         const addOns = this.addOnOpen() ? ' · add-ons open' : '';
         this._say(
-          `Break: ${fmtLength(row.duration)} · play resumes at ${this._levelText(blinds)}${addOns}`
+          `Break: ${fmtLength(row.duration)} · play resumes at ${named}${this._levelText(blinds, game)}${addOns}`
         );
       } else {
         this._stampBlinds(blinds);
-        const what = this.game.forced === 'blinds' ? 'Blinds' : 'Bets';
+        const what = game.forced === 'blinds' ? 'Blinds' : 'Bets';
         const verb = info.back ? `${what} back to` : `${what} up:`;
-        this._say(`${verb} ${this._levelText(blinds)} (level ${number})`);
+        this._say(`${verb} ${named}${this._levelText(blinds, game)} (level ${number})`);
       }
       // The felt reads the level off the table's own state, which otherwise
       // moves only with the hand: push it now, so the banner changes with
@@ -1536,6 +1540,7 @@ class TournamentDirector {
         this.onLevelChange({
           level: number,
           blinds: { ...blinds },
+          game: game.key,
           onBreak,
           nextLevelIn: this.tournament.getTimeUntilNextLevel(),
           manual: !!info.manual,
@@ -1553,11 +1558,17 @@ class TournamentDirector {
     for (const table of this.tables) table.applyLevel(blinds);
   }
 
-  // The level in words, as this game posts it: "75/150 ante 150" for a blinds
+  // The game the level in play deals: the tournament's, or in a mix the
+  // rotation's entry for it - on a break, the level play resumes at.
+  _gameInPlay() {
+    return gameAtLevel(this.game, this.tournament.levelInPlay());
+  }
+
+  // The level in words, as the game posts it: "75/150 ante 150" for a blinds
   // game, "ante 5 · bring-in 10 · bets 20/40" for stud.
-  _levelText(blinds) {
-    if (this.game.forced === 'blinds') return blindsText(blinds);
-    const bets = this.game.forcedBets(blinds);
+  _levelText(blinds, game = this._gameInPlay()) {
+    if (game.forced === 'blinds') return blindsText(blinds);
+    const bets = game.forcedBets(blinds);
     return `ante ${bets.ante} · bring-in ${bets.bringIn} · bets ${bets.smallBet}/${bets.bigBet}`;
   }
 

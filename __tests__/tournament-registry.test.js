@@ -1799,6 +1799,7 @@ describe('blind structures in the registry', () => {
     expect(ups[0].payload).toEqual({
       level: 1,
       blinds: { sb: 50, bb: 100, ante: 100 },
+      game: 'holdem',
       onBreak: true,
       nextLevelIn: expect.any(Number),
       manual: false,
@@ -3022,6 +3023,7 @@ describe('re-entry and the add-on in the registry', () => {
         level: 1,
         on_break: false,
         blinds: { sb: expect.any(Number), bb: expect.any(Number), ante: expect.any(Number) },
+        variant: 'holdem',
         bets: { sb: 25, bb: 50, ante: 0, smallBet: 50, bigBet: 100 },
         duration: 60,
         next_level_in: expect.any(Number),
@@ -3100,6 +3102,64 @@ describe('re-entry and the add-on in the registry', () => {
       expect(sent('tournament.level')).toHaveLength(3);
       second.stop();
       registry = makeRegistry(store); // for afterEach
+    });
+
+    test('a HORSE clock says which game the level deals, and what it posts in that game', () => {
+      const MIX = {
+        name: 'Mix',
+        levels: [
+          { sb: 10, bb: 20, ante: 0, duration: 60 },
+          { sb: 20, bb: 40, ante: 0, duration: 60 },
+          { sb: 30, bb: 60, ante: 0, duration: 60 },
+        ],
+      };
+      const { entry } = registry.create(
+        'h',
+        {
+          name: 'Mixed',
+          startsAt: Date.now() + 1000,
+          tableSize: 8,
+          game: 'horse',
+          structure: MIX,
+        },
+        makeSocket('sh', 'h'),
+        { webhook: HOOK }
+      );
+      // A mix is clamped like the tightest of its games.
+      expect(entry.settings).toMatchObject({ game: 'horse', limit: 'fixed', tableSize: 7 });
+      registry.join('g', { code: entry.code }, makeSocket('sg', 'g'));
+      registry.join('t', { code: entry.code }, makeSocket('st', 't'));
+      jest.advanceTimersByTime(1500);
+      expect(entry.status).toBe('running');
+      entry.director.holdField();
+
+      const began = sent('tournament.started');
+      expect(began).toHaveLength(1);
+      expect(began[0].payload).toMatchObject({
+        level: 1,
+        variant: 'holdem',
+        bets: { sb: 10, bb: 20, ante: 0, smallBet: 20, bigBet: 40 },
+      });
+      const t = entry.director.tournament;
+      t.currentLevel = 1;
+      t.onLevelUp(1, t.getCurrentBlinds());
+      t.currentLevel = 2;
+      t.onLevelUp(2, t.getCurrentBlinds());
+      const levels = sent('tournament.level');
+      expect(levels).toHaveLength(2);
+      expect(levels[0].payload).toMatchObject({
+        level: 2,
+        variant: 'omahahl',
+        bets: { sb: 20, bb: 40, ante: 0, smallBet: 40, bigBet: 80 },
+      });
+      // Level three is Razz: the row read as stud posts it.
+      expect(levels[1].payload).toMatchObject({
+        level: 3,
+        variant: 'razz',
+        bets: { ante: 15, bringIn: 30, smallBet: 60, bigBet: 120 },
+      });
+      expect(levels[1].payload.game).toBeUndefined();
+      expect(levels[1].entry.settings.game).toBe('horse');
     });
 
     test('the force bodies work with no host in hand, and refuse the same things', () => {
