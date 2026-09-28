@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.30.0 - 2026-09-28
+
 ### Added
 
 - **Five-Card Draw and Crazy Pineapple.** Two more games on the create form's
