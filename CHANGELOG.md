@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.31.0 - 2026-09-28
+
 ### Added
 
 - **Razz, Omaha Hi-Lo and Stud Hi-Lo.** Razz is Seven-Card Stud played for
