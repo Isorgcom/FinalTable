@@ -737,14 +737,23 @@
                usually played at; picking a game picks that, and the host can
                pick another. -->
           <div class="form-group">
-            <label>Game</label>
-            <div class="seg" id="tGame" role="group" aria-label="Game">
-              <button type="button" data-game="holdem" class="active">Hold'em</button>
-              <button type="button" data-game="omaha">Omaha</button>
-              <button type="button" data-game="stud">Stud</button>
-              <button type="button" data-game="draw">Draw</button>
-              <button type="button" data-game="pineapple">Pineapple</button>
-            </div>
+            <label for="tGame">Game</label>
+            <select id="tGame">
+              <optgroup label="Flop games">
+                <option value="holdem" selected>Texas Hold'em</option>
+                <option value="omaha">Omaha</option>
+                <option value="omahahl">Omaha Hi-Lo</option>
+                <option value="pineapple">Crazy Pineapple</option>
+              </optgroup>
+              <optgroup label="Stud games">
+                <option value="stud">Seven-Card Stud</option>
+                <option value="studhl">Stud Hi-Lo</option>
+                <option value="razz">Razz</option>
+              </optgroup>
+              <optgroup label="Draw games">
+                <option value="draw">Five-Card Draw</option>
+              </optgroup>
+            </select>
             <div class="seg-hint" id="tGameHint"></div>
           </div>
           <div class="form-group">

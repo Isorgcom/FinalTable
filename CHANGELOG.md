@@ -13,6 +13,29 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **Razz, Omaha Hi-Lo and Stud Hi-Lo.** Razz is Seven-Card Stud played for
+  low: the lowest hand wins, the ace is the lowest card, straights and
+  flushes count for nothing, and the wheel - 5-4-3-2-A - is the best hand
+  there is. The highest card showing brings in, and the best low showing
+  opens each later street. The two Hi-Lo games score every hand twice and
+  halve the pot between the best high and the best low - five different
+  cards, all eight or lower, aces low - with the odd chip to the high. When
+  nobody makes a low the high takes it all and the log says so; a hand that
+  is best both ways _wins both ways_. Your readout says both - _You have
+  Three Kings · Seven-four low_ - the felt lights both halves' cards, the
+  replay heads the winners _High and low_, and the leaderboard counts a
+  scoop once, for the whole pot. Over the API the games are `razz`,
+  `omahahl` and `studhl`.
+
+### Changed
+
+- **The game is picked from a drop-down.** Eight games no longer fit the row
+  of buttons, so the create form's _Game_ is a list grouped by family - flop
+  games, stud games, draw games. Picking one still sets the betting it is
+  usually played at and, for a stud-family game, holds the table to seven.
+
 ## 0.30.0 - 2026-09-28
 
 ### Added

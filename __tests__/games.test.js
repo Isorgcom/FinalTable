@@ -13,11 +13,20 @@ const { HAND_RANKS } = require('../hand-eval');
 const c = (rank, suit, value) => ({ rank, suit, value });
 
 describe('the registry', () => {
-  test("five games, and Hold'em when asked for one that is not there", () => {
-    expect(Object.keys(GAMES)).toEqual(['holdem', 'omaha', 'stud', 'draw', 'pineapple']);
+  test("eight games, and Hold'em when asked for one that is not there", () => {
+    expect(Object.keys(GAMES)).toEqual([
+      'holdem',
+      'omaha',
+      'stud',
+      'draw',
+      'pineapple',
+      'razz',
+      'omahahl',
+      'studhl',
+    ]);
     expect(DEFAULT_GAME).toBe('holdem');
     expect(gameFor('omaha').key).toBe('omaha');
-    expect(gameFor('razz').key).toBe('holdem');
+    expect(gameFor('badugi').key).toBe('holdem');
     expect(gameFor(undefined).key).toBe('holdem');
     expect(isGame('stud')).toBe(true);
     expect(isGame('toString')).toBe(false);
@@ -54,6 +63,14 @@ describe('the registry', () => {
       for (const fn of ['evaluate', 'showing', 'forcedBets', 'forcedText']) {
         expect(typeof game[fn]).toBe('function');
       }
+      // Nothing reads a showing order any more: what is showing is compared
+      // as the game reads it.
+      expect(game.showingOrder).toBeUndefined();
+      expect(['low', 'high']).toContain(game.bringInBy);
+    }
+    // Only the Hi-Lo games score a low beside the high.
+    for (const key of Object.keys(GAMES)) {
+      expect(typeof GAMES[key].low === 'function').toBe(key === 'omahahl' || key === 'studhl');
     }
   });
 
@@ -189,6 +206,71 @@ describe('the draw games', () => {
       c('2', 'diamonds', 2),
     ];
     expect(g.evaluate(hole, board).rank).toBe(HAND_RANKS.ROYAL_FLUSH);
+  });
+});
+
+describe('the low games', () => {
+  const c5 = (...specs) =>
+    specs.map((s) => {
+      const suit = { h: 'hearts', d: 'diamonds', c: 'clubs', s: 'spades' }[s.slice(-1)];
+      const rank = s.slice(0, -1);
+      const vals = {
+        2: 2,
+        3: 3,
+        4: 4,
+        5: 5,
+        6: 6,
+        7: 7,
+        8: 8,
+        9: 9,
+        10: 10,
+        J: 11,
+        Q: 12,
+        K: 13,
+        A: 14,
+      };
+      return c(rank, suit, vals[rank]);
+    });
+
+  test('Razz is stud for low: the high card brings in with aces low, and the low is the hand', () => {
+    const g = GAMES.razz;
+    expect(g).toMatchObject({
+      family: 'stud',
+      holeCards: 7,
+      maxSeats: 7,
+      forced: 'ante-bringin',
+      defaultLimit: 'fixed',
+      bringInBy: 'high',
+      acesLow: true,
+    });
+    expect(g.streets).toBe(GAMES.stud.streets);
+    expect(g.low).toBeUndefined();
+    const wheel = g.evaluate(c5('Ah', '2c', '3d', '4s', '5h', 'Kd', 'Qc'), []);
+    expect(wheel.low).toBe(true);
+    expect(wheel.name).toBe('Wheel');
+    expect(g.showing(c5('Ah', '2c')).name).toBe('Two-ace low');
+  });
+
+  test('Omaha Hi-Lo and Stud Hi-Lo score an eight-or-better low beside the high', () => {
+    const o = GAMES.omahahl;
+    expect(o).toMatchObject({ family: 'community', holeCards: 4, defaultLimit: 'pot' });
+    expect(o.streets).toEqual(GAMES.omaha.streets);
+    const board = c5('2c', '3d', '7h', '8s', 'Kc');
+    // A-4 in hand with 2-3-7 on the board: seven-four low. Nine-nine: none.
+    expect(o.low(c5('Ah', '4d', 'Qc', 'Js'), board).name).toBe('Seven-four low');
+    expect(o.low(c5('9h', '9d', 'Qc', 'Js'), board)).toBeNull();
+    // The high is scored as Omaha's is.
+    expect(o.evaluate(c5('Kh', 'Kd', '9c', '9s'), board).name).toBe('Three of a Kind');
+    const s = GAMES.studhl;
+    expect(s).toMatchObject({
+      family: 'stud',
+      maxSeats: 7,
+      defaultLimit: 'fixed',
+      bringInBy: 'low',
+    });
+    expect(s.acesLow).toBeUndefined();
+    expect(s.low(c5('2c', '3d', '4h', '5s', '8c', 'Kd', 'Qh'), []).name).toBe('Eight-five low');
+    expect(s.low(c5('2c', '3d', '4h', '9s', '10c', 'Kd', 'Qh'), [])).toBeNull();
   });
 });
 

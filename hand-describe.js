@@ -1,7 +1,7 @@
 // hand-describe.js - a plain-English description of a player's hand for the
 // table's "You have ..." readout. Server-side, because hand-eval.js is not
 // loaded in the browser and a second evaluator would only drift from it.
-const { evaluatePartial, HAND_RANKS } = require('./hand-eval');
+const { HAND_RANKS } = require('./hand-eval');
 const { gameFor, DEFAULT_GAME } = require('./games');
 
 const VALUE_NAMES = {
@@ -65,8 +65,10 @@ function describeOmahaStart(hole) {
   return { name, detail: `${sorted.map((c) => single(c.value)).join('-')}, ${suits}` };
 }
 
-// The made hand in words, from an evaluateHand() result.
+// The made hand in words, from an evaluateHand() result - or a low's own
+// name, which hand-eval gives it.
 function describeBest(best) {
+  if (best.low) return best.name;
   const k = best.kickers;
   switch (best.rank) {
     case HAND_RANKS.ROYAL_FLUSH:
@@ -92,13 +94,15 @@ function describeBest(best) {
   }
 }
 
-// Returns { name, detail, text, rank, cards } or null without a hand to
+// Returns { name, detail, text, rank, cards, low? } or null without a hand to
 // describe. A community game before the flop has no five-card hand, so the
 // hole cards are described on their own (Pocket Kings, Ace-King suited,
 // Aces and Kings double-suited). Fewer than five cards anywhere else - a
-// stud hand on its early streets - is read for what it has made so far. The
+// stud hand on its early streets - is read for what it has made so far, the
+// way the game reads what is showing, so a Razz hand reads as a low. The
 // game says how the made hand is scored, which is what makes an Omaha readout
-// an Omaha hand rather than the best five of nine.
+// an Omaha hand rather than the best five of nine; a game that also scores a
+// low says that too, in `low`, null when nothing qualifies.
 function describeHand(game, holeCards, communityCards) {
   if (!Array.isArray(holeCards) || holeCards.length < 2) return null;
   const def = game || gameFor(DEFAULT_GAME);
@@ -108,16 +112,24 @@ function describeHand(game, holeCards, communityCards) {
     return { ...pre, text: `You have ${pre.detail}`, rank: 0 };
   }
   const partial = holeCards.length + board.length < 5;
-  const best = partial ? evaluatePartial([...holeCards, ...board]) : def.evaluate(holeCards, board);
+  const best = partial ? def.showing([...holeCards, ...board]) : def.evaluate(holeCards, board);
   if (!best) return null;
   const detail = describeBest(best);
   // The cards that actually play, so the readout can show the hand rather
   // than only name it. Mapped down to what the client draws: the internal
   // sort value is no business of the wire. A high card short of five cards
-  // has nothing to show.
-  const showing = partial && best.rank === HAND_RANKS.HIGH_CARD ? [] : best.cards || [];
+  // has nothing to show; a low short of five is every card, since every card
+  // plays in a low.
+  const showing =
+    partial && !best.low && best.rank === HAND_RANKS.HIGH_CARD ? [] : best.cards || [];
   const cards = showing.map((c) => ({ rank: c.rank, suit: c.suit }));
-  return { name: best.name, detail, text: `You have ${detail}`, rank: best.rank, cards };
+  const out = { name: best.name, detail, text: `You have ${detail}`, rank: best.rank, cards };
+  if (typeof def.low === 'function') {
+    const low = partial ? null : def.low(holeCards, board);
+    out.low = low ? low.name : null;
+    if (low) out.text += ` · ${low.name}`;
+  }
+  return out;
 }
 
 module.exports = { describeHand, describeBest };

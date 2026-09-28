@@ -96,6 +96,28 @@ describe('Leaderboard', () => {
     expect(back.getPlayerStats('u1').handsPlayed).toBe(2);
   });
 
+  // A Hi-Lo hand won both ways is written down as two entries, one per half.
+  // That is one hand won, for the sum of both.
+  test('two entries for one player in one hand are one win for the sum', () => {
+    const lb = new Leaderboard({ keyBy: (p) => p.uid });
+    lb.update(
+      hand({
+        players: [seat('s1', 'u1', 'Ann'), seat('s2', 'u2', 'Bob')],
+        winners: [
+          { playerId: 's1', playerName: 'Ann', amount: 101, handName: 'Full House' },
+          { playerId: 's1', playerName: 'Ann', amount: 100, handName: 'Seven-four low' },
+        ],
+      })
+    );
+    expect(lb.getPlayerStats('u1')).toMatchObject({
+      handsWon: 1,
+      totalWinnings: 201,
+      biggestPot: 201,
+      bestHand: 'Full House',
+    });
+    expect(lb.getPlayerStats('u2')).toMatchObject({ handsWon: 0, totalWinnings: 0 });
+  });
+
   test('a missing or broken saved board loads as empty rather than throwing', () => {
     const lb = new Leaderboard({ keyBy: (p) => p.uid });
     expect(lb.load(undefined)).toBe(0);

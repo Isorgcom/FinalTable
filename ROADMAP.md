@@ -29,12 +29,14 @@ posted before the deal, who opens each street and how a hand is scored;
 `betting-limits.js` says how much a bet may be; and the engine reads both.
 The draw step followed in 0.30.0 - Five-Card Draw and Crazy Pineapple, a
 street that deals `{ draw: { min, max, replace } }` and bets nothing - which
-was the last new machinery the layer needed. What is left is what no
-definition has needed yet, and each has its seam: a low evaluator for Razz
-(`evaluateLow`, and the definition's `bringInBy`/`showingOrder` flipped), a
-split pot for Hi-Lo (`_rankSlice` in the engine becomes the definition's
-award rule), and a game that changes by the level for HORSE (a `game` on the
-level row, applied between hands).
+was the last new step kind the layer needed. 0.31.0 added the last two
+evaluators: a low (`bestLow` in `hand-eval.js`, ace-to-five, with a
+qualifier) and a pot that splits on it (`distributePot` halves every slice
+when the definition has `low`), which is Razz, Omaha Hi-Lo and Stud Hi-Lo.
+What is left is the one thing that changes between hands rather than within
+one: HORSE, a game that rotates by the level - a `game` on the level row,
+swapped in `applyLevel` between hands, with the felt relabelling itself off
+`gameState.game`, which it already does on every push.
 
 ### ~~Hardening the API, from the review~~ (done in 0.26.1)
 

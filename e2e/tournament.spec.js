@@ -706,7 +706,7 @@ test('an Omaha game deals four cards and bets pot-limit', async ({ browser, page
   page.on('pageerror', (err) => errors.push(err.message));
   await helpers.signInAs(page, 'Host');
   await page.click('#btnCreateTournament');
-  await page.click('#tGame button[data-game="omaha"]');
+  await page.selectOption('#tGame', 'omaha');
   // Picking the game picks the limit it is played at.
   await expect(page.locator('#tLimit button[data-limit="pot"]')).toHaveClass(/active/);
   await page.click('#btnCreateCancel');
@@ -744,7 +744,7 @@ test('a Seven-Card Stud game shows the up-cards and bets fixed-limit', async ({
   page.on('pageerror', (err) => errors.push(err.message));
   await helpers.signInAs(page, 'Host');
   await page.click('#btnCreateTournament');
-  await page.click('#tGame button[data-game="stud"]');
+  await page.selectOption('#tGame', 'stud');
   await expect(page.locator('#tLimit button[data-limit="fixed"]')).toHaveClass(/active/);
   // A stud table seats seven: the pick moves down from eight.
   await expect(page.locator('#tTableSize')).toHaveValue('7');
@@ -910,6 +910,48 @@ test('a Crazy Pineapple game: three cards, and one thrown away after the flop', 
     2
   );
   await expect(page.locator('#communityCards .card')).toHaveCount(4);
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
+// The low games come from the same drop-down, each at its own limit: Razz
+// and Stud Hi-Lo are stud tables of seven at fixed-limit, Omaha Hi-Lo is
+// Omaha at pot-limit. Razz deals like stud and the top bar says so.
+test("Razz from the drop-down: fixed-limit, seven seats, and stud's deal", async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(page, 'Host');
+  await page.click('#btnCreateTournament');
+  await page.selectOption('#tGame', 'omahahl');
+  await expect(page.locator('#tLimit button[data-limit="pot"]')).toHaveClass(/active/);
+  await expect(page.locator('#tGameHint')).toContainText('eight or lower');
+  await page.selectOption('#tGame', 'razz');
+  await expect(page.locator('#tLimit button[data-limit="fixed"]')).toHaveClass(/active/);
+  await expect(page.locator('#tTableSize')).toHaveValue('7');
+  await expect(page.locator('#tStructureHint')).toContainText('bring-in 10');
+  await page.click('#btnCreateCancel');
+  const code = await helpers.createTournament(page, { name: 'Low Night', game: 'razz' });
+  await expect(page.locator('#wrSettings')).toContainText('Razz · Fixed-limit');
+  await expect(page.locator('#wrSettings')).toContainText('7-max');
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(guest, 'Guest', { join: code });
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('#communityCards')).toBeHidden();
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(3);
+  await expect(page.locator('.player-seat:not(.is-me) .player-hole-cards .card')).toHaveCount(1);
+  await expect(page.locator('#topInfo')).toContainText('Third street');
+  // The readout is a low from the first street: three cards read as
+  // "Seven-two low", or as the pair or trips that a low is spoilt by.
+  await expect(page.locator('#handStrength')).toContainText(/low|Pair of|Three/);
   expect(errors).toEqual([]);
   await guestContext.close();
 });

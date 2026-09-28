@@ -312,16 +312,28 @@ seven in stud, fanned once there are more than two. A **You have …** line
 under the action buttons names your hand as it develops: in Omaha the hand
 that exactly two of your four make, in stud what your cards have made so far.
 
-Which game a table plays is the host's choice on the create form: **Hold'em**,
-**Omaha** (four cards, and exactly two of them play with three from the board),
+Which game a table plays is the host's pick from the create form's drop-down,
+grouped by family: **Hold'em**, **Omaha** (four cards, and exactly two of them
+play with three from the board), **Omaha Hi-Lo**, **Crazy Pineapple** (Hold'em
+with three cards, one of which you must throw away after the flop's betting),
 **Seven-Card Stud** (seven cards each, no board; everyone antes and the low
 card showing brings in; the third, fourth, fifth and sixth cards are dealt face
 up for the whole table to see, and the strongest cards showing open each
-street), **Five-Card Draw** (five cards each, no board; a bet, then the draw -
-throw away up to five and get as many back, or stand pat - then a bet) or
-**Crazy Pineapple** (Hold'em with three cards, one of which you must throw away
-after the flop's betting). A stud table seats seven. Beside the game is the
-betting:
+street), **Stud Hi-Lo**, **Razz** and **Five-Card Draw** (five cards each, no
+board; a bet, then the draw - throw away up to five and get as many back, or
+stand pat - then a bet). A stud table seats seven.
+
+**Razz** is Seven-Card Stud played for low: the lowest hand wins, the ace is
+the lowest card, and straights and flushes count for nothing, so 5-4-3-2-A -
+the wheel - is the best hand there is. The _highest_ card showing brings in,
+and the best low showing opens each later street. The Hi-Lo games - **Omaha
+Hi-Lo** and **Stud Hi-Lo** - score every hand twice and halve the pot: half to
+the best high hand, half to the best low, where a low is five different cards
+all eight or lower, aces low (_eight-or-better_). When no hand makes a low,
+the high takes the whole pot and the log says so; when one hand is best both
+ways it _wins both ways_. The odd chip goes to the high. Your readout says
+both - _You have Three Kings · Seven-four low_ - and the replay heads the
+winners _High and low_. Beside the game is the betting:
 **no-limit**, **pot-limit** (a raise is at most the pot) or **fixed-limit**
 (every bet is the level's bet, doubled from the turn or from fifth street, and
 a street closes after four raises). Each game comes up at the limit it is

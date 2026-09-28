@@ -270,12 +270,15 @@ class Leaderboard {
       s.allInCount += actions.filter((a) => a.action === 'allin').length;
       if (actions.some((a) => a.action === 'fold')) s.foldCount++;
 
-      const win = hand.winners.find((w) => w.playerId === p.id);
-      if (win) {
+      // Every entry that is theirs: a hand won both ways in a Hi-Lo game is
+      // two entries, one per half, and is one hand won for the sum of both.
+      const wins = hand.winners.filter((w) => w.playerId === p.id);
+      if (wins.length) {
+        const won = wins.reduce((sum, w) => sum + (w.amount || 0), 0);
         s.handsWon++;
-        s.totalWinnings += win.amount;
-        if (win.amount > s.biggestPot) s.biggestPot = win.amount;
-        if (win.handName) s.bestHand = win.handName;
+        s.totalWinnings += won;
+        if (won > s.biggestPot) s.biggestPot = won;
+        if (wins[0].handName) s.bestHand = wins[0].handName;
       }
     }
   }

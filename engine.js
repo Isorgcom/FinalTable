@@ -1,7 +1,7 @@
 // engine.js - the poker engine: one table, one hand loop, betting and
 // showdown, for whichever game the table was made for (games.js).
 const { createDeck, shuffle } = require('./deck');
-const { compareHands } = require('./hand-eval');
+const { compareHands, lowValue } = require('./hand-eval');
 const { describeHand, describeBest } = require('./hand-describe');
 const { gameFor, limitFor, suitRank } = require('./games');
 const { raiseBounds, openingRaises, limitName } = require('./betting-limits');
@@ -794,7 +794,8 @@ class PokerGame {
   }
 
   // Which seat brings in: the lowest card face up, or the highest when the
-  // game says so, ties broken by suit.
+  // game says so, ties broken by suit. A game that plays aces low (Razz)
+  // counts them low here too, so a King brings in ahead of an Ace.
   _bringInSeat() {
     const high = this.game.bringInBy === 'high';
     let best = -1;
@@ -803,7 +804,8 @@ class PokerGame {
       if (p.folded) return;
       const up = p.holeCards.find((c) => c.up);
       if (!up) return;
-      const key = up.value * 4 + suitRank(up.suit);
+      const value = this.game.acesLow ? lowValue(up.value) : up.value;
+      const key = value * 4 + suitRank(up.suit);
       if (bestKey === null || (high ? key > bestKey : key < bestKey)) {
         best = i;
         bestKey = key;
@@ -813,10 +815,10 @@ class PokerGame {
   }
 
   // Whoever has the strongest cards showing opens the street, ties to the
-  // seat nearest the dealer's left. That seat may be all in, in which case
-  // the action starts at the first seat after it that can act.
+  // seat nearest the dealer's left - strongest as the game reads what is
+  // showing, so in Razz the best low opens. That seat may be all in, in which
+  // case the action starts at the first seat after it that can act.
   _bestShowingIndex() {
-    const low = this.game.showingOrder === 'low';
     const n = this.players.length;
     let best = -1;
     let bestHand = null;
@@ -826,8 +828,7 @@ class PokerGame {
       if (p.folded) continue;
       const hand = this.game.showing(p.holeCards.filter((c) => c.up));
       if (!hand) continue;
-      const cmp = bestHand ? compareHands(hand, bestHand) : 0;
-      if (!bestHand || (low ? cmp < 0 : cmp > 0)) {
+      if (!bestHand || compareHands(hand, bestHand) > 0) {
         best = i;
         bestHand = hand;
       }
@@ -1616,10 +1617,12 @@ class PokerGame {
       return;
     }
 
-    // Evaluate hands, the way this game scores them.
+    // Evaluate hands, the way this game scores them - and, in a game that
+    // also scores a low, the low, null when nothing qualifies.
     const results = contenders.map((p) => ({
       player: p,
       hand: this.game.evaluate(p.holeCards, this.communityCards),
+      low: this.game.low ? this.game.low(p.holeCards, this.communityCards) : null,
     }));
 
     // Sort by hand strength
@@ -1630,7 +1633,8 @@ class PokerGame {
     // cards that were turned over here and nothing else.
     for (const r of results) {
       this.emitMessage(
-        `${this.getPublicName(r.player)} shows ${this._cards(r.player.holeCards)} · ${describeBest(r.hand)}`,
+        `${this.getPublicName(r.player)} shows ${this._cards(r.player.holeCards)} · ${describeBest(r.hand)}` +
+          (r.low ? ` · ${r.low.name}` : ''),
         { kind: 'show' }
       );
       this.handHistory.recordShown(
@@ -1659,6 +1663,9 @@ class PokerGame {
 
     let previousLevel = 0;
     let totalAwarded = 0;
+    // Whether any low qualified in any slice, in a game that scores one:
+    // what decides whether the winners are said as halves or as a whole.
+    let anyLow = false;
     // The antes are in the pot and on nobody's bet line. They go with the
     // first slice, which every contender is eligible for, so the best hand
     // at the table takes them: the main pot, as the rules have it.
@@ -1685,29 +1692,29 @@ class PokerGame {
         continue;
       }
 
-      // Find the best hand(s) among eligible
+      // Who takes this slice: one set of winners on the high hand, as ever,
+      // and in a game that scores a low, a second set on the best low that
+      // qualifies. The slice is halved between the two, the odd chip to the
+      // high; with no low qualified the high takes it all.
       eligible.sort((a, b) => compareHands(b.hand, a.hand));
       const bestHand = eligible[0].hand;
-      const winners = eligible.filter((r) => compareHands(r.hand, bestHand) === 0);
-
-      // Split pot slice among winners
-      const share = Math.floor(potSlice / winners.length);
-      let remainder = potSlice - share * winners.length;
-
-      for (const winner of winners) {
-        const award = share + (remainder > 0 ? 1 : 0);
-        if (remainder > 0) remainder--;
-        winner.player.chips += award;
-        totalAwarded += award;
-        if (!winner._awarded) winner._awarded = 0;
-        winner._awarded += award;
-        // Track: did this player win a CONTESTED pot (2+ eligible players)?
-        // If so, they're a real winner. If they only got money from a level
-        // where they were the sole eligible player, it's a refund.
-        if (eligible.length >= 2) {
-          winner._wonContestedPot = true;
+      const highs = eligible.filter((r) => compareHands(r.hand, bestHand) === 0);
+      let lows = [];
+      if (this.game.low) {
+        const qualified = eligible.filter((r) => r.low);
+        qualified.sort((a, b) => compareHands(b.low, a.low));
+        if (qualified.length) {
+          lows = qualified.filter((r) => compareHands(r.low, qualified[0].low) === 0);
+          anyLow = true;
         }
       }
+      const highPot = lows.length ? Math.ceil(potSlice / 2) : potSlice;
+      const lowPot = potSlice - highPot;
+      // A slice with two or more eligible is contested; money from a slice
+      // one player alone could reach is a refund, not a win.
+      const contested = eligible.length >= 2;
+      totalAwarded += this._awardSlice(highs, highPot, '_awardedHigh', contested);
+      if (lows.length) totalAwarded += this._awardSlice(lows, lowPot, '_awardedLow', contested);
 
       previousLevel = level;
     }
@@ -1723,6 +1730,13 @@ class PokerGame {
           (r) =>
             compareHands(r.hand, awardedPlayers.filter((x) => x._wonContestedPot)[0].hand) === 0
         );
+    // In a game that scores a low, the winners are said as halves when a low
+    // qualified anywhere; when none did the pot went the ordinary way, and
+    // the table is told why.
+    const halves = !!this.game.low && anyLow;
+    if (this.game.low && !anyLow && awardedPlayers.some((r) => r._wonContestedPot)) {
+      this.emitMessage('No qualifying low: the high hand takes the pot', { kind: 'system' });
+    }
 
     for (const r of results) {
       if (r._awarded && r._awarded > 0) {
@@ -1736,33 +1750,60 @@ class PokerGame {
           // has ever read them. Taking the union across contested winners is
           // what makes a split pot light both hands and a side pot light each
           // pot's winner, with no per-seat bookkeeping: a card is unique in a
-          // deck, so a flat list of keys is unambiguous.
-          for (const card of r.hand.cards || []) {
+          // deck, so a flat list of keys is unambiguous. A half won on the
+          // low lights the low's cards.
+          const lit = [];
+          if (!halves || r._awardedHigh) lit.push(...(r.hand.cards || []));
+          if (halves && r._awardedLow && r.low) lit.push(...(r.low.cards || []));
+          for (const card of lit) {
             const key = `${card.rank}${card.suit}`;
             if (!this.showdownWinningCards.includes(key)) {
               this.showdownWinningCards.push(key);
             }
           }
-          if (isSplitPot) {
-            this.emitMessage(
-              `🤝 ${this.getPublicName(r.player)} splits pot ${r._awarded} (${r.hand.name})`,
-              { kind: 'win', handNum: this.roundCount, amount: r._awarded, handName: r.hand.name }
-            );
+          const name = this.getPublicName(r.player);
+          if (halves) {
+            const high = r._awardedHigh || 0;
+            const low = r._awardedLow || 0;
+            const both = high > 0 && low > 0;
+            const said = both
+              ? `🏆 ${name} wins both ways, ${r._awarded} (${r.hand.name} · ${r.low.name})`
+              : high > 0
+                ? `🏆 ${name} wins the high, ${high} (${r.hand.name})`
+                : `🏆 ${name} wins the low, ${low} (${r.low.name})`;
+            const handName = both
+              ? `${r.hand.name} · ${r.low.name}`
+              : high > 0
+                ? r.hand.name
+                : r.low.name;
+            this.emitMessage(said, {
+              kind: 'win',
+              handNum: this.roundCount,
+              amount: r._awarded,
+              handName,
+            });
+            this._log(`💰 ${name} wins ${r._awarded} (${handName}) bal:${r.player.chips}`);
+            if (high > 0) this.handHistory.recordWinner(r.player.id, name, high, r.hand.name);
+            if (low > 0) this.handHistory.recordWinner(r.player.id, name, low, r.low.name);
+          } else if (isSplitPot) {
+            this.emitMessage(`🤝 ${name} splits pot ${r._awarded} (${r.hand.name})`, {
+              kind: 'win',
+              handNum: this.roundCount,
+              amount: r._awarded,
+              handName: r.hand.name,
+            });
+            this._log(`💰 ${name} wins ${r._awarded} (${r.hand.name}) bal:${r.player.chips}`);
+            this.handHistory.recordWinner(r.player.id, name, r._awarded, r.hand.name);
           } else {
-            this.emitMessage(
-              `🏆 ${this.getPublicName(r.player)} wins ${r._awarded}! (${r.hand.name})`,
-              { kind: 'win', handNum: this.roundCount, amount: r._awarded, handName: r.hand.name }
-            );
+            this.emitMessage(`🏆 ${name} wins ${r._awarded}! (${r.hand.name})`, {
+              kind: 'win',
+              handNum: this.roundCount,
+              amount: r._awarded,
+              handName: r.hand.name,
+            });
+            this._log(`💰 ${name} wins ${r._awarded} (${r.hand.name}) bal:${r.player.chips}`);
+            this.handHistory.recordWinner(r.player.id, name, r._awarded, r.hand.name);
           }
-          this._log(
-            `💰 ${this.getPublicName(r.player)} wins ${r._awarded} (${r.hand.name}) bal:${r.player.chips}`
-          );
-          this.handHistory.recordWinner(
-            r.player.id,
-            this.getPublicName(r.player),
-            r._awarded,
-            r.hand.name
-          );
         } else {
           // Only got money from uncontested levels — refund
           this.lastRoundRefunds.push({
@@ -1808,6 +1849,26 @@ class PokerGame {
         );
       }
     }
+  }
+
+  // Hands `amount` to `winners` in equal shares, the odd chips to the first
+  // in order, and keeps the books on each result: what it has been given in
+  // all, what it has been given as this half, and whether it was contested.
+  // Answers with what it gave, which is always exactly `amount`.
+  _awardSlice(winners, amount, field, contested) {
+    const share = Math.floor(amount / winners.length);
+    let remainder = amount - share * winners.length;
+    let given = 0;
+    for (const w of winners) {
+      const award = share + (remainder > 0 ? 1 : 0);
+      if (remainder > 0) remainder--;
+      w.player.chips += award;
+      given += award;
+      w._awarded = (w._awarded || 0) + award;
+      w[field] = (w[field] || 0) + award;
+      if (contested) w._wonContestedPot = true;
+    }
+    return given;
   }
 
   // ── Showing a hand nobody paid to see ────────────────────────────────────

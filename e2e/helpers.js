@@ -153,7 +153,7 @@ async function createTournament(
   // Only offered once Invite-only is picked; the caller has said both.
   if (autoApprove) await page.check('#tAutoApprove');
   // The game picks its own limit; a limit given after it overrides that.
-  if (game) await page.click(`#tGame button[data-game="${game}"]`);
+  if (game) await page.selectOption('#tGame', game);
   if (limit) await page.click(`#tLimit button[data-limit="${limit}"]`);
   if (tableSize) await page.selectOption('#tTableSize', String(tableSize));
   await page.click(`#tStartQuick button[data-min="${minutes}"]`);

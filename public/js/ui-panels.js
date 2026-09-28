@@ -66,6 +66,9 @@ function getReplayWinnerText(hand, winner) {
 function replayWinnerHeading(hand) {
   const winners = hand.winners || [];
   if (winners.length < 2) return 'Winner';
+  // A game that scores a low writes one entry per half, so two entries are
+  // the two halves - the same person's, or two people's.
+  if (SPLIT_GAMES.has(hand.game)) return 'High and low';
   const amounts = winners.map((w) => w.amount).filter((a) => Number.isFinite(a));
   const shared = amounts.length === winners.length && new Set(amounts).size === 1;
   return shared ? 'Split pot' : 'Winners, from separate pots';
@@ -1055,19 +1058,25 @@ const EXPORT_PHASES = {
 // The streets a recorded hand was played over, in order, by the game it was.
 // Anything unknown is the four of Hold'em.
 const COMMUNITY_STREETS = ['preflop', 'flop', 'turn', 'river'];
+const STUD_STREETS = ['third', 'fourth', 'fifth', 'sixth', 'seventh'];
 const GAME_STREETS = {
-  stud: ['third', 'fourth', 'fifth', 'sixth', 'seventh'],
+  stud: STUD_STREETS,
+  studhl: STUD_STREETS,
+  razz: STUD_STREETS,
   draw: ['predraw', 'drawing', 'postdraw'],
   pineapple: ['preflop', 'flop', 'discard', 'turn', 'river'],
 };
 function handStreets(hand) {
   return (hand && GAME_STREETS[hand.game]) || COMMUNITY_STREETS;
 }
-// The games with nothing in the middle of the table.
-const NO_BOARD = new Set(['stud', 'draw']);
+// The games with nothing in the middle of the table, the games that ante and
+// bring in, and the games whose pot has a high half and a low half.
+const NO_BOARD = new Set(['stud', 'studhl', 'razz', 'draw']);
+const ANTE_GAMES = new Set(['stud', 'studhl', 'razz']);
+const SPLIT_GAMES = new Set(['omahahl', 'studhl']);
 // "blinds 10/20 ante 20", or a stud hand's ante, bring-in and bets.
 function handStakes(hand) {
-  if (hand.game === 'stud' && hand.bets) {
+  if (ANTE_GAMES.has(hand.game) && hand.bets) {
     const b = hand.bets;
     return `ante ${b.ante} · bring-in ${b.bringIn} · bets ${b.smallBet}/${b.bigBet}`;
   }

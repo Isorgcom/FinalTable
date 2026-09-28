@@ -141,7 +141,8 @@
   border-color: rgba(196, 88, 74, 0.9);
   box-shadow: 0 0 0 1px rgba(196, 88, 74, 0.18);
 }
-.form-group select option {
+.form-group select option,
+.form-group select optgroup {
   background: var(--bg-deep);
 }
 .form-row {

@@ -13,6 +13,14 @@
 // and have no board. Draw games deal each player their own cards and then a
 // draw: a round of turns that throw cards away rather than bet.
 //
+// A hand is scored by `evaluate`; a game that also scores a low - Omaha
+// Hi-Lo, Stud Hi-Lo - says so in `low`, and the engine halves every pot
+// between the best high and the best low that qualifies. Razz scores the low
+// alone: its `evaluate` is the low evaluator, its bring-in the highest card
+// showing with aces low, and what is showing is read as a low, so the best
+// low showing opens each street. `showing` is what fewer than five cards are
+// read as - the up-cards that decide who opens, and a short hand's readout.
+//
 // A street is what is dealt, and then a round of betting unless it says not:
 //   { key, label, deal, first, bet? }
 //   deal: { hole, up } | { board } | { draw: { min, max, replace } } | null
@@ -25,7 +33,7 @@
 // is dealt as many back - and a street that deals one is `bet: false`: the
 // hand moves on when the last seat has chosen.
 
-const { bestOf, evaluatePartial } = require('./hand-eval');
+const { bestOf, evaluatePartial, bestLow, evaluateLowPartial } = require('./hand-eval');
 const { LIMITS } = require('./betting-limits');
 
 // The one place poker ranks suits: which of two equal low cards brings in at
@@ -126,7 +134,6 @@ const GAMES = {
     // The street from which a fixed-limit game bets the big bet.
     bigBetFrom: 2,
     bringInBy: 'low',
-    showingOrder: 'high',
     streets: communityStreets(2),
     evaluate: (hole, board) => bestOf(hole, board),
     showing: (up) => evaluatePartial(up),
@@ -145,7 +152,6 @@ const GAMES = {
     defaultLimit: 'pot',
     bigBetFrom: 2,
     bringInBy: 'low',
-    showingOrder: 'high',
     streets: communityStreets(4),
     // Exactly two from the hand and three from the board, which is the whole
     // of what makes Omaha Omaha.
@@ -169,7 +175,6 @@ const GAMES = {
     defaultLimit: 'fixed',
     bigBetFrom: 2,
     bringInBy: 'low',
-    showingOrder: 'high',
     streets: STUD_STREETS,
     evaluate: (hole) => bestOf(hole, []),
     showing: (up) => evaluatePartial(up),
@@ -191,7 +196,6 @@ const GAMES = {
     defaultLimit: 'no',
     bigBetFrom: 2,
     bringInBy: 'low',
-    showingOrder: 'high',
     streets: DRAW_STREETS,
     evaluate: (hole) => bestOf(hole, []),
     showing: (up) => evaluatePartial(up),
@@ -210,13 +214,72 @@ const GAMES = {
     defaultLimit: 'no',
     bigBetFrom: 3,
     bringInBy: 'low',
-    showingOrder: 'high',
     streets: pineappleStreets(),
     // Any five of the two left in hand and the board, as Hold'em has it.
     evaluate: (hole, board) => bestOf(hole, board),
     showing: (up) => evaluatePartial(up),
     forcedBets: blindsBets,
     forcedText: blindsText,
+  },
+  razz: {
+    key: 'razz',
+    name: 'Razz',
+    family: 'stud',
+    holeCards: 7,
+    maxSeats: 7,
+    burn: false,
+    forced: 'ante-bringin',
+    liveOption: false,
+    defaultLimit: 'fixed',
+    bigBetFrom: 2,
+    // Stud for low: the highest card showing brings in, and the ace is low
+    // for that as for everything else here.
+    bringInBy: 'high',
+    acesLow: true,
+    streets: STUD_STREETS,
+    evaluate: (hole) => bestLow(hole, []),
+    showing: (up) => evaluateLowPartial(up),
+    forcedBets: studBets,
+    forcedText: studText,
+  },
+  omahahl: {
+    key: 'omahahl',
+    name: 'Omaha Hi-Lo',
+    family: 'community',
+    holeCards: 4,
+    maxSeats: 10,
+    burn: true,
+    forced: 'blinds',
+    liveOption: true,
+    defaultLimit: 'pot',
+    bigBetFrom: 2,
+    bringInBy: 'low',
+    streets: communityStreets(4),
+    evaluate: (hole, board) => bestOf(hole, board, { useHole: { min: 2, max: 2 } }),
+    // Eight-or-better, exactly two from the hand for the low as for the high.
+    low: (hole, board) => bestLow(hole, board, { useHole: { min: 2, max: 2 }, qualify: 8 }),
+    showing: (up) => evaluatePartial(up),
+    forcedBets: blindsBets,
+    forcedText: blindsText,
+  },
+  studhl: {
+    key: 'studhl',
+    name: 'Stud Hi-Lo',
+    family: 'stud',
+    holeCards: 7,
+    maxSeats: 7,
+    burn: false,
+    forced: 'ante-bringin',
+    liveOption: false,
+    defaultLimit: 'fixed',
+    bigBetFrom: 2,
+    bringInBy: 'low',
+    streets: STUD_STREETS,
+    evaluate: (hole) => bestOf(hole, []),
+    low: (hole) => bestLow(hole, [], { qualify: 8 }),
+    showing: (up) => evaluatePartial(up),
+    forcedBets: studBets,
+    forcedText: studText,
   },
 };
 

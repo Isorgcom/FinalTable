@@ -204,3 +204,38 @@ describe('describeHand for the draw games', () => {
     );
   });
 });
+
+describe('describeHand for the low games', () => {
+  test('a Razz hand reads as a low from the first street', () => {
+    const razz = gameFor('razz');
+    const third = describeHand(razz, cards('Ah', '2c', '7d'), []);
+    expect(third.detail).toBe('Seven-two low');
+    expect(third.cards).toHaveLength(3);
+    expect(third.low).toBeUndefined();
+    const paired = describeHand(razz, cards('Kh', 'Kc', '7d'), []);
+    expect(paired.detail).toBe('Pair of Kings');
+    const seven = describeHand(razz, cards('Ah', '2c', '3d', '4s', '5h', 'Kd', 'Qc'), []);
+    expect(seven.detail).toBe('Wheel');
+    expect(seven.text).toBe('You have Wheel');
+    expect(seven.cards.map((c) => c.rank).sort()).toEqual(['2', '3', '4', '5', 'A']);
+  });
+
+  test('a Hi-Lo hand says its low beside its high, or that it has none', () => {
+    const omahahl = gameFor('omahahl');
+    const board = cards('2c', '3d', '7h', '8s', 'Kc');
+    const both = describeHand(omahahl, cards('Ah', '4d', 'Kh', 'Ks'), board);
+    expect(both.detail).toBe('Three Kings');
+    expect(both.low).toBe('Seven-four low');
+    expect(both.text).toBe('You have Three Kings · Seven-four low');
+    const highOnly = describeHand(omahahl, cards('Kh', 'Kd', '9c', '9s'), board);
+    expect(highOnly.low).toBeNull();
+    expect(highOnly.text).toBe('You have Three Kings');
+    // Before the flop there is nothing to score a low on yet.
+    expect(describeHand(omahahl, cards('Ah', '4d', 'Kh', 'Ks'), []).low).toBeUndefined();
+    const studhl = gameFor('studhl');
+    expect(describeHand(studhl, cards('2c', '3d', '4h', '5s', '8c', 'Kd', 'Qh'), []).low).toBe(
+      'Eight-five low'
+    );
+    expect(describeHand(studhl, cards('2c', '3d', '4h'), []).low).toBeNull();
+  });
+});

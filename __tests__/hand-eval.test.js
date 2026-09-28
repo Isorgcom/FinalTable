@@ -1,5 +1,15 @@
 // __tests__/hand-eval.test.js — Hand evaluation unit tests
-const { evaluateHand, bestOf, evaluatePartial, compareHands, HAND_RANKS } = require('../hand-eval');
+const {
+  evaluateHand,
+  bestOf,
+  evaluatePartial,
+  evaluateLow5,
+  evaluateLowPartial,
+  bestLow,
+  compareHands,
+  HAND_RANKS,
+  LOW_RANKS,
+} = require('../hand-eval');
 
 function card(rank, suit) {
   const vals = {
@@ -265,5 +275,79 @@ describe('evaluatePartial — fewer than five cards', () => {
     expect(evaluatePartial(hand7('As', 'Ks', 'Qs', 'Js', '10s')).rank).toBe(HAND_RANKS.ROYAL_FLUSH);
     expect(evaluatePartial([])).toBeNull();
     expect(evaluatePartial(null)).toBeNull();
+  });
+});
+
+// Ace-to-five: the ace is the lowest card, straights and flushes count for
+// nothing, and the lowest cards win. compareHands orders these too, higher
+// being better, so the same code that finds the best high finds the best low.
+describe('low hands', () => {
+  const low = (...specs) => evaluateLow5(hand7(...specs));
+
+  test('the wheel is the best low, and the ace counts as one', () => {
+    const wheel = low('Ah', '2c', '3d', '4s', '5h');
+    expect(wheel.low).toBe(true);
+    expect(wheel.rank).toBe(LOW_RANKS.NO_PAIR);
+    expect(wheel.name).toBe('Wheel');
+    expect(wheel.kickers).toEqual([-5, -4, -3, -2, -1]);
+    expect(compareHands(wheel, low('2c', '3d', '4s', '5h', '6d'))).toBeGreaterThan(0);
+    // A flush or a straight is neither here nor there.
+    expect(compareHands(low('Ah', '2h', '3h', '4h', '5h'), wheel)).toBe(0);
+  });
+
+  test('the highest card decides first, then the next: 8-6-4-3-A beats 8-6-5-2-A', () => {
+    const a = low('8h', '6c', '4d', '3s', 'Ah');
+    const b = low('8d', '6s', '5c', '2h', 'Ad');
+    expect(compareHands(a, b)).toBeGreaterThan(0);
+    expect(a.name).toBe('Eight-six low');
+    expect(compareHands(low('7h', '6c', '5d', '4s', '3h'), a)).toBeGreaterThan(0);
+  });
+
+  test('any unpaired hand beats any pair; a lower pair beats a higher; two pair is worse still', () => {
+    const nineHigh = low('9h', '8c', '7d', '6s', '5h');
+    const deuces = low('2h', '2c', '9d', '8s', '7h');
+    const kings = low('Kh', 'Kc', '2d', '3s', '4h');
+    const twoPair = low('2h', '2c', '3d', '3s', '4h');
+    expect(compareHands(nineHigh, deuces)).toBeGreaterThan(0);
+    expect(compareHands(deuces, kings)).toBeGreaterThan(0);
+    expect(compareHands(deuces, twoPair)).toBeGreaterThan(0);
+    expect(deuces.name).toBe('Pair of Twos');
+    expect(twoPair.name).toBe('Threes and Twos');
+  });
+
+  test('bestLow: the best five of seven, and the eight-or-better qualifier', () => {
+    const seven = hand7('Ah', '2c', '3d', '9s', '8h', 'Kd', 'Qc');
+    expect(bestLow(seven, []).name).toBe('Nine-eight low');
+    expect(bestLow(seven, [], { qualify: 8 })).toBeNull();
+    expect(bestLow(hand7('Ah', '2c', '3d', '4s', '8h', 'Kd', 'Qc'), [], { qualify: 8 }).name).toBe(
+      'Eight-four low'
+    );
+    // A paired hand never qualifies, however low its cards.
+    expect(bestLow(hand7('Ah', 'Ac', '2d', '3s', '4h'), [], { qualify: 8 })).toBeNull();
+  });
+
+  test("bestLow: Omaha's exactly two from the hand", () => {
+    const omaha = { useHole: { min: 2, max: 2 }, qualify: 8 };
+    // 4-5 in hand with A-2-3 on the board is the wheel.
+    expect(
+      bestLow(hand7('4h', '5c', 'Kd', 'Qs'), hand7('Ah', '2c', '3d', 'Jh', '10s'), omaha).name
+    ).toBe('Wheel');
+    // A perfect low on the board is no low for a hand with nothing to add.
+    expect(
+      bestLow(hand7('Kh', 'Kc', 'Qd', 'Js'), hand7('Ah', '2c', '3d', '4s', '5h'), omaha)
+    ).toBeNull();
+  });
+
+  test('a short low reads on the same scale', () => {
+    expect(evaluateLowPartial(hand7('Ah', '2c')).name).toBe('Two-ace low');
+    expect(evaluateLowPartial(hand7('8h')).name).toBe('Eight low');
+    expect(
+      compareHands(evaluateLowPartial(hand7('Ah', '2c')), evaluateLowPartial(hand7('3h', '2c')))
+    ).toBeGreaterThan(0);
+    expect(
+      compareHands(evaluateLowPartial(hand7('9h', '2c')), evaluateLowPartial(hand7('Ah', 'Ac')))
+    ).toBeGreaterThan(0);
+    expect(evaluateLowPartial(hand7('Ah', '2c', '3d', '4s', '5h', '6c')).name).toBe('Wheel');
+    expect(evaluateLowPartial([])).toBeNull();
   });
 });

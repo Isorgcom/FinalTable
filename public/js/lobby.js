@@ -2481,6 +2481,9 @@
     stud: 'Seven-Card Stud',
     draw: 'Five-Card Draw',
     pineapple: 'Crazy Pineapple',
+    razz: 'Razz',
+    omahahl: 'Omaha Hi-Lo',
+    studhl: 'Stud Hi-Lo',
   };
   const LIMIT_NAMES = { no: 'No-limit', pot: 'Pot-limit', fixed: 'Fixed-limit' };
   const GAME_HINT = {
@@ -2489,7 +2492,15 @@
     stud: 'Seven cards each, four face up, no board. Everyone antes and the low card brings in. Tables of seven.',
     draw: 'Five cards each and no board. A bet, then throw away up to five and draw as many back, then a bet.',
     pineapple: "Hold'em with three cards each; after the flop's betting you throw one away.",
+    razz: 'Seven-Card Stud for low: the lowest hand wins, aces low, straights and flushes count for nothing. The high card brings in. Tables of seven.',
+    omahahl:
+      'Omaha with the pot halved between the best high and the best low - five different cards, eight or lower, aces low. No low, and the high takes it all.',
+    studhl:
+      'Seven-Card Stud with the pot halved between the best high and the best low - five different cards, eight or lower. Tables of seven.',
   };
+  // The games that ante every hand and bring in, whose level row reads as
+  // stud's does.
+  const ANTE_GAMES = new Set(['stud', 'studhl', 'razz']);
   const LIMIT_HINT = {
     no: 'A raise is anything up to the stack.',
     pot: 'A raise is at most the size of the pot.',
@@ -2502,13 +2513,23 @@
     stud: 'fixed',
     draw: 'no',
     pineapple: 'no',
+    razz: 'fixed',
+    omahahl: 'pot',
+    studhl: 'fixed',
   };
-  const GAME_MAX_SEATS = { holdem: 8, omaha: 8, stud: 7, draw: 8, pineapple: 8 };
+  const GAME_MAX_SEATS = {
+    holdem: 8,
+    omaha: 8,
+    stud: 7,
+    draw: 8,
+    pineapple: 8,
+    razz: 7,
+    omahahl: 8,
+    studhl: 7,
+  };
 
   function setGame(key) {
-    document.querySelectorAll('#tGame button').forEach((b) => {
-      b.classList.toggle('active', b.dataset.game === key);
-    });
+    $('tGame').value = GAME_NAMES[key] ? key : 'holdem';
     $('tGameHint').textContent = GAME_HINT[key] || '';
     // A stud table seats seven: the deck holds no more with no burn.
     const size = $('tTableSize');
@@ -2519,8 +2540,8 @@
   }
 
   function currentGame() {
-    const active = document.querySelector('#tGame button.active');
-    return active ? active.dataset.game : 'holdem';
+    const picked = $('tGame') ? $('tGame').value : '';
+    return GAME_NAMES[picked] ? picked : 'holdem';
   }
 
   function setLimit(key) {
@@ -2551,7 +2572,7 @@
     if (!row) return '';
     const sb = row.sb || 0;
     const bb = row.bb || 0;
-    if (currentGame() === 'stud') {
+    if (ANTE_GAMES.has(currentGame())) {
       return ` · Level 1: ante ${Math.max(1, Math.round(sb / 2))} · bring-in ${sb} · bets ${bb}/${bb * 2} · every hand antes`;
     }
     let line = ` · Level 1: blinds ${sb}/${bb}`;
@@ -3458,9 +3479,7 @@
     document.querySelectorAll('#tStartQuick button').forEach((b) => {
       b.addEventListener('click', () => setQuick(Number(b.dataset.min)));
     });
-    document.querySelectorAll('#tGame button').forEach((b) => {
-      b.addEventListener('click', () => setGame(b.dataset.game));
-    });
+    $('tGame').addEventListener('change', () => setGame($('tGame').value));
     document.querySelectorAll('#tLimit button').forEach((b) => {
       b.addEventListener('click', () => setLimit(b.dataset.limit));
     });

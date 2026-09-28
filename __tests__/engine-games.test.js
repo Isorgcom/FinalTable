@@ -581,6 +581,177 @@ describe('Five-Card Draw', () => {
   });
 });
 
+describe('Razz', () => {
+  test('the highest card showing brings in, aces low; the best low showing opens later streets', () => {
+    const { game, players } = table({ game: 'razz' });
+    expect(game.limit).toBe('fixed');
+    game.startRound();
+    expect(game.phase).toBe('third');
+    players[0].holeCards = cards('9h', '9c', 'Kh!');
+    players[1].holeCards = cards('2s', '3d', 'Ac!');
+    players[2].holeCards = cards('4h', '5h', 'Qs!');
+    // The King, not the Ace: the ace is the lowest card in Razz.
+    expect(game._bringInSeat()).toBe(0);
+    game.dealerIndex = 0;
+    players[0].holeCards = cards('9h', '9c', 'Kh!', 'Qd!');
+    players[1].holeCards = cards('2s', '3d', 'Ac!', '2h!');
+    players[2].holeCards = cards('4h', '5h', '3s!', '4c!');
+    // Ace-two showing is the best low; it opens.
+    expect(game._bestShowingIndex()).toBe(1);
+    // A pair showing is the worst low of the three.
+    players[1].holeCards = cards('2s', '3d', 'Ac!', 'Ah!');
+    expect(game._bestShowingIndex()).toBe(2);
+  });
+
+  test('the lowest hand wins the showdown, straights and flushes counting for nothing', () => {
+    const { game, players } = table({ game: 'razz' }, ['A', 'B']);
+    const said = [];
+    game.onMessage = (m) => said.push(m);
+    game.startRound();
+    players[0].holeCards = cards('Ah', '2h', '3h', '4h', '5h', 'Kc', 'Qd');
+    players[1].holeCards = cards('2c', '3s', '4d', '6c', '7h', 'Kd', 'Qs');
+    game.phase = 'seventh';
+    for (const p of players) {
+      p.bet = 0;
+      p.totalBet = 100;
+    }
+    game.anteTotal = 0;
+    game.pot = 200;
+    const before = game.totalChips();
+    game.showdown();
+    expect(game.lastRoundWinnerIds).toEqual(['A']);
+    expect(game.handHistory.hands[0].winners[0].handName).toBe('Wheel');
+    expect(said.some((m) => /A shows .* · Wheel$/.test(m))).toBe(true);
+    expect(said.some((m) => m === '🏆 A wins 200! (Wheel)')).toBe(true);
+    expect(game.totalChips()).toBe(before);
+  });
+});
+
+describe('Hi-Lo split pots', () => {
+  // Hands and a board set by hand after the deal, and a showdown on them.
+  function showdownOn(game, players, hands, board, { pot, dead = 0 } = {}) {
+    hands.forEach((h, i) => (players[i].holeCards = h));
+    game.communityCards = board;
+    game.phase = board.length ? 'river' : 'seventh';
+    for (const p of players) {
+      p.bet = 0;
+      p.totalBet = (pot - dead) / players.length;
+    }
+    game.anteTotal = dead;
+    game.pot = pot;
+    const before = game.totalChips();
+    const said = [];
+    game.onMessage = (m) => said.push(m);
+    game.showdown();
+    expect(game.totalChips()).toBe(before);
+    return said;
+  }
+
+  test('Omaha Hi-Lo: the pot is halved between the best high and the best low, the odd chip to the high', () => {
+    const { game, players } = table({ game: 'omahahl' }, ['A', 'B']);
+    game.startRound();
+    const said = showdownOn(
+      game,
+      players,
+      [cards('Kh', 'Kd', '9c', '9s'), cards('Ah', '4d', 'Qc', 'Js')],
+      cards('2c', '3d', '7h', '8s', 'Kc'),
+      { pot: 201, dead: 1 }
+    );
+    expect(game.lastRoundPayouts).toEqual([
+      { playerId: 'A', amount: 101 },
+      { playerId: 'B', amount: 100 },
+    ]);
+    expect(game.handHistory.hands[0].winners).toEqual([
+      { playerId: 'A', playerName: 'A', amount: 101, handName: 'Three of a Kind' },
+      { playerId: 'B', playerName: 'B', amount: 100, handName: 'Seven-four low' },
+    ]);
+    expect(said).toContain('🏆 A wins the high, 101 (Three of a Kind)');
+    expect(said).toContain('🏆 B wins the low, 100 (Seven-four low)');
+    expect(said.some((m) => /B shows .* · Seven-four low$/.test(m))).toBe(true);
+    // Both halves' cards are lit.
+    expect(game.showdownWinningCards).toEqual(
+      expect.arrayContaining(['Khearts', 'Ahearts', '4diamonds'])
+    );
+  });
+
+  test('a scoop is one line, two entries and one hand won for the sum', () => {
+    const { game, players } = table({ game: 'omahahl' }, ['A', 'B']);
+    game.startRound();
+    const said = showdownOn(
+      game,
+      players,
+      [cards('Ah', '2h', '3c', '4c'), cards('Kh', 'Kc', 'Qs', 'Js')],
+      cards('5h', '6h', '7h', '8s', 'Kd'),
+      { pot: 200 }
+    );
+    expect(game.lastRoundPayouts).toEqual([{ playerId: 'A', amount: 200 }]);
+    expect(said).toContain('🏆 A wins both ways, 200 (Flush · Seven-six low)');
+    expect(game.handHistory.hands[0].winners).toEqual([
+      { playerId: 'A', playerName: 'A', amount: 100, handName: 'Flush' },
+      { playerId: 'A', playerName: 'A', amount: 100, handName: 'Seven-six low' },
+    ]);
+    expect(game.leaderboard.getPlayerStats('A')).toMatchObject({ handsWon: 1, totalWinnings: 200 });
+  });
+
+  test('no qualifying low: the high takes it all, the ordinary way, and the table is told', () => {
+    const { game, players } = table({ game: 'omahahl' }, ['A', 'B']);
+    game.startRound();
+    const said = showdownOn(
+      game,
+      players,
+      [cards('Ah', 'Kh', '3c', '4c'), cards('Qh', 'Qc', '2s', '5s')],
+      cards('9h', '10s', 'Jd', 'Qd', 'Kc'),
+      { pot: 200 }
+    );
+    expect(said).toContain('No qualifying low: the high hand takes the pot');
+    expect(said).toContain('🏆 A wins 200! (Straight)');
+    expect(game.handHistory.hands[0].winners).toHaveLength(1);
+  });
+
+  test('a side pot slice splits on its own', () => {
+    const { game, players } = table({ game: 'omahahl' });
+    game.startRound();
+    // A is all in for 50; B and C have 100 in. Slices: 150 to all three,
+    // 100 to B and C. A has the best low (eight-four) and only a pair of
+    // nines for high; B has three kings; C has neither, so the second
+    // slice, where A is not eligible and no low qualifies, goes to B whole.
+    players[0].holeCards = cards('Ah', '8c', '9s', '9d');
+    players[1].holeCards = cards('Kh', 'Kd', 'Jc', 'Js');
+    players[2].holeCards = cards('9h', '10h', 'Jd', 'Qc');
+    game.communityCards = cards('2c', '3d', '4h', 'Ks', 'Qd');
+    game.phase = 'river';
+    players[0].totalBet = 50;
+    players[1].totalBet = 100;
+    players[2].totalBet = 100;
+    for (const p of players) p.bet = 0;
+    game.anteTotal = 0;
+    game.pot = 250;
+    players[0].allIn = true;
+    const before = game.totalChips();
+    game.showdown();
+    expect(game.totalChips()).toBe(before);
+    const paid = Object.fromEntries(game.lastRoundPayouts.map((p) => [p.playerId, p.amount]));
+    expect(paid).toEqual({ A: 75, B: 175 });
+  });
+
+  test('Stud Hi-Lo splits the same way', () => {
+    const { game, players } = table({ game: 'studhl' }, ['A', 'B']);
+    game.startRound();
+    const said = showdownOn(
+      game,
+      players,
+      [
+        cards('2c', '3d', '4h', '5s', '8c', 'Kd', 'Qh'),
+        cards('Ah', 'Ad', 'Ac', '9s', '9d', 'Jh', '10c'),
+      ],
+      [],
+      { pot: 200 }
+    );
+    expect(said).toContain('🏆 B wins the high, 100 (Full House)');
+    expect(said).toContain('🏆 A wins the low, 100 (Eight-five low)');
+  });
+});
+
 describe('Crazy Pineapple', () => {
   test('three cards; after the flop each seat throws exactly one away and gets none back; then the turn', () => {
     const { game, players } = table({ game: 'pineapple' });

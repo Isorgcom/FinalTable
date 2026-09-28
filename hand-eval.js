@@ -215,12 +215,149 @@ function compareHands(a, b) {
   return 0;
 }
 
+// ── Low hands ────────────────────────────────────────────────────────────
+//
+// Ace-to-five: the ace is the lowest card, straights and flushes count for
+// nothing, and the best hand is the one with the lowest cards - 5-4-3-2-A,
+// the wheel, is the best of all. A low is scored on the same shape as a
+// high so that compareHands orders it too: the category is the rank, no
+// pair best, and the kickers are the groups' values negated, so that a
+// lower card is a bigger kicker. A low and a high are never compared with
+// each other; each game says which of the two a hand is scored as.
+
+const LOW_RANKS = {
+  NO_PAIR: 6,
+  ONE_PAIR: 5,
+  TWO_PAIR: 4,
+  THREE_OF_A_KIND: 3,
+  FULL_HOUSE: 2,
+  FOUR_OF_A_KIND: 1,
+};
+// Names for the low's own words. hand-describe has the high's, and it
+// requires this file rather than the other way round.
+const LOW_NAMES = [
+  '',
+  'Ace',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Jack',
+  'Queen',
+  'King',
+];
+const lowPlural = (v) => (v === 6 ? 'Sixes' : `${LOW_NAMES[v]}s`);
+
+function lowValue(v) {
+  return v === 14 ? 1 : v;
+}
+
+function lowCategory(groups) {
+  const [a, b] = groups;
+  if (a.count === 4) return LOW_RANKS.FOUR_OF_A_KIND;
+  if (a.count === 3 && b && b.count === 2) return LOW_RANKS.FULL_HOUSE;
+  if (a.count === 3) return LOW_RANKS.THREE_OF_A_KIND;
+  if (a.count === 2 && b && b.count === 2) return LOW_RANKS.TWO_PAIR;
+  if (a.count === 2) return LOW_RANKS.ONE_PAIR;
+  return LOW_RANKS.NO_PAIR;
+}
+
+// A low in words: the wheel by its name, any other unpaired low by its two
+// highest cards ("Eight-six low"), and a paired one by what it paired,
+// which in a low game is the bad news.
+function lowName(rank, groups) {
+  const vals = groups.map((g) => g.value);
+  switch (rank) {
+    case LOW_RANKS.NO_PAIR:
+      if (vals.join(',') === '5,4,3,2,1') return 'Wheel';
+      if (vals.length < 2) return `${LOW_NAMES[vals[0]]} low`;
+      return `${LOW_NAMES[vals[0]]}-${LOW_NAMES[vals[1]].toLowerCase()} low`;
+    case LOW_RANKS.ONE_PAIR:
+      return `Pair of ${lowPlural(vals[0])}`;
+    case LOW_RANKS.TWO_PAIR:
+      return `${lowPlural(vals[0])} and ${lowPlural(vals[1])}`;
+    case LOW_RANKS.THREE_OF_A_KIND:
+      return `Three ${lowPlural(vals[0])}`;
+    case LOW_RANKS.FULL_HOUSE:
+      return `${lowPlural(vals[0])} full of ${lowPlural(vals[1])}`;
+    default:
+      return `Four ${lowPlural(vals[0])}`;
+  }
+}
+
+// One to five cards as a low.
+function lowOf(cards) {
+  const sorted = cards.map((card) => ({ card, v: lowValue(card.value) })).sort((a, b) => b.v - a.v);
+  const groups = getGroups(sorted.map((x) => x.v));
+  const rank = lowCategory(groups);
+  return {
+    low: true,
+    rank,
+    kickers: groups.map((g) => -g.value),
+    cards: sorted.map((x) => x.card),
+    name: lowName(rank, groups),
+  };
+}
+
+function evaluateLow5(cards) {
+  return lowOf(cards);
+}
+
+// Fewer than five cards as a low, for a stud hand's early streets: what is
+// showing decides who opens, and what is held is read out to its owner.
+function evaluateLowPartial(cards) {
+  if (!Array.isArray(cards) || !cards.length) return null;
+  if (cards.length >= 5) return bestLow(cards, []);
+  return lowOf(cards);
+}
+
+// The best low from a hand and a board, under the same must-use rule as
+// bestOf, and null when there is none - or, with `qualify`, when the best
+// is not an unpaired hand with every card at or under it: eight-or-better
+// is `qualify: 8`. The best low overall is also the best qualifying low,
+// since any unpaired hand beats any paired one.
+function bestLow(hole, board, { useHole, qualify } = {}) {
+  const hand = Array.isArray(hole) ? hole : [];
+  const table = Array.isArray(board) ? board : [];
+  let best = null;
+  const consider = (five) => {
+    const result = lowOf(five);
+    if (!best || compareHands(result, best) > 0) best = result;
+  };
+  if (!useHole) {
+    for (const combo of getCombinations([...hand, ...table], 5)) consider(combo);
+  } else {
+    for (let k = useHole.min; k <= useHole.max; k++) {
+      if (k < 0 || k > hand.length || 5 - k > table.length) continue;
+      for (const fromHand of getCombinations(hand, k)) {
+        for (const fromBoard of getCombinations(table, 5 - k))
+          consider([...fromHand, ...fromBoard]);
+      }
+    }
+  }
+  if (!best) return null;
+  if (qualify !== undefined && (best.rank !== LOW_RANKS.NO_PAIR || -best.kickers[0] > qualify)) {
+    return null;
+  }
+  return best;
+}
+
 module.exports = {
   evaluateHand,
   evaluate5Cards,
   bestOf,
   evaluatePartial,
+  lowValue,
+  evaluateLow5,
+  evaluateLowPartial,
+  bestLow,
   compareHands,
   HAND_RANKS,
   HAND_NAMES,
+  LOW_RANKS,
 };

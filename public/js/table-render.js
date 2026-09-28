@@ -771,7 +771,9 @@ function updateSeatDynamic(seat, player, ctx) {
   );
   if (player.id === myId) {
     const hand = gameState.myHand;
-    const cap = setSeatNode(info, 'seat-caption', !!hand, hand ? hand.detail : undefined);
+    // The low beside the high, in a game that scores one.
+    const words = hand ? (hand.low ? `${hand.detail} · ${hand.low}` : hand.detail) : undefined;
+    const cap = setSeatNode(info, 'seat-caption', !!hand, words);
     if (cap && hand) cap.title = hand.text;
   }
 
@@ -1825,6 +1827,8 @@ function updateHandStrength() {
   if (!hand) return;
   el.textContent = 'You have ';
   el.appendChild(createTextElement('strong', '', hand.detail));
+  // And the low, in a game that scores one and when this hand has one.
+  if (hand.low) el.appendChild(document.createTextNode(` · ${hand.low}`));
   // Then the five that make it, so "Two Pair" says which two pair. Preflop
   // there is no five-card hand and the server sends none, which is why this
   // is a list to walk rather than a flag to check.
