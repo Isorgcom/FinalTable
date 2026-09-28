@@ -58,6 +58,10 @@ class PokerGame {
     this.maxPlayers = Math.min(this.maxPlayers, this.game.maxSeats);
     // The seat that brought in, in a stud hand; null in a blinds game.
     this.bringInIndex = null;
+    // The draw in progress - { min, max, replace, first, step } - or null.
+    this.drawing = null;
+    // What the draws threw away this hand, in case the deck runs out.
+    this.muck = [];
     this.applyLevel({ sb: this.smallBlind, bb: this.bigBlind, ante: this.ante });
     this.timeBankGrantMs = options.timeBankGrantMs || TIME_BANK_GRANT_MS;
     this.players = [];
@@ -350,7 +354,13 @@ class PokerGame {
     this.clearActionTimeout();
     if (!this.isRunning || this.isPaused) return;
     const current = this.players[this.currentPlayerIndex];
-    if (!current || current.folded || current.allIn || this.isAutomatedPlayer(current)) {
+    // An all-in seat has no bet to make, but it still has a draw to make.
+    if (
+      !current ||
+      current.folded ||
+      (current.allIn && !this.drawing) ||
+      this.isAutomatedPlayer(current)
+    ) {
       return;
     }
     this.armActionTimeout(current, this.getHumanActionTimeoutMs());
@@ -371,7 +381,7 @@ class PokerGame {
         !liveCurrent ||
         liveCurrent.id !== player.id ||
         liveCurrent.folded ||
-        liveCurrent.allIn ||
+        (liveCurrent.allIn && !this.drawing) ||
         this.isAutomatedPlayer(liveCurrent)
       ) {
         return;
@@ -382,18 +392,26 @@ class PokerGame {
       // First one is forgiven. Losing a hand to a moment of inattention is a
       // fair price; losing the rest of the tournament to it is not, and a
       // player who comes back to find themselves sitting out has to notice
-      // that before they can undo it.
+      // that before they can undo it. A draw turn stands pat, or throws away
+      // only what the street insists on.
       if (liveCurrent.timeoutStrikes < TIMEOUT_STRIKES_BEFORE_SITOUT) {
+        const drawing = !!this.drawing;
         const free = this.currentBet - liveCurrent.bet <= 0;
-        this.emitMessage(`${name} ran out of time and ${free ? 'checks' : 'folds'}`, {
-          kind: 'timebank',
-        });
-        this._log(`⏱ ${name} timed out -> ${free ? 'check' : 'fold'} (strike 1)`);
+        const did = drawing
+          ? this.drawing.min
+            ? 'discards'
+            : 'stands pat'
+          : free
+            ? 'checks'
+            : 'folds';
+        this.emitMessage(`${name} ran out of time and ${did}`, { kind: 'timebank' });
+        this._log(`⏱ ${name} timed out -> ${did} (strike 1)`);
         // Flagged so the action below is not mistaken for the player acting,
         // which would clear the very strike it is being given.
         this._actingForTimeout = true;
         try {
-          this.handleAction(liveCurrent.id, free ? 'check' : 'fold');
+          if (drawing) this.handleDraw(liveCurrent.id, this._autoDraw(liveCurrent));
+          else this.handleAction(liveCurrent.id, free ? 'check' : 'fold');
         } finally {
           this._actingForTimeout = false;
         }
@@ -418,7 +436,7 @@ class PokerGame {
     if (!this.isRunning || this.isPaused) return false;
     const current = this.players[this.currentPlayerIndex];
     if (!current || current.id !== playerId) return false;
-    if (current.folded || current.allIn || this.isAutomatedPlayer(current)) {
+    if (current.folded || (current.allIn && !this.drawing) || this.isAutomatedPlayer(current)) {
       return false;
     }
     if (!this.actionTimeout || !this.turnExpiresAt) return false;
@@ -446,8 +464,9 @@ class PokerGame {
       return;
     }
     // A line armed before the turn opened. Sitting out wins over it above, and
-    // a seat with nothing to decide is left to the ordinary path.
-    if (current.preAction && !current.folded && !current.allIn) {
+    // a seat with nothing to decide is left to the ordinary path. A draw is
+    // not a price, so no line answers it.
+    if (current.preAction && !this.drawing && !current.folded && !current.allIn) {
       this.clearActionTimeout();
       this.emitUpdate();
       this._firePreAction();
@@ -472,6 +491,8 @@ class PokerGame {
     }
 
     this.deck = shuffle(createDeck());
+    this.muck = [];
+    this.drawing = null;
     this.communityCards = [];
     this.pot = 0;
     this.sidePots = [];
@@ -860,10 +881,161 @@ class PokerGame {
     return turned;
   }
 
+  // ── The draw ─────────────────────────────────────────────────────────────
+  //
+  // A draw street is a round of turns that are not bets: every seat still in
+  // the hand, all in or not, from the dealer's left, throws away some of its
+  // cards and - when the game replaces them - is dealt as many back. Nobody
+  // bets on it; the hand moves on when the last seat has chosen.
+
+  // The next seat still in the hand after `fromIndex`, all-in seats included:
+  // they have no bet to make, but they still draw.
+  _nextInHand(fromIndex) {
+    const n = this.players.length;
+    for (let step = 1; step <= n; step++) {
+      const idx = (fromIndex + step) % n;
+      if (!this.players[idx].folded) return idx;
+    }
+    return (fromIndex + 1) % n;
+  }
+
+  // Whether a draw is under way or still to come this hand. While it is, the
+  // hands stay down whatever the betting has settled: a seat choosing what to
+  // throw away must not do it looking at the others.
+  _drawAhead() {
+    if (this.drawing) return true;
+    return this.game.streets.slice(this.streetIndex + 1).some((s) => s.deal && s.deal.draw);
+  }
+
+  _startDraw(step) {
+    const { min, max, replace } = step.deal.draw;
+    const first = this._nextInHand(this.dealerIndex);
+    this.drawing = { min, max, replace: !!replace, first, step };
+    this.currentPlayerIndex = first;
+    this.lastRaiserIndex = first;
+    this.beginCurrentTurn();
+  }
+
+  // A card for a draw. When the deck runs out the muck - the discards so far -
+  // is shuffled into a new one, as the rules provide. A drawer's own discards
+  // reach the muck only after their replacements are dealt (handleDraw), so
+  // nobody is dealt back what they just threw away.
+  _drawCard() {
+    if (!this.deck.length) {
+      this.deck = shuffle(this.muck);
+      this.muck = [];
+      this.emitMessage('The deck ran out; the discards are shuffled back in', { kind: 'system' });
+    }
+    return this.deck.pop();
+  }
+
+  // The seat to draw throws away the cards at `indices` - none is standing
+  // pat - and is dealt as many back when the game replaces them. Refused
+  // unless it is that seat's draw and the count is what the street allows;
+  // an index that is not one of their cards is ignored rather than refused,
+  // the way the show-a-card path treats one.
+  handleDraw(playerId, indices) {
+    if (this._streetTimer || !this.drawing) return false;
+    const playerIdx = this.players.findIndex((p) => p.id === playerId);
+    if (playerIdx === -1 || playerIdx !== this.currentPlayerIndex) return false;
+    const player = this.players[playerIdx];
+    if (player.folded) return false;
+    const { min, max, replace } = this.drawing;
+    const wanted = [
+      ...new Set(
+        (Array.isArray(indices) ? indices : [])
+          .map((i) => Number(i))
+          .filter((i) => Number.isInteger(i) && i >= 0 && i < player.holeCards.length)
+      ),
+    ].sort((a, b) => b - a);
+    if (wanted.length < min || wanted.length > max) return false;
+
+    // Highest index first, so each splice leaves the lower ones where they were.
+    const thrown = wanted.map((i) => player.holeCards.splice(i, 1)[0]);
+    const dealt = [];
+    if (replace) {
+      for (let i = 0; i < thrown.length; i++) {
+        const card = this._drawCard();
+        if (!card) break;
+        player.holeCards.push(card);
+        dealt.push(card);
+      }
+    }
+    this.muck.push(...thrown);
+
+    const n = thrown.length;
+    const name = this.getPublicName(player);
+    const said = !replace
+      ? `${name} discards ${n === 1 ? 'a card' : `${n} cards`}`
+      : n === 0
+        ? `${name} stands pat`
+        : `${name} draws ${n}`;
+    this.emitMessage(said, { kind: 'action' });
+    this._log(`🂠 ${name}: ${replace ? 'draws' : 'discards'} ${n} (deck:${this.deck.length})`);
+    player.lastAction = { action: 'draw', amount: n, replace, time: Date.now() };
+    this.handHistory.recordAction(playerId, name, this.phase, 'draw', n, this.pot);
+    this._logEvent(
+      'player_draw',
+      { playerId, playerName: name, thrown: n, replaced: dealt.length },
+      'info',
+      'Player drew'
+    );
+    this.clearActionTimeout();
+    if (!this._actingForTimeout) player.timeoutStrikes = 0;
+    this._advanceDraw();
+    return true;
+  }
+
+  _advanceDraw() {
+    const next = this._nextInHand(this.currentPlayerIndex);
+    if (next === this.drawing.first) {
+      // The last seat has chosen. The record takes the hands as they now
+      // stand, and the hand moves on - to a betting round, or the next deal.
+      this.drawing = null;
+      this.handHistory.recordHoleCards(this.players.filter((p) => !p.folded));
+      this.emitUpdate();
+      this.nextPhase();
+      return;
+    }
+    this.currentPlayerIndex = next;
+    this.beginCurrentTurn();
+  }
+
+  // What a seat throws away when nobody chooses for it: nothing, or when the
+  // street insists on some, its lowest cards.
+  _autoDraw(player) {
+    const { min } = this.drawing;
+    if (!min) return [];
+    return player.holeCards
+      .map((c, i) => ({ i, v: c.value }))
+      .sort((a, b) => a.v - b.v)
+      .slice(0, min)
+      .map((x) => x.i);
+  }
+
+  // The donkey's draw: keep any card whose value it holds twice or more, or
+  // failing that its highest card, and throw the rest away lowest first, as
+  // many as the street allows - and when the street insists on more than that,
+  // the lowest of what it would have kept.
+  _donkeyDraw(player) {
+    const { min, max } = this.drawing;
+    const counts = {};
+    for (const c of player.holeCards) counts[c.value] = (counts[c.value] || 0) + 1;
+    const byValue = (a, b) => a.v - b.v;
+    const indexed = player.holeCards.map((c, i) => ({ i, v: c.value }));
+    const loose = indexed.filter((x) => counts[x.v] < 2).sort(byValue);
+    const paired = indexed.filter((x) => counts[x.v] >= 2).sort(byValue);
+    const throws = paired.length ? loose : loose.slice(0, -1);
+    const kept = paired.length ? paired : loose.slice(-1);
+    const n = Math.max(min, Math.min(max, throws.length));
+    return [...throws, ...kept].slice(0, n).map((x) => x.i);
+  }
+
   handleAction(playerId, action, amount = 0) {
     // The betting round is over and the street is mid-pause: currentPlayerIndex
     // still points at whoever closed it, so without this they could act twice.
-    if (this._streetTimer) return false;
+    // And nobody bets during a draw.
+    if (this._streetTimer || this.drawing) return false;
     const playerIdx = this.players.findIndex((p) => p.id === playerId);
     if (playerIdx === -1 || playerIdx !== this.currentPlayerIndex) return false;
     const player = this.players[playerIdx];
@@ -1256,7 +1428,9 @@ class PokerGame {
     // while the river lands reads as a fold on the river.
     for (const p of this.players) p.lastAction = null;
 
-    if (this.game.burn) this.deck.pop();
+    // A burn only before cards that are dealt: a draw street deals none here.
+    const deals = !!(step.deal && (step.deal.board || step.deal.hole));
+    if (this.game.burn && deals) this.deck.pop();
     const board = (step.deal && step.deal.board) || 0;
     for (let i = 0; i < board; i++) this.communityCards.push(this.deck.pop());
     const turned = this._dealHole(step);
@@ -1305,6 +1479,10 @@ class PokerGame {
   // against and the hand is just as settled as if they were all in.
   _exposeHands() {
     if (this.cardsExposed) return;
+    // Not while a draw is still to come: a seat choosing what to throw away
+    // must not do it looking at the other hands. The run-out after the draw
+    // comes back through here.
+    if (this._drawAhead()) return;
     if (this.players.filter((p) => !p.folded).length < 2) return;
     if (this.players.filter((p) => !p.folded && !p.allIn && p.chips > 0).length > 1) return;
     this.cardsExposed = true;
@@ -1320,7 +1498,14 @@ class PokerGame {
       this.showdown();
       return;
     }
-    this._dealStreet(this.game.streets[this.streetIndex + 1]);
+    const next = this.game.streets[this.streetIndex + 1];
+    if (next.deal && next.deal.draw) {
+      // The seats still choose what to throw away, all in or not; the run-out
+      // picks up again when the last has.
+      this._openStreet(this.streetIndex + 1);
+      return;
+    }
+    this._dealStreet(next);
     this.emitUpdate();
     this._afterStreetPause(() => this.dealRemainingCards());
   }
@@ -1389,6 +1574,14 @@ class PokerGame {
     const step = this.game.streets[idx];
     this._dealStreet(step);
     this.minRaise = this._betUnit();
+
+    // A draw street: the seats throw cards away in turn, nobody bets, and the
+    // hand moves on when the last has chosen - whether or not anybody could
+    // still bet, which is why this comes before that question is asked.
+    if (step.deal && step.deal.draw) {
+      this._startDraw(step);
+      return;
+    }
 
     this.currentPlayerIndex = this._firstToAct(step);
     this.lastRaiserIndex = this.currentPlayerIndex;
@@ -1965,7 +2158,8 @@ class PokerGame {
   // sit-out must never put chips in on somebody's behalf.
   processAutoTurn() {
     const current = this.players[this.currentPlayerIndex];
-    if (!current || !this.isAutomatedPlayer(current) || current.folded || current.allIn) return;
+    if (!current || !this.isAutomatedPlayer(current) || current.folded) return;
+    if (current.allIn && !this.drawing) return;
 
     // Paused: mark the automated turn as pending and pick it up on resume.
     if (this.isPaused) {
@@ -1992,9 +2186,15 @@ class PokerGame {
       // control. Identity is re-checked here rather than captured.
       const live = this.players[this.currentPlayerIndex];
       if (!live || live.id !== current.id || !this.isAutomatedPlayer(live)) return;
-      if (live.folded || live.allIn) return;
+      if (live.folded || (live.allIn && !this.drawing)) return;
       if (this.isPaused) {
         this._pausedAutoPending = true;
+        return;
+      }
+      if (this.drawing) {
+        // A bot draws to its hand; a seat that is sitting out stands pat, or
+        // throws away only what the street insists on.
+        this.handleDraw(live.id, live.isBot ? this._donkeyDraw(live) : this._autoDraw(live));
         return;
       }
       const canCheck = this.currentBet <= live.bet;
@@ -2183,6 +2383,11 @@ class PokerGame {
       streetIndex: this.streetIndex,
       game: this._gameView(),
       bringInIndex: this.bringInIndex,
+      // The draw in progress, for the bar: how many may go and whether they
+      // come back. Who is to draw is currentPlayerIndex, as for a bet.
+      drawing: this.drawing
+        ? { min: this.drawing.min, max: this.drawing.max, replace: this.drawing.replace }
+        : null,
       pot: this.pot,
       communityCards: this.communityCards,
       currentBet: this.currentBet,
@@ -2223,6 +2428,9 @@ class PokerGame {
         // or the one card its owner turned over after taking a pot nobody
         // contested, which arrives with the other entry null.
         holeCards: p.id === playerId ? p.holeCards : this._visibleHoleCards(p, handsFaceUp),
+        // How many they hold, which is no secret: a seat that threw a card
+        // away is drawn with one back fewer.
+        cards: Array.isArray(p.holeCards) ? p.holeCards.length : 0,
       })),
       // A seat that is sitting out is not the viewer's turn to act: the seat
       // acts for them. Saying otherwise flashes the action bar up for the

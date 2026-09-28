@@ -186,3 +186,21 @@ describe('describeHand for stud', () => {
     expect(seven.cards).toHaveLength(5);
   });
 });
+
+describe('describeHand for the draw games', () => {
+  test('five cards and no board read as the made hand', () => {
+    const hand = describeHand(gameFor('draw'), cards('Ks', 'Kh', 'Kd', '9c', '9d'), []);
+    expect(hand.detail).toBe('Kings full of Nines');
+    expect(hand.cards).toHaveLength(5);
+  });
+
+  test('three cards before the flop read the way four do', () => {
+    expect(describeHand(gameFor('pineapple'), cards('Ah', 'Kh', '9c'), []).detail).toBe(
+      'Ace-King-Nine, single-suited'
+    );
+    // Two left in hand after the discard read as Hold'em.
+    expect(describeHand(gameFor('pineapple'), cards('Ah', 'Kd'), []).detail).toBe(
+      'Ace-King offsuit'
+    );
+  });
+});

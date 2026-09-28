@@ -703,6 +703,10 @@ const STREET_FALLBACK = {
   fifth: 'Fifth street',
   sixth: 'Sixth street',
   seventh: 'Seventh street',
+  predraw: 'Before the draw',
+  drawing: 'The draw',
+  postdraw: 'After the draw',
+  discard: 'The discard',
   showdown: 'Showdown',
 };
 function streetLabel(key) {

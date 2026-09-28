@@ -27,13 +27,14 @@ one game-definition layer rather than as special cases: `games.js` says what
 a game deals and which cards come up, whether there is a board, what is
 posted before the deal, who opens each street and how a hand is scored;
 `betting-limits.js` says how much a bet may be; and the engine reads both.
-What is left is what no definition has needed yet, and each has its seam:
-a discard step for Five-Card Draw and Pineapple (a `deal: { draw }` step
-kind, one client control), a low evaluator for Razz (`evaluateLow`, and the
-definition's `bringInBy`/`showingOrder` flipped), a split pot for Hi-Lo
-(`_rankSlice` in the engine becomes the definition's award rule), and a game
-that changes by the level for HORSE (a `game` on the level row, applied
-between hands).
+The draw step followed in 0.30.0 - Five-Card Draw and Crazy Pineapple, a
+street that deals `{ draw: { min, max, replace } }` and bets nothing - which
+was the last new machinery the layer needed. What is left is what no
+definition has needed yet, and each has its seam: a low evaluator for Razz
+(`evaluateLow`, and the definition's `bringInBy`/`showingOrder` flipped), a
+split pot for Hi-Lo (`_rankSlice` in the engine becomes the definition's
+award rule), and a game that changes by the level for HORSE (a `game` on the
+level row, applied between hands).
 
 ### ~~Hardening the API, from the review~~ (done in 0.26.1)
 

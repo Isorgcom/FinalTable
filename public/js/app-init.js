@@ -368,6 +368,7 @@ function init() {
   compact.addEventListener('change', paintCompact);
   paintCompact();
   document.getElementById('btnAllIn').addEventListener('click', () => sendAction('allin'));
+  document.getElementById('btnDraw').addEventListener('click', () => sendDraw());
   document.getElementById('presetGroup').addEventListener('click', (e) => {
     const btn = e.target.closest('.preset-btn');
     if (!btn || btn.disabled) return;
@@ -504,7 +505,7 @@ function init() {
   // already carries the long-press for the seat menu: a tap that lands on a
   // card is this and never that, so the menu's handlers stand down for it.
   document.getElementById('playerSeats').addEventListener('click', (e) => {
-    if (!gameState || !gameState.myShow) return;
+    if (!gameState) return;
     const card = e.target.closest('.card, .card-back');
     if (!card) return;
     const seat = card.closest('.player-seat');
@@ -513,7 +514,18 @@ function init() {
       (n) => n.classList.contains('card') || n.classList.contains('card-back')
     );
     const idx = cards.indexOf(card);
-    if (idx >= 0) showMyCards([idx]);
+    if (idx < 0) return;
+    // Your draw: a tap picks the card to throw away, or puts it back. No more
+    // than the street allows may be picked at once.
+    if (gameState.drawing && gameState.isMyTurn) {
+      if (_picked.has(idx)) _picked.delete(idx);
+      else if (_picked.size < gameState.drawing.max) _picked.add(idx);
+      card.classList.toggle('picked', _picked.has(idx));
+      if (typeof updateActionsPanel === 'function') updateActionsPanel();
+      return;
+    }
+    if (!gameState.myShow) return;
+    showMyCards([idx]);
   });
   document.getElementById('btnCloseReplay').addEventListener('click', () => {
     closeReplayPanel();
@@ -668,6 +680,11 @@ function init() {
     if (me && me.autoPlay) return;
     // Don't intercept when typing in inputs
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    // On a draw the only key is the one that sends it.
+    if (gameState.drawing) {
+      if (e.key === 'd' || e.key === 'D') sendDraw();
+      return;
+    }
     switch (e.key) {
       case 'f':
       case 'F':

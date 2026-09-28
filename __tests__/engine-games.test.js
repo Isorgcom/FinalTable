@@ -1,7 +1,7 @@
 // __tests__/engine-games.test.js - the engine playing games other than
 // Hold'em, and betting under a limit. Hold'em's own behaviour is engine.test.js;
 // this is what a definition changes.
-const { PokerGame: BasePokerGame } = require('../engine');
+const { PokerGame: BasePokerGame, AUTO_TURN_DELAY_MS } = require('../engine');
 const { suitRank } = require('../games');
 
 const activeGames = new Set();
@@ -389,5 +389,243 @@ describe('betting limits at the table', () => {
     stud.applyLevel({ sb: 50, bb: 100, ante: 100 });
     expect(stud.bets).toEqual({ ante: 25, bringIn: 50, smallBet: 100, bigBet: 200 });
     expect([stud.smallBlind, stud.bigBlind, stud.ante]).toEqual([100, 200, 25]);
+  });
+});
+
+// The seat to draw throws these away.
+function draw(game, indices) {
+  const cur = game.players[game.currentPlayerIndex];
+  return game.handleDraw(cur.id, indices);
+}
+const keyOf = (c) => `${c.rank}${c.suit}`;
+// Everybody calls or checks until the street closes.
+function callRound(game) {
+  const from = game.phase;
+  let guard = 0;
+  while (game.phase === from && game.isRunning && guard++ < 30) {
+    const cur = game.players[game.currentPlayerIndex];
+    act(game, game.currentBet > cur.bet ? 'call' : 'check');
+  }
+}
+
+describe('Five-Card Draw', () => {
+  test('five cards down, blinds, no board; the draw opens left of the dealer after the betting', () => {
+    const { game, players } = table({ game: 'draw' });
+    expect(game.limit).toBe('no');
+    game.startRound();
+    expect(game.phase).toBe('predraw');
+    for (const p of players) expect(p.holeCards).toHaveLength(5);
+    expect(game.communityCards).toHaveLength(0);
+    expect(game.drawing).toBeNull();
+    expect(game.getStateForPlayer('A').drawing).toBeNull();
+    callRound(game);
+    expect(game.phase).toBe('drawing');
+    expect(game.drawing).toMatchObject({ min: 0, max: 5, replace: true, first: 1 });
+    expect(game.currentPlayerIndex).toBe(1);
+    const state = game.getStateForPlayer('A');
+    expect(state.drawing).toEqual({ min: 0, max: 5, replace: true });
+    expect(state.game).toMatchObject({
+      key: 'draw',
+      family: 'draw',
+      hasBoard: false,
+      firstDeal: 5,
+    });
+    expect(state.players.find((p) => p.id === 'B').cards).toBe(5);
+    expect(state.players.find((p) => p.id === 'B').holeCards).toBeNull();
+    expect(game.getStateForPlayer('B').isMyTurn).toBe(true);
+  });
+
+  test('throw some away and get as many back, or stand pat; then the betting resumes', () => {
+    const { game, players } = table({ game: 'draw' });
+    game.startRound();
+    callRound(game);
+    const b = players[1];
+    const before = b.holeCards.map(keyOf);
+    expect(game.handleDraw('C', [0])).toBe(false); // not their draw
+    expect(game.handleAction('B', 'check')).toBe(false); // nobody bets during a draw
+    expect(draw(game, [4, 1, 9, 'x'])).toBe(true); // 9 and x are nobody's cards
+    expect(b.holeCards).toHaveLength(5);
+    const after = b.holeCards.map(keyOf);
+    expect(after.filter((k) => before.includes(k))).toHaveLength(3);
+    expect(game.muck.map(keyOf).sort()).toEqual([before[1], before[4]].sort());
+    expect(b.lastAction).toMatchObject({ action: 'draw', amount: 2, replace: true });
+    expect(game.currentPlayerIndex).toBe(2);
+    expect(draw(game, [])).toBe(true);
+    expect(players[2].lastAction).toMatchObject({ action: 'draw', amount: 0 });
+    expect(game.currentPlayerIndex).toBe(0);
+    expect(draw(game, [0, 1, 2, 3, 4])).toBe(true);
+    // The round is over; the betting after the draw opens left of the dealer.
+    expect(game.drawing).toBeNull();
+    expect(game.phase).toBe('postdraw');
+    expect(game.currentPlayerIndex).toBe(1);
+    expect(game.currentBet).toBe(0);
+    const all = players.flatMap((p) => p.holeCards.map(keyOf));
+    expect(new Set(all).size).toBe(all.length);
+    const hand = game.handHistory.current;
+    expect(hand.actions.filter((a) => a.action === 'draw').map((a) => a.amount)).toEqual([2, 0, 5]);
+    expect(hand.actions.filter((a) => a.action === 'draw').map((a) => a.phase)).toEqual([
+      'drawing',
+      'drawing',
+      'drawing',
+    ]);
+    expect(hand.holeCards.B.map(keyOf)).toEqual(after);
+    // And the betting is a betting round: a check goes through.
+    expect(act(game, 'check')).toBe(true);
+  });
+
+  test('under fixed-limit the bet after the draw is the big bet', () => {
+    const { game } = table({ game: 'draw', limit: 'fixed' });
+    game.startRound();
+    expect(game._betUnit()).toBe(20);
+    callRound(game);
+    draw(game, []);
+    draw(game, []);
+    draw(game, []);
+    expect(game.phase).toBe('postdraw');
+    expect(game._betUnit()).toBe(40);
+    act(game, 'raise');
+    expect(game.currentBet).toBe(40);
+  });
+
+  test('an all-in seat still draws, and the hands stay down until the draw is done', () => {
+    const { game, players } = table({ game: 'draw' }, ['A', 'B']);
+    game.startRound();
+    // Heads-up the dealer is the small blind and acts first: A shoves, B calls.
+    act(game, 'allin');
+    act(game, 'call');
+    expect(players.every((p) => p.allIn)).toBe(true);
+    expect(game.phase).toBe('drawing');
+    expect(game.cardsExposed).toBe(false);
+    const asB = game.getStateForPlayer('B');
+    expect(asB.players.find((p) => p.id === 'A').holeCards).toBeNull();
+    expect(game.currentPlayerIndex).toBe(1);
+    expect(asB.isMyTurn).toBe(true);
+    expect(draw(game, [0])).toBe(true);
+    expect(game.currentPlayerIndex).toBe(0);
+    expect(game.getStateForPlayer('A').isMyTurn).toBe(true);
+    expect(draw(game, [])).toBe(true);
+    // The draw over, the run-out turns the hands up and goes to showdown.
+    expect(game.cardsExposed).toBe(true);
+    expect(game.phase).toBe('showdown');
+    expect(game.isRunning).toBe(false);
+    expect(game.lastRoundWinnerIds.length).toBeGreaterThan(0);
+  });
+
+  test('eight seats each drawing five: the discards are shuffled back in, and no card is twice in play', () => {
+    const names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    const { game, players } = table({ game: 'draw' }, names);
+    const said = [];
+    game.onMessage = (m) => said.push(m);
+    game.startRound();
+    callRound(game);
+    expect(game.phase).toBe('drawing');
+    expect(game.deck).toHaveLength(52 - 40);
+    for (let i = 0; i < 8; i++) expect(draw(game, [0, 1, 2, 3, 4])).toBe(true);
+    expect(game.drawing).toBeNull();
+    expect(said.some((m) => /shuffled back in/.test(m))).toBe(true);
+    const all = players.flatMap((p) => p.holeCards.map(keyOf));
+    expect(all).toHaveLength(40);
+    expect(new Set(all).size).toBe(40);
+    for (const p of players) expect(p.holeCards.every((c) => c && c.rank && c.suit)).toBe(true);
+  });
+
+  test('a clock that runs out stands pat; a bot draws within bounds; a sat-out seat stands pat', () => {
+    jest.useFakeTimers();
+    try {
+      const { game, players } = table({ game: 'draw', gameMode: 'tournament' });
+      game.startRound();
+      callRound(game);
+      expect(game.phase).toBe('drawing');
+      const first = players[game.currentPlayerIndex];
+      const before = first.holeCards.map(keyOf);
+      jest.advanceTimersByTime(30000);
+      expect(first.holeCards.map(keyOf)).toEqual(before);
+      expect(first.timeoutStrikes).toBe(1);
+      expect(game.drawing).not.toBeNull();
+      const bot = players[game.currentPlayerIndex];
+      bot.isBot = true;
+      game.processAutoTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 5);
+      const last = players[game.currentPlayerIndex];
+      expect(last).not.toBe(bot);
+      last.autoPlay = true;
+      game.processAutoTurn();
+      jest.advanceTimersByTime(AUTO_TURN_DELAY_MS + 5);
+      expect(game.drawing).toBeNull();
+      const draws = game.handHistory.current.actions.filter((a) => a.action === 'draw');
+      expect(draws.map((a) => a.playerId)).toEqual([first.id, bot.id, last.id]);
+      expect(draws[0].amount).toBe(0);
+      expect(draws[1].amount).toBeGreaterThanOrEqual(0);
+      expect(draws[1].amount).toBeLessThanOrEqual(5);
+      expect(draws[2].amount).toBe(0);
+      expect(bot.holeCards).toHaveLength(5);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('the donkey keeps a pair and throws the rest; with nothing it keeps its highest', () => {
+    const { game, players } = table({ game: 'draw' });
+    game.startRound();
+    callRound(game);
+    const p = players[1];
+    p.holeCards = cards('Ks', 'Kh', '9d', '4c', '2h');
+    expect(game._donkeyDraw(p).sort()).toEqual([2, 3, 4]);
+    p.holeCards = cards('As', 'Jh', '9d', '4c', '2h');
+    expect(game._donkeyDraw(p).sort()).toEqual([1, 2, 3, 4]);
+    // A street that insists on one from a hand of trips takes the lowest of them.
+    game.drawing.min = 1;
+    game.drawing.max = 1;
+    p.holeCards = cards('Qs', 'Qh', 'Qd');
+    expect(game._donkeyDraw(p)).toHaveLength(1);
+  });
+});
+
+describe('Crazy Pineapple', () => {
+  test('three cards; after the flop each seat throws exactly one away and gets none back; then the turn', () => {
+    const { game, players } = table({ game: 'pineapple' });
+    game.startRound();
+    for (const p of players) expect(p.holeCards).toHaveLength(3);
+    expect(game.getStateForPlayer('A').game).toMatchObject({ key: 'pineapple', firstDeal: 3 });
+    callRound(game);
+    expect(game.phase).toBe('flop');
+    expect(game.communityCards).toHaveLength(3);
+    const deckAfterFlop = game.deck.length;
+    callRound(game);
+    expect(game.phase).toBe('discard');
+    expect(game.drawing).toMatchObject({ min: 1, max: 1, replace: false, first: 1 });
+    // No burn before a street that deals nothing.
+    expect(game.deck).toHaveLength(deckAfterFlop);
+    expect(draw(game, [])).toBe(false);
+    expect(draw(game, [0, 1])).toBe(false);
+    const b = players[1];
+    const kept = b.holeCards.map(keyOf);
+    expect(draw(game, [2])).toBe(true);
+    expect(b.holeCards.map(keyOf)).toEqual(kept.slice(0, 2));
+    expect(b.lastAction).toMatchObject({ action: 'draw', amount: 1, replace: false });
+    expect(draw(game, [0])).toBe(true);
+    expect(draw(game, [1])).toBe(true);
+    expect(game.phase).toBe('turn');
+    expect(game.communityCards).toHaveLength(4);
+    for (const p of players) expect(p.holeCards).toHaveLength(2);
+    expect(game.getStateForPlayer('A').players.find((p) => p.id === 'B').cards).toBe(2);
+    expect(game.muck).toHaveLength(3);
+  });
+
+  test('a showdown scores any five of the two in hand and the board', () => {
+    const { game, players } = table({ game: 'pineapple' }, ['A', 'B']);
+    game.startRound();
+    players[0].holeCards = cards('Ah', 'Kh');
+    players[1].holeCards = cards('2c', '3d');
+    game.communityCards = cards('Qh', 'Jh', '10h', '4s', '9c');
+    game.phase = 'river';
+    for (const p of players) {
+      p.bet = 0;
+      p.totalBet = 100;
+    }
+    game.pot = 200;
+    game.showdown();
+    expect(game.lastRoundWinnerIds).toEqual(['A']);
+    expect(game.handHistory.hands[0].winners[0].handName).toBe('Royal Flush');
   });
 });

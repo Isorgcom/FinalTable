@@ -1018,6 +1018,48 @@ describe('Tournament socket layer', () => {
     expect(await until(() => !!seat.player.preAction)).toBe(true);
   });
 
+  // The draw over the wire: a list of the cards to throw away, empty for
+  // standing pat. Anything else is dropped on the floor, and so is a draw
+  // from the seat whose turn it is not.
+  test('a malformed draw is ignored, and a good one lands', async () => {
+    const host = await connectClient();
+    const { created, guest } = await createTournamentWithGuest(host, { game: 'draw' });
+    await startAndDeal(host, guest);
+    const entry = serverModule.tournaments.get(created.id);
+    const table = entry.director.tables[0];
+    // Everybody calls to the draw. A real table holds the street beat on a
+    // timer, so the draw opens a moment after the last call.
+    let guard = 0;
+    while (table.phase === 'predraw' && !table._streetTimer && guard++ < 6) {
+      const cur = table.players[table.currentPlayerIndex];
+      table.handleAction(cur.id, table.currentBet > cur.bet ? 'call' : 'check');
+    }
+    expect(await until(() => !!table.drawing)).toBe(true);
+    expect(table.drawing).toMatchObject({ min: 0, max: 5, replace: true });
+    const drawer = table.players[table.currentPlayerIndex];
+    const other = table.players.find((p) => p.id !== drawer.id);
+    const socketOf = (p) => (p.uid === created.uid ? host : guest);
+    const before = drawer.holeCards.map((c) => `${c.rank}${c.suit}`);
+
+    for (const bad of [{ cards: 'x' }, { cards: [-1] }, { cards: [0, 7] }, { cards: 3 }, {}]) {
+      socketOf(drawer).emit('draw', bad);
+    }
+    socketOf(other).emit('draw', { cards: [0] });
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(drawer.holeCards.map((c) => `${c.rank}${c.suit}`)).toEqual(before);
+    expect(drawer.lastAction).toBeNull();
+    expect(table.currentPlayerIndex).toBe(table.players.indexOf(drawer));
+
+    socketOf(drawer).emit('draw', { cards: [4, '1'] });
+    expect(await until(() => !!drawer.lastAction && drawer.lastAction.action === 'draw')).toBe(
+      true
+    );
+    expect(drawer.lastAction.amount).toBe(2);
+    expect(drawer.holeCards).toHaveLength(5);
+    expect(table.currentPlayerIndex).toBe(table.players.indexOf(other));
+    await cancelGame(host);
+  });
+
   test('sitting out now clears a line armed for later', async () => {
     const host = await connectClient();
     const { created, guest } = await createTournamentWithGuest(host);

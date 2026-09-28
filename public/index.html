@@ -741,7 +741,9 @@
             <div class="seg" id="tGame" role="group" aria-label="Game">
               <button type="button" data-game="holdem" class="active">Hold'em</button>
               <button type="button" data-game="omaha">Omaha</button>
-              <button type="button" data-game="stud">Seven-Card Stud</button>
+              <button type="button" data-game="stud">Stud</button>
+              <button type="button" data-game="draw">Draw</button>
+              <button type="button" data-game="pineapple">Pineapple</button>
             </div>
             <div class="seg-hint" id="tGameHint"></div>
           </div>
@@ -1269,6 +1271,12 @@
             <button class="action-btn btn-back" id="btnRaiseBack" type="button">back</button>
             <button class="action-btn btn-raise" id="btnRaise" aria-label="Raise">raise</button>
             <button class="action-btn btn-allin" id="btnAllIn" aria-label="All In">all in</button>
+            <!-- Your draw: the cards on your own seat are the control - tap
+                 one to throw it away - and this sends what you picked. -->
+            <span class="draw-note hidden" id="drawNote" aria-live="polite"></span>
+            <button class="action-btn btn-draw hidden" id="btnDraw" type="button" aria-label="Draw">
+              stand pat
+            </button>
           </div>
         </div>
 

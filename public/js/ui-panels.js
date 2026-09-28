@@ -1046,15 +1046,25 @@ const EXPORT_PHASES = {
   fifth: 'Fifth',
   sixth: 'Sixth',
   seventh: 'Seventh',
+  predraw: 'Pre-draw',
+  drawing: 'Draw',
+  postdraw: 'Post-draw',
+  discard: 'Discard',
   showdown: 'Showdown',
 };
-// The streets a recorded hand was played over, in order. A stud hand has no
-// board and five streets of its own; anything else is the four of Hold'em.
+// The streets a recorded hand was played over, in order, by the game it was.
+// Anything unknown is the four of Hold'em.
 const COMMUNITY_STREETS = ['preflop', 'flop', 'turn', 'river'];
-const STUD_STREETS = ['third', 'fourth', 'fifth', 'sixth', 'seventh'];
+const GAME_STREETS = {
+  stud: ['third', 'fourth', 'fifth', 'sixth', 'seventh'],
+  draw: ['predraw', 'drawing', 'postdraw'],
+  pineapple: ['preflop', 'flop', 'discard', 'turn', 'river'],
+};
 function handStreets(hand) {
-  return hand && hand.game === 'stud' ? STUD_STREETS : COMMUNITY_STREETS;
+  return (hand && GAME_STREETS[hand.game]) || COMMUNITY_STREETS;
 }
+// The games with nothing in the middle of the table.
+const NO_BOARD = new Set(['stud', 'draw']);
 // "blinds 10/20 ante 20", or a stud hand's ante, bring-in and bets.
 function handStakes(hand) {
   if (hand.game === 'stud' && hand.bets) {
@@ -1069,6 +1079,7 @@ const EXPORT_ACTIONS = {
   call: 'calls',
   raise: 'raises',
   allin: 'is all in',
+  draw: 'draws',
 };
 const EXPORT_WRAP = 58;
 
@@ -1278,6 +1289,10 @@ const PHASE_NAMES = {
   fifth: 'Fifth street',
   sixth: 'Sixth street',
   seventh: 'Seventh street',
+  predraw: 'Before the draw',
+  drawing: 'The draw',
+  postdraw: 'After the draw',
+  discard: 'The discard',
 };
 
 // The modal's list view. The History tab renders the same list into its own
@@ -1386,10 +1401,10 @@ function renderReplayDetail(hand) {
     cardsDiv.appendChild(div);
   }
 
-  // Community cards. A stud hand has none, and the section says nothing.
+  // Community cards. A stud or draw hand has none, and the section says nothing.
   const commDiv = document.getElementById('replayCommunity');
   const commLabel = document.getElementById('replayCommunityLabel');
-  const hasBoard = hand.game !== 'stud';
+  const hasBoard = !NO_BOARD.has(hand.game);
   commDiv.textContent = '';
   commDiv.classList.toggle('hidden', !hasBoard);
   if (commLabel) commLabel.classList.toggle('hidden', !hasBoard);
@@ -1423,6 +1438,7 @@ function renderReplayDetail(hand) {
     call: 'call',
     raise: 'raise',
     allin: 'all-in',
+    draw: 'draws',
   };
   actDiv.textContent = '';
   hand.actions.forEach((a) => {

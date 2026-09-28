@@ -8,19 +8,22 @@
 // says. Adding a game is adding an entry, plus whatever the games before it
 // never needed: a step kind, an evaluator, a control on the felt.
 //
-// Two families are here and a third is left room for. Community games
-// (Hold'em, Omaha) deal down and share a board. Stud games deal each player
-// their own cards, some face up, and have no board. Draw games would need a
-// discard step, which no street here has yet; `deal` is an object rather
-// than a number so that `{ draw: n }` can join `{ hole }` and `{ board }`
-// when one does.
+// Three families. Community games (Hold'em, Omaha, Pineapple) deal down and
+// share a board. Stud games deal each player their own cards, some face up,
+// and have no board. Draw games deal each player their own cards and then a
+// draw: a round of turns that throw cards away rather than bet.
 //
-// A street is one round of betting and what is dealt before it:
-//   { key, label, deal: { hole, up } | { board } | null, first }
-// `key` is the phase name on the wire. `first` says who opens the betting:
+// A street is what is dealt, and then a round of betting unless it says not:
+//   { key, label, deal, first, bet? }
+//   deal: { hole, up } | { board } | { draw: { min, max, replace } } | null
+// `key` is the phase name on the wire. `first` says who opens the street:
 // afterBlinds (left of the big blind, the small blind heads-up), afterButton,
 // bringIn (left of the seat that brought in) or bestShowing (the strongest
-// cards face up, ties to the seat nearest the dealer's left).
+// cards face up, ties to the seat nearest the dealer's left). A `draw` deal is
+// the draw round itself - every seat still in the hand, all in or not, from
+// `first` round, throws away `min` to `max` of its cards and, when `replace`,
+// is dealt as many back - and a street that deals one is `bet: false`: the
+// hand moves on when the last seat has chosen.
 
 const { bestOf, evaluatePartial } = require('./hand-eval');
 const { LIMITS } = require('./betting-limits');
@@ -72,6 +75,31 @@ function communityStreets(holeCards) {
     { key: 'river', label: 'River', deal: { board: 1 }, first: 'afterButton' },
   ];
 }
+
+// Hold'em with three cards, one of them thrown away after the flop's betting.
+function pineappleStreets() {
+  const streets = communityStreets(3);
+  streets.splice(2, 0, {
+    key: 'discard',
+    label: 'The discard',
+    deal: { draw: { min: 1, max: 1, replace: false } },
+    first: 'afterButton',
+    bet: false,
+  });
+  return streets;
+}
+
+const DRAW_STREETS = [
+  { key: 'predraw', label: 'Before the draw', deal: { hole: 5, up: 0 }, first: 'afterBlinds' },
+  {
+    key: 'drawing',
+    label: 'The draw',
+    deal: { draw: { min: 0, max: 5, replace: true } },
+    first: 'afterButton',
+    bet: false,
+  },
+  { key: 'postdraw', label: 'After the draw', deal: null, first: 'afterButton' },
+];
 
 const STUD_STREETS = [
   { key: 'third', label: 'Third street', deal: { hole: 3, up: 1 }, first: 'bringIn' },
@@ -147,6 +175,48 @@ const GAMES = {
     showing: (up) => evaluatePartial(up),
     forcedBets: studBets,
     forcedText: studText,
+  },
+  draw: {
+    key: 'draw',
+    name: 'Five-Card Draw',
+    family: 'draw',
+    holeCards: 5,
+    // Eight seats drawing five can outrun a deck. The engine shuffles the
+    // discards back in when it does, as the rules provide, so the felt's
+    // eight is the limit rather than the deck.
+    maxSeats: 8,
+    burn: false,
+    forced: 'blinds',
+    liveOption: true,
+    defaultLimit: 'no',
+    bigBetFrom: 2,
+    bringInBy: 'low',
+    showingOrder: 'high',
+    streets: DRAW_STREETS,
+    evaluate: (hole) => bestOf(hole, []),
+    showing: (up) => evaluatePartial(up),
+    forcedBets: blindsBets,
+    forcedText: blindsText,
+  },
+  pineapple: {
+    key: 'pineapple',
+    name: 'Crazy Pineapple',
+    family: 'community',
+    holeCards: 3,
+    maxSeats: 10,
+    burn: true,
+    forced: 'blinds',
+    liveOption: true,
+    defaultLimit: 'no',
+    bigBetFrom: 3,
+    bringInBy: 'low',
+    showingOrder: 'high',
+    streets: pineappleStreets(),
+    // Any five of the two left in hand and the board, as Hold'em has it.
+    evaluate: (hole, board) => bestOf(hole, board),
+    showing: (up) => evaluatePartial(up),
+    forcedBets: blindsBets,
+    forcedText: blindsText,
   },
 };
 

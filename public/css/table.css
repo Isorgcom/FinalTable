@@ -1908,6 +1908,36 @@
     transition: none;
   }
 }
+/* Your own cards on your draw: tap one to throw it away. A picked card is
+   pushed forward and dimmed, the way one slid towards the dealer is. */
+.player-seat.can-draw .player-hole-cards .card {
+  cursor: pointer;
+  outline: 1px solid rgba(201, 168, 76, 0.55);
+  outline-offset: 1px;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
+}
+.player-seat.can-draw .player-hole-cards .card:hover {
+  transform: translateY(-3px);
+}
+.player-seat.can-draw .player-hole-cards .card.picked {
+  transform: translateY(-10px);
+  opacity: 0.55;
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-seat.can-draw .player-hole-cards .card {
+    transition: none;
+  }
+}
+/* The line on the bar that says what the draw wants. */
+.draw-note {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--gold);
+  align-self: center;
+  white-space: nowrap;
+}
 
 .preaction-sitout {
   margin-left: auto;

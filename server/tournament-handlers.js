@@ -1004,6 +1004,21 @@ function registerTournamentHandlers(deps) {
       seat.table.showHoleCards(seat.player.id, cards);
     });
 
+    // The draw: which of their cards the seat to draw throws away, none for
+    // standing pat. The engine is the judge of whose draw it is and how many
+    // the street allows; this only finds the seat and keeps the indices sane.
+    socket.on('draw', (payload = {}) => {
+      const seat = seatFor(socket);
+      if (!seat) return;
+      const raw = payload && payload.cards;
+      // A list, empty for standing pat. Anything else is not a draw, not a
+      // stand-pat: garbage must not throw a hand's turn away for it.
+      if (!Array.isArray(raw)) return;
+      const cards = [...new Set(raw.map((n) => parseInt(n, 10)))];
+      if (cards.some((n) => !Number.isInteger(n) || n < 0 || n > 6)) return;
+      seat.table.handleDraw(seat.player.id, cards);
+    });
+
     socket.on('declineShow', () => {
       const seat = seatFor(socket);
       if (!seat) return;
@@ -1068,6 +1083,9 @@ function registerTournamentHandlers(deps) {
       // is the way to act, and accepting both is how a click races the beat.
       const idx = table.players.findIndex((p) => p.id === player.id);
       if (table.isRunning && idx === table.currentPlayerIndex) return;
+      // A draw is not a price to answer, and the street after it clears
+      // every line anyway.
+      if (table.drawing) return;
       const before = player.preAction;
       // No-op guard, as on setAutoPlay above: a state payload carries the last
       // ten hands, so an unguarded echo turns arm-spam into an amplifier.

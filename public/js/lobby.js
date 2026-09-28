@@ -2475,12 +2475,20 @@
   // ── The game, and how it is bet ──────────────────────────────────────────
   // Mirrors games.js and betting-limits.js on the server, which decide what
   // is actually dealt; this is the words on the form and the summaries.
-  const GAME_NAMES = { holdem: "Hold'em", omaha: 'Omaha', stud: 'Seven-Card Stud' };
+  const GAME_NAMES = {
+    holdem: "Hold'em",
+    omaha: 'Omaha',
+    stud: 'Seven-Card Stud',
+    draw: 'Five-Card Draw',
+    pineapple: 'Crazy Pineapple',
+  };
   const LIMIT_NAMES = { no: 'No-limit', pot: 'Pot-limit', fixed: 'Fixed-limit' };
   const GAME_HINT = {
     holdem: 'Two cards each and five on the board.',
     omaha: 'Four cards each; exactly two of them play, with three from the board.',
     stud: 'Seven cards each, four face up, no board. Everyone antes and the low card brings in. Tables of seven.',
+    draw: 'Five cards each and no board. A bet, then throw away up to five and draw as many back, then a bet.',
+    pineapple: "Hold'em with three cards each; after the flop's betting you throw one away.",
   };
   const LIMIT_HINT = {
     no: 'A raise is anything up to the stack.',
@@ -2488,8 +2496,14 @@
     fixed:
       "Every bet is the level's bet, doubled on the later streets, and a street closes after four raises.",
   };
-  const GAME_DEFAULT_LIMIT = { holdem: 'no', omaha: 'pot', stud: 'fixed' };
-  const GAME_MAX_SEATS = { holdem: 8, omaha: 8, stud: 7 };
+  const GAME_DEFAULT_LIMIT = {
+    holdem: 'no',
+    omaha: 'pot',
+    stud: 'fixed',
+    draw: 'no',
+    pineapple: 'no',
+  };
+  const GAME_MAX_SEATS = { holdem: 8, omaha: 8, stud: 7, draw: 8, pineapple: 8 };
 
   function setGame(key) {
     document.querySelectorAll('#tGame button').forEach((b) => {

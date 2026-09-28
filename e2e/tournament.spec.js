@@ -777,6 +777,143 @@ test('a Seven-Card Stud game shows the up-cards and bets fixed-limit', async ({
   await guestContext.close();
 });
 
+// Two browsers, one of them to act: the other one.
+const otherOf = (which, page, guest) => (which === page ? guest : page);
+
+// Five-Card Draw from the create form: five cards, no board, and after the
+// first betting round a draw - tap the cards to throw away, and the other
+// browser sees "draws 2" over the seat.
+test('a Five-Card Draw game: throw two away and draw two, and the other seat stands pat', async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(page, 'Host');
+  const code = await helpers.createTournament(page, { name: 'Draw Night', game: 'draw' });
+  await expect(page.locator('#wrSettings')).toContainText('Five-Card Draw · No-limit');
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(guest, 'Guest', { join: code });
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(5);
+  await expect(page.locator('.player-seat:not(.is-me) .player-hole-cards .card-back')).toHaveCount(
+    5
+  );
+  await expect(page.locator('#communityCards')).toBeHidden();
+  await expect(page.locator('#topInfo')).toContainText('Before the draw');
+
+  // The betting before the draw: heads-up the dealer calls, the big blind checks.
+  const first = await whoActs(page, guest);
+  await first.click('#btnCall');
+  const second = otherOf(first, page, guest);
+  await expect(second.locator('#btnCheck')).toBeVisible();
+  await second.click('#btnCheck');
+
+  // The draw: whoever is to draw picks two cards and draws.
+  await expect(page.locator('#topInfo')).toContainText('The draw');
+  const drawer = await whoActs(page, guest);
+  await expect(drawer.locator('#btnDraw')).toBeVisible();
+  await expect(drawer.locator('#btnDraw')).toHaveText('stand pat');
+  await expect(drawer.locator('#drawNote')).toContainText('up to 5');
+  const mine = drawer.locator('.player-seat.is-me .player-hole-cards .card');
+  await mine.nth(0).click();
+  await mine.nth(3).click();
+  await expect(drawer.locator('.player-seat.is-me .player-hole-cards .card.picked')).toHaveCount(2);
+  await expect(drawer.locator('#btnDraw')).toHaveText('draw 2');
+  await drawer.click('#btnDraw');
+  const watcher = otherOf(drawer, page, guest);
+  await expect(watcher.locator('.player-seat:not(.is-me) .player-action-badge')).toContainText(
+    'draws 2'
+  );
+  // The other seat stands pat.
+  await expect(watcher.locator('#btnDraw')).toBeVisible();
+  await expect(watcher.locator('#btnDraw')).toHaveText('stand pat');
+  await watcher.click('#btnDraw');
+
+  // And after the draw it is a betting round again, with five cards each.
+  await expect(page.locator('#topInfo')).toContainText('After the draw');
+  const bettor = await whoActs(page, guest);
+  await expect(bettor.locator('#btnCheck')).toBeVisible();
+  await expect(bettor.locator('#btnDraw')).toBeHidden();
+  await expect(drawer.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(5);
+  await expect(drawer.locator('.player-seat.is-me .player-hole-cards .card.picked')).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
+// Crazy Pineapple: three cards, and after the flop's betting each seat must
+// throw exactly one away - the button waits for the pick.
+test('a Crazy Pineapple game: three cards, and one thrown away after the flop', async ({
+  browser,
+  page,
+}) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(page, 'Host');
+  const code = await helpers.createTournament(page, { name: 'Pineapple', game: 'pineapple' });
+  await expect(page.locator('#wrSettings')).toContainText('Crazy Pineapple · No-limit');
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  guest.on('pageerror', (err) => errors.push(err.message));
+  await helpers.signInAs(guest, 'Guest', { join: code });
+  await expect(guest.locator('#lobbyWaiting')).toBeVisible();
+  await page.click('#btnStartNow');
+  await expect(page.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(guest.locator('#gameScreen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(3);
+  await expect(page.locator('.player-seat:not(.is-me) .player-hole-cards .card-back')).toHaveCount(
+    3
+  );
+  await expect(page.locator('#communityCards')).toBeVisible();
+
+  // Preflop: call, check. Flop: check, check.
+  const first = await whoActs(page, guest);
+  await first.click('#btnCall');
+  const second = otherOf(first, page, guest);
+  await expect(second.locator('#btnCheck')).toBeVisible();
+  await second.click('#btnCheck');
+  await expect(page.locator('#topInfo')).toContainText('Flop');
+  const a = await whoActs(page, guest);
+  await a.click('#btnCheck');
+  const b = otherOf(a, page, guest);
+  await expect(b.locator('#btnCheck')).toBeVisible();
+  await b.click('#btnCheck');
+
+  // The discard: exactly one, and the button waits for it.
+  await expect(page.locator('#topInfo')).toContainText('The discard');
+  const d = await whoActs(page, guest);
+  await expect(d.locator('#btnDraw')).toHaveText('discard');
+  await expect(d.locator('#btnDraw')).toBeDisabled();
+  await expect(d.locator('#drawNote')).toContainText('the card');
+  await d.locator('.player-seat.is-me .player-hole-cards .card').nth(1).click();
+  await expect(d.locator('#btnDraw')).toBeEnabled();
+  await d.click('#btnDraw');
+  const e = otherOf(d, page, guest);
+  await expect(e.locator('.player-seat:not(.is-me) .player-action-badge')).toContainText(
+    'discards'
+  );
+  await expect(e.locator('#btnDraw')).toBeVisible();
+  await e.locator('.player-seat.is-me .player-hole-cards .card').nth(0).click();
+  await e.click('#btnDraw');
+
+  // Two left in hand each, and the turn is dealt.
+  await expect(page.locator('#topInfo')).toContainText('Turn');
+  await expect(page.locator('.player-seat.is-me .player-hole-cards .card')).toHaveCount(2);
+  await expect(page.locator('.player-seat:not(.is-me) .player-hole-cards .card-back')).toHaveCount(
+    2
+  );
+  await expect(page.locator('#communityCards .card')).toHaveCount(4);
+  expect(errors).toEqual([]);
+  await guestContext.close();
+});
+
 test('the Stats tab is the whole field, from the first deal', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (err) => errors.push(err.message));

@@ -313,11 +313,15 @@ under the action buttons names your hand as it develops: in Omaha the hand
 that exactly two of your four make, in stud what your cards have made so far.
 
 Which game a table plays is the host's choice on the create form: **Hold'em**,
-**Omaha** (four cards, and exactly two of them play with three from the board)
-or **Seven-Card Stud** (seven cards each, no board; everyone antes and the
-low card showing brings in; the third, fourth, fifth and sixth cards are dealt
-face up for the whole table to see, and the strongest cards showing open each
-street). A stud table seats seven. Beside the game is the betting:
+**Omaha** (four cards, and exactly two of them play with three from the board),
+**Seven-Card Stud** (seven cards each, no board; everyone antes and the low
+card showing brings in; the third, fourth, fifth and sixth cards are dealt face
+up for the whole table to see, and the strongest cards showing open each
+street), **Five-Card Draw** (five cards each, no board; a bet, then the draw -
+throw away up to five and get as many back, or stand pat - then a bet) or
+**Crazy Pineapple** (Hold'em with three cards, one of which you must throw away
+after the flop's betting). A stud table seats seven. Beside the game is the
+betting:
 **no-limit**, **pot-limit** (a raise is at most the pot) or **fixed-limit**
 (every bet is the level's bet, doubled from the turn or from fifth street, and
 a street closes after four raises). Each game comes up at the limit it is
@@ -381,6 +385,19 @@ when your stack is bigger than that: the most you may raise is a pot raise.
 Under fixed-limit there is nothing to size, so the one button reads the bet
 
 - **bet 20**, **raise to 40** - and there is no slider.
+
+On a draw - Five-Card Draw's, or Crazy Pineapple's discard after the flop -
+there is nothing to bet either. Your own cards are the control: tap one to
+pick it to throw away, tap it again to keep it, and the one button says what
+you have picked - **stand pat**, **draw 2**, or in Pineapple **discard** once
+you have picked the one card it wants. Every seat still in the hand draws in
+turn from the dealer's left, all-in seats included, and nobody's cards are
+turned up until the last has chosen. The bubble over a seat says **draws 2**,
+**stands pat** or **discards**. A clock that runs out stands pat, or throws
+away only what the street insists on, and a seat sitting out does the same.
+When the deck runs dry - eight seats drawing five will do it - the discards
+are shuffled back in, and the log says so. The replay keeps each hand as it
+stood after the draw; what went before it survives as the _draws 2_ lines.
 
 On a phone held upright there is room for three decisions and no more, so the
 bar is **fold**, **check** or **call**, and **raise**, each the width of a

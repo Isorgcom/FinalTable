@@ -13,6 +13,23 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Added
+
+- **Five-Card Draw and Crazy Pineapple.** Two more games on the create form's
+  _Game_ row. Five-Card Draw deals five cards down and no board: a bet, then
+  the draw - tap the cards you want rid of, up to all five, and **draw**; or
+  **stand pat** - then a bet, then the showdown. Crazy Pineapple is Hold'em
+  with three cards, one of which you must throw away after the flop's
+  betting. In either, every seat still in the hand draws in turn from the
+  dealer's left, all-in seats included, and nobody's cards are turned up
+  until the last has chosen. A clock that runs out stands pat, or throws
+  away only what the street insists on. When eight seats drawing five run the
+  deck dry, the discards are shuffled back in, as the rules provide. The
+  bubble over a seat says _draws 2_, _stands pat_ or _discards_; the top bar,
+  the history and the replay call the streets _before the draw_, _the draw_
+  and _after the draw_; the replay keeps each hand as it stood after the
+  draw. Over the API the games are `draw` and `pineapple`.
+
 ## 0.29.0 - 2026-09-27
 
 ### Added

@@ -13,8 +13,8 @@ const { HAND_RANKS } = require('../hand-eval');
 const c = (rank, suit, value) => ({ rank, suit, value });
 
 describe('the registry', () => {
-  test("three games, and Hold'em when asked for one that is not there", () => {
-    expect(Object.keys(GAMES)).toEqual(['holdem', 'omaha', 'stud']);
+  test("five games, and Hold'em when asked for one that is not there", () => {
+    expect(Object.keys(GAMES)).toEqual(['holdem', 'omaha', 'stud', 'draw', 'pineapple']);
     expect(DEFAULT_GAME).toBe('holdem');
     expect(gameFor('omaha').key).toBe('omaha');
     expect(gameFor('razz').key).toBe('holdem');
@@ -27,7 +27,7 @@ describe('the registry', () => {
     for (const game of Object.values(GAMES)) {
       expect(game.key).toBeTruthy();
       expect(game.name).toBeTruthy();
-      expect(['community', 'stud']).toContain(game.family);
+      expect(['community', 'stud', 'draw']).toContain(game.family);
       expect(game.holeCards).toBeGreaterThanOrEqual(2);
       expect(game.maxSeats).toBeGreaterThanOrEqual(2);
       expect(['blinds', 'ante-bringin']).toContain(game.forced);
@@ -38,6 +38,14 @@ describe('the registry', () => {
         expect(street.label).toBeTruthy();
         expect(['afterBlinds', 'afterButton', 'bringIn', 'bestShowing']).toContain(street.first);
         expect(street.deal === null || typeof street.deal === 'object').toBe(true);
+        // A draw round says how many may go, whether they come back, and
+        // that nobody bets on it.
+        if (street.deal && street.deal.draw) {
+          const d = street.deal.draw;
+          expect(Number.isInteger(d.min) && Number.isInteger(d.max) && d.min <= d.max).toBe(true);
+          expect(typeof d.replace).toBe('boolean');
+          expect(street.bet).toBe(false);
+        }
       }
       // A street's cards add up to the hand the game says it deals.
       const dealt = game.streets.reduce((n, s) => n + ((s.deal && s.deal.hole) || 0), 0);
@@ -119,6 +127,68 @@ describe('the registry', () => {
     const up = [c('K', 'spades', 13), c('K', 'hearts', 13)];
     expect(g.showing(up).rank).toBe(HAND_RANKS.ONE_PAIR);
     expect(g.showing([c('A', 'spades', 14)]).rank).toBe(HAND_RANKS.HIGH_CARD);
+  });
+});
+
+describe('the draw games', () => {
+  test('Five-Card Draw: five down, a draw of up to five with replacement, a bet after, no board', () => {
+    const g = GAMES.draw;
+    expect(g.streets.map((s) => s.key)).toEqual(['predraw', 'drawing', 'postdraw']);
+    expect(g.streets[0].deal).toEqual({ hole: 5, up: 0 });
+    expect(g.streets[1]).toMatchObject({
+      deal: { draw: { min: 0, max: 5, replace: true } },
+      first: 'afterButton',
+      bet: false,
+    });
+    expect(g.streets[2].deal).toBeNull();
+    expect(g.streets[2].bet).toBeUndefined();
+    expect(g).toMatchObject({
+      family: 'draw',
+      holeCards: 5,
+      maxSeats: 8,
+      burn: false,
+      forced: 'blinds',
+      liveOption: true,
+      defaultLimit: 'no',
+      bigBetFrom: 2,
+    });
+    const five = [
+      c('K', 'spades', 13),
+      c('K', 'hearts', 13),
+      c('K', 'diamonds', 13),
+      c('9', 'clubs', 9),
+      c('9', 'diamonds', 9),
+    ];
+    expect(g.evaluate(five, []).rank).toBe(HAND_RANKS.FULL_HOUSE);
+  });
+
+  test("Crazy Pineapple: Hold'em with three cards and one thrown away after the flop", () => {
+    const g = GAMES.pineapple;
+    expect(g.streets.map((s) => s.key)).toEqual(['preflop', 'flop', 'discard', 'turn', 'river']);
+    expect(g.streets[0].deal).toEqual({ hole: 3, up: 0 });
+    expect(g.streets[2]).toMatchObject({
+      deal: { draw: { min: 1, max: 1, replace: false } },
+      first: 'afterButton',
+      bet: false,
+    });
+    expect(g).toMatchObject({
+      family: 'community',
+      holeCards: 3,
+      burn: true,
+      forced: 'blinds',
+      defaultLimit: 'no',
+      bigBetFrom: 3,
+    });
+    // Two in hand and five on the board score as any five, unlike Omaha.
+    const hole = [c('A', 'hearts', 14), c('2', 'clubs', 2)];
+    const board = [
+      c('K', 'hearts', 13),
+      c('Q', 'hearts', 12),
+      c('J', 'hearts', 11),
+      c('10', 'hearts', 10),
+      c('2', 'diamonds', 2),
+    ];
+    expect(g.evaluate(hole, board).rank).toBe(HAND_RANKS.ROYAL_FLUSH);
   });
 });
 

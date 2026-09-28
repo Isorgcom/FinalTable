@@ -329,6 +329,8 @@ function updateGameState(state) {
   // to be read before it clears the felt.
   if (gameState && gameState.isRunning && !state.isRunning) _breakHandEndedAt = Date.now();
   gameState = state;
+  // Picks belong to a draw that is still on; none survives its end.
+  if (!state.drawing) _picked.clear();
 
   // Detect new round → force full rebuild
   if (state.roundCount !== oldRound) {
@@ -508,12 +510,13 @@ function getPlayerIdentityKey(players) {
         // Rotating the view changes no player's state, so without this the
         // incremental path would leave every plate exactly where it was.
         String(viewerSlot(players.length)),
-        // Whether this seat's cards are face up. The skeleton holds the cards,
-        // so the moment the server tables a hand - at showdown, or on an
-        // all-in run-out - the seats have to be built again to show them.
-        // How many are up, not merely that some are: showing one card and then the
-        // second has to rebuild the seat, and both states are "up".
-        p.holeCards ? 'up' + p.holeCards.filter(Boolean).length : '',
+        // What this seat is showing, card by card. The skeleton holds the
+        // cards, so the moment the server tables a hand - at showdown, or on
+        // an all-in run-out - the seats have to be built again to show them.
+        // The faces and not merely the count: a draw hands back as many
+        // cards as it took, and a discard leaves one back fewer.
+        p.holeCards ? 'up' + p.holeCards.map((c) => (c ? `${c.rank}${c.suit}` : '_')).join('') : '',
+        Number.isInteger(p.cards) ? 'n' + p.cards : '',
       ].join(':');
     })
     .join('|');
@@ -602,6 +605,7 @@ const SEAT_ACTION_LABELS = {
   call: 'call',
   raise: 'raise',
   allin: 'ALL IN',
+  draw: 'draws',
 };
 const SEAT_ACTION_CSS = {
   fold: 'action-fold',
@@ -609,7 +613,21 @@ const SEAT_ACTION_CSS = {
   call: 'action-call',
   raise: 'action-raise',
   allin: 'action-allin',
+  draw: 'action-check',
 };
+
+// Which of the viewer's own cards are picked to throw away on their draw.
+// Kept here rather than on the nodes because a state push rebuilds the seat.
+const _picked = new Set();
+
+// The picked cards go up as the draw - none is standing pat - and the picks
+// are spent with them.
+function sendDraw() {
+  if (!socket || !gameState || !gameState.drawing || !gameState.isMyTurn) return;
+  socket.emit('draw', { cards: [..._picked] });
+  _picked.clear();
+  updateActionsPanel();
+}
 
 // Seat geometry depends on the viewport (CSS radii, capacity), so a resize
 // or orientation change re-lays the ring. Debounced; a rebuild is cheap.
@@ -633,6 +651,8 @@ function seatRenderContext() {
     // The few seconds in which the winner of an uncontested pot may turn a
     // card over. Only ever theirs, so it is read once per pass here.
     canShow: !!gameState.myShow,
+    // The viewer's own draw: their cards are the control while it lasts.
+    drawing: !!(gameState.drawing && gameState.isMyTurn),
     onBreak: !!(stage && stage.classList.contains('on-break')),
     currentPlayerIndex: gameState.currentPlayerIndex,
     winnerIds: gameState.lastRoundWinnerIds || [],
@@ -672,6 +692,12 @@ function hideActionBadge(el) {
 }
 
 function actionBadgeLabel(action) {
+  // A draw says how many went, or that none did; a discard has no number
+  // worth saying, since the street said it.
+  if (action.action === 'draw') {
+    if (action.replace === false) return 'discards';
+    return action.amount > 0 ? `draws ${action.amount}` : 'stands pat';
+  }
   let label = SEAT_ACTION_LABELS[action.action] || action.action;
   if (action.amount > 0 && action.action !== 'fold') label += ' ' + action.amount;
   return label;
@@ -705,6 +731,14 @@ function updateSeatDynamic(seat, player, ctx) {
   // only on your own seat. ctx carries the offer so every seat in a pass
   // agrees about it.
   seat.classList.toggle('can-show', player.id === myId && !!ctx.canShow);
+  // And pressable on your own draw, each carrying whether it is picked to go.
+  const mine = player.id === myId;
+  seat.classList.toggle('can-draw', mine && !!ctx.drawing);
+  if (mine) {
+    holeCardNodes(seat).forEach((node, i) => {
+      node.classList.toggle('picked', !!ctx.drawing && _picked.has(i));
+    });
+  }
   // Your own seat, so its two cards can be the size of the ones in the middle
   // of the table. Nobody else's are: the hand you read should not be the
   // smallest thing on the felt, and eight seats of board-sized cards is what
@@ -1094,8 +1128,11 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
   // backs for a hand nobody may see. The count goes on the row so the CSS can
   // fan more than two.
   const firstDeal = (gameState.game && gameState.game.firstDeal) || 2;
+  // How many they hold now, when the server says: a seat that threw a card
+  // away and got none back is a back fewer.
+  const backs = Number.isInteger(player.cards) ? player.cards : firstDeal;
   const sent = Array.isArray(player.holeCards) && player.holeCards.length >= 2;
-  holeCardsDiv.dataset.cards = String(sent ? player.holeCards.length : firstDeal);
+  holeCardsDiv.dataset.cards = String(sent ? player.holeCards.length : backs);
   if (sent) {
     const winners = winningCardKeys();
     for (const card of player.holeCards) {
@@ -1112,7 +1149,7 @@ function buildSeatSkeleton(player, seatIdx, pos, animateDeal) {
       holeCardsDiv.appendChild(createCardElement(card, marks));
     }
   } else if (gameState.isRunning && !player.folded) {
-    for (let i = 0; i < firstDeal; i++) {
+    for (let i = 0; i < backs; i++) {
       const back = document.createElement('div');
       back.className = 'card-back' + anim;
       holeCardsDiv.appendChild(back);
@@ -1434,6 +1471,34 @@ function updateActionsPanel() {
       : 'Add time to your clock';
   }
 
+  // A draw turn: nothing to bet, only which cards to throw away. The buttons
+  // that bet stand down; the cards on your own seat are the control, and the
+  // one button sends what you picked.
+  const drawing = gameState.drawing;
+  const drawNote = document.getElementById('drawNote');
+  const drawBtn = document.getElementById('btnDraw');
+  const bettingButtons = ['btnFold', 'btnCheck', 'btnCall', 'btnRaise', 'btnAllIn'];
+  panel.classList.toggle('is-drawing', !!drawing);
+  if (drawNote) drawNote.classList.toggle('hidden', !drawing);
+  if (drawBtn) drawBtn.classList.toggle('hidden', !drawing);
+  if (drawing && drawNote && drawBtn) {
+    for (const id of bettingButtons) document.getElementById(id).style.display = 'none';
+    document.querySelector('.raise-slider-group').style.display = 'none';
+    const presets = document.getElementById('presetGroup');
+    if (presets) presets.style.display = 'none';
+    panel.classList.remove('is-sizing');
+    const n = _picked.size;
+    drawNote.textContent =
+      drawing.max === drawing.min
+        ? `Tap ${drawing.max === 1 ? 'the card' : `${drawing.max} cards`} to throw away`
+        : `Tap up to ${drawing.max} cards to throw away`;
+    drawBtn.textContent = !drawing.replace ? 'discard' : n === 0 ? 'stand pat' : `draw ${n}`;
+    drawBtn.disabled = n < drawing.min || n > drawing.max;
+    return;
+  }
+  // Back from a draw, the fold button is the one nothing below redraws.
+  document.getElementById('btnFold').style.display = '';
+
   const toCall = gameState.currentBet - me.bet;
   // The least and the most a raise may be, as the table's limit has it. The
   // server works it out; the bar only draws it.
@@ -1558,7 +1623,10 @@ function updatePreActionPanel() {
   // sit-out toggle does not: between hands, folded and all-in are exactly when
   // somebody decides they are done for now.
   const row = document.getElementById('preActionRow');
-  const inHand = !!gameState.isRunning && !me.folded && !me.allIn && !me.isSpectator;
+  // Not during a draw: it is not a price, and the street after it clears
+  // every line anyway.
+  const inHand =
+    !!gameState.isRunning && !gameState.drawing && !me.folded && !me.allIn && !me.isSpectator;
   row.classList.toggle('hidden', !inHand);
 
   // The offer to turn a card over, which the server puts up only for the

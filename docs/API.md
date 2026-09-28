@@ -54,7 +54,7 @@ Where both are given, GameNight's wins.
 | --------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `title`                           | `name`                      | up to 24 characters; `Tournament` if missing                                                                                                                                                              |
 | `start_at` (ISO-8601)             | `startsAt` (ms since epoch) | up to seven days out, or 400; missing or past means now                                                                                                                                                   |
-| `game`, `variant`                 | `game`                      | `holdem` (default), `omaha` or `stud`; anything else is a 400                                                                                                                                             |
+| `game`, `variant`                 | `game`                      | `holdem` (default), `omaha`, `stud`, `draw` (Five-Card Draw) or `pineapple` (Crazy Pineapple); anything else is a 400                                                                                     |
 | `limit`, `betting`                | `limit`                     | `no`, `pot` or `fixed` (`no-limit` and the like are read too); default is the game's own - Hold'em `no`, Omaha `pot`, Stud `fixed`; anything else is a 400                                                |
 | `seats_per_table`, `poker_seats`  | `tableSize`                 | 2-8, default 8; a stud table holds seven, so 8 becomes 7                                                                                                                                                  |
 | `starting_chips`                  | `startChips`                | one of 1000, 2000, 5000, 10000 - anything else becomes 5000                                                                                                                                               |
@@ -375,7 +375,8 @@ Every body carries the event, the delivery, when it was sent, and the game:
 }
 ```
 
-`variant` is which game is played (`holdem`, `omaha`, `stud`) and `limit`
+`variant` is which game is played (`holdem`, `omaha`, `stud`, `draw`,
+`pineapple`) and `limit`
 how it is bet (`no`, `pot`, `fixed`), as they were given when the game was
 made. The clock events below also carry `bets`: what the level posts in that
 game - `{ sb, bb, ante, smallBet, bigBet }` for a blinds game, `{ ante,
