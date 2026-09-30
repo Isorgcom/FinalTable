@@ -13,6 +13,8 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+## 0.32.1 - 2026-09-30
+
 ### Fixed
 
 - **The host's waiting room says when the link needs no approval.** An
