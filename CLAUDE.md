@@ -11,7 +11,10 @@ A change is not finished until all of these are true:
    commit as the change itself.
 3. Any document that now states the old behaviour is corrected: README.md for
    what the server does, FORK.md for what this fork did to upstream,
-   CONTRIBUTING.md for how to work on it.
+   CONTRIBUTING.md for how to work on it, and docs/MANUAL.md for what a
+   player, a host or the admin sees - the paragraphs it touches, and a row
+   for the release in its "What is new" table. The manual went from 0.11.0
+   to 0.32.0 gaining paragraphs and no rows, and had to be audited whole.
 
 ## The changelog
 
