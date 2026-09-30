@@ -13,6 +13,28 @@ Release on GitHub to go with it.
 
 ## Unreleased
 
+### Fixed
+
+- **The host's waiting room says when the link needs no approval.** An
+  invite-only game made with _Guests can join freely with the link_ told its
+  host that anyone with the link "asks to join; you let them in below", which
+  is what the box switched off. It now says they join straight away, a name
+  being enough.
+- **Someone on a guest list can watch before they have joined.** Their lobby
+  card offered **Watch** and the server answered "Tournament not found". The
+  rail opens for them now, as the card promised.
+- **The link's screen no longer claims late registration is open when it is
+  not.** A free invite link opened on a running game always said "under way,
+  late registration open"; it now says whether it is.
+- **The hand rankings include the low hands** at a table that scores one -
+  Razz, Omaha Hi-Lo, Stud Hi-Lo and HORSE: the wheel, what a six-, seven- or
+  eight-low is, that a pair loses to any unpaired hand and straights and
+  flushes count for nothing, and the eight-or-better rule for the Hi-Lo
+  games. Other tables see the list they always did.
+- The Admin page's Sign-in tab no longer says that players on an unpaired
+  server "sign in as guests only"; guests went in 0.21.0, and it now says
+  they sign in with an account on this server.
+
 ## 0.32.0 - 2026-09-28
 
 ### Added

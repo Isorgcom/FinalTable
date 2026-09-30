@@ -1251,7 +1251,9 @@
       );
     } else {
       setPairingStatus(
-        data.paired ? `Paired with ${data.issuer}.` : 'Not paired. Players sign in as guests only.'
+        data.paired
+          ? `Paired with ${data.issuer}.`
+          : 'Not paired. Players sign in with an account on this server.'
       );
     }
     renderPairing();
@@ -3077,8 +3079,13 @@
     const parts = [];
     const n = Number(info.entrants) || 0;
     parts.push(`${n} ${n === 1 ? 'player' : 'players'} so far`);
-    if (info.status === 'running') parts.push('under way, late registration open');
-    else if (info.startsAt) {
+    if (info.status === 'running') {
+      parts.push(
+        info.lateRegOpen === false
+          ? 'under way, late registration closed'
+          : 'under way, late registration open'
+      );
+    } else if (info.startsAt) {
       const wait = info.startsAt - Date.now();
       parts.push(wait > 60000 ? `starts in ${fmtCountdown(wait)}` : 'starting soon');
     }
@@ -3257,12 +3264,15 @@
     const hint = $('wrCodeHint');
     const invite = s.visibility === 'invite';
     // A guest list is a different door: nobody asks, and nobody off the list
-    // gets in. The host is told which kind they are holding.
+    // gets in. A link that lets guests in freely is no door at all. The host
+    // is told which kind they are holding.
     hint.textContent = !invite
       ? ''
       : t.guestList > 0
         ? 'This game has a guest list: the people on it walk straight in, and nobody else can.'
-        : 'Anyone with this link asks to join; you let them in below.';
+        : t.autoApprove
+          ? 'Anyone with this link joins straight away - a name is enough, and nobody waits for you.'
+          : 'Anyone with this link asks to join; you let them in below.';
     hint.classList.toggle('hidden', !(invite && t.isHost));
     const parts = [
       VISIBILITY_LINE[s.visibility] || null,

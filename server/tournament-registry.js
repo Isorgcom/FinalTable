@@ -801,6 +801,9 @@ function createTournamentRegistry(deps = {}) {
       // How many are on the guest list, never who: the host's waiting room
       // says the door works differently, and that is all it needs to know.
       guestList: entry.guests.size,
+      // And whether the link lets people straight in, so the host's waiting
+      // room does not promise a door there is none of.
+      autoApprove: !!entry.autoApprove,
       name: entry.name,
       status: entry.status,
       startsAt: entry.startsAt,
@@ -1889,8 +1892,11 @@ function createTournamentRegistry(deps = {}) {
     const entry = fromRail || tournaments.get(tournamentId) || null;
     if (!entry) return { error: 'Tournament not found' };
     // An unlisted game is reached by its rail code or not at all; an id on
-    // its own gets the answer a wrong code gets.
-    if (!fromRail && !isPublic(entry)) return { error: 'Tournament not found' };
+    // its own gets the answer a wrong code gets - except for somebody on the
+    // game's guest list, whose lobby card carries the Watch button.
+    if (!fromRail && !isPublic(entry) && !entry.guests.has(uid)) {
+      return { error: 'Tournament not found' };
+    }
     if (entry.removedUids.has(uid)) return { error: 'You were removed from this game' };
     if (entry.registrations.has(uid)) return { error: 'You are in this game' };
     if (findByUid(uid, { includeLeft: true }) || findPendingByUid(uid)) {

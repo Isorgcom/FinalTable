@@ -532,6 +532,13 @@ function init() {
   });
   document.getElementById('btnHint').addEventListener('click', () => {
     closeMenu();
+    // The low hands, at a table that scores one: Razz, a Hi-Lo game, or a
+    // mix that turns into one.
+    const g = gameState && gameState.game;
+    const scoresLow =
+      !!g && (['razz', 'omahahl', 'studhl'].includes(g.key) || (g.mix && g.mix.key === 'horse'));
+    const low = document.getElementById('hintLow');
+    if (low) low.classList.toggle('hidden', !scoresLow);
     document.getElementById('hintModal').classList.remove('hidden');
   });
   document.getElementById('btnCards').addEventListener('click', () => {

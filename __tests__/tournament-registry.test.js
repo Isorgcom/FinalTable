@@ -126,6 +126,20 @@ describe('tournament registry', () => {
       expect(registry.listFor('g').find((c) => c.id === entry.id).you.invited).toBe(false);
     });
 
+    test('a guest can watch from their lobby card before they have joined', () => {
+      const { entry } = create({ guests: ['g'] });
+      registry.join('t2', { code: entry.code }, makeSocket('st2', 't2')); // refused, but harmless
+      // The card carries Watch, which asks by id; a guest is let onto the
+      // rail, a stranger still gets the answer a wrong id gets.
+      expect(registry.watch('g', { tournamentId: entry.id }, makeSocket('sw', 'g')).error).toBe(
+        undefined
+      );
+      expect(entry.watchers.has('g')).toBe(true);
+      expect(registry.watch('t', { tournamentId: entry.id }, makeSocket('sw2', 't')).error).toMatch(
+        /not found/
+      );
+    });
+
     test('without a list, the door works as it always has', () => {
       const { entry } = create({ visibility: 'invite' });
       expect(entry.guests.size).toBe(0);

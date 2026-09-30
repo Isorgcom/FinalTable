@@ -662,6 +662,8 @@ test('a guest joins from the invite link on a name alone, and is the same person
     visibility: 'invite',
     autoApprove: true,
   });
+  // The host is told the link is the invitation, not that people will ask.
+  await expect(page.locator('#wrCodeHint')).toContainText('joins straight away');
 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();

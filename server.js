@@ -553,6 +553,9 @@ app.get('/api/games', (req, res) => {
     autoApprove: !!entry.autoApprove,
     visibility: entry.settings.visibility,
     entrants: entry.director.entrants.length,
+    // Whether a newcomer can still sit down in a running game, so the link's
+    // screen says so rather than assuming.
+    lateRegOpen: entry.director.lateRegOpen(),
     settings: {
       game: entry.settings.game || 'holdem',
       limit: entry.settings.limit || 'no',

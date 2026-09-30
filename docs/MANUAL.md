@@ -368,7 +368,8 @@ a line of status - the hand number, the street by the name the game gives it
 when you are; while you wait it says what for, and while you watch, which
 table. Then the buttons: **stats** and **replay** (each opens a side panel
 tab), **sit out**, **panel** (shows or hides the side panel), and the
-**menu** (**hands**, the ranking of poker hands; **cards**, see
+**menu** (**hands**, the ranking of poker hands, with the low hands added at a
+table that scores one; **cards**, see
 [How the cards look](#how-the-cards-look); **mute sound** or **unmute
 sound**; **cancel tournament**, for an administrator only; **leave**; and
 **forfeit**).
